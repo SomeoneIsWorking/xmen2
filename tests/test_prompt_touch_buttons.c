@@ -79,12 +79,6 @@ void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
   abort();
 }
 
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  (void)addr;
-  (void)out;
-  return 0;
-}
-
 /* The stock 800x600 UI the port letterboxes; the settings owner is not part
    of what is under test here. */
 static X2Settings g_settings;

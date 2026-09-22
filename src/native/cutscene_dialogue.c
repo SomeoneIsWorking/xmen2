@@ -8,6 +8,7 @@
  * response/script transition applies immediately without starting dialogue.
  */
 #include "cutscene_dialogue.h"
+#include "guest_memory.h"
 
 #include "conversation_player.h"
 #include "guest_body.h"
@@ -49,8 +50,8 @@ static int stop_active_voice(CPU *cpu, uint32_t manager) {
   uint32_t audio, handle, null_handle, vtable, stop;
 
   if (!cpu || !base ||
-      !x86_peek32(base + NULL_SOUND_HANDLE_RVA, &null_handle) ||
-      !x86_peek32(manager + CV_SOUND_HANDLE, &handle))
+      !guest_memory_try_read32(base + NULL_SOUND_HANDLE_RVA, &null_handle) ||
+      !guest_memory_try_read32(manager + CV_SOUND_HANDLE, &handle))
     return 0;
   if (handle == null_handle)
     return 1;
@@ -58,8 +59,8 @@ static int stop_active_voice(CPU *cpu, uint32_t manager) {
   call = *cpu;
   x86_guest_call(&call, base + EXE_RVA(FN_AUDIO));
   audio = call.reg[kX86pEax];
-  if (!audio || !x86_peek32(audio, &vtable) ||
-      !x86_peek32(vtable + VT_STOP_SOUND, &stop) || !stop)
+  if (!audio || !guest_memory_try_read32(audio, &vtable) ||
+      !guest_memory_try_read32(vtable + VT_STOP_SOUND, &stop) || !stop)
     return 0;
   call = *cpu;
   call.reg[kX86pEsp] -= 4u;
@@ -77,8 +78,9 @@ static int stop_active_voice(CPU *cpu, uint32_t manager) {
 static int active_voice(uint32_t manager, uint32_t *handle) {
   uint32_t base = exe_base(), null_handle;
 
-  if (!base || !x86_peek32(base + NULL_SOUND_HANDLE_RVA, &null_handle) ||
-      !x86_peek32(manager + CV_SOUND_HANDLE, handle))
+  if (!base ||
+      !guest_memory_try_read32(base + NULL_SOUND_HANDLE_RVA, &null_handle) ||
+      !guest_memory_try_read32(manager + CV_SOUND_HANDLE, handle))
     return -1;
   return *handle != null_handle;
 }
@@ -87,7 +89,7 @@ static uint32_t current_manager(void) {
   uint32_t base = exe_base(), manager = 0u;
 
   if (base)
-    (void)x86_peek32(base + CONV_SINGLETON_RVA, &manager);
+    (void)guest_memory_try_read32(base + CONV_SINGLETON_RVA, &manager);
   return manager;
 }
 

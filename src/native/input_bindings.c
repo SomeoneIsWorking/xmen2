@@ -9,6 +9,7 @@
  * copies of its arithmetic.
  */
 #include "input_bindings.h"
+#include "guest_memory.h"
 
 #include "input_binding_sets.h"
 #include "x86rt.h"
@@ -50,7 +51,7 @@ uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn) {
     return 0;
   }
   slot = base + CONTROLLER0_RVA + index * 4u;
-  if (!x86_peek32(slot, &controller) || !controller) {
+  if (!guest_memory_try_read32(slot, &controller) || !controller) {
     if (why)
       snprintf(why, (size_t)whyn,
                "the game has not constructed controller %u yet "
@@ -59,7 +60,7 @@ uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn) {
     return 0;
   }
   object = controller + BINDINGS_OFFSET;
-  if (!x86_peek32(object, &controller)) {
+  if (!guest_memory_try_read32(object, &controller)) {
     if (why)
       snprintf(why, (size_t)whyn,
                "controller %u's binding object at 0x%08x is not "
@@ -95,7 +96,8 @@ int input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
   if (!object || row >= INPUT_BINDING_ROWS || slot >= INPUT_BINDING_SLOTS)
     return 0;
   a = slot_addr(object, row, slot);
-  return x86_peek32(a + 4u, kind) && x86_peek32(a + 8u, code);
+  return guest_memory_try_read32(a + 4u, kind) &&
+         guest_memory_try_read32(a + 8u, code);
 }
 
 void input_bindings_write(CPU *cpu, uint32_t object, uint32_t row,

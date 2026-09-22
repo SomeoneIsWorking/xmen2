@@ -1,4 +1,5 @@
 #include "../config/environment.h"
+#include "guest_memory.h"
 #include "x2_log.h"
 /*
  * A census of every script XMen2.exe launches, by name.
@@ -140,10 +141,11 @@ static uint8_t conversation_flags(void) {
   X86Module *m;
   for (m = x86_modules(); m; m = m->next)
     if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!x86_peek32(*m->base + (CONV_SINGLETON_VA - 0x00400000u), &self) ||
+      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
+                                   &self) ||
           !self)
         return 0xffu; /* no singleton: distinct from 0 */
-      x86_peek(self + CONV_FLAGS, &f, 1);
+      guest_memory_try_read(self + CONV_FLAGS, &f, 1);
       return f;
     }
   return 0xffu;
@@ -155,10 +157,11 @@ static int conversation_field(uint32_t off, uint32_t *out) {
   *out = 0;
   for (m = x86_modules(); m; m = m->next)
     if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!x86_peek32(*m->base + (CONV_SINGLETON_VA - 0x00400000u), &self) ||
+      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
+                                   &self) ||
           !self)
         return 0;
-      return x86_peek32(self + off, out);
+      return guest_memory_try_read32(self + off, out);
     }
   return 0;
 }
@@ -245,11 +248,12 @@ static void seen_bitmap(uint32_t out[5]) {
     out[i] = 0;
   for (m = x86_modules(); m; m = m->next)
     if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!x86_peek32(*m->base + (CONV_SINGLETON_VA - 0x00400000u), &self) ||
+      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
+                                   &self) ||
           !self)
         return;
       for (i = 0; i < 5; i++)
-        x86_peek32(self + CONV_SEEN + i * 4u, &out[i]);
+        guest_memory_try_read32(self + CONV_SEEN + i * 4u, &out[i]);
       return;
     }
 }

@@ -66,12 +66,6 @@ void x2_override_005ee400(CPU *C);
    page at a fixed low address, so string and batch-colour reads are real
    rather than simulated: an address inside succeeds and anything else fails,
    which is exactly the runtime peek contract. */
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  if (addr < GUEST_PAGE || addr + 4u > GUEST_PAGE + 0x1000u)
-    return 0;
-  *out = *(const uint32_t *)guest_memory_const_pointer(addr);
-  return 1;
-}
 
 static int failures;
 static uint32_t g_next;

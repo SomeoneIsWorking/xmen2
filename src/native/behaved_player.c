@@ -8,6 +8,7 @@
  * deadline < now rule.
  */
 #include "behaved_player.h"
+#include "guest_memory.h"
 
 #include "behaved_context.h"
 #include "x86rt.h"
@@ -69,7 +70,8 @@ static uint32_t entry_address(uint32_t scheduler, uint32_t index) {
 }
 
 static int read_entry(uint32_t scheduler, uint32_t index, HeapEntry *entry) {
-  return x86_peek(entry_address(scheduler, index), entry, sizeof *entry);
+  return guest_memory_try_read(entry_address(scheduler, index), entry,
+                               sizeof *entry);
 }
 
 static void write_entry(uint32_t scheduler, uint32_t index,
@@ -103,7 +105,7 @@ static int context_index(uint32_t manager, uint32_t context, uint32_t *index) {
 static int validate_heap(uint32_t scheduler, ValidatedHeap *heap) {
   uint32_t count, index, used_slots = 0;
   if (scheduler < MANAGER_SCHEDULER ||
-      !x86_peek32(scheduler + SCHEDULER_HEAP_COUNT, &count) ||
+      !guest_memory_try_read32(scheduler + SCHEDULER_HEAP_COUNT, &count) ||
       count > MAX_CONTEXTS)
     return 0;
 
@@ -117,8 +119,8 @@ static int validate_heap(uint32_t scheduler, ValidatedHeap *heap) {
     if (!read_entry(scheduler, index, entry) || entry->slot >= MAX_CONTEXTS ||
         (used_slots & (1u << entry->slot)) != 0u ||
         isnan(entry_deadline(entry)) ||
-        !x86_peek32(scheduler + SCHEDULER_CONTEXT_SLOTS + entry->slot * 4u,
-                    &context) ||
+        !guest_memory_try_read32(
+            scheduler + SCHEDULER_CONTEXT_SLOTS + entry->slot * 4u, &context) ||
         !context_index(heap->manager, context, &ignored_context_index))
       return 0;
     used_slots |= 1u << entry->slot;
@@ -286,7 +288,8 @@ void x2_override_004d9640(CPU *cpu) {
   uint32_t now_bits = 0;
   float now;
 
-  if (cpu && base && x86_peek32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
+  if (cpu && base &&
+      guest_memory_try_read32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
     BehavedPlayerStep result;
     memcpy(&now, &now_bits, sizeof now);
     do {

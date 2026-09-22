@@ -25,7 +25,7 @@ float cutscene_control_clock_seconds(uint32_t bits) {
 }
 
 static int read_float_bits(uint32_t address, uint32_t *bits) {
-  return address && x86_peek32(address, bits);
+  return address && guest_memory_try_read32(address, bits);
 }
 
 int cutscene_control_clock_now_bits(uint32_t clock, uint32_t *bits) {

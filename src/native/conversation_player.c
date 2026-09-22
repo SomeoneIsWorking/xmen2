@@ -7,6 +7,7 @@
  * with the cutscene player above it.
  */
 #include "conversation_player.h"
+#include "guest_memory.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -38,7 +39,8 @@ static uint32_t exe_base(void) {
 static int manager(uint32_t *out) {
   uint32_t base = exe_base();
 
-  if (!base || !x86_peek32(base + CONV_SINGLETON_RVA, out) || !*out)
+  if (!base || !guest_memory_try_read32(base + CONV_SINGLETON_RVA, out) ||
+      !*out)
     return 0;
   return 1;
 }
@@ -47,7 +49,7 @@ static int peek8(uint32_t address, uint8_t *out) {
   uint32_t word;
   unsigned shift = (address & 3u) * 8u;
 
-  if (!x86_peek32(address & ~3u, &word))
+  if (!guest_memory_try_read32(address & ~3u, &word))
     return 0;
   *out = (uint8_t)(word >> shift);
   return 1;
@@ -63,10 +65,11 @@ ConversationPlayerState conversation_player_state(struct X86pCpu *cpu) {
     return CONVERSATION_PLAYER_UNREADABLE;
   if (!(flags & CVF_VISIBLE))
     return CONVERSATION_PLAYER_INACTIVE;
-  if (!x86_peek32(self + CV_RESP_COUNT, &count) || count > RESPONSE_SLOTS)
+  if (!guest_memory_try_read32(self + CV_RESP_COUNT, &count) ||
+      count > RESPONSE_SLOTS)
     return CONVERSATION_PLAYER_UNREADABLE;
   for (i = 0; i < count; i++) {
-    if (!x86_peek32(self + CV_RESP_IDS + i * 4u, &id))
+    if (!guest_memory_try_read32(self + CV_RESP_IDS + i * 4u, &id))
       return CONVERSATION_PLAYER_UNREADABLE;
     if (id != RESPONSE_NONE)
       responses++;
@@ -86,8 +89,9 @@ int conversation_player_selection(struct X86pCpu *cpu,
 
   if (!cpu || !out ||
       conversation_player_state(cpu) != CONVERSATION_PLAYER_DETERMINISTIC ||
-      !manager(&self) || !x86_peek32(self, &vtable) ||
-      !x86_peek32(vtable + VT_CHOOSE_RESPONSE, &function) || !function)
+      !manager(&self) || !guest_memory_try_read32(self, &vtable) ||
+      !guest_memory_try_read32(vtable + VT_CHOOSE_RESPONSE, &function) ||
+      !function)
     return 0;
   selected = (uint32_t)(int32_t)(int16_t)RD16(self + CV_TAG_INDEX);
   out->manager = self;
@@ -100,7 +104,8 @@ int conversation_player_selection(struct X86pCpu *cpu,
   WR32(call.reg[kX86pEsp], RD32(self + CV_CUR_LINE));
   call.reg[kX86pEcx] = self;
   x86_guest_call_args(&call, base + EXE_RVA(FN_LINE_BY_ID), 4u);
-  if (call.reg[kX86pEax] && x86_peek32(call.reg[kX86pEax], &vtable))
-    (void)x86_peek32(vtable, &out->line_presenter);
+  if (call.reg[kX86pEax] &&
+      guest_memory_try_read32(call.reg[kX86pEax], &vtable))
+    (void)guest_memory_try_read32(vtable, &out->line_presenter);
   return 1;
 }

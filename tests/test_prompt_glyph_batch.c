@@ -202,9 +202,10 @@ int main(void) {
    a zero stack pointer, so the primitive count is unreadable and the touch
    prompts are offered none. That is the same answer the shipping code gives
    for a draw whose argument it cannot read. */
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  (void)addr;
-  (void)out;
+int guest_memory_try_read(uint32_t address, void *destination, size_t size) {
+  (void)address;
+  (void)destination;
+  (void)size;
   return 0;
 }
 

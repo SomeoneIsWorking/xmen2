@@ -11,6 +11,7 @@
  * release, without advancing a guest clock, frame, world tick, or deadline.
  */
 #include "cutscene_player.h"
+#include "guest_memory.h"
 
 #include "../input/gameplay_control.h"
 #include "behaved_player.h"
@@ -126,7 +127,7 @@ static uint32_t current_context(void) {
   uint32_t base = exe_base(), context = 0;
 
   if (base)
-    (void)x86_peek32(base + CURRENT_CONTEXT_RVA, &context);
+    (void)guest_memory_try_read32(base + CURRENT_CONTEXT_RVA, &context);
   return context;
 }
 
@@ -177,8 +178,9 @@ static int call_action_mask(CPU *cpu, uint32_t *mask) {
   call = *cpu;
   x86_guest_call(&call, linked(FN_INPUT));
   input = call.reg[kX86pEax];
-  if (!input || !x86_peek32(input, &vtable) ||
-      !x86_peek32(vtable + INPUT_ACTION_MASK_SLOT, &function) || !function)
+  if (!input || !guest_memory_try_read32(input, &vtable) ||
+      !guest_memory_try_read32(vtable + INPUT_ACTION_MASK_SLOT, &function) ||
+      !function)
     return 0;
   call = *cpu;
   call.reg[kX86pEcx] = input;
@@ -264,8 +266,8 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
       fiber < EVENT_FIBER_BASE + CUTSCENE_EVENT_PLAYER_CAPACITY) {
     uint32_t slot = (uint32_t)(fiber - EVENT_FIBER_BASE);
     uint32_t record = g_player.events.owner + slot * 0x18u;
-    (void)x86_peek32(record, &g_player.last_event_target);
-    (void)x86_peek32(record + 4u, &g_player.last_event_descriptor);
+    (void)guest_memory_try_read32(record, &g_player.last_event_target);
+    (void)guest_memory_try_read32(record + 4u, &g_player.last_event_descriptor);
     CutsceneEventPlayerStep event =
         cutscene_event_player_step_owned_slot(context, &g_player.events, slot);
     g_player.event_steps++;

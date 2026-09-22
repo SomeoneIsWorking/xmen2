@@ -1682,6 +1682,7 @@ set(X2_NATIVE_SOURCES
     src/native/cutscene_control_clock.c
     src/native/cutscene_player.c
     src/native/input_probe.c
+    src/native/text_put.c
     src/input/touch_controls.cpp
     src/input/thumb_stick.cpp
     src/input/touch_runtime.cpp

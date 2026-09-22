@@ -8,6 +8,7 @@
  * player. Conversation records are payloads of that player, never the owner.
  */
 #include "cutscene_skip_probe.h"
+#include "guest_memory.h"
 
 #include "conversation_player.h"
 #include "cutscene_dialogue.h"
@@ -51,8 +52,8 @@ static uint32_t call0(CPU *cpu, uint32_t object, uint32_t slot, int *readable) {
   uint32_t vtable = 0, function = 0;
 
   *readable = 0;
-  if (!cpu || !object || !x86_peek32(object, &vtable) ||
-      !x86_peek32(vtable + slot, &function) || !function)
+  if (!cpu || !object || !guest_memory_try_read32(object, &vtable) ||
+      !guest_memory_try_read32(vtable + slot, &function) || !function)
     return 0;
   call = *cpu;
   call.reg[kX86pEcx] = object;

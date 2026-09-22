@@ -22,13 +22,14 @@
 #include "dinput_pad.h"
 #include "gpu_device.h"
 #include "guest_clock.h"
+#include "guest_memory.h"
 #include "input_bindings.h"
 #include "input_probe_lifecycle.h"
 #include "player_participation_probe.h"
+#include "text_put.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -187,22 +188,6 @@ static const char *kind_name(uint32_t kind) {
   return "?";
 }
 
-/* Append to a bounded buffer, tracking the write position. */
-static void put(char *out, size_t n, size_t *at, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-
-static void put(char *out, size_t n, size_t *at, const char *fmt, ...) {
-  va_list ap;
-  int k;
-  if (*at >= n)
-    return;
-  va_start(ap, fmt);
-  k = vsnprintf(out + *at, n - *at, fmt, ap);
-  va_end(ap);
-  if (k > 0)
-    *at += (size_t)k > n - *at ? n - *at : (size_t)k;
-}
-
 size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
   char why[192];
   size_t at = 0;
@@ -216,42 +201,43 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
     return 0;
   memset(rows_down, 0, sizeof rows_down);
 
-  put(out, n, &at, "input probe -- frame %lu, guest %.2fs\n",
-      gpu_frames_presented(), guest_clock_elapsed_s());
+  text_put(out, n, &at, "input probe -- frame %lu, guest %.2fs\n",
+           gpu_frames_presented(), guest_clock_elapsed_s());
   at += x2_input_probe_lifecycle_report(out + at, n - at);
 
   object = input_bindings_object_at(controller, why, (int)sizeof why);
   if (!object) {
-    put(out, n, &at,
-        "REFUSED: %s.\n"
-        "0 of %u binding rows and 0 of %u actions could be read for "
-        "controller %u. This is the probe saying it cannot see, not the "
-        "game saying nothing is bound.\n",
-        why, INPUT_BINDING_ROWS, INPUT_ACTION_MAX, controller);
+    text_put(out, n, &at,
+             "REFUSED: %s.\n"
+             "0 of %u binding rows and 0 of %u actions could be read for "
+             "controller %u. This is the probe saying it cannot see, not the "
+             "game saying nothing is bound.\n",
+             why, INPUT_BINDING_ROWS, INPUT_ACTION_MAX, controller);
     return at;
   }
   if (!cpu) {
-    put(out, n, &at,
-        "REFUSED: no guest CPU at this call site, so neither the action "
-        "map (FUN_00619c40) nor the action state (input vtable +0x%x) can "
-        "be asked. The binding table alone is at 0x%08x.\n",
-        VT_ACTION_DOWN, object);
+    text_put(out, n, &at,
+             "REFUSED: no guest CPU at this call site, so neither the action "
+             "map (FUN_00619c40) nor the action state (input vtable +0x%x) can "
+             "be asked. The binding table alone is at 0x%08x.\n",
+             VT_ACTION_DOWN, object);
     return at;
   }
 
   manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
   at += cutscene_skip_probe_report(cpu, controller, manager, out + at, n - at);
 
-  put(out, n, &at,
-      "controller %u binding table 0x%08x -- %u rows x %u "
-      "slots%s\n\n",
-      controller, object, INPUT_BINDING_ROWS, INPUT_BINDING_SLOTS,
-      controller < 4u ? "  (a MASTER set: edited and persisted, copied into "
-                        "4..7 and 12..15)"
-                      : "");
-  put(out, n, &at,
-      "action  row  name              slot0     slot1     slot2/pad  "
-      "slot3     state\n");
+  text_put(out, n, &at,
+           "controller %u binding table 0x%08x -- %u rows x %u "
+           "slots%s\n\n",
+           controller, object, INPUT_BINDING_ROWS, INPUT_BINDING_SLOTS,
+           controller < 4u
+               ? "  (a MASTER set: edited and persisted, copied into "
+                 "4..7 and 12..15)"
+               : "");
+  text_put(out, n, &at,
+           "action  row  name              slot0     slot1     slot2/pad  "
+           "slot3     state\n");
 
   for (row = 0; row < INPUT_BINDING_ROWS; row++) {
     uint32_t kind, code;
@@ -295,35 +281,37 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
     }
     if (manager) {
       uint32_t vt = 0, fn = 0;
-      if (x86_peek32(manager, &vt) && x86_peek32(vt + VT_ACTION_DOWN, &fn) &&
-          fn)
+      if (guest_memory_try_read32(manager, &vt) &&
+          guest_memory_try_read32(vt + VT_ACTION_DOWN, &fn) && fn)
         state = (uint8_t)thiscall(cpu, fn, manager, 1, &action);
     }
     if (state) {
       down++;
       rows_down[row] = 1;
     }
-    put(out, n, &at, " 0x%02x   %2u  %-16s  %-9s %-9s %-10s %-9s %s\n", action,
-        row, name ? name : "(unnamed)", cells[0], cells[1], cells[2], cells[3],
-        state ? "DOWN" : ".");
+    text_put(out, n, &at, " 0x%02x   %2u  %-16s  %-9s %-9s %-10s %-9s %s\n",
+             action, row, name ? name : "(unnamed)", cells[0], cells[1],
+             cells[2], cells[3], state ? "DOWN" : ".");
   }
 
-  put(out, n, &at,
+  text_put(
+      out, n, &at,
       "\n%u of %u slots populated: %u row(s) carry a pad binding, %u carry a "
       "keyboard one.\n",
       populated, INPUT_BINDING_ROWS * INPUT_BINDING_SLOTS, pad_rows, kb_rows);
-  put(out, n, &at, "%u of %u actions resolve to a row; %u resolve to none.\n",
-      resolved, INPUT_ACTION_MAX, unmapped);
+  text_put(out, n, &at,
+           "%u of %u actions resolve to a row; %u resolve to none.\n", resolved,
+           INPUT_ACTION_MAX, unmapped);
   if (!manager)
-    put(out, n, &at,
-        "the input singleton (FUN_005d8920) returned 0, so NO action was "
-        "asked for its state -- the \"state\" column above is not a "
-        "reading, it is an absence.\n");
+    text_put(out, n, &at,
+             "the input singleton (FUN_005d8920) returned 0, so NO action was "
+             "asked for its state -- the \"state\" column above is not a "
+             "reading, it is an absence.\n");
   else
-    put(out, n, &at,
-        "%u of %u resolved actions read DOWN through input vtable +0x%x "
-        "at this instant.\n",
-        down, resolved, VT_ACTION_DOWN);
+    text_put(out, n, &at,
+             "%u of %u resolved actions read DOWN through input vtable +0x%x "
+             "at this instant.\n",
+             down, resolved, VT_ACTION_DOWN);
 
   /*
    * The game's own device state, one link before the binding table reads it.
@@ -331,53 +319,54 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
   {
     uint32_t wrapper = 0, live = 0, p;
 
-    put(out, n, &at, "\n");
-    if (!base || !x86_peek32(base + DI_WRAPPER_RVA, &wrapper) || !wrapper) {
-      put(out, n, &at,
-          "the game's DirectInput wrapper ([0x%08x]) is not "
-          "constructed, so NO device state was read.\n",
-          base + DI_WRAPPER_RVA);
+    text_put(out, n, &at, "\n");
+    if (!base || !guest_memory_try_read32(base + DI_WRAPPER_RVA, &wrapper) ||
+        !wrapper) {
+      text_put(out, n, &at,
+               "the game's DirectInput wrapper ([0x%08x]) is not "
+               "constructed, so NO device state was read.\n",
+               base + DI_WRAPPER_RVA);
     } else {
       unsigned keys = 0, k;
-      x86_peek32(wrapper + DI_JOY_LIVE, &live);
-      put(out, n, &at,
-          "game DirectInput wrapper 0x%08x: joystick "
-          "answer mask 0x%08x\n",
-          wrapper, live);
+      guest_memory_try_read32(wrapper + DI_JOY_LIVE, &live);
+      text_put(out, n, &at,
+               "game DirectInput wrapper 0x%08x: joystick "
+               "answer mask 0x%08x\n",
+               wrapper, live);
       for (p = 0; p < DI_JOY_MAX; p++) {
         uint32_t blk = wrapper + DI_JOY_BLOCK + p * DI_JOY_STRIDE;
         unsigned b, held = 0;
         if (!(live & (1u << p)))
           continue;
-        put(out, n, &at, "  device %u block 0x%08x buttons down:", p, blk);
+        text_put(out, n, &at, "  device %u block 0x%08x buttons down:", p, blk);
         for (b = 0; b < DI_JOY_NBUTTON; b++) {
           unsigned char v = 0;
-          if (!x86_peek(blk + DI_JOY_BUTTONS + b, &v, 1))
+          if (!guest_memory_try_read(blk + DI_JOY_BUTTONS + b, &v, 1))
             continue;
           if (v & 0x80u) {
-            put(out, n, &at, " %u(code 0x%02x)", b, b + 0x15u);
+            text_put(out, n, &at, " %u(code 0x%02x)", b, b + 0x15u);
             held++;
           }
         }
-        put(out, n, &at, "%s\n", held ? "" : " none of 32");
+        text_put(out, n, &at, "%s\n", held ? "" : " none of 32");
       }
       if (!live)
-        put(out, n, &at,
-            "  NO joystick device answered this "
-            "frame, so every pad binding reads 0 by "
-            "construction.\n");
+        text_put(out, n, &at,
+                 "  NO joystick device answered this "
+                 "frame, so every pad binding reads 0 by "
+                 "construction.\n");
       for (k = 0; k < 256u; k++) {
         unsigned char v = 0;
-        if (!x86_peek(wrapper + DI_KEYBOARD + k, &v, 1))
+        if (!guest_memory_try_read(wrapper + DI_KEYBOARD + k, &v, 1))
           continue;
         if (v & 0x80u) {
           if (!keys++)
-            put(out, n, &at, "  keyboard DIK down:");
-          put(out, n, &at, " 0x%02x", k);
+            text_put(out, n, &at, "  keyboard DIK down:");
+          text_put(out, n, &at, " 0x%02x", k);
         }
       }
-      put(out, n, &at, "%s\n",
-          keys ? "" : "  keyboard: none of 256 DIK bytes down");
+      text_put(out, n, &at, "%s\n",
+               keys ? "" : "  keyboard: none of 256 DIK bytes down");
 
       /*
        * Which controllers the wrapper will EVALUATE. FUN_006285c0's tail
@@ -387,21 +376,21 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
        */
       {
         uint32_t cnt = 0, e;
-        x86_peek32(wrapper + DI_BOUND_COUNT, &cnt);
-        put(out, n, &at, "  registered for binding evaluation: %u\n", cnt);
+        guest_memory_try_read32(wrapper + DI_BOUND_COUNT, &cnt);
+        text_put(out, n, &at, "  registered for binding evaluation: %u\n", cnt);
         for (e = 0; e < cnt && e < 16u; e++) {
           uint32_t ctl = 0;
-          if (!x86_peek32(wrapper + DI_BOUND_LIST + e * 4u, &ctl))
+          if (!guest_memory_try_read32(wrapper + DI_BOUND_LIST + e * 4u, &ctl))
             continue;
-          put(out, n, &at,
-              "    [%u] controller 0x%08x -> binding "
-              "object 0x%08x\n",
-              e, ctl, ctl ? ctl + 0x18u : 0u);
+          text_put(out, n, &at,
+                   "    [%u] controller 0x%08x -> binding "
+                   "object 0x%08x\n",
+                   e, ctl, ctl ? ctl + 0x18u : 0u);
         }
         if (!cnt)
-          put(out, n, &at,
-              "    NONE -- no binding object is "
-              "evaluated at all this frame.\n");
+          text_put(out, n, &at,
+                   "    NONE -- no binding object is "
+                   "evaluated at all this frame.\n");
       }
 
       /*
@@ -422,10 +411,10 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
        */
       {
         unsigned c, hot = 0;
-        put(out, n, &at,
-            "  FUN_00627650(pad 0, code) over all %u codes -- the "
-            "value a binding on that code resolves to:\n",
-            PAD_CODE_MAX);
+        text_put(out, n, &at,
+                 "  FUN_00627650(pad 0, code) over all %u codes -- the "
+                 "value a binding on that code resolves to:\n",
+                 PAD_CODE_MAX);
         for (c = 1u; c <= PAD_CODE_MAX; c++) {
           CPU call = *cpu;
           call.reg[kX86pEsp] -= 8u;
@@ -437,13 +426,13 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
               &call, "input probe guest call returned no x87 value");
           if (v == 0.0L)
             continue;
-          put(out, n, &at, "    0x%02x %-14s %+.3f\n", c, pad_code_name(c),
-              (double)v);
+          text_put(out, n, &at, "    0x%02x %-14s %+.3f\n", c, pad_code_name(c),
+                   (double)v);
           hot++;
         }
-        put(out, n, &at, "    %u of %u codes are non-zero%s\n", hot,
-            PAD_CODE_MAX,
-            hot ? "" : " -- nothing on this pad is deflected or held");
+        text_put(out, n, &at, "    %u of %u codes are non-zero%s\n", hot,
+                 PAD_CODE_MAX,
+                 hot ? "" : " -- nothing on this pad is deflected or held");
       }
     }
   }
@@ -456,22 +445,23 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
   if (base) {
     unsigned char buf[32];
     unsigned i, len = 0;
-    put(out, n, &at, "\nprompt label at 0x%08x: \"", base + LABEL_BUFFER_RVA);
+    text_put(out, n, &at, "\nprompt label at 0x%08x: \"",
+             base + LABEL_BUFFER_RVA);
     for (i = 0; i < sizeof buf; i++) {
-      if (!x86_peek(base + LABEL_BUFFER_RVA + i, &buf[i], 1))
+      if (!guest_memory_try_read(base + LABEL_BUFFER_RVA + i, &buf[i], 1))
         break;
       if (!buf[i])
         break;
       len++;
-      put(out, n, &at, "%c",
-          buf[i] >= 0x20 && buf[i] < 0x7f ? (char)buf[i] : '.');
+      text_put(out, n, &at, "%c",
+               buf[i] >= 0x20 && buf[i] < 0x7f ? (char)buf[i] : '.');
     }
-    put(out, n, &at, "\"  bytes:");
+    text_put(out, n, &at, "\"  bytes:");
     for (i = 0; i < len; i++)
-      put(out, n, &at, " %02x", buf[i]);
+      text_put(out, n, &at, " %02x", buf[i]);
     if (!len)
-      put(out, n, &at, " (empty -- nothing has composed a label)");
-    put(out, n, &at, "\n");
+      text_put(out, n, &at, " (empty -- nothing has composed a label)");
+    text_put(out, n, &at, "\n");
   }
 
   /*
@@ -482,25 +472,25 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
     int32_t idx = -1;
     uint32_t i, resolved = 0, live = 0;
 
-    put(out, n, &at, "\n");
+    text_put(out, n, &at, "\n");
     if (!mgr) {
-      put(out, n, &at,
-          "current player: the pad manager is not "
-          "constructed, so there is no index to read.\n");
+      text_put(out, n, &at,
+               "current player: the pad manager is not "
+               "constructed, so there is no index to read.\n");
     } else {
       uint32_t v = 0;
-      x86_peek32(mgr + PADMGR_CURPLAYER, &v);
+      guest_memory_try_read32(mgr + PADMGR_CURPLAYER, &v);
       idx = (int32_t)v;
-      put(out, n, &at, "current player index %d%s\n", idx,
-          (idx < 0 || idx >= 4)
-              ? "  (out of 0..3, so the fallback handle is used)"
-              : "");
+      text_put(out, n, &at, "current player index %d%s\n", idx,
+               (idx < 0 || idx >= 4)
+                   ? "  (out of 0..3, so the fallback handle is used)"
+                   : "");
       for (i = 0; i < 5u; i++) {
         uint32_t slot = i < 4u ? base + HERO_HANDLES_RVA + i * 4u
                                : base + HERO_FALLBACK_RVA;
         uint32_t handle = 0, actor;
         CPU call = *cpu;
-        if (!x86_peek32(slot, &handle))
+        if (!guest_memory_try_read32(slot, &handle))
           continue;
         live++;
         call.reg[kX86pEsp] -= 4u;
@@ -510,12 +500,12 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
         actor = call.reg[kX86pEax];
         if (actor)
           resolved++;
-        put(out, n, &at, "  %-8s handle 0x%08x -> actor 0x%08x%s\n",
-            i < 4u ? "player" : "fallback", handle, actor,
-            actor ? "" : "   UNRESOLVED");
+        text_put(out, n, &at, "  %-8s handle 0x%08x -> actor 0x%08x%s\n",
+                 i < 4u ? "player" : "fallback", handle, actor,
+                 actor ? "" : "   UNRESOLVED");
       }
-      put(out, n, &at, "%u of %u hero handle(s) resolve to an actor.\n",
-          resolved, live);
+      text_put(out, n, &at, "%u of %u hero handle(s) resolve to an actor.\n",
+               resolved, live);
     }
   }
 
@@ -527,9 +517,9 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
    */
   {
     uint32_t idx, live = 0;
-    put(out, n, &at,
-        "\ncontroller  object      slots  pad rows  "
-        "keyboard rows\n");
+    text_put(out, n, &at,
+             "\ncontroller  object      slots  pad rows  "
+             "keyboard rows\n");
     for (idx = 0; idx < INPUT_CONTROLLERS; idx++) {
       uint32_t obj = input_bindings_object_at(idx, why, (int)sizeof why);
       unsigned pop = 0, pads = 0, kbs = 0;
@@ -552,12 +542,12 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
         pads += (unsigned)has_pad;
         kbs += (unsigned)has_kb;
       }
-      put(out, n, &at, "   %2u       0x%08x  %3u    %3u       %3u%s\n", idx,
-          obj, pop, pads, kbs,
-          idx == controller ? "   <- the table above" : "");
+      text_put(out, n, &at, "   %2u       0x%08x  %3u    %3u       %3u%s\n",
+               idx, obj, pop, pads, kbs,
+               idx == controller ? "   <- the table above" : "");
     }
-    put(out, n, &at, "%u of %u controller objects are constructed.\n", live,
-        INPUT_CONTROLLERS);
+    text_put(out, n, &at, "%u of %u controller objects are constructed.\n",
+             live, INPUT_CONTROLLERS);
   }
 
   /* Print host beside guest so the binding boundary is attributable. */
@@ -570,30 +560,31 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
         continue;
       pads++;
       nb = dinput_pad_button_count(pad);
-      put(out, n, &at,
-          "host pad %d \"%s\": %d button(s), POV 0x%08x, "
-          "down:",
-          pad, nm, nb, dinput_pad_pov(pad));
+      text_put(out, n, &at,
+               "host pad %d \"%s\": %d button(s), POV 0x%08x, "
+               "down:",
+               pad, nm, nb, dinput_pad_pov(pad));
       for (b = 0; b < nb; b++)
         if (dinput_pad_button_uncounted(pad, b)) {
-          put(out, n, &at, " %d", b);
+          text_put(out, n, &at, " %d", b);
           held++;
         }
-      put(out, n, &at, "%s\n", held ? "" : " none");
-      put(out, n, &at,
-          "host pad %d axes (game range -1000..1000): X %d Y %d Z %d "
-          "RX %d RY %d RZ %d\n",
-          pad, dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_X, -1000, 1000),
-          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Y, -1000, 1000),
-          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Z, -1000, 1000),
-          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RX, -1000, 1000),
-          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RY, -1000, 1000),
-          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RZ, -1000, 1000));
+      text_put(out, n, &at, "%s\n", held ? "" : " none");
+      text_put(out, n, &at,
+               "host pad %d axes (game range -1000..1000): X %d Y %d Z %d "
+               "RX %d RY %d RZ %d\n",
+               pad,
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_X, -1000, 1000),
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Y, -1000, 1000),
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Z, -1000, 1000),
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RX, -1000, 1000),
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RY, -1000, 1000),
+               dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RZ, -1000, 1000));
     }
     if (!pads)
-      put(out, n, &at,
-          "host: no pad is connected, so every pad binding "
-          "above is unreachable by construction.\n");
+      text_put(out, n, &at,
+               "host: no pad is connected, so every pad binding "
+               "above is unreachable by construction.\n");
   }
 
   /* The poll side last, because it is the one that answers "the pad is

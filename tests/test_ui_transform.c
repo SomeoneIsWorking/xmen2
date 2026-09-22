@@ -18,6 +18,8 @@ int native_stubs_registered(const char *module, uint32_t linked_ep);
 #define GUEST_STACK (GUEST_PAGE + 0x100u)
 #define OUTPUT_REF (GUEST_PAGE + 0x200u)
 #define OUTPUT_MATRIX (GUEST_PAGE + 0x300u)
+/* Past the one mapped page: the guest memory owner refuses to read it. */
+#define UNMAPPED_MATRIX (GUEST_PAGE + 0x2000u)
 
 enum { TEST_PROJECTION = 0, TEST_WORLD = 1, TEST_VIEW = 14 };
 
@@ -36,16 +38,6 @@ static void check(int condition, const char *what) {
   }
 }
 
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  if (addr < GUEST_PAGE || addr + 4u > GUEST_PAGE + 0x1000u)
-    return 0;
-  if (!matrix_readable && addr >= OUTPUT_MATRIX &&
-      addr < OUTPUT_MATRIX + 16u * sizeof(float))
-    return 0;
-  *out = *(const uint32_t *)guest_memory_const_pointer(addr);
-  return 1;
-}
-
 static void guest_body_1003ec10(CPU *C) {
   float ignored[16];
   unsigned i;
@@ -54,6 +46,10 @@ static void guest_body_1003ec10(CPU *C) {
      original body, even when the previous set was complete. */
   pre_super_publish = x2_ui_transform_current(C->reg[kX86pEcx], ignored);
 
+  if (!matrix_readable) {
+    WR32(OUTPUT_REF, UNMAPPED_MATRIX);
+    return;
+  }
   WR32(OUTPUT_REF, OUTPUT_MATRIX);
   for (i = 0; i < 16; i++)
     *(float *)guest_memory_pointer(OUTPUT_MATRIX + i * sizeof(float)) =

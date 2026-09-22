@@ -35,7 +35,7 @@ LEGACY_LIMITS = {
     "src/native/conversation.c": 968,         # was 958
     "src/native/dsound.c": 745,               # was 1097 before the mixer split
     "src/gpu/gpu_selftest.c": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.c
-    "src/native/input_probe.c": 606,          # was 568
+    "src/native/input_probe.c": 597,          # was 606
     "src/native/dinput_device.c": 611,        # was 524
     "src/native/advapi32.c": 710,             # was 599
     "src/d3d8/d3d8_com.c": 620,               # was 609

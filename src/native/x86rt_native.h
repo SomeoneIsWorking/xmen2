@@ -223,18 +223,17 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
 uint32_t x86_native_thunk_at(const char *mod, const char *sym,
                              uint32_t ordinal);
 
-/* Dump guest memory named by the `peek` setting (see the definition for the format).
-   Safe from a signal handler: reads via process_vm_readv, so an unmapped
-   address reports itself instead of faulting again. */
+/* Dump guest memory named by the `peek` setting (see the definition for the
+   format). Safe from a signal handler: reads via process_vm_readv, so an
+   unmapped address reports itself instead of faulting again. */
 void x86_peek_report(void);
 
 /*
- * Read guest memory WITHOUT dereferencing it: process_vm_readv returns an
- * error for an unmapped address instead of raising a signal. Any diagnostic
- * that follows a guest pointer should use this rather than a range check --
- * the engine allocates from pools that are in neither the guest heap nor a
- * mapped module, so "not in a range I know" and "not readable" are different
- * answers, and only the second is the one that matters.
+ * Read guest memory from a SIGNAL HANDLER: process_vm_readv returns an error
+ * for an unmapped address instead of raising a second signal, and takes no
+ * lock the interrupted thread might hold. It is a system call per read, so
+ * ordinary host code uses guest_memory_try_read instead -- per-frame overrides
+ * reading through this were measured at 23% of a gameplay frame.
  */
 int x86_peek(uint32_t addr, void *dst, size_t n);
 int x86_peek32(uint32_t addr, uint32_t *out);

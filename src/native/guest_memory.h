@@ -124,9 +124,17 @@ static inline void guest_memory_write(uint32_t address, const void *source,
 
 int guest_memory_host_address(const void *pointer, uint32_t *address);
 
-/* Reads that refuse instead of faulting, for a diagnostic that must be able to
-   inspect a pointer the guest has just proved is wrong. */
+/*
+ * Reads that refuse instead of faulting: the page table is asked first, so a
+ * pointer the guest has just proved is wrong comes back as 0. This is the
+ * checked read for ordinary host code -- native overrides, players, probes.
+ * It takes the page-table lock, so a SIGNAL HANDLER must use x86_peek instead.
+ */
 int guest_memory_try_read(uint32_t address, void *destination, size_t size);
+
+static inline int guest_memory_try_read32(uint32_t address, uint32_t *out) {
+  return guest_memory_try_read(address, out, sizeof *out);
+}
 
 int guest_memory_init(void);
 int guest_memory_map_fixed(uint32_t address, size_t size, int protection);

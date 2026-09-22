@@ -63,15 +63,6 @@ static void guest_body_006294b0(CPU *c) {
     WR32(out_code, 0x1cu); /* DIK Return */
   c->reg[kX86pEsp] += 4u + 0x10u;
 }
-int x86_peek(uint32_t addr, void *out, size_t n) {
-  if (addr < mapped_base || (uint64_t)addr + n > (uint64_t)mapped_base + SIZE)
-    return 0;
-  memcpy(out, guest_memory_const_pointer(addr), n);
-  return 1;
-}
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  return x86_peek(addr, out, sizeof *out);
-}
 void x86_guest_call_args(CPU *c, uint32_t target, uint32_t pop) {
   (void)c;
   (void)target;

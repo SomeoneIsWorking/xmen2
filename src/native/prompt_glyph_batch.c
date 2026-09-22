@@ -12,6 +12,7 @@
  * drawNonIndexed, whose stock ASCII lands on top of the keycap background.
  */
 #include "prompt_glyph_batch.h"
+#include "guest_memory.h"
 #include "x2_log.h"
 
 #include "gpu_prompt_glyphs.h"
@@ -38,7 +39,8 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   /* CHECKED, not dereferenced: this count decides which retained prompt a
      draw places, and a draw whose argument cannot be read places none rather
      than placing the wrong one. */
-  if (!x86_peek32(C->reg[kX86pEsp] + 8u, &g_nonindexed_primitives)) {
+  if (!guest_memory_try_read32(C->reg[kX86pEsp] + 8u,
+                               &g_nonindexed_primitives)) {
     g_nonindexed_primitives = 0;
     g_unreadable_count++;
   }

@@ -3495,39 +3495,17 @@ void imp_KERNEL32_GetStringTypeW(CPU *C) { string_type(C, 1, 0, 4); }
 
 /* ---- pointer validation -------------------------------------------------
  *
- * IsBadReadPtr and friends are answered by ASKING THE KERNEL, because
- * returning "the pointer is fine" unconditionally inverts the function's
- * entire purpose -- a caller uses it precisely because it does not trust the
- * pointer.
- *
- * It used to ask by write()ing the range to /dev/null and treating a
- * full-length return as proof. THAT PROVED NOTHING: Linux's null device never
- * copies from the buffer, so the write succeeds for any pointer at all. It was
- * measured rather than reasoned about --
- *
- *     write(/dev/null, (void *)0x6f6c6e75, 4096) = 4096
- *     process_vm_readv(same address)             = -1 EFAULT
- *
- * -- so every IsBadReadPtr in the run was answering "good pointer", which is
- * the unconditional shortcut this comment warned against, wearing a check.
- * process_vm_readv COPIES, so an unmapped page comes back as an error.
+ * IsBadReadPtr and friends are answered by the guest memory owner's page
+ * table, because returning "the pointer is fine" unconditionally inverts the
+ * function's entire purpose -- a caller uses it precisely because it does not
+ * trust the pointer. Every guest mapping is made through that owner, so its
+ * table is the authority on what the guest can read, and asking it is a lookup
+ * rather than a system call per chunk.
  */
 static int mem_accessible(uint32_t p, uint32_t n) {
-  unsigned char probe[64];
-  uint32_t done = 0;
   if (!p)
     return 0;
-  if (n == 0)
-    n = 1;
-  /* In chunks, so a range longer than the buffer is still checked end to
-     end rather than only at its head. */
-  while (done < n) {
-    uint32_t take = n - done > sizeof probe ? (uint32_t)sizeof probe : n - done;
-    if (!x86_peek(p + done, probe, take))
-      return 0;
-    done += take;
-  }
-  return 1;
+  return guest_memory_is_readable(p, n ? n : 1u);
 }
 
 void imp_KERNEL32_IsBadReadPtr(CPU *C) {

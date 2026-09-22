@@ -1,4 +1,5 @@
 #include "boot_player_selection.h"
+#include "guest_memory.h"
 #include "x2_log.h"
 
 #include "x86rt.h"
@@ -39,7 +40,9 @@ int x2_boot_player_select_primary(CPU *source, unsigned primary_player) {
   x86_guest_call_args(&call, base + PAD_MANAGER_RVA, 0u);
   manager = call.reg[kX86pEax];
   if (!manager ||
-      !x86_peek32(RD32(manager) + PAD_SET_CURRENT_PLAYER, &setter) || !setter)
+      !guest_memory_try_read32(RD32(manager) + PAD_SET_CURRENT_PLAYER,
+                               &setter) ||
+      !setter)
     return 0;
 
   call = *source;

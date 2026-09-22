@@ -521,6 +521,18 @@ value and in status word. The remaining x87 cost is the emission around it --
 a register-operand FMUL still makes three indirect calls -- and
 `x86p_jit_engine_run` is now the largest single symbol at 21.8%.
 
+Two further fixes on the Dead Zone gameplay route (`deadzone1`, unpaced,
+windowless, 3 x 15 s windows after the opening dialog is dismissed): x86port
+`08aa4c4` emits the ordinary FLD, FADD/FSUB/FMUL/FDIV and FST/FSTP as host
+x87 instructions inside the JIT block, falling back to the helper only for a
+stack fault, a differing control word, a zero divisor or an armed census
+(48.5 -> 36.2 ms/frame). The per-frame overrides then spent 23% of a frame in
+`process_vm_readv`: `x86_peek` is a syscall per read, kept only for signal
+handlers, and every ordinary caller now reads through
+`guest_memory_try_read` (36.2 -> 28.2 ms/frame, 20.6 -> 35.5 fps overall).
+Translated code is now about 60% of the profile; `x86p_jit_engine_run` is
+13%, half of it the block-cache hash probe missing on every block.
+
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
 product evidence; the roughly 500 ms load hitch remains visible, asset I/O has

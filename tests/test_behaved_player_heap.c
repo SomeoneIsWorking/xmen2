@@ -73,18 +73,6 @@ static void note(char event) {
 
 X86Module *x86_modules(void) { return &module; }
 
-int x86_peek(uint32_t address, void *out, size_t size) {
-  uint64_t end = (uint64_t)address + size;
-  if (address < ARENA_BASE || end > (uint64_t)ARENA_BASE + ARENA_SIZE)
-    return 0;
-  memcpy(out, guest_memory_const_pointer(address), size);
-  return 1;
-}
-
-int x86_peek32(uint32_t address, uint32_t *out) {
-  return x86_peek(address, out, sizeof *out);
-}
-
 static unsigned fiber_of(uint32_t context) {
   return (context - manager_address - CONTEXT_POOL) / CONTEXT_STRIDE;
 }
@@ -177,8 +165,8 @@ static void check_unowned_pairs(const Pair *before, unsigned before_count,
   CHECK(after_count + 1u == before_count,
         "an owned step removed the wrong number of heap entries");
   for (index = 0; index < after_count; ++index)
-    x86_peek(scheduler() + HEAP_OFFSET + index * 8u, &after[index],
-             sizeof after[index]);
+    guest_memory_try_read(scheduler() + HEAP_OFFSET + index * 8u, &after[index],
+                          sizeof after[index]);
   for (index = 0; index < before_count; ++index) {
     int found = 0;
     if (pair_equal(before[index], selected))
@@ -221,8 +209,8 @@ static void test_arbitrary_remove_bubbles_up(void) {
 
   set_heap(deadlines, slots, 7u);
   for (index = 0; index < 7u; ++index)
-    x86_peek(scheduler() + HEAP_OFFSET + index * 8u, &before[index],
-             sizeof before[index]);
+    guest_memory_try_read(scheduler() + HEAP_OFFSET + index * 8u,
+                          &before[index], sizeof before[index]);
   selected = before[4];
   calls[0] = '\0';
   call_count = 0;
@@ -245,8 +233,8 @@ static void test_arbitrary_remove_bubbles_down(void) {
 
   set_heap(deadlines, slots, 7u);
   for (index = 0; index < 7u; ++index)
-    x86_peek(scheduler() + HEAP_OFFSET + index * 8u, &before[index],
-             sizeof before[index]);
+    guest_memory_try_read(scheduler() + HEAP_OFFSET + index * 8u,
+                          &before[index], sizeof before[index]);
   selected = before[1];
   CHECK(behaved_player_step_context(&cpu, context(1u)) ==
             BEHAVED_PLAYER_STEP_RAN,

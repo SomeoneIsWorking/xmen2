@@ -3,6 +3,7 @@
  */
 #include "cutscene_event_player.h"
 #include "guest_body.h"
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <math.h>
@@ -55,8 +56,8 @@ static float deadline_value(const EventEntry *entry) {
   return deadline;
 }
 static int read_entry(uint32_t owner, uint32_t index, EventEntry *entry) {
-  return x86_peek(owner + HEAP + index * HEAP_ENTRY_BYTES, entry,
-                  sizeof *entry);
+  return guest_memory_try_read(owner + HEAP + index * HEAP_ENTRY_BYTES, entry,
+                               sizeof *entry);
 }
 static void write_entry(uint32_t owner, uint32_t index,
                         const EventEntry *entry) {
@@ -86,7 +87,7 @@ static int validate_allocator(uint32_t owner, ValidatedEvents *events,
   uint32_t expected[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
   unsigned populated = 0;
   unsigned extra = inflight_slot < CUTSCENE_EVENT_PLAYER_CAPACITY;
-  if (!x86_peek32(owner + LIVE_COUNT, &live_count) ||
+  if (!guest_memory_try_read32(owner + LIVE_COUNT, &live_count) ||
       live_count != events->count + extra)
     return 0;
   memcpy(expected, events->active, sizeof expected);
@@ -97,8 +98,9 @@ static int validate_allocator(uint32_t owner, ValidatedEvents *events,
   }
   for (word = 0; word < CUTSCENE_EVENT_PLAYER_SLOT_WORDS; ++word) {
     uint32_t allocated, live;
-    if (!x86_peek32(owner + ALLOCATED_BITS + word * 4u, &allocated) ||
-        !x86_peek32(owner + LIVE_BITS + word * 4u, &live) ||
+    if (!guest_memory_try_read32(owner + ALLOCATED_BITS + word * 4u,
+                                 &allocated) ||
+        !guest_memory_try_read32(owner + LIVE_BITS + word * 4u, &live) ||
         allocated != expected[word] || live != expected[word])
       return 0;
     populated += popcount32(live);
@@ -109,7 +111,7 @@ static int validate_events_with_inflight(uint32_t owner, uint32_t inflight_slot,
                                          ValidatedEvents *events) {
   uint32_t count, index;
   if (!owner || owner > UINT32_MAX - (HEAP_COUNT + 4u) ||
-      !x86_peek32(owner + HEAP_COUNT, &count) ||
+      !guest_memory_try_read32(owner + HEAP_COUNT, &count) ||
       count > CUTSCENE_EVENT_PLAYER_CAPACITY)
     return 0;
   memset(events, 0, sizeof *events);
@@ -131,7 +133,7 @@ static int validate_events_with_inflight(uint32_t owner, uint32_t inflight_slot,
         deadline < deadline_value(&events->entry[(index - 1u) / 2u]))
       return 0;
     callback = owner + entry->slot * CALLBACK_STRIDE;
-    if (!x86_peek(callback, callback_bytes, sizeof callback_bytes))
+    if (!guest_memory_try_read(callback, callback_bytes, sizeof callback_bytes))
       return 0;
     mask_set(events->active, entry->slot);
   }
@@ -464,7 +466,7 @@ void x2_override_004b2d70(CPU *cpu) {
   uint32_t base, now_bits;
   float now;
   if (cpu && (base = exe_base()) &&
-      x86_peek32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
+      guest_memory_try_read32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
     ValidatedEvents events;
     memcpy(&now, &now_bits, sizeof now);
     if (validate_events(cpu->reg[kX86pEcx], &events)) {

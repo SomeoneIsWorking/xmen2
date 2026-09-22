@@ -1,3 +1,4 @@
+#include "guest_memory.h"
 #include "x2_log.h"
 /* Prompt glyph harvest at the retail text renderer.
  *
@@ -374,7 +375,7 @@ void x2_override_005ee780(CPU *C) {
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
-    if (!x86_peek32(batch + 8u, &color)) {
+    if (!guest_memory_try_read32(batch + 8u, &color)) {
       g_color_refused++;
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);

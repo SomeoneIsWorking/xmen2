@@ -9,6 +9,7 @@
  * (x,0,y) text plane without reconstructing intent from D3D state.
  */
 #include "ui_transform.h"
+#include "guest_memory.h"
 #include "x2_log.h"
 
 #include "gpu_matrix.h"
@@ -29,14 +30,7 @@ static unsigned long g_calls, g_context_selections, g_captured, g_unreadable;
 static unsigned long g_published, g_context_refused;
 
 static int read_matrix(uint32_t guest, float out[16]) {
-  unsigned i;
-  for (i = 0; i < 16; i++) {
-    uint32_t bits;
-    if (!x86_peek32(guest + i * 4u, &bits))
-      return 0;
-    memcpy(&out[i], &bits, sizeof bits);
-  }
-  return 1;
+  return guest_memory_try_read(guest, out, 16u * sizeof out[0]);
 }
 
 static unsigned selector_bit(uint32_t which) {
@@ -75,7 +69,8 @@ void x2_ui_transform_compute_matrix(CPU *C) {
   x86_guest_body(C, "libIGGfx.dll", 0x1003ec10u);
   if (!bit)
     return;
-  if (!x86_peek32(output_ref, &output) || !read_matrix(output, matrix)) {
+  if (!guest_memory_try_read32(output_ref, &output) ||
+      !read_matrix(output, matrix)) {
     g_unreadable++;
     return;
   }

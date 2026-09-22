@@ -75,19 +75,6 @@ static void check(int condition, const char *message) {
 
 X86Module *x86_modules(void) { return &module; }
 
-int x86_peek(uint32_t address, void *out, size_t size) {
-  uint64_t end = (uint64_t)address + size;
-
-  if (address < ARENA_BASE || end > (uint64_t)ARENA_BASE + ARENA_SIZE)
-    return 0;
-  memcpy(out, guest_memory_const_pointer(address), size);
-  return 1;
-}
-
-int x86_peek32(uint32_t address, uint32_t *out) {
-  return x86_peek(address, out, sizeof *out);
-}
-
 void x86_diag_dump(void) {}
 
 static uint32_t true_result(void) {
