@@ -546,7 +546,10 @@ frame paying the intercept callback, the cache probe and an indirect call.
 Half of the dispatcher's samples were the cache probe missing to memory,
 because the 4 MB table's hash gives every hot block its own line; jit-common
 `c65a609` asks a 128 KiB direct-mapped front cache first (best 128.2 ->
-122.2 M cycles per frame, -4.7%, alternating A/B on the same machine).
+122.2 M cycles per frame, -4.7%, alternating A/B on the same machine). The
+heartbeat's block-cache line shows it answering 97.9% of lookups, so what is
+left of dispatch (about 9.7% of cycles) is the crossing itself: the intercept
+call and one shared indirect call site for every block.
 The remaining levers are both x86port backend projects: block chaining for
 constant successors, and keeping guest registers in host registers across a
 block instead of loading and storing `X86pCpu` for every access.

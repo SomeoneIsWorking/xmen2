@@ -15,9 +15,8 @@
  * than linked: standing up an engine, a memory map and a guest image to watch
  * a table print a sentence would test the engine instead of the report.
  */
-#include "x86_engine_report.h"
+#include "x86_engine_dispatch_report.h"
 
-#include "guest_memory.h"
 #include "x86rt_native.h"
 
 #include <lucent/log.h>
@@ -61,22 +60,6 @@ const char *x86_native_name_at(uint32_t address) {
 const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool) {
   (void)pool;
   return nullptr;
-}
-
-void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
-                               X86pJitEngineStats *out) {
-  (void)pool;
-  (void)out;
-}
-
-GuestMemoryRemapCounts guest_memory_remap_counts(void) {
-  GuestMemoryRemapCounts counts = {};
-  return counts;
-}
-
-const char *guest_memory_remap_cause_name(GuestMemoryRemapCause cause) {
-  (void)cause;
-  return "stub";
 }
 
 int main() {

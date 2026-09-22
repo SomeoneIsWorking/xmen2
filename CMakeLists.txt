@@ -505,8 +505,7 @@ target_link_libraries(test_x86_engine_diagnostic PRIVATE x86port_runtime)
 add_test(NAME x86_engine_diagnostic COMMAND test_x86_engine_diagnostic)
 
 add_executable(test_engine_hot_blocks tests/test_engine_hot_blocks.cpp
-               src/native/x86_engine_report.c
-               src/native/x86_engine_x87_census.c)
+               src/native/x86_engine_dispatch_report.c)
 target_include_directories(test_engine_hot_blocks PRIVATE src/native
                        src/runtime/x86_abi)
 target_link_libraries(test_engine_hot_blocks PRIVATE x86port_runtime)
@@ -1539,6 +1538,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_diagnostic.c
     src/native/x86_engine_jit_pool.c
     src/native/x86_engine_report.c
+    src/native/x86_engine_dispatch_report.c
     src/native/guest_command_line.c
     src/native/guest_modules.c
     src/native/host_imports_advapi32.c
