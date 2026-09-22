@@ -55,7 +55,24 @@ instead moved the difficulty dialog's second prompt onto another element's
 line. The draw's own primitive count is what attributes it: a glyph occupies
 six vertices and the draw declares two fewer primitives than vertices, so the
 draw of a 15-glyph "Back" declares 88 and the draw of a 32-glyph "Advanced
-Options" declares 190.
+Options" declares 190. Both numbers are read out of the engine rather than
+fitted to the output — the text sink's cursor at `[ecx+4]` advances by six
+across every emitted glyph, and consecutive draws in one text pass each began
+where the last ended plus two (96..156, 180..216, 216..258, 258..318).
+
+**Matching by vertex range instead was tried and is wrong.** If the sink's
+cursor and the draw's start-vertex argument counted in the same space, a
+prompt could be matched to the draw whose range contained its words — identity
+rather than length. They correlate convincingly: the difficulty dialog's
+Escape words measured at 288..312 fall inside the draw 258..318 and its Enter
+words at 414..450 inside the next. The placements that come out are wrong. The
+dialog draws its two prompts on one line; range-matching published them at
+533,245 and 581,576, while the count places them at 533,447 and 758,447, which
+is the line the screen shows. The two counters are not the same space. What
+remains, then, is a correspondence of length: two equal-length prompts on one
+screen could take each other's transform. That failure is geometric, so the
+live case now asserts the shape it would break — the footer's rectangles must
+not overlap and must share a line.
 
 **A re-measurement queued as a second prompt.** The footer is laid out far
 more often than it is drawn — 754 of 796 retained prompts in one run were the
@@ -68,8 +85,11 @@ retained. Evictions went from 726 in a run to 0.
 `tools/live_case.py prompt-touch` drives it: reach the menu, open Options,
 read `/prompts`, tap the Back control it names, and require the screen the
 run is on afterwards to be a different one -- stated by which prompts it
-draws, Options' own pair being Escape and Space. The census must also count
-the press and report no refusal from the keyboard injector. It passes 9 of 9,
+draws, Options' own pair being Escape and Space. It also requires the footer
+it read to be laid out as a footer -- side by side on one line, not stacked or
+overlapping -- which is the shape a mis-attributed transform breaks. The
+census must also count the press and report no refusal from the keyboard
+injector. It passes 10 of 10,
 three runs in a row.
 
 The obvious measures are both wrong here and both were tried. A pixel delta

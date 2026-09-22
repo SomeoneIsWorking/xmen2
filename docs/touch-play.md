@@ -77,6 +77,16 @@ draw of a 15-glyph `Back` declares 88 and the draw of a 32-glyph `Advanced
 Options` declares 190. Pairing them by arrival instead drew `Back` on top of
 `Advanced Options` (issue #180).
 
+Both numbers are the engine's: the text sink's write cursor advances six per
+emitted glyph, and consecutive draws in a text pass begin where the last one
+ended plus two. It is still a match on length rather than identity -- two
+prompts of equal length on one screen could take each other's transform --
+because the sink's cursor and the draw's start-vertex argument turn out to
+count in different spaces, and matching by vertex range put a dialog's two
+footer prompts on two lines the screen draws as one. Mis-attribution is
+geometric, so `tools/live_case.py prompt-touch` requires the footer it reads
+to be side by side on one line.
+
 Retail draws one cursor and has one button, so one contact owns it at a time:
 `x2::input::PointerOwner` is that rule, shared by the portrait tap and the
 menu tap rather than copied into each. A button pressed by a finger is always

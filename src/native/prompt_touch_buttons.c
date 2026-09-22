@@ -345,7 +345,17 @@ static void publish_at(unsigned at, const float mvp[16], X2AspectRect frame,
 }
 
 /* The glyph count a draw of `primitives` submits, or 0 if it is not a run of
-   whole glyphs. Six vertices a glyph, two fewer primitives than vertices. */
+   whole glyphs.
+
+   Both numbers in this are measured, not fitted. Six vertices a glyph is the
+   engine's own accounting: the text sink's write cursor at [ecx+4] advances
+   by exactly six across every glyph x2_override_005ee400 emits. Two fewer
+   primitives than vertices is the triangle strip these draws declare, read
+   off consecutive draws in one text pass, each of which began where the last
+   one ended plus two: 96..156, 180..216, 216..258, 258..318.
+
+   A draw that is not a whole number of glyphs is some other element and is
+   left alone. */
 static unsigned glyphs_in_draw(uint32_t primitives) {
   const uint32_t vertices = primitives + 2u;
   return vertices % 6u ? 0u : vertices / 6u;

@@ -20,6 +20,7 @@ The run is killed BY PID at the end; nothing is left running.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import re
@@ -1286,6 +1287,27 @@ def live_prompts(case: Case) -> list[tuple[str, float, float, float, float]]:
     return out
 
 
+def prompt_row_defect(prompts) -> str:
+    """Why this set of rectangles cannot be what the screen drew, or "".
+
+    Each prompt is matched to the draw that placed it by the number of glyphs
+    that draw submits, and the way that matching fails is geometric: a prompt
+    taken to the wrong element's transform lands on another prompt or on
+    another line. A footer is one row of side-by-side actions, so overlapping
+    or stacked rectangles falsify the attribution on any run that reaches a
+    screen with two of them -- which is the check the earlier "Back drawn on
+    top of Advanced Options" defect went without.
+    """
+    rows = sorted(prompts, key=lambda p: p[1])
+    for one, two in itertools.pairwise(rows):
+        if one[1] + one[3] > two[1]:
+            return "%s and %s overlap" % (one[0], two[0])
+        if abs(one[2] - two[2]) > max(one[4], two[4]):
+            return "%s and %s are on different lines (top %g vs %g)" % (
+                one[0], two[0], one[2], two[2])
+    return ""
+
+
 def tap_prompt(case: Case, prompt, window: tuple[float, float]) -> bool:
     """Tap the centre of a published prompt, in fractions of ITS surface."""
     _, left, top, width, height = prompt
@@ -1338,6 +1360,11 @@ def case_prompt_touch(case: Case) -> None:
     back = [p for p in prompts if p[0].lower() in ("escape", "esc")]
     case.check("Options offers a Back prompt to press", bool(back),
                "%d published" % len(prompts))
+    case.check("the footer's prompts are laid out as the screen drew them",
+               len(prompts) > 1 and not prompt_row_defect(prompts),
+               prompt_row_defect(prompts) if len(prompts) > 1 else
+               "only %d prompt published, so nothing was cross-checked"
+               % len(prompts))
     if not back:
         return
     viewport = live_viewport(case)

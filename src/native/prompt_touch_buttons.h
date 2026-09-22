@@ -49,20 +49,28 @@ int x2_prompt_touch_project(const float mvp[16], X2AspectRect frame,
 /*
  * A draw is finalizing: publish the retained prompt it is submitting, if any.
  *
- * `primitives` is that draw's own count, and it is how a prompt is matched to
- * the transform that places it. A frame lays every prompt out first and only
- * then draws them, one element per draw with its own world matrix, so the
- * finalizer cannot be asked "which prompt is this?" by order alone: emptying
- * the queue into the first finalizer's transform drew "Back" on top of
- * "Advanced Options", and taking one per draw in turn moved a dialog's second
- * prompt onto another element's line.
+ * A frame lays every prompt out first and only then draws them, one element
+ * per draw with its own world matrix, so the finalizer cannot be asked "which
+ * prompt is this?" by order alone: emptying the queue into the first
+ * finalizer's transform drew "Back" on top of "Advanced Options", and taking
+ * one per draw in turn moved a dialog's second prompt onto another element's
+ * line.
  *
- * The count answers it. A string's glyphs occupy six vertices each and the
- * draw declares two fewer primitives than vertices, so a draw of a 15-glyph
- * prompt declares 88 -- measured against a footer whose "Back" is 15 glyphs
- * and whose "Advanced Options" is 32. A draw whose count is not of that shape
- * belongs to no retained prompt and is left alone.
+ * What a draw does carry is how many glyphs it submits, and `primitives` is
+ * that -- so a prompt is matched to the draw whose glyph count is its own,
+ * oldest retained prompt first, which is the order they were laid out in.
+ *
+ * This is a correspondence of length, not of identity, and the honest limit
+ * is that two prompts of equal length drawn on one screen could be matched to
+ * each other's transform. The stronger match was looked for and is not
+ * available here: the sink's vertex cursor and the draw's start-vertex
+ * argument count in different spaces, and pairing a prompt with the draw
+ * whose vertex range contained it put a dialog's two footer prompts on two
+ * different lines when the screen draws them on one. Wrong attribution is
+ * geometric and the live case falsifies it directly -- the footer's
+ * rectangles must not overlap and must share a line.
  */
+
 /* How the caller obtains the finalized transform, asked for only once a
    retained prompt has been matched to this draw. Every non-indexed draw
    finalizes and almost none of them carry a prompt, so resolving the matrix
