@@ -129,7 +129,9 @@ static X86EngineJitNode *create_node(const X86pMem *mem, char *reason,
     x86p_jit_engine_set_dispatch(node->jit, x86_engine_jit_dispatch, NULL);
   }
   x86p_jit_engine_set_boundary(node->jit, x86_engine_jit_boundary, NULL);
-  if (!x86_engine_jit_diag_configure(node->jit, reason, reason_len)) {
+  if (!x86p_jit_engine_set_run_stop(node->jit, x86_engine_jit_run_stop, reason,
+                                    reason_len) ||
+      !x86_engine_jit_diag_configure(node->jit, reason, reason_len)) {
     x86p_jit_engine_destroy(node->jit);
     free(node);
     return NULL;

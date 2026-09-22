@@ -44,12 +44,23 @@ int x86_engine_host_body_at(uint32_t eip, uint32_t entry);
  * refinement when a frame is on record; the address check itself is
  * unconditional.
  */
-int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user, void *run_user);
+int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user,
+                             void *run_user);
 
 /*
  * x86port's translation-time boundary hook: the pure-EIP subset, plus the
  * setjmp3 thunk (a RET already ends a block, so no return check is needed).
  */
 int x86_engine_jit_boundary(uint32_t eip, void *user);
+
+/*
+ * x86port's run stop: the one address x86_engine_jit_intercept can take over
+ * that x86_engine_jit_boundary does not report -- the return address of the
+ * run's own guest call, whose interception depends on the stack. Installing
+ * it (x86p_jit_engine_set_run_stop) lets the engine skip the intercept call
+ * before every other cached block. Anything added to the intercept that is
+ * neither in the boundary predicate nor this address breaks that contract.
+ */
+uint32_t x86_engine_jit_run_stop(void *run_user);
 
 #endif /* X2_X86_ENGINE_INTERCEPT_H */

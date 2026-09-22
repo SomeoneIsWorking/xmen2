@@ -50,10 +50,10 @@ SHARED_REPOS = (
     # because x86port CONSUMES it and refuses to configure without it. Both are
     # this port's inputs, so both are this port's pins.
     SharedRepo("jit-common", "https://github.com/SomeoneIsWorking/jit-common.git",
-               "c65a609ffc8a1133fa2d675b045923129396eaa4",
+               "cf04f93c618293cb1e2b72afc19569675eb7efb4",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "321fdd1b9aec9e26c32b6b0a9145eeabb86b15e4",
+               "adb5408216ef9cf3dbbea3ace54dd16aae56db0a",
                "src/x86port/jit_engine.h"),
 )
 

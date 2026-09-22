@@ -549,10 +549,16 @@ because the 4 MB table's hash gives every hot block its own line; jit-common
 122.2 M cycles per frame, -4.7%, alternating A/B on the same machine). The
 heartbeat's block-cache line shows it answering 97.9% of lookups, so what is
 left of dispatch (about 9.7% of cycles) is the crossing itself: the intercept
-call and one shared indirect call site for every block.
-The remaining levers are both x86port backend projects: block chaining for
-constant successors, and keeping guest registers in host registers across a
-block instead of loading and storing `X86pCpu` for every access.
+call and one shared indirect call site for every block. x86port `adb5408`
+removes the intercept call from 95.7% of block entries: `x86_engine_jit_run_stop`
+declares that the intercept can fire only where the boundary predicate says or
+at the run's return address, blocks at boundary addresses are cached guarded,
+and host thunks are remembered in the front cache as "ask first" (best 122.0
+-> 115.3 M cycles per frame, -5.5%; 209 -> 191 M instructions). The remaining
+lever inside dispatch is block chaining for constant successors.
+The other lever is an x86port backend project: keeping guest registers in
+host registers across a block instead of loading and storing `X86pCpu` for
+every access.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative

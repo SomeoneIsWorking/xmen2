@@ -6,7 +6,7 @@ symptom: dispatch is second only to x87 in the guest worker: two indirect calls 
 state_items: S021
 tags: web,browser,wasm,jit,dispatch,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-23
 ---
 
 # 0166 — every block the browser enters costs two indirect calls and a hash
@@ -254,3 +254,16 @@ The x86-64 backend emits no constant successors, so a native run reports every
 entry as unrecorded and none as chainable — asserted in x86port's
 `tests/test_jit_engine.c` precisely so a run like that cannot be read as "nothing
 here is chainable".
+
+## The intercept crossing, removed
+
+x86port `adb5408` (with jit-common `cf04f93`) takes the value-not-callback
+route this issue named, in the engine rather than in a backend, so every
+backend gets it: the consumer declares with `x86p_jit_engine_set_run_stop`
+that its intercept fires only where the boundary predicate says or at the
+run's return address, and the dispatcher asks only on a miss, before a block
+cached as guarded, and at that address. Host thunks, which never get a block,
+are remembered in the front cache as "ask first" so a hand-back costs no table
+probe. On the desktop Dead Zone route the intercept is now asked for 4.3% of
+block entries (78.6M of 1,817M), and cycles per frame fell 5.5%; the browser
+route has not been re-measured. Chaining is still not started.

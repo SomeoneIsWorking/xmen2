@@ -94,24 +94,31 @@ static void report_compaction(const X86pJitEngineStats *js, const char *why,
 /* Where block dispatch finds its translations: the front cache, the table,
    or neither. A front-hit share far below the hit rate means the run's hot
    set outgrew the front cache, and every block entry pays a probe of the
-   whole table instead. */
+   whole table instead. Intercept calls near the blocks entered mean the
+   intercept contract is not in force and every block pays that call. */
 static void report_block_cache(const X86pJitEngineStats *js) {
-  const uint64_t table_lookups = js->cache_lookups - js->cache_front_hits;
-  if (js->cache_lookups == 0u) {
+  /* A refused lookup (a guarded block, or a host thunk the cache remembers
+     having none) is followed by the intercept call and, when the block may be
+     entered, a second lookup -- so it is not in the hit rate's denominator. */
+  const uint64_t answerable = js->cache_lookups - js->cache_refused;
+  if (answerable == 0u) {
     lucent_log_info("engine", "[HB] block cache: no lookups yet");
     return;
   }
   lucent_log_info(
       "engine",
       "[HB] block cache: %llu of %llu lookup(s) hit (%.2f%%), %llu answered "
-      "by the front cache (%.2f%%); %.2f table slot(s) probed per remaining "
-      "lookup",
-      (unsigned long long)js->cache_hits, (unsigned long long)js->cache_lookups,
-      100.0 * (double)js->cache_hits / (double)js->cache_lookups,
+      "by the front cache (%.2f%%), %llu more refused to ask first; intercept "
+      "asked %llu time(s) for %llu block(s) entered, %llu translation(s) "
+      "guarded",
+      (unsigned long long)js->cache_hits, (unsigned long long)answerable,
+      100.0 * (double)js->cache_hits / (double)answerable,
       (unsigned long long)js->cache_front_hits,
-      100.0 * (double)js->cache_front_hits / (double)js->cache_lookups,
-      table_lookups ? (double)js->cache_table_probes / (double)table_lookups
-                    : 0.0);
+      100.0 * (double)js->cache_front_hits / (double)answerable,
+      (unsigned long long)js->cache_refused,
+      (unsigned long long)js->intercept_calls,
+      (unsigned long long)js->blocks_entered,
+      (unsigned long long)js->blocks_guarded);
 }
 
 static void report_invalidation(const X86pJitEngineStats *js) {
