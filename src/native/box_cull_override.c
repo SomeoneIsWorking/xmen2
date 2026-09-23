@@ -24,11 +24,16 @@
  * `sg.box_cull_verify` re-runs the guest body after every native answer and
  * aborts on the first difference in that contract. `sg.box_cull=0` turns the
  * overrides off.
+ *
+ * A direct CALL to any of the three takes its native answer in place
+ * (override_leaf.h); the cases that need the guest body, and every call while
+ * verifying, decline and take the ordinary path.
  */
 #include "box_cull.h"
 #include "x87_exact.h"
 
 #include "guest_body.h"
+#include "override_leaf.h"
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -170,10 +175,17 @@ static uint32_t attribute_matrix(uint32_t attributes, uint32_t slot_linked) {
   return entry + 0xcu;
 }
 
-void x2_override_10047470(CPU *C) {
+/* Each function's native answer: 1 when it answered the call, 0 when the
+   guest body has to. Verify mode checks every answer against the guest body,
+   so a leaf, which may not run guest code, declines while it is on. */
+static int verifying(void) {
+  (void)enabled();
+  return s_verify;
+}
+
+static int driver_native(CPU *C) {
   if (!native_exact(C, CORNERS_PUSHES)) {
-    x86_guest_body(C, LIBIGSG, DRIVER_EP);
-    return;
+    return 0;
   }
   const uint32_t esp = C->reg[kX86pEsp];
   const uint32_t traversal = RD32(esp + 4u);
@@ -184,8 +196,7 @@ void x2_override_10047470(CPU *C) {
       RD32(traversal + TRAVERSAL_COMPOSED_PROJECTION) !=
           attribute_matrix(attributes, DRIVER_PROJECTION_INDEX_SLOT_LINKED)) {
     s_undecided += (uint64_t)s_verify;
-    x86_guest_body(C, LIBIGSG, DRIVER_EP);
-    return;
+    return 0;
   }
   float bounds[6];
   float extent[3];
@@ -199,20 +210,19 @@ void x2_override_10047470(CPU *C) {
   const BoxCullVerdict verdict = box_cull_classify(corners);
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
-    x86_guest_body(C, LIBIGSG, DRIVER_EP);
-    return;
+    return 0;
   }
   if (s_verify) {
     verify_or_abort(C, DRIVER_EP, (uint32_t)verdict, 0u, NULL, 0u);
   }
   C->reg[kX86pEax] = (uint32_t)verdict;
   C->reg[kX86pEsp] = esp + 4u;
+  return 1;
 }
 
-void x2_override_10047570(CPU *C) {
+static int corners_native(CPU *C) {
   if (!native_exact(C, CORNERS_PUSHES)) {
-    x86_guest_body(C, LIBIGSG, CORNERS_EP);
-    return;
+    return 0;
   }
   const uint32_t esp = C->reg[kX86pEsp];
   const uint32_t out = RD32(esp + 4u);
@@ -235,12 +245,12 @@ void x2_override_10047570(CPU *C) {
                     BOX_CULL_CORNER_FLOATS);
   }
   C->reg[kX86pEsp] = esp + 4u;
+  return 1;
 }
 
-void x2_override_100478e0(CPU *C) {
+static int classify_native(CPU *C) {
   if (!native_exact(C, CLASSIFY_PUSHES)) {
-    x86_guest_body(C, LIBIGSG, CLASSIFY_EP);
-    return;
+    return 0;
   }
   const uint32_t esp = C->reg[kX86pEsp];
   float corners[BOX_CULL_CORNER_FLOATS];
@@ -248,18 +258,43 @@ void x2_override_100478e0(CPU *C) {
   const BoxCullVerdict verdict = box_cull_classify(corners);
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
-    x86_guest_body(C, LIBIGSG, CLASSIFY_EP);
-    return;
+    return 0;
   }
   if (s_verify) {
     verify_or_abort(C, CLASSIFY_EP, (uint32_t)verdict, 0u, NULL, 0u);
   }
   C->reg[kX86pEax] = (uint32_t)verdict;
   C->reg[kX86pEsp] = esp + 4u;
+  return 1;
+}
+
+static int driver_leaf(CPU *C) { return !verifying() && driver_native(C); }
+static int corners_leaf(CPU *C) { return !verifying() && corners_native(C); }
+static int classify_leaf(CPU *C) { return !verifying() && classify_native(C); }
+
+void x2_override_10047470(CPU *C) {
+  if (!driver_native(C)) {
+    x86_guest_body(C, LIBIGSG, DRIVER_EP);
+  }
+}
+
+void x2_override_10047570(CPU *C) {
+  if (!corners_native(C)) {
+    x86_guest_body(C, LIBIGSG, CORNERS_EP);
+  }
+}
+
+void x2_override_100478e0(CPU *C) {
+  if (!classify_native(C)) {
+    x86_guest_body(C, LIBIGSG, CLASSIFY_EP);
+  }
 }
 
 __attribute__((constructor)) static void box_cull_register_overrides(void) {
   x86_register_override("libIGSg.dll", DRIVER_EP, x2_override_10047470);
   x86_register_override("libIGSg.dll", CORNERS_EP, x2_override_10047570);
   x86_register_override("libIGSg.dll", CLASSIFY_EP, x2_override_100478e0);
+  x86_register_override_leaf("libIGSg.dll", DRIVER_EP, driver_leaf);
+  x86_register_override_leaf("libIGSg.dll", CORNERS_EP, corners_leaf);
+  x86_register_override_leaf("libIGSg.dll", CLASSIFY_EP, classify_leaf);
 }

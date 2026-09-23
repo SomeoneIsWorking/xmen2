@@ -28,16 +28,23 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include "override_leaf.h"
 #include <stdio.h>
 #include <stdlib.h>
 
+/* The intact frame, as the body's RET returns from it; a mismatch declines,
+   so the report below runs on the ordinary path. */
+static int cookie_intact_leaf(CPU *C) {
+  if (C->reg[kX86pEcx] != RD32(X2_COOKIE_VA))
+    return 0;
+  C->reg[kX86pEsp] += 4u;
+  return 1;
+}
+
 void x2_override_00672161(CPU *C) {
   uint32_t cookie = RD32(X2_COOKIE_VA);
-  if (C->reg[kX86pEcx] == cookie) {
-    /* The frame is intact; return as the body's RET does. */
-    C->reg[kX86pEsp] += 4u;
+  if (cookie_intact_leaf(C))
     return;
-  }
   {
     /* The caller's return address names the /GS function that just failed
        its own epilogue check. The cookie compare reads ECX, which the
@@ -141,5 +148,6 @@ void x2_override_0046b750_watch(CPU *C) {
 
 __attribute__((constructor)) static void x2_security_register_overrides(void) {
   x86_register_override("XMen2.exe", 0x00672161, x2_override_00672161);
+  x86_register_override_leaf("XMen2.exe", 0x00672161, cookie_intact_leaf);
   x86_register_override("XMen2.exe", 0x0046b750, x2_override_0046b750_watch);
 }

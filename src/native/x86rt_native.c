@@ -526,6 +526,18 @@ int x86_triggers_report(void) {
   return unfired;
 }
 
+int x86_override_at(uint32_t addr, const char **module, uint32_t *linked_ep) {
+  const int i = x86_override_bloom_has(addr) ? owned_find(addr) : -1;
+  if (i < 0)
+    return 0;
+  for (int t = 0; t < g_ntrig; t++)
+    if (g_trig[t].addr == addr)
+      return 0;
+  *module = g_override[i].module;
+  *linked_ep = g_override[i].linked_ep;
+  return 1;
+}
+
 /*
  * X2_EPCOUNT=0x004a11c0,0x004a1320 -- how often a body is ENTERED, in an
  * ordinary build.

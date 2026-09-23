@@ -1590,6 +1590,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine.c
     src/native/x86_engine_diagnostic.c
     src/native/x86_engine_jit_pool.c
+    src/native/override_leaf.c
     src/native/x86_engine_report.c
     src/native/x86_engine_dispatch_report.c
     src/native/guest_command_line.c
@@ -1807,6 +1808,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86rt_native.c
     src/native/env_file.c
     src/native/startup.c
+    src/native/timer_accessor.c
     src/native/frame_limiter_wait.c
     src/native/movie.c
     src/native/movie_image_layout.c

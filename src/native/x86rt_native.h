@@ -140,6 +140,11 @@ void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why);
 /* Complain about every armed trigger that never fired; returns how many. */
 int x86_triggers_report(void);
 
+/* The registered module and linked entry point of the override that owns the
+   mapped entry point `addr`, or 0 when none does -- or when a first-call
+   trigger is armed there, whose handler must see every call. */
+int x86_override_at(uint32_t addr, const char **module, uint32_t *linked_ep);
+
 /*
  * Register a NATIVE implementation of a guest entry point, declared in C where
  * the override belongs (src/native/startup.c, movie.c, reportbox.c, ...) --

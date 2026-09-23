@@ -13,6 +13,7 @@
  * x86_register_override records, so a test can assert that the constructor
  * registered what it claims to.
  */
+#include "override_leaf.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
@@ -76,6 +77,37 @@ int x86_override_count(void) { return g_nreg; }
 /* Did the constructor register this (module, entry point)? Reports what it DID
    see when the answer is no, so a miss names the registrations that exist
    rather than just failing. */
+/* Leaf registration, kept with its function so a test can run the leaf it
+   registered rather than the one it expects. */
+static struct {
+  const char *module;
+  uint32_t ep;
+  x86_override_leaf_fn fn;
+} g_leaf_reg[STUB_MAX_OVERRIDES];
+static int g_nleaf_reg;
+
+void x86_register_override_leaf(const char *module, uint32_t linked_ep,
+                                x86_override_leaf_fn leaf) {
+  if (g_nleaf_reg == STUB_MAX_OVERRIDES) {
+    fprintf(stderr, "native_stubs: more than %d leaf registration(s)\n",
+            STUB_MAX_OVERRIDES);
+    abort();
+  }
+  g_leaf_reg[g_nleaf_reg].module = module;
+  g_leaf_reg[g_nleaf_reg].ep = linked_ep;
+  g_leaf_reg[g_nleaf_reg].fn = leaf;
+  g_nleaf_reg++;
+}
+
+x86_override_leaf_fn native_stubs_leaf(const char *module, uint32_t linked_ep) {
+  for (int i = 0; i < g_nleaf_reg; i++)
+    if (g_leaf_reg[i].ep == linked_ep && !strcmp(g_leaf_reg[i].module, module))
+      return g_leaf_reg[i].fn;
+  fprintf(stderr, "native_stubs: %s 0x%08x has no registered leaf\n", module,
+          linked_ep);
+  return NULL;
+}
+
 int native_stubs_registered(const char *module, uint32_t linked_ep) {
   int i;
   for (i = 0; i < g_nreg; i++)

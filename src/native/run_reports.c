@@ -23,6 +23,7 @@
 #include "input_record.h"
 #include "live_session.h"
 #include "movie.h"
+#include "override_leaf.h"
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_metrics.h"
@@ -64,6 +65,7 @@ void x2_interrupt_reports(int killed) {
     x2_log_info("        %s", blackout);
   }
   x2_engine_report();
+  x86_override_leaves_report();
   d3d8_host_report();
   guest_heap_report();
   /* The threads and their critical sections are reported on EVERY ending,

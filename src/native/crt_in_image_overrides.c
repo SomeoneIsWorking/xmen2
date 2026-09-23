@@ -15,14 +15,25 @@
  * shares x87_crt_ftol, the implementation already used for the imported
  * MSVCR71!_ftol. Out-of-range inputs (|v| >= 2^63) are C-undefined here, the
  * same limitation x87_crt_ftol carries; the title's conversions are bounded.
+ *
+ * Every call is a direct CALL from the exe, so it is also a leaf
+ * (override_leaf.h): it never needs the guest body, and an empty ST(0) is the
+ * same terminal fault on either path.
  */
 #include "crt_in_image_overrides.h"
 
+#include "override_leaf.h"
 #include "x86rt_native.h"
 #include "x87crt.h"
 
-void x2_crt_ftol2(CPU *C) { x87_crt_ftol(C); }
+int x2_crt_ftol2_leaf(CPU *C) {
+  x87_crt_ftol(C);
+  return 1;
+}
+
+void x2_crt_ftol2(CPU *C) { (void)x2_crt_ftol2_leaf(C); }
 
 __attribute__((constructor)) static void crt_in_image_overrides_register(void) {
   x86_register_override("XMen2.exe", 0x0067217cu, x2_crt_ftol2);
+  x86_register_override_leaf("XMen2.exe", 0x0067217cu, x2_crt_ftol2_leaf);
 }

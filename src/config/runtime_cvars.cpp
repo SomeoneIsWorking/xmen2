@@ -28,6 +28,11 @@ lucent::cvar::Var<bool> g_jit_cache{"jit.cache", true};
  * A/B for measuring the inline handler's effect. */
 lucent::cvar::Var<bool> g_jit_inline_dispatch{"jit.inline_dispatch", true};
 
+/* on: a direct CALL to an override with a leaf (override_leaf.h) completes in
+ * the translated block instead of handing the call back to the dispatcher.
+ * off makes every such call a hand-back -- the A/B for the leaves' effect. */
+lucent::cvar::Var<bool> g_jit_leaves{"jit.leaves", true};
+
 /* on: after each native IMA ADPCM decode (XMen2.exe 0x00616770 / 0x00616880),
  * re-run the guest's own body from the same start state and abort on any
  * output or state mismatch. The differential proof for the native decoder;
@@ -271,6 +276,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_hud_trace);
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_inline_dispatch);
+  lucent::cvar::register_var(g_jit_leaves);
   lucent::cvar::register_var(g_jit_profile);
   lucent::cvar::register_var(g_jit_chain);
   lucent::cvar::register_var(g_jit_watch);

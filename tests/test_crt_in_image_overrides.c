@@ -7,7 +7,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "override_leaf.h"
+
 int native_stubs_registered(const char *module, uint32_t linked_ep);
+x86_override_leaf_fn native_stubs_leaf(const char *module, uint32_t linked_ep);
 
 static jmp_buf fault_jmp;
 
@@ -18,13 +21,25 @@ void x87_fault(const char *what) {
 
 static unsigned failures;
 
-static void ftol2_case(long double in, int64_t want) {
+static void ftol2_run(CPU *c, int as_leaf) {
+  if (!as_leaf) {
+    x2_crt_ftol2(c);
+    return;
+  }
+  const x86_override_leaf_fn leaf = native_stubs_leaf("XMen2.exe", 0x0067217cu);
+  if (!leaf || !leaf(c)) {
+    fprintf(stderr, "the _ftol2 leaf is missing or declined\n");
+    failures++;
+  }
+}
+
+static void ftol2_case_as(long double in, int64_t want, int as_leaf) {
   CPU c;
   cpu_reset(&c);
   c.reg[kX86pEsp] = 0x2000u;
   x87_push(&c, in);
 
-  x2_crt_ftol2(&c);
+  ftol2_run(&c, as_leaf);
 
   int64_t got = (int64_t)(((uint64_t)c.reg[kX86pEdx] << 32) | c.reg[kX86pEax]);
   if (got != want) {
@@ -44,6 +59,12 @@ static void ftol2_case(long double in, int64_t want) {
             x86p_x87_depth(&c.x87));
     failures++;
   }
+}
+
+/* The override and the leaf a direct CALL runs instead give one answer. */
+static void ftol2_case(long double in, int64_t want) {
+  ftol2_case_as(in, want, 0);
+  ftol2_case_as(in, want, 1);
 }
 
 int main(void) {

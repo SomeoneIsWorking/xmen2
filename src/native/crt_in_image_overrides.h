@@ -9,5 +9,7 @@
  * linked title address.
  */
 void x2_crt_ftol2(CPU *C);
+/* The same conversion in place of a direct CALL; always completes. */
+int x2_crt_ftol2_leaf(CPU *C);
 
 #endif /* X2_CRT_IN_IMAGE_OVERRIDES_H */
