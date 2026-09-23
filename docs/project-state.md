@@ -641,6 +641,13 @@ The driver that calls both (0x10047470) runs natively too, one crossing
 where there were three: the translated code around its calls was ~5% of JIT
 samples and the native driver is 0.35%. Its gate matched 5.2M driver answers;
 an extent computed min - max aborted it at the first box.
+libIGMath's SSE skinning loops (0x10022df0 weighted blend, 0x10022e80 one
+bone per vertex) were ~11.6% of JIT samples, the hottest guest code on the
+route. They run natively in the guest's per-lane order with contraction off
+(`src/native/skin.{c,h}`, `skin_override.c`) at 0.9%; `math.skin_verify`
+matched 65,536 calls against the guest body and aborted at the first vertex
+of a row-reordered build. Same binary, `math.skin` on against off: unpaced
+presents/s 98.0 and 99.6 against 91.4 to 94.8.
 The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
 base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new

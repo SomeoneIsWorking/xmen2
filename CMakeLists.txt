@@ -1062,6 +1062,10 @@ target_include_directories(test_box_cull PRIVATE src/native)
 target_link_libraries(test_box_cull PRIVATE x86port_runtime)
 add_test(NAME box_cull COMMAND test_box_cull)
 
+add_executable(test_skin tests/test_skin.c src/native/skin.c)
+target_include_directories(test_skin PRIVATE src/native)
+add_test(NAME skin COMMAND test_skin)
+
 add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
                src/native/audio_channel_poll.c src/native/guest_memory.c
                tests/native_stubs.c)
@@ -1600,6 +1604,8 @@ set(X2_NATIVE_SOURCES
     src/native/attr_stack_verify.c
     src/native/box_cull.c
     src/native/box_cull_override.c
+    src/native/skin.c
+    src/native/skin_override.c
     src/native/x86_engine_jit_diag.c
     src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c

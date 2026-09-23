@@ -60,14 +60,26 @@ lucent::cvar::Var<bool> g_sg_attr_stack{"sg.attr_stack", true};
 lucent::cvar::Var<bool> g_sg_attr_stack_verify{"sg.attr_stack_verify", false};
 
 /* on: native overrides for libIGSg.dll's bounding-box frustum test -- the
- * clip-space box corners (0x10047570) and their classification (0x100478e0),
- * box_cull.c. off restores full guest JIT execution of both. */
+ * clip-space box corners (0x10047570), their classification (0x100478e0) and
+ * the driver that calls both (0x10047470), box_cull.c. off restores full
+ * guest JIT execution of all three. */
 lucent::cvar::Var<bool> g_sg_box_cull{"sg.box_cull", true};
 
 /* on: after each native box_cull answer, re-run the guest's own body from the
  * same start state and abort on any difference in the output, EAX, ESP or x87
  * control state. The differential proof for box_cull.c; off in normal play. */
 lucent::cvar::Var<bool> g_sg_box_cull_verify{"sg.box_cull_verify", false};
+
+/* on: native overrides for libIGMath.dll's SSE vertex skinning -- weighted
+ * blend (0x10022df0) and one bone per vertex (0x10022e80), skin.c. off
+ * restores full guest JIT execution of both. */
+lucent::cvar::Var<bool> g_math_skin{"math.skin", true};
+
+/* on: after each native skinning answer, re-run the guest's own body from the
+ * same start state and abort on any difference in the output vertices, the
+ * argument slots it writes, ESP, EAX, ECX or EDX. The differential proof for
+ * skin.c; off in normal play. */
+lucent::cvar::Var<bool> g_math_skin_verify{"math.skin_verify", false};
 
 /* on: native override for the per-frame audio channel poll (XMen2.exe
  * 0x00594500). off restores full guest JIT execution of the 24-channel
@@ -270,6 +282,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_sg_attr_stack_verify);
   lucent::cvar::register_var(g_sg_box_cull);
   lucent::cvar::register_var(g_sg_box_cull_verify);
+  lucent::cvar::register_var(g_math_skin);
+  lucent::cvar::register_var(g_math_skin_verify);
   lucent::cvar::register_var(g_audio_channel_poll);
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);
