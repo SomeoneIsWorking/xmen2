@@ -1,6 +1,7 @@
 #include "guest_clock.h"
 #include <lucent/log_c.h>
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -17,24 +18,35 @@ static unsigned long g_skips, g_idle_calls, g_refused_backwards;
 static double g_skipped_s, g_largest_skip;
 static double g_start_real;
 
+/* The most recent precise reading any thread took; 0 before the first. */
+static _Atomic uint64_t g_last_real_ns;
+
 static uint64_t real_now_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+  const uint64_t ns =
+      (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+  atomic_store_explicit(&g_last_real_ns, ns, memory_order_relaxed);
+  return ns;
 }
 
 static double real_now_s(void) { return (double)real_now_ns() / 1e9; }
 
-/* CLOCK_MONOTONIC as of the last scheduler tick; Emscripten's libc has the
-   constant but refuses the clock, so only the hosts that serve it use it. */
+/*
+ * The last precise reading, not a new one. Every host has one to give: the
+ * guest asks the time many times a frame and the mixer every few tens of
+ * milliseconds, and each of those readings lands here. Reading the clock
+ * instead cost a call out of WebAssembly into performance.now() at every host
+ * crossing -- 75% of the browser's clock samples, ~6% of its guest worker --
+ * because Emscripten has no CLOCK_MONOTONIC_COARSE to fall back on.
+ *
+ * Threads store their readings in no particular order, so this can step back
+ * by the width of a race; it can never be ahead of a reading taken after it.
+ */
 static uint64_t real_coarse_ns(void) {
-#if defined(__linux__) && defined(CLOCK_MONOTONIC_COARSE)
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
-  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-#else
-  return real_now_ns();
-#endif
+  const uint64_t last =
+      atomic_load_explicit(&g_last_real_ns, memory_order_relaxed);
+  return last ? last : real_now_ns();
 }
 
 double guest_clock_now_s(void) {

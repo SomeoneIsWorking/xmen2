@@ -28,6 +28,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 static unsigned checks, failures;
 
@@ -69,6 +70,23 @@ int main(void) {
           "the coarse clock lags the precise one by more than 100 ms");
     printf("  coarse reading %.6f s behind the precise one\n",
            fine_after - coarse);
+  }
+
+  /* It is the last reading, not a new one: with no precise read in between,
+     time passing does not move it. A coarse clock that still read the host
+     clock would advance by the whole wait. */
+  {
+    const double fine = guest_clock_now_s();
+    /* Spun on the C library's processor clock, which is not this owner's
+       and so cannot refresh the reading under test. */
+    const clock_t spin_until = clock() + CLOCKS_PER_SEC * 30 / 1000;
+    while (clock() < spin_until) {
+    }
+    const double coarse = guest_clock_coarse_now_s();
+    check(coarse - fine < 0.005,
+          "the coarse clock read the host clock instead of the last reading");
+    check(guest_clock_now_s() - coarse > 0.025,
+          "30 ms passed and the precise clock did not see it");
   }
 
   /*

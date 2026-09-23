@@ -31,12 +31,11 @@ double guest_clock_now_s(void);
 double guest_clock_elapsed_s(void);
 
 /*
- * guest_clock_now_s at the host's scheduler-tick resolution (a few
- * milliseconds): never ahead of it, and, on Linux and Android, a read of the
- * vDSO's last tick instead of the timestamp counter. For a stamp taken at
- * every host crossing only to say later how long ago the last one was,
- * where the precise read was ~4% of the product's samples. Elsewhere it is
- * the precise clock.
+ * guest_clock_now_s as of the most recent precise reading any thread took:
+ * never ahead of it, and a memory load rather than a clock read. For a stamp
+ * taken at every host crossing only to say later how long ago the last one
+ * was, where a precise read was ~4% of the product's samples on Linux and ~6%
+ * of the browser's guest worker.
  */
 double guest_clock_coarse_now_s(void);
 

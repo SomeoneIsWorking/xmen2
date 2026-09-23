@@ -1262,6 +1262,14 @@ measured and small: `_emscripten_get_now` 4.19% to 3.88%, so the pump's second
 reading was a minority of the clock cost and the rest is the guest's own call
 rate. The correctness half is why it stays.
 
+Most of that guest call rate was not the guest's. Every host crossing stamps
+the thread's last crossing for the wedge reports, and the stamp's "coarse"
+clock was a full `performance.now()` in the browser, which has no
+`CLOCK_MONOTONIC_COARSE`: 75% of the worker's clock samples. The stamp now
+reuses the last precise reading any thread took (`guest_clock.c`), and on
+the same route `_emscripten_get_now` fell from 5.84% to 1.59% of the guest
+worker, with JS glue from 15.9% to 10.5%.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
