@@ -595,6 +595,10 @@ across a block's x87 forms, so a stack-fault guard is one TEST instead of a
 TOP load, index computation and tag load: the tag-guard compare fell from
 12.6% to under 1% of translated-code samples (the remaining `cmp` is the
 control-word guard, 3.7%).
+x86port `20f66ab` lets an indirect exit (RET, JMP/CALL through a register or
+memory) that misses its chain slot probe the block cache's front array and
+transfer directly: `x86p_jit_engine_run` fell from 4.5% to 1.8% of samples and
+dispatcher lookups from 13.5% to 8.3% of block entries.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
