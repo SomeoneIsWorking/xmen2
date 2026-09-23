@@ -608,6 +608,12 @@ x86port `4c42121` moves guest XMM registers as whole host registers (MOVAPS,
 MOVSS, the half moves, SHUFPS and the bitwise forms had been lane stores whose
 next sixteen-byte read could not be store-forwarded). With the VS change, the
 fixed profiling route presented 7255 frames where it had presented 6594.
+Paced, the frame limiter's busy-wait (`0x00401ff0`) now sleeps through all
+but the last millisecond of the frame its last clock read says is left, at the
+limiter's own `CALL 0x0055b610` (`src/native/frame_limiter_wait.{c,h}`); the
+retail loop still reads the clock and ends the frame. Dead Zone, paced: the
+game thread fell from 89% to 79% of a core at an unchanged 16.7 ms median
+frame. Scenes lighter than Dead Zone save most of each frame.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.

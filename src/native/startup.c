@@ -26,6 +26,7 @@
 #include "boot_mode_runtime.h"
 #include "boot_splash_policy.h"
 #include "continue_runtime.h"
+#include "frame_limiter_wait.h"
 #include "guest_memory.h"
 #include "pe_map.h"
 #include "save_directory.h"
@@ -127,6 +128,27 @@ void x2_override_00617480(CPU *C) {
  */
 #define APP_OBJECT_RVA 0x002f3ac4u /* 0x006f3ac4 - 0x00400000 */
 #define APP_FRAME_CAP 0x18u        /* float, minimum seconds/frame */
+#define APP_FRAME_START 0x1cu      /* float, the clock when the frame began */
+/* The limiter loop's clock-read call, 0x00401ff0 CALL 0x0055b610, returns
+   here; the loop's last clock read is at [esp+0x14] of its frame. See
+   frame_limiter_wait.h. */
+#define LIMITER_RETURN_RVA 0x00001ff5u /* 0x00401ff5 - 0x00400000 */
+#define LIMITER_LAST_READ 0x14u
+
+static uint32_t s_limiter_return;
+static uint32_t s_app_object;
+
+/* At the limiter's clock read, sleep through what its last read says is left
+   of the frame, instead of spinning through it. */
+static void frame_limiter_wait(const CPU *C) {
+  const uint32_t frame_esp = C->reg[kX86pEsp] + 4u;
+  const uint32_t ms =
+      frame_limiter_sleep_ms((float)RDF32(s_app_object + APP_FRAME_CAP),
+                             (float)RDF32(s_app_object + APP_FRAME_START),
+                             (float)RDF32(frame_esp + LIMITER_LAST_READ));
+  if (ms)
+    guest_sleep_ms(ms);
+}
 
 void x2_override_0055b610(CPU *C) {
   static int mode = -1; /* -1 unknown, 0 off, 1 on */
@@ -143,6 +165,8 @@ void x2_override_0055b610(CPU *C) {
     if (m) {
       s_guard_addr = *m->base + (0x007ac288u - 0x00400000u);
       s_inst_addr = *m->base + (0x007ac248u - 0x00400000u);
+      s_app_object = *m->base + APP_OBJECT_RVA;
+      s_limiter_return = *m->base + LIMITER_RETURN_RVA;
       if (mode) {
         field = *m->base + APP_OBJECT_RVA + APP_FRAME_CAP;
         x2_log_info("X2_UNPACED: the game's frame cap at 0x%08x is zeroed "
@@ -160,6 +184,8 @@ void x2_override_0055b610(CPU *C) {
   }
   if (mode)
     WRF32(field, 0.0f);
+  else if (s_limiter_return && RD32(C->reg[kX86pEsp]) == s_limiter_return)
+    frame_limiter_wait(C);
 
   /* Fast path: once initialized, 0x0055b610 is a pure Meyers singleton getter
      returning the address of the global timer instance at 0x007ac248.

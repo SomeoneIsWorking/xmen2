@@ -993,6 +993,11 @@ target_include_directories(test_crt_in_image_overrides PRIVATE src/native src/ru
 target_link_libraries(test_crt_in_image_overrides PRIVATE m)
 add_test(NAME crt_in_image_overrides COMMAND test_crt_in_image_overrides)
 
+add_executable(test_frame_limiter_wait tests/test_frame_limiter_wait.c
+               src/native/frame_limiter_wait.c)
+target_include_directories(test_frame_limiter_wait PRIVATE src/native)
+add_test(NAME frame_limiter_wait COMMAND test_frame_limiter_wait)
+
 add_executable(test_audio_adpcm tests/test_audio_adpcm.c
                src/native/audio_adpcm.c src/native/guest_memory.c
                tests/native_stubs.c)
@@ -1745,6 +1750,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86rt_native.c
     src/native/env_file.c
     src/native/startup.c
+    src/native/frame_limiter_wait.c
     src/native/movie.c
     src/native/movie_image_layout.c
     src/native/options_menu.c

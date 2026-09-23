@@ -78,7 +78,10 @@ XMen2.exe clusters. The two largest such clusters are now natively owned:
 0x006167xx/0x006168xx (~7%, IMA ADPCM) and 0x006721xx (~2.8%, `_ftol2`), both
 LANDED 2026-09-03 -- see below. The 0x0055b610 frame-limiter spin (option 2) is real but its
 count here is inflated by `X2_UNPACED`; collapsing it helps paced CPU/thermal
-cost (the Android target) more than uncapped FPS.
+cost (the Android target) more than uncapped FPS. LANDED 2026-09-23:
+`src/native/frame_limiter_wait.{c,h}` sleeps the paced limiter through all but
+its last millisecond (Dead Zone game thread 89% -> 79% of a core, median frame
+unchanged at 16.7 ms).
 
 ### The two localized XMen2.exe clusters, disassembled (2026-09-03)
 
@@ -219,11 +222,13 @@ pacing loop, not libCriMovie).
    `x86p_jit_engine_run` per thunk. It turns N thunk calls/slice from N
    run-function round trips into N direct calls while retaining the tested
    unwind path for overrides, setjmp, and return.
-2. **Open — collapse the QPC spin like C207 collapsed the libCriMovie spin.**
-   Identify the menu/pacing loop that polls QPC, prove its shape from the
-   binary, and give it a bounded wait via a native override, A/B in the
-   same binary. Biggest single-site win if the loop is as tight as the
-   call count implies.
+2. **Landed — the paced frame limiter sleeps.** The loop is XMen2.exe
+   `0x00401ff0`: timer singleton, `[timer+0x28]` clock read, compare the
+   elapsed time with the app object's minimum frame time, repeat. The
+   `0x0055b610` override recognises the loop's own call and sleeps through
+   what the last clock read says is left, less a millisecond; the loop still
+   reads the clock and ends the frame (`src/native/frame_limiter_wait.{c,h}`).
+   It saves paced CPU, not uncapped FPS.
 3. **Landed — cheaper x86 import fast path.** Eligible imports such as `_ftol`,
    `_stricmp`, `QueryPerformanceCounter`, and the other functions listed below
    run against x86port CPU state without the full ordinary host-import routing.
