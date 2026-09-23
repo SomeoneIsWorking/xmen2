@@ -208,6 +208,62 @@ static void test_corners_match_guest_order(void) {
   }
 }
 
+/* The guest's verdict from its own per-corner arithmetic: behind when every
+   w has its sign bit, outside when some plane has no corner inside it,
+   inside when every corner is inside every plane. */
+static BoxCullVerdict
+guest_verdict(const float corners[BOX_CULL_CORNER_FLOATS]) {
+  unsigned behind = 1u, inside_all = 0x3fu, inside_any = 0u;
+  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    behind &= signbit(corners[c * 4u + 3u]) ? 1u : 0u;
+    const unsigned code = box_cull_corner_code_extended(&corners[c * 4u]);
+    inside_all &= code;
+    inside_any |= code;
+  }
+  if (behind || inside_any != 0x3fu)
+    return kBoxCullOutside;
+  return inside_all == 0x3fu ? kBoxCullInside : kBoxCullUndecided;
+}
+
+/* Whole boxes through box_cull_classify, which decides an all-finite box
+   without looking at a corner at a time: corners scattered about one w so
+   every verdict comes up, and now and then a non-finite value. */
+static void test_classify_matches_guest(void) {
+  enum { BOXES = 300000 };
+  unsigned seen[3] = {0, 0, 0};
+  for (unsigned n = 0; n < BOXES; n++) {
+    float corners[BOX_CULL_CORNER_FLOATS];
+    const float w = edge_value(1.0f);
+    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+      corners[c * 4u + 3u] = (rng() % 8u) ? w : edge_value(w);
+      for (unsigned axis = 0; axis < 3u; axis++) {
+        corners[c * 4u + axis] = (rng() % 64u)
+                                     ? w * ((float)(rng() % 9u) - 4.0f) / 3.0f
+                                     : edge_value(w);
+      }
+    }
+    const BoxCullVerdict got = box_cull_classify(corners);
+    const BoxCullVerdict want = guest_verdict(corners);
+    seen[want]++;
+    if (got != want) {
+      fprintf(stderr,
+              "FAIL classify: box %u is %d, the guest's arithmetic "
+              "gives %d\n",
+              n, (int)got, (int)want);
+      failures++;
+      return;
+    }
+  }
+  if (!seen[kBoxCullUndecided] || !seen[kBoxCullInside] ||
+      !seen[kBoxCullOutside]) {
+    fprintf(stderr,
+            "FAIL classify: verdicts seen %u undecided, %u inside, "
+            "%u outside -- one never came up\n",
+            seen[0], seen[1], seen[2]);
+    failures++;
+  }
+}
+
 static void test_classify(void) {
   float corners[BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
@@ -250,6 +306,7 @@ int main(void) {
   test_classify();
   test_corner_code_matches_extended();
   test_corners_match_guest_order();
+  test_classify_matches_guest();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */
   if (x87_exact_host()) {

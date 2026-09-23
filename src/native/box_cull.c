@@ -6,6 +6,16 @@
 #include <math.h>
 #include <string.h>
 
+/* The spill sets below are per-axis constants, and only inlining lets the
+   compiler drop the rounding an axis does not take instead of computing both
+   and selecting: these helpers are forced inline wherever the compiler can
+   be told to. */
+#if defined(__GNUC__) || defined(__clang__)
+#define BOX_CULL_INLINE static inline __attribute__((always_inline))
+#else
+#define BOX_CULL_INLINE static inline
+#endif
+
 /* Which of an axis's values the guest spills through a 32-bit stack slot
    before it adds them, rather than keeping them in a register. */
 enum {
@@ -27,8 +37,8 @@ enum {
   kSpillsZW = kSpillAll,
 };
 
-static inline long double spilled(long double value, unsigned spills,
-                                  unsigned which) {
+BOX_CULL_INLINE long double spilled(long double value, unsigned spills,
+                                    unsigned which) {
   return (spills & which) ? (long double)(float)value : value;
 }
 
@@ -38,69 +48,96 @@ void box_cull_extent(float out[3], const float box[6]) {
   }
 }
 
-static inline void corner_axis(float out[BOX_CULL_CORNER_FLOATS],
-                               const float min[3], const float extent[3],
-                               const float matrix[16], long double k,
-                               unsigned axis, unsigned spills,
-                               int guest_order) {
-  const long double base = spilled((((long double)min[0] * matrix[axis] +
-                                     (long double)min[2] * matrix[8u + axis]) +
-                                    (long double)min[1] * matrix[4u + axis]) +
-                                       matrix[12u + axis],
-                                   spills, kSpillBase);
-  const long double t0 =
-      spilled((long double)extent[0] * matrix[axis], spills, kSpillTerm0);
-  const long double t1 =
+/* One axis's base, min through the matrix plus its translation, and the
+   extents' terms, each spilled where the guest spills it. */
+typedef struct AxisTerms {
+  long double base, t0, t1, t2;
+} AxisTerms;
+
+BOX_CULL_INLINE AxisTerms axis_terms(const float min[3], const float extent[3],
+                                     const float matrix[16], unsigned axis,
+                                     unsigned spills) {
+  AxisTerms t;
+  t.base = spilled((((long double)min[0] * matrix[axis] +
+                     (long double)min[2] * matrix[8u + axis]) +
+                    (long double)min[1] * matrix[4u + axis]) +
+                       matrix[12u + axis],
+                   spills, kSpillBase);
+  t.t0 = spilled((long double)extent[0] * matrix[axis], spills, kSpillTerm0);
+  t.t1 =
       spilled((long double)extent[1] * matrix[4u + axis], spills, kSpillTerm1);
-  const long double t2 =
+  t.t2 =
       spilled((long double)extent[2] * matrix[8u + axis], spills, kSpillTerm2);
-  out[0u * 4u + axis] = (float)base;
-  if (!guest_order && k == 0.0L && base != 0.0L && isfinite(t0 + t1 + t2)) {
-    /* A finite term times a zero `k` is a zero, and a zero plus a nonzero
-       base is the base exactly, whatever either zero's sign: each corner is
-       the guest's own chain of adds without its first. */
-    const long double b2 = base + t2, b1 = base + t1, b21 = b2 + t1;
-    out[1u * 4u + axis] = (float)b2;
-    out[2u * 4u + axis] = (float)b1;
-    out[3u * 4u + axis] = (float)b21;
-    out[4u * 4u + axis] = (float)(base + t0);
-    out[5u * 4u + axis] = (float)(b2 + t0);
-    out[6u * 4u + axis] = (float)(b1 + t0);
-    out[7u * 4u + axis] = (float)(b21 + t0);
-    return;
-  }
-  /* Corner c adds extent.z for bit 0 of c, extent.y for bit 1 and extent.x
-     for bit 2; the guest multiplies the extents a corner leaves out by
-     `zero` and adds that first. */
-  out[1u * 4u + axis] = (float)(((t1 + t0) * k + base) + t2);
-  out[2u * 4u + axis] = (float)(((t2 + t0) * k + base) + t1);
-  out[3u * 4u + axis] = (float)(((t0 * k + base) + t2) + t1);
-  out[4u * 4u + axis] = (float)(((t2 + t1) * k + base) + t0);
-  out[5u * 4u + axis] = (float)(((t1 * k + base) + t2) + t0);
-  out[6u * 4u + axis] = (float)(((t2 * k + base) + t1) + t0);
-  out[7u * 4u + axis] = (float)(((base + t2) + t1) + t0);
+  return t;
 }
 
-static void corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
-                    const float extent[3], const float matrix[16], float zero,
-                    int guest_order) {
-  const long double k = zero;
-  corner_axis(out, min, extent, matrix, k, 0u, kSpillsX, guest_order);
-  corner_axis(out, min, extent, matrix, k, 1u, kSpillsY, guest_order);
-  corner_axis(out, min, extent, matrix, k, 2u, kSpillsZW, guest_order);
-  corner_axis(out, min, extent, matrix, k, 3u, kSpillsZW, guest_order);
+/* Corner c adds extent.z for bit 0 of c, extent.y for bit 1 and extent.x for
+   bit 2; the guest multiplies the extents a corner leaves out by `zero` and
+   adds that first. */
+BOX_CULL_INLINE void guest_order_axis(float out[BOX_CULL_CORNER_FLOATS],
+                                      unsigned axis, AxisTerms t,
+                                      long double k) {
+  out[0u * 4u + axis] = (float)t.base;
+  out[1u * 4u + axis] = (float)(((t.t1 + t.t0) * k + t.base) + t.t2);
+  out[2u * 4u + axis] = (float)(((t.t2 + t.t0) * k + t.base) + t.t1);
+  out[3u * 4u + axis] = (float)(((t.t0 * k + t.base) + t.t2) + t.t1);
+  out[4u * 4u + axis] = (float)(((t.t2 + t.t1) * k + t.base) + t.t0);
+  out[5u * 4u + axis] = (float)(((t.t1 * k + t.base) + t.t2) + t.t0);
+  out[6u * 4u + axis] = (float)(((t.t2 * k + t.base) + t.t1) + t.t0);
+  out[7u * 4u + axis] = (float)(((t.base + t.t2) + t.t1) + t.t0);
+}
+
+/* A finite term times a zero `k` is a zero, and a zero plus a nonzero base
+   is the base exactly, whatever either zero's sign: each corner is then the
+   guest's own chain of adds without its first, and the chains share their
+   prefixes. */
+BOX_CULL_INLINE int zero_product_is_inert(AxisTerms t, long double k) {
+  return k == 0.0L && t.base != 0.0L && isfinite(t.t0 + t.t1 + t.t2);
+}
+
+BOX_CULL_INLINE void inert_zero_axis(float out[BOX_CULL_CORNER_FLOATS],
+                                     unsigned axis, AxisTerms t) {
+  const long double b2 = t.base + t.t2, b1 = t.base + t.t1, b21 = b2 + t.t1;
+  out[0u * 4u + axis] = (float)t.base;
+  out[1u * 4u + axis] = (float)b2;
+  out[2u * 4u + axis] = (float)b1;
+  out[3u * 4u + axis] = (float)b21;
+  out[4u * 4u + axis] = (float)(t.base + t.t0);
+  out[5u * 4u + axis] = (float)(b2 + t.t0);
+  out[6u * 4u + axis] = (float)(b1 + t.t0);
+  out[7u * 4u + axis] = (float)(b21 + t.t0);
+}
+
+BOX_CULL_INLINE void corners_axis(float out[BOX_CULL_CORNER_FLOATS],
+                                  const float min[3], const float extent[3],
+                                  const float matrix[16], long double k,
+                                  unsigned axis, unsigned spills) {
+  const AxisTerms t = axis_terms(min, extent, matrix, axis, spills);
+  if (zero_product_is_inert(t, k)) {
+    inert_zero_axis(out, axis, t);
+  } else {
+    guest_order_axis(out, axis, t, k);
+  }
 }
 
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero) {
-  corners(out, min, extent, matrix, zero, 0);
+  const long double k = zero;
+  corners_axis(out, min, extent, matrix, k, 0u, kSpillsX);
+  corners_axis(out, min, extent, matrix, k, 1u, kSpillsY);
+  corners_axis(out, min, extent, matrix, k, 2u, kSpillsZW);
+  corners_axis(out, min, extent, matrix, k, 3u, kSpillsZW);
 }
 
 void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
                                   const float min[3], const float extent[3],
                                   const float matrix[16], float zero) {
-  corners(out, min, extent, matrix, zero, 1);
+  const long double k = zero;
+  guest_order_axis(out, 0u, axis_terms(min, extent, matrix, 0u, kSpillsX), k);
+  guest_order_axis(out, 1u, axis_terms(min, extent, matrix, 1u, kSpillsY), k);
+  guest_order_axis(out, 2u, axis_terms(min, extent, matrix, 2u, kSpillsZW), k);
+  guest_order_axis(out, 3u, axis_terms(min, extent, matrix, 3u, kSpillsZW), k);
 }
 
 /* The sign bit of the guest's 32-bit spill of `value`. */
@@ -142,13 +179,7 @@ static int is_finite_bits(uint32_t bits) {
    only when exact -- it cannot underflow the extended range -- and an exact
    zero is +0 except -0 - +0, the one equal pair the order puts apart. a + b
    is a - (-b), zeros included. */
-static inline unsigned corner_code(const float corner[4]) {
-  uint32_t bits[4];
-  memcpy(bits, corner, sizeof bits);
-  if (!(is_finite_bits(bits[0]) & is_finite_bits(bits[1]) &
-        is_finite_bits(bits[2]) & is_finite_bits(bits[3]))) {
-    return box_cull_corner_code_extended(corner);
-  }
+BOX_CULL_INLINE unsigned finite_corner_code(const uint32_t bits[4]) {
   const int32_t neg_w = order_key(bits[3] ^ 0x80000000u);
   unsigned code = 0u;
   for (unsigned axis = 0; axis < 3u; axis++) {
@@ -157,6 +188,20 @@ static inline unsigned corner_code(const float corner[4]) {
             << (2u * axis + 1u);
   }
   return code;
+}
+
+BOX_CULL_INLINE unsigned all_finite(const uint32_t *bits, unsigned count) {
+  unsigned finite = 1u;
+  for (unsigned i = 0; i < count; i++)
+    finite &= (unsigned)is_finite_bits(bits[i]);
+  return finite;
+}
+
+BOX_CULL_INLINE unsigned corner_code(const float corner[4]) {
+  uint32_t bits[4];
+  memcpy(bits, corner, sizeof bits);
+  return all_finite(bits, 4u) ? finite_corner_code(bits)
+                              : box_cull_corner_code_extended(corner);
 }
 
 unsigned box_cull_corner_code(const float corner[4]) {
@@ -174,12 +219,25 @@ BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]) {
   if (behind) {
     return kBoxCullOutside;
   }
+  /* Boxes are finite but for a broken matrix: decide them all without a
+     branch per corner, and a box with any non-finite value corner by
+     corner. */
+  uint32_t bits[BOX_CULL_CORNER_FLOATS];
+  memcpy(bits, corners, sizeof bits);
   unsigned inside_all = 0x3fu;
   unsigned inside_any = 0u;
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
-    const unsigned code = corner_code(&corners[c * 4u]);
-    inside_all &= code;
-    inside_any |= code;
+  if (all_finite(bits, BOX_CULL_CORNER_FLOATS)) {
+    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+      const unsigned code = finite_corner_code(&bits[c * 4u]);
+      inside_all &= code;
+      inside_any |= code;
+    }
+  } else {
+    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+      const unsigned code = corner_code(&corners[c * 4u]);
+      inside_all &= code;
+      inside_any |= code;
+    }
   }
   if (inside_any != 0x3fu) {
     return kBoxCullOutside;
