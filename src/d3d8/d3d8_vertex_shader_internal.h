@@ -95,10 +95,17 @@ typedef struct {
   uint16_t end; /* offset + the type's size */
 } D3D8VSInput;
 
+/* One bit per register below the constant file. */
+typedef uint64_t D3D8VSRegisterSet;
+
 typedef struct {
   /* 0 not yet decoded, 1 decoded, -1 refused (decoded again, and the reason
      logged again, at every draw that asks). */
   int state;
+  /* The registers a vertex starts at zero: every one the program names that
+     no input fills, and the outputs the executor stores whether or not the
+     program writes them. oD0 starts at one instead, so it is not here. */
+  D3D8VSRegisterSet zeroed;
   uint16_t count;
   uint16_t input_end; /* the furthest byte any input reads */
   D3D8VSInstruction insn[VS_MAX_INSTRUCTIONS];

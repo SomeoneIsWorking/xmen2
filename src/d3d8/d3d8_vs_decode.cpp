@@ -150,6 +150,29 @@ unsigned d3d8_vs_source_count(unsigned op) {
   }
 }
 
+static_assert(VS_FILE_CONST <= 64, "a D3D8VSRegisterSet holds the file");
+
+static D3D8VSRegisterSet register_bit(unsigned reg) {
+  return reg < VS_FILE_CONST ? D3D8VSRegisterSet{1} << reg : 0;
+}
+
+/* See D3D8VSProgram::zeroed. */
+static D3D8VSRegisterSet zeroed_registers(const D3D8VSProgram *p) {
+  D3D8VSRegisterSet named = register_bit(VS_OUT_POS) | register_bit(VS_OUT_T0);
+  for (unsigned n = 0; n < p->count; ++n) {
+    const D3D8VSInstruction *insn = &p->insn[n];
+    named |= register_bit(insn->dst);
+    for (unsigned i = 0; i < d3d8_vs_source_count(insn->op); ++i)
+      if (!insn->src[i].relative)
+        named |= register_bit(insn->src[i].reg);
+  }
+  named &= ~register_bit(VS_OUT_D0);
+  for (unsigned i = 0; i < VS_INPUTS; ++i)
+    if (p->input[i].present)
+      named &= ~register_bit(VS_FILE_INPUT + i);
+  return named;
+}
+
 /* Decode the declaration and the program, logging the first reason either
    cannot run. */
 static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
@@ -162,8 +185,10 @@ static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
     unsigned nsrc = d3d8_vs_source_count(op), i;
     D3D8VSInstruction *insn;
     int dst;
-    if (op == 0xffffu)
+    if (op == 0xffffu) {
+      p->zeroed = zeroed_registers(p);
       return 1;
+    }
     if (!nsrc) {
       x2_log_error("d3d8: VS 1.1 opcode %u at dword %u is not "
                    "implemented; the draw is refused.\n",

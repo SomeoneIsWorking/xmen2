@@ -12,6 +12,7 @@
 #include "../native/x2_log.h"
 #include "d3d8_state.h"
 
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -253,11 +254,9 @@ static int execute_batch(const D3D8VSProgram *p,
    a0_current = 0 makes the first relative read compute it. */
 static void load_batch(const D3D8VSProgram *p, const uint8_t *first_vertex,
                        uint32_t stride, unsigned n, Batch *b) {
-  unsigned lane, i, c, r;
-  for (r = 0; r < VS_FILE_CONST; ++r) {
-    const unsigned input = r - VS_FILE_INPUT;
-    if (r >= VS_FILE_INPUT && input < VS_INPUTS && p->input[input].present)
-      continue;
+  unsigned lane, i, c;
+  for (D3D8VSRegisterSet left = p->zeroed; left; left &= left - 1u) {
+    const unsigned r = (unsigned)std::countr_zero(left);
     for (c = 0; c < 4; ++c)
       memset(b->reg[r][c], 0, n * sizeof(float));
   }
@@ -435,6 +434,21 @@ int d3d8_vs_selftest(void) {
      afterwards makes a second batch that kept the first one's lanes read
      them back. */
   h = d3d8_vs_create(decl, zero_start_code, 0);
+  if (h) {
+    /* r0, and the stored oPos and oT0 -- not v0, which the declaration
+       fills, nor r1, which the program never names. */
+    const D3D8VSRegisterSet want = (D3D8VSRegisterSet{1} << VS_FILE_TEMP) |
+                                   (D3D8VSRegisterSet{1} << VS_OUT_POS) |
+                                   (D3D8VSRegisterSet{1} << VS_OUT_T0);
+    const D3D8VSProgram *zp = d3d8_vs_program(d3d8_vs_get(h, "selftest"));
+    if (!zp || zp->zeroed != want) {
+      x2_log_info("d3d8 VS selftest: FAILED -- the zero-start program "
+                  "zeroes register set 0x%llx, expected 0x%llx.\n",
+                  zp ? (unsigned long long)zp->zeroed : 0ull,
+                  (unsigned long long)want);
+      fails++;
+    }
+  }
   for (unsigned v = 0; v < kBatchVertices; ++v) {
     batch[v].p[0] = (float)(v + 1u);
     batch[v].p[1] = -(float)(v + 3u);
