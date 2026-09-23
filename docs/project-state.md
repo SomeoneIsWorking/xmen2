@@ -585,6 +585,11 @@ x86port `aeec060` translates SHL/SHR/SAR and packed ADDPS/SUBPS/MULPS/DIVPS
 inline; the helpers they called (`x86p_alu`, `x86p_flags_set`,
 `x86p_flag_cf`, `x86p_simd_mulps`, `x86p_simd_addps`) were 8.3% of the Dead
 Zone profile's samples and no longer appear in it.
+x86port `9dae483` writes x87 results back lazily: the per-result FLD ST(0) +
+80-bit FSTP write-through (about 18% of translated-code samples) became stores
+only at pops, flushes and slow paths (7.4%, mostly the pop stores FSAVE
+fidelity needs), and the mirror now survives integer instructions that do not
+call out.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
