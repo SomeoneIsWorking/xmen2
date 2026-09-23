@@ -244,3 +244,114 @@ BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]) {
   }
   return inside_all == 0x3fu ? kBoxCullInside : kBoxCullUndecided;
 }
+
+/*
+ * The bound. A guest corner is its axis's base plus up to three extent
+ * terms, every product of two floats exact in either format. Its error
+ * against the real sum is at most 2^-24 of each spilled value (the base and
+ * three terms) and of the final float, plus the extended adds' 2^-64 steps --
+ * under 5 * 2^-24 of S, the sum of the magnitudes of every product and the
+ * translation. The double sum is within 10 * 2^-53 of S of the real one. So
+ * the two lie within 2^-21 S of each other; 2^-20 S is used, plus 2^-140 for
+ * a spill that lands among the subnormals. Beyond 2^100 a float could
+ * overflow, and the bound is not claimed.
+ */
+#define BOX_CULL_BOUND_SCALE 0x1p-20
+#define BOX_CULL_BOUND_FLOOR 0x1p-140
+#define BOX_CULL_BOUND_LIMIT 0x1p100
+
+/* Four lanes, one per matrix column: x, y, z and w of clip space. */
+typedef struct BoundedLanes {
+  double lane[4];
+} BoundedLanes;
+
+int box_cull_bounded_verdict(const float min[3], const float extent[3],
+                             const float matrix[16], float zero,
+                             BoxCullVerdict *out) {
+  if (zero != 0.0f) {
+    return 0;
+  }
+  /* Per column: the base (min through the matrix, translated), the three
+     extent terms, and the bound on the corners' distance from the guest's. */
+  BoundedLanes base, term[3], bound;
+  double magnitude_max = 0.0;
+  for (unsigned a = 0; a < 4u; a++) {
+    const double p0 = (double)min[0] * matrix[a];
+    const double p1 = (double)min[1] * matrix[4u + a];
+    const double p2 = (double)min[2] * matrix[8u + a];
+    const double translation = matrix[12u + a];
+    double magnitude = fabs(p0) + fabs(p1) + fabs(p2) + fabs(translation);
+    for (unsigned i = 0; i < 3u; i++) {
+      term[i].lane[a] = (double)extent[i] * matrix[4u * i + a];
+      magnitude += fabs(term[i].lane[a]);
+    }
+    base.lane[a] = ((p0 + p2) + p1) + translation;
+    bound.lane[a] = magnitude * BOX_CULL_BOUND_SCALE + BOX_CULL_BOUND_FLOOR;
+    magnitude_max = magnitude > magnitude_max ? magnitude : magnitude_max;
+  }
+  if (!(magnitude_max <= BOX_CULL_BOUND_LIMIT)) {
+    return 0;
+  }
+  /* Over the eight corners, the least and greatest of w + v and w - v for
+     each axis's v, and of w itself (lane 3 of `plus`, from w's own terms): a
+     quantity linear in the corner is least with each negative term and
+     greatest with each positive one. */
+  double plus_low[4], plus_high[4], minus_low[4], minus_high[4], both[4];
+  for (unsigned a = 0; a < 4u; a++) {
+    const double v_scale = a == 3u ? 0.0 : 1.0;
+    double pl = base.lane[3] + v_scale * base.lane[a];
+    double ml = base.lane[3] - v_scale * base.lane[a];
+    double ph = pl, mh = ml;
+    for (unsigned i = 0; i < 3u; i++) {
+      const double sp = term[i].lane[3] + v_scale * term[i].lane[a];
+      const double sm = term[i].lane[3] - v_scale * term[i].lane[a];
+      pl += sp < 0.0 ? sp : 0.0;
+      ph += sp > 0.0 ? sp : 0.0;
+      ml += sm < 0.0 ? sm : 0.0;
+      mh += sm > 0.0 ? sm : 0.0;
+    }
+    plus_low[a] = pl;
+    plus_high[a] = ph;
+    minus_low[a] = ml;
+    minus_high[a] = mh;
+    both[a] = v_scale * bound.lane[a] + bound.lane[3];
+  }
+  /* classify's first test: every w's sign bit set -- certain when even the
+     greatest w is below the bound, certainly not when it is above it. */
+  if (plus_high[3] < -both[3]) {
+    *out = kBoxCullOutside;
+    return 1;
+  }
+  const int behind_unknown = !(plus_high[3] > both[3]);
+  /* Per plane bit, over the corners: set in some for certain, set in every
+     one for certain, clear in some for certain, set in none for certain.
+     Bit 2a is -w < v, that is w + v > 0; bit 2a+1 is w - v > 0. */
+  unsigned any_set = 0u, all_set = 0u, some_clear = 0u, none_set = 0u;
+  for (unsigned a = 0; a < 3u; a++) {
+    const unsigned lo = 1u << (2u * a), hi = lo << 1;
+    any_set |= (plus_high[a] > both[a] ? lo : 0u) |
+               (minus_high[a] > both[a] ? hi : 0u);
+    all_set |=
+        (plus_low[a] > both[a] ? lo : 0u) | (minus_low[a] > both[a] ? hi : 0u);
+    some_clear |= (plus_low[a] < -both[a] ? lo : 0u) |
+                  (minus_low[a] < -both[a] ? hi : 0u);
+    none_set |= (plus_high[a] < -both[a] ? lo : 0u) |
+                (minus_high[a] < -both[a] ? hi : 0u);
+  }
+  if (none_set) {
+    *out = kBoxCullOutside;
+    return 1;
+  }
+  if (behind_unknown || any_set != 0x3fu) {
+    return 0;
+  }
+  if (all_set == 0x3fu) {
+    *out = kBoxCullInside;
+    return 1;
+  }
+  if (some_clear) {
+    *out = kBoxCullUndecided;
+    return 1;
+  }
+  return 0;
+}

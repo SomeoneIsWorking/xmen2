@@ -205,9 +205,14 @@ static int driver_native(CPU *C) {
   read_floats(box + BOX_BOUNDS, bounds, 6u);
   read_floats(traversal + TRAVERSAL_COMPOSITE, matrix, 16u);
   box_cull_extent(extent, bounds);
-  box_cull_corners(corners, bounds, extent, matrix,
-                   x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
-  const BoxCullVerdict verdict = box_cull_classify(corners);
+  const float zero = x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED));
+  /* The driver keeps its corners to itself, so only the verdict must be the
+     guest's: the bounded one where it is certain, the exact one otherwise. */
+  BoxCullVerdict verdict;
+  if (!box_cull_bounded_verdict(bounds, extent, matrix, zero, &verdict)) {
+    box_cull_corners(corners, bounds, extent, matrix, zero);
+    verdict = box_cull_classify(corners);
+  }
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;

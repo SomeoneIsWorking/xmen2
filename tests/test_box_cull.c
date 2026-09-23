@@ -264,6 +264,89 @@ static void test_classify_matches_guest(void) {
   }
 }
 
+static float uniform(float lo, float hi) {
+  return lo + (hi - lo) * (float)(rng() >> 8) * 0x1p-24f;
+}
+
+/* The bounded verdict against classify over the exact corners, on ordinary
+   boxes and on boxes whose translation puts one corner within a few ulps of
+   a plane -- where only a sound bound keeps the double sign honest. */
+static void test_bounded_verdict_matches_exact(void) {
+  enum { BOXES = 400000 };
+  unsigned decided = 0, ordinary = 0, ordinary_decided = 0;
+  unsigned near_plane = 0, near_decided = 0;
+  unsigned seen[3] = {0, 0, 0};
+  for (unsigned n = 0; n < BOXES; n++) {
+    float min[3], extent[3], matrix[16];
+    for (unsigned i = 0; i < 3u; i++) {
+      min[i] = uniform(-4.0f, 4.0f);
+      extent[i] = uniform(0.0f, 4.0f);
+    }
+    for (unsigned i = 0; i < 16u; i++)
+      matrix[i] = uniform(-2.0f, 2.0f);
+    matrix[15] = uniform(2.0f, 12.0f);
+    const int crafted = (rng() & 1u) != 0u;
+    if (crafted) {
+      /* Move axis `a`'s translation so corner `c` sits on the plane v = s*w,
+         then nudge it a few ulps. */
+      const unsigned c = rng() % 8u, a = rng() % 3u;
+      const double s = (rng() & 1u) ? 1.0 : -1.0;
+      double v = 0.0, w = matrix[15];
+      for (unsigned k = 0; k < 3u; k++) {
+        const double at = min[k] + (((c >> (2u - k)) & 1u) ? extent[k] : 0.0f);
+        v += at * matrix[k * 4u + a];
+        w += at * matrix[k * 4u + 3u];
+      }
+      float t = (float)(s * w - v);
+      for (unsigned step = rng() % 5u; step; step--)
+        t = nextafterf(t, (rng() & 1u) ? INFINITY : -INFINITY);
+      matrix[12u + a] = t;
+    }
+    float corners[BOX_CULL_CORNER_FLOATS];
+    box_cull_corners(corners, min, extent, matrix, 0.0f);
+    const BoxCullVerdict exact = box_cull_classify(corners);
+    BoxCullVerdict bounded;
+    const int certain =
+        box_cull_bounded_verdict(min, extent, matrix, 0.0f, &bounded);
+    ordinary += !crafted;
+    ordinary_decided += !crafted && certain;
+    near_plane += (unsigned)crafted;
+    near_decided += crafted && certain;
+    if (!certain)
+      continue;
+    decided++;
+    seen[bounded]++;
+    if (bounded != exact) {
+      fprintf(stderr,
+              "FAIL bounded verdict: box %u is %d, the exact corners give "
+              "%d\n",
+              n, (int)bounded, (int)exact);
+      failures++;
+      return;
+    }
+  }
+  BoxCullVerdict unused;
+  const float min[3] = {0}, extent[3] = {1, 1, 1};
+  float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+  if (box_cull_bounded_verdict(min, extent, identity, 0.5f, &unused)) {
+    fprintf(stderr, "FAIL bounded verdict: answered with a nonzero `zero`\n");
+    failures++;
+  }
+  if (ordinary_decided < ordinary - ordinary / 100u ||
+      near_decided == near_plane || !seen[0] || !seen[1] || !seen[2]) {
+    fprintf(stderr,
+            "FAIL bounded verdict: %u of %u ordinary and %u of %u "
+            "near-plane boxes decided; verdicts %u undecided, %u inside, "
+            "%u outside\n",
+            ordinary_decided, ordinary, near_decided, near_plane, seen[0],
+            seen[1], seen[2]);
+    failures++;
+  }
+  printf("box_cull bounded: %u of %u ordinary and %u of %u near-plane boxes "
+         "decided (%u in all)\n",
+         ordinary_decided, ordinary, near_decided, near_plane, decided);
+}
+
 static void test_classify(void) {
   float corners[BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
@@ -307,6 +390,7 @@ int main(void) {
   test_corner_code_matches_extended();
   test_corners_match_guest_order();
   test_classify_matches_guest();
+  test_bounded_verdict_matches_exact();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */
   if (x87_exact_host()) {

@@ -73,6 +73,20 @@ unsigned box_cull_corner_code_extended(const float corner[4]);
 /* 0x100478e0, up to its guard-band test. */
 BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]);
 
+/*
+ * The driver's verdict -- classify over corners -- from double arithmetic
+ * with a bound on how far each double corner can lie from the guest's float
+ * one: 1 with `*out` set when every sign the verdict depends on clears that
+ * bound, 0 when some corner is too close to a plane (or to w = 0), when
+ * `zero` is not zero, or when a value is too large for the bound to hold.
+ * The caller then takes box_cull_corners and box_cull_classify. The corners
+ * themselves are not produced, so this serves only a caller that keeps them
+ * from the guest.
+ */
+int box_cull_bounded_verdict(const float min[3], const float extent[3],
+                             const float matrix[16], float zero,
+                             BoxCullVerdict *out);
+
 #ifdef __cplusplus
 }
 #endif
