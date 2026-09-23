@@ -50,10 +50,16 @@ typedef enum BoxCullVerdict {
 void box_cull_extent(float out[3], const float box[6]);
 
 /* 0x10047570. `zero` is the guest's constant at 0x10077ba8 (0.0f), which the
-   guest multiplies the unused extents by; it is read, not assumed. */
+   guest multiplies the unused extents by; it is read, not assumed. Where
+   that product cannot change a corner, box_cull_corners skips it;
+   box_cull_corners_guest_order always takes the guest's own steps, so a
+   test can hold one against the other. */
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero);
+void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
+                                  const float min[3], const float extent[3],
+                                  const float matrix[16], float zero);
 
 /* One corner's plane code: bits 2a and 2a+1 are the sign bits of the guest's
    rounded -w - v and -w + v for the corner's coordinate v on axis a, set on

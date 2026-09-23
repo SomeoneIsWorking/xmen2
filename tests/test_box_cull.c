@@ -173,6 +173,41 @@ static void test_corner_code_matches_extended(void) {
   }
 }
 
+/* box_cull_corners against the guest's own steps, bit for bit, over boxes
+   and matrices drawn from the same classes -- a zero base, non-finite terms
+   and a `zero` that is -0 or not zero at all included. */
+static void test_corners_match_guest_order(void) {
+  enum { BOXES = 200000 };
+  const float zeros[4] = {0.0f, 0.0f, -0.0f, 0.5f};
+  for (unsigned n = 0; n < BOXES; n++) {
+    float min[3], extent[3], matrix[16];
+    float fast[BOX_CULL_CORNER_FLOATS], guest[BOX_CULL_CORNER_FLOATS];
+    const float zero = zeros[rng() % 4u];
+    for (unsigned i = 0; i < 3u; i++) {
+      min[i] = (rng() % 4u) ? edge_value(1.0f) : 0.0f;
+      extent[i] = edge_value(min[i]);
+    }
+    for (unsigned i = 0; i < 16u; i++)
+      matrix[i] = (rng() % 4u) ? edge_value(1.0f) : 0.0f;
+    box_cull_corners(fast, min, extent, matrix, zero);
+    box_cull_corners_guest_order(guest, min, extent, matrix, zero);
+    if (memcmp(fast, guest, sizeof fast) != 0) {
+      for (unsigned f = 0; f < BOX_CULL_CORNER_FLOATS; f++) {
+        if (memcmp(&fast[f], &guest[f], sizeof fast[f]) != 0) {
+          fprintf(stderr,
+                  "FAIL corners: box %u corner %u axis %u is %a, the guest's "
+                  "steps give %a (zero %a)\n",
+                  n, f / 4u, f % 4u, (double)fast[f], (double)guest[f],
+                  (double)zero);
+          break;
+        }
+      }
+      failures++;
+      return;
+    }
+  }
+}
+
 static void test_classify(void) {
   float corners[BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
@@ -214,6 +249,7 @@ int main(void) {
   test_term_spill();
   test_classify();
   test_corner_code_matches_extended();
+  test_corners_match_guest_order();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */
   if (x87_exact_host()) {

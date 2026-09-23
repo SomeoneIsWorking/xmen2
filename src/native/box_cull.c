@@ -3,6 +3,7 @@
 
 #include "x87.h"
 
+#include <math.h>
 #include <string.h>
 
 /* Which of an axis's values the guest spills through a 32-bit stack slot
@@ -40,7 +41,8 @@ void box_cull_extent(float out[3], const float box[6]) {
 static inline void corner_axis(float out[BOX_CULL_CORNER_FLOATS],
                                const float min[3], const float extent[3],
                                const float matrix[16], long double k,
-                               unsigned axis, unsigned spills) {
+                               unsigned axis, unsigned spills,
+                               int guest_order) {
   const long double base = spilled((((long double)min[0] * matrix[axis] +
                                      (long double)min[2] * matrix[8u + axis]) +
                                     (long double)min[1] * matrix[4u + axis]) +
@@ -52,10 +54,24 @@ static inline void corner_axis(float out[BOX_CULL_CORNER_FLOATS],
       spilled((long double)extent[1] * matrix[4u + axis], spills, kSpillTerm1);
   const long double t2 =
       spilled((long double)extent[2] * matrix[8u + axis], spills, kSpillTerm2);
+  out[0u * 4u + axis] = (float)base;
+  if (!guest_order && k == 0.0L && base != 0.0L && isfinite(t0 + t1 + t2)) {
+    /* A finite term times a zero `k` is a zero, and a zero plus a nonzero
+       base is the base exactly, whatever either zero's sign: each corner is
+       the guest's own chain of adds without its first. */
+    const long double b2 = base + t2, b1 = base + t1, b21 = b2 + t1;
+    out[1u * 4u + axis] = (float)b2;
+    out[2u * 4u + axis] = (float)b1;
+    out[3u * 4u + axis] = (float)b21;
+    out[4u * 4u + axis] = (float)(base + t0);
+    out[5u * 4u + axis] = (float)(b2 + t0);
+    out[6u * 4u + axis] = (float)(b1 + t0);
+    out[7u * 4u + axis] = (float)(b21 + t0);
+    return;
+  }
   /* Corner c adds extent.z for bit 0 of c, extent.y for bit 1 and extent.x
      for bit 2; the guest multiplies the extents a corner leaves out by
      `zero` and adds that first. */
-  out[0u * 4u + axis] = (float)base;
   out[1u * 4u + axis] = (float)(((t1 + t0) * k + base) + t2);
   out[2u * 4u + axis] = (float)(((t2 + t0) * k + base) + t1);
   out[3u * 4u + axis] = (float)(((t0 * k + base) + t2) + t1);
@@ -65,14 +81,26 @@ static inline void corner_axis(float out[BOX_CULL_CORNER_FLOATS],
   out[7u * 4u + axis] = (float)(((base + t2) + t1) + t0);
 }
 
+static void corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
+                    const float extent[3], const float matrix[16], float zero,
+                    int guest_order) {
+  const long double k = zero;
+  corner_axis(out, min, extent, matrix, k, 0u, kSpillsX, guest_order);
+  corner_axis(out, min, extent, matrix, k, 1u, kSpillsY, guest_order);
+  corner_axis(out, min, extent, matrix, k, 2u, kSpillsZW, guest_order);
+  corner_axis(out, min, extent, matrix, k, 3u, kSpillsZW, guest_order);
+}
+
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero) {
-  const long double k = zero;
-  corner_axis(out, min, extent, matrix, k, 0u, kSpillsX);
-  corner_axis(out, min, extent, matrix, k, 1u, kSpillsY);
-  corner_axis(out, min, extent, matrix, k, 2u, kSpillsZW);
-  corner_axis(out, min, extent, matrix, k, 3u, kSpillsZW);
+  corners(out, min, extent, matrix, zero, 0);
+}
+
+void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
+                                  const float min[3], const float extent[3],
+                                  const float matrix[16], float zero) {
+  corners(out, min, extent, matrix, zero, 1);
 }
 
 /* The sign bit of the guest's 32-bit spill of `value`. */
