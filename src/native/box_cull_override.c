@@ -120,15 +120,15 @@ static uint32_t libigsg_mapped(uint32_t linked) {
    must end where the native answer did: the same EAX (not corners'), ESP,
    x87 control state, and `out_floats` output words. */
 static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
-                            uint32_t out, const float *native_out,
-                            unsigned out_floats) {
+                            uint16_t native_status, uint32_t out,
+                            const float *native_out, unsigned out_floats) {
   CPU guest = *C;
   x86_guest_body(&guest, LIBIGSG, ep);
   int same = guest.reg[kX86pEsp] == C->reg[kX86pEsp] + 4u &&
              guest.x87.top == C->x87.top &&
              memcmp(guest.x87.tag, C->x87.tag, sizeof guest.x87.tag) == 0 &&
              guest.x87.control == C->x87.control &&
-             guest.x87.status == C->x87.status &&
+             guest.x87.status == native_status &&
              (ep == CORNERS_EP || guest.reg[kX86pEax] == native_eax);
   unsigned word = 0;
   for (; same && word < out_floats; word++) {
@@ -142,7 +142,7 @@ static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
                  "%04x/%04x, top %u/%u, output word %u of %u. box_cull.c is "
                  "wrong; not continuing.\n",
                  LIBIGSG, ep, native_eax, guest.reg[kX86pEax],
-                 C->reg[kX86pEsp] + 4u, guest.reg[kX86pEsp], C->x87.status,
+                 C->reg[kX86pEsp] + 4u, guest.reg[kX86pEsp], native_status,
                  guest.x87.status, C->x87.top, guest.x87.top,
                  word ? word - 1u : 0u, out_floats);
     abort();
@@ -188,8 +188,9 @@ static int verifying(void) {
 }
 
 /* classify's whole answer over `corners`, guard band included;
-   kBoxCullUndecided where only the guest body can say. */
-static BoxCullVerdict classify_corners(const float *corners) {
+   kBoxCullUndecided where only the guest body can say. `*status` is the x87
+   status word the guest body would leave: its guard band compares. */
+static BoxCullVerdict classify_corners(const float *corners, uint16_t *status) {
   const BoxCullVerdict verdict = box_cull_classify(corners);
   if (verdict != kBoxCullUndecided) {
     return verdict;
@@ -197,7 +198,11 @@ static BoxCullVerdict classify_corners(const float *corners) {
   const BoxCullGuardBand guard = {
       x86_loadf32(libigsg_mapped(GUARD_SCALE_LINKED)),
       x86_loadf32(libigsg_mapped(GUARD_ONE_LINKED))};
-  return box_cull_guard_band(corners, guard);
+  const BoxCullVerdict banded = box_cull_guard_band(corners, guard);
+  if (banded != kBoxCullUndecided) {
+    *status = box_cull_guard_band_status(*status, guard);
+  }
+  return banded;
 }
 
 static int driver_native(CPU *C) {
@@ -228,18 +233,20 @@ static int driver_native(CPU *C) {
      box the bound finds crossing still needs its exact corners for the
      guard band. */
   BoxCullVerdict verdict;
+  uint16_t status = C->x87.status;
   if (!box_cull_bounded_verdict(bounds, extent, matrix, zero, &verdict) ||
       verdict == kBoxCullUndecided) {
     box_cull_corners(corners, bounds, extent, matrix, zero);
-    verdict = classify_corners(corners);
+    verdict = classify_corners(corners, &status);
   }
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;
   }
   if (s_verify) {
-    verify_or_abort(C, DRIVER_EP, (uint32_t)verdict, 0u, NULL, 0u);
+    verify_or_abort(C, DRIVER_EP, (uint32_t)verdict, status, 0u, NULL, 0u);
   }
+  C->x87.status = status;
   C->reg[kX86pEax] = (uint32_t)verdict;
   C->reg[kX86pEsp] = esp + 4u;
   return 1;
@@ -266,8 +273,8 @@ static int corners_native(CPU *C) {
     WR32(out + i * 4u, word);
   }
   if (s_verify) {
-    verify_or_abort(C, CORNERS_EP, C->reg[kX86pEax], out, corners,
-                    BOX_CULL_CORNER_FLOATS);
+    verify_or_abort(C, CORNERS_EP, C->reg[kX86pEax], C->x87.status, out,
+                    corners, BOX_CULL_CORNER_FLOATS);
   }
   C->reg[kX86pEsp] = esp + 4u;
   return 1;
@@ -280,14 +287,16 @@ static int classify_native(CPU *C) {
   const uint32_t esp = C->reg[kX86pEsp];
   float corners[BOX_CULL_CORNER_FLOATS];
   read_floats(RD32(esp + 4u), corners, BOX_CULL_CORNER_FLOATS);
-  const BoxCullVerdict verdict = classify_corners(corners);
+  uint16_t status = C->x87.status;
+  const BoxCullVerdict verdict = classify_corners(corners, &status);
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;
   }
   if (s_verify) {
-    verify_or_abort(C, CLASSIFY_EP, (uint32_t)verdict, 0u, NULL, 0u);
+    verify_or_abort(C, CLASSIFY_EP, (uint32_t)verdict, status, 0u, NULL, 0u);
   }
+  C->x87.status = status;
   C->reg[kX86pEax] = (uint32_t)verdict;
   C->reg[kX86pEsp] = esp + 4u;
   return 1;

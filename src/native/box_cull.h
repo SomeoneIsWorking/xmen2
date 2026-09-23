@@ -102,6 +102,13 @@ BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]);
 BoxCullVerdict box_cull_guard_band(const float corners[BOX_CULL_CORNER_FLOATS],
                                    BoxCullGuardBand guard);
 
+/* The guard band's one x87 compare, FCOMP of the scale against one, sets
+   C3/C2/C0 (and clears C1) in the status word, whichever way the band then
+   answers: the status word `status` becomes after it. Only a finite scale
+   reaches a native answer, so the unordered case never applies. */
+enum { kBoxCullGuardBandCodeMask = 0x4700 };
+uint16_t box_cull_guard_band_status(uint16_t status, BoxCullGuardBand guard);
+
 /*
  * The driver's verdict -- classify over corners -- from double arithmetic
  * with a bound on how far each double corner can lie from the guest's float

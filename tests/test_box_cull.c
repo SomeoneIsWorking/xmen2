@@ -26,6 +26,13 @@ static void expect_float(const char *what, float got, float want) {
   }
 }
 
+static void expect_status(const char *what, uint16_t got, uint16_t want) {
+  if (got != want) {
+    fprintf(stderr, "FAIL %s: got %04x, want %04x\n", what, got, want);
+    failures++;
+  }
+}
+
 static void expect_verdict(const char *what, BoxCullVerdict got,
                            BoxCullVerdict want) {
   if (got != want) {
@@ -416,6 +423,18 @@ static void test_guard_band_matches_guest(void) {
 }
 
 static void test_guard_band(void) {
+  /* FCOMP scale, one: C3 equal, C0 below, neither above; C1 cleared, the
+     rest of the word kept. */
+  const uint16_t before = 0x0224;
+  const BoxCullGuardBand equal = {1.0f, 1.0f}, below = {0.5f, 1.0f},
+                         above = {2.0f, 1.0f};
+  expect_status("status after scale == one",
+                box_cull_guard_band_status(before, equal), 0x4024);
+  expect_status("status after scale < one",
+                box_cull_guard_band_status(before, below), 0x0124);
+  expect_status("status after scale > one",
+                box_cull_guard_band_status(before, above), 0x0024);
+
   float corners[BOX_CULL_CORNER_FLOATS];
   const BoxCullGuardBand unit = {1.0f, 1.0f};
   const BoxCullGuardBand half = {0.5f, 1.0f};

@@ -397,3 +397,13 @@ int box_cull_bounded_verdict(const float min[3], const float extent[3],
   }
   return 0;
 }
+
+uint16_t box_cull_guard_band_status(uint16_t status, BoxCullGuardBand guard) {
+  uint16_t codes = 0x0000; /* greater */
+  if (guard.scale < guard.one) {
+    codes = 0x0100; /* C0 */
+  } else if (guard.scale == guard.one) {
+    codes = 0x4000; /* C3 */
+  }
+  return (uint16_t)((status & ~kBoxCullGuardBandCodeMask) | codes);
+}
