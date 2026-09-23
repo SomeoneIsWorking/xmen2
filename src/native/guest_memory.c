@@ -19,6 +19,7 @@
  */
 #include "guest_layout.h"
 #include "guest_memory.h"
+#include "guest_memory_arena.h"
 #include "platform_mman.h"
 
 #include "platform_posix.h"
@@ -29,44 +30,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if GUEST_ARENA_WINDOW
-/* Only what the layout places, because every byte of the window is real
-   program memory rather than reserved host address space. */
-#define GUEST_SPACE_SIZE ((uint64_t)GUEST_LAYOUT_LIMIT)
-#else
-#define GUEST_SPACE_SIZE (UINT64_C(1) << 32)
-#endif
 /* Win32 page state is always 4 KiB, including on a host whose VM protection
    granule is larger.  Apple Silicon uses 16 KiB hardware pages: treating that
    as the guest page size made a MEM_DECOMMIT of one Windows page revoke access
    to three still-committed neighbours. */
 #define GUEST_PAGE_COUNT (GUEST_SPACE_SIZE / GUEST_PAGE_SIZE)
 #define PAGE_MAPPED 0x80u
-
-/*
- * Whether the host refuses to hand this process the low 4 GB one-to-one, so
- * the guest space must be reserved up front and every address rebased into it.
- * Apple Silicon refuses those addresses outright; on Android the loader and
- * ART already occupy them, and a fixed map of the guest heap at 0x71000000
- * fails with the arena having nowhere to live.
- *
- * Such a host must also never munmap inside the arena -- it drops protection
- * instead, so that nothing else can claim the hole it would leave. This is a
- * separate question from the host page size: both Apple and Android can use
- * a 16 KiB granule, while a 4 KiB host needs no protection grouping.
- */
-/* X2_GUEST_ARENA_RESERVED forces the answer either way. It exists for the
- * sanitizers: AddressSanitizer's own shadow lives at low addresses and
- * collides with an identity-mapped guest at 0x00400000, so a desktop build
- * that wants ASan has to take the rebased path -- the same path Apple and
- * Android take in production, not a debug-only variant of it. */
-#if defined(X2_GUEST_ARENA_RESERVED)
-#define GUEST_ARENA_RESERVED X2_GUEST_ARENA_RESERVED
-#elif (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__)
-#define GUEST_ARENA_RESERVED 1
-#else
-#define GUEST_ARENA_RESERVED 0
-#endif
 
 /* Both arenas are this process's own memory for the whole run: mapping and
    releasing move permissions in the page table rather than handing spans back
@@ -254,60 +223,26 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
 int guest_memory_init(void) {
   if (g_ready)
     return 0;
-#if GUEST_ARENA_WINDOW
-  /*
-   * calloc, not malloc: the window is the guest's whole address space and the
-   * game reads memory it has committed but not written. The allocator hands
-   * back fresh program memory that is already zero, so this costs address
-   * space rather than the 2.5 GB of pages it describes -- only the pages the
-   * guest touches ever become real.
-   */
-  void *window = calloc((size_t)GUEST_SPACE_SIZE, 1u);
-  if (!window) {
-    x2_log_error("guest_memory: cannot reserve the %llu MB guest window; the "
-                 "packed layout in guest_layout.h needs it contiguous\n",
-                 (unsigned long long)(GUEST_SPACE_SIZE >> 20));
-    errno = ENOMEM;
+  GuestArena arena;
+  if (guest_arena_acquire(&arena) != 0)
     return -1;
-  }
-  g_guest_memory_base = (uintptr_t)window;
-  g_window.host = window;
+  g_guest_memory_base = arena.base;
+  g_window.host = (uint8_t *)arena.base;
+  g_window.guard_above = arena.guard_above;
+#if GUEST_ARENA_WINDOW
   g_window.size = (uint32_t)GUEST_SPACE_SIZE;
   g_window.perms = g_perms;
   g_window.page_shift = GUEST_PAGE_SHIFT;
-#elif GUEST_ARENA_RESERVED
-  long host_page_size = x2_page_size();
-  if (host_page_size < GUEST_PAGE_SIZE ||
-      (unsigned long)host_page_size > UINT32_MAX ||
-      ((unsigned long)host_page_size & ((unsigned long)host_page_size - 1u))) {
-    x2_log_error("guest_memory: unsupported host page size %ld; expected a "
-                 "power-of-two multiple of the 4096-byte guest page\n",
-                 host_page_size);
-    errno = EINVAL;
-    return -1;
-  }
-  g_host_page_size = (uint32_t)host_page_size;
-  void *arena = x2_map_anonymous(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE);
-  if (arena == X2_MAP_FAILED) {
-    x2_log_error("guest_memory: cannot reserve the 4 GB guest arena: %s\n",
-                 strerror(errno));
-    return -1;
-  }
-  g_guest_memory_base = (uintptr_t)arena;
-  x2_log_error("guest_memory: reserved guest arena 0x%llx..0x%llx\n",
-               (unsigned long long)g_guest_memory_base,
-               (unsigned long long)(g_guest_memory_base + GUEST_SPACE_SIZE));
 #else
-  g_guest_memory_base = 0;
-#endif
-#if !GUEST_ARENA_WINDOW
   /* The host's own VM owns permissions here, so the window carries no table
      and spans everything: UINT32_MAX rather than 4 GB because a byte count of
      the whole space does not fit, and its last byte is unaddressable anyway. */
-  g_window.host = (uint8_t *)g_guest_memory_base;
   g_window.size = UINT32_MAX;
   g_window.perms = NULL;
   g_window.page_shift = 0;
+#endif
+#if GUEST_ARENA_RESERVED
+  g_host_page_size = arena.host_page_size;
 #endif
   g_ready = 1;
   return 0;
@@ -327,7 +262,6 @@ int guest_memory_host_address(const void *pointer, uint32_t *address) {
 
 int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   uint32_t first, count, i;
-  void *host;
   uint64_t start;
   if (!g_ready && guest_memory_init() != 0)
     return -1;
@@ -342,7 +276,6 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
     }
   }
   start = (uint64_t)first * GUEST_PAGE_SIZE;
-  host = host_pointer((uint32_t)start);
   notify_remap(kGuestRemapMap, (uint32_t)start, count * GUEST_PAGE_SIZE);
 #if GUEST_ARENA_OWNED
   pages_fill(first, count, PAGE_MAPPED | (unsigned char)protection);
@@ -354,7 +287,8 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   }
   zero_reused_pages(first, count);
 #else
-  host = x2_map_anonymous(host, (size_t)count * GUEST_PAGE_SIZE, protection);
+  void *host = x2_map_anonymous(host_pointer((uint32_t)start),
+                                (size_t)count * GUEST_PAGE_SIZE, protection);
   if (host == X2_MAP_FAILED || (uintptr_t)host != start) {
     if (host != X2_MAP_FAILED && host != NULL)
       (void)x2_unmap(host, (size_t)count * GUEST_PAGE_SIZE);
@@ -427,10 +361,8 @@ int guest_memory_protect(uint32_t address, size_t size, int protection) {
 
 int guest_memory_release(uint32_t address, size_t size) {
   uint32_t first, count, i;
-  void *host;
   if (span(address, size, &first, &count) != 0)
     return -1;
-  host = host_pointer(first * GUEST_PAGE_SIZE);
   notify_remap(kGuestRemapRelease, first * GUEST_PAGE_SIZE,
                count * GUEST_PAGE_SIZE);
   pthread_mutex_lock(&g_pages_lock);
@@ -442,7 +374,8 @@ int guest_memory_release(uint32_t address, size_t size) {
     return -1;
   }
 #else
-  if (x2_unmap(host, (size_t)count * GUEST_PAGE_SIZE) != 0) {
+  if (x2_unmap(host_pointer(first * GUEST_PAGE_SIZE),
+               (size_t)count * GUEST_PAGE_SIZE) != 0) {
     pthread_mutex_unlock(&g_pages_lock);
     return -1;
   }

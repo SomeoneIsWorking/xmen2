@@ -459,6 +459,25 @@ exactly six heartbeats (`scratch/jitdump/stat_live.py`):
 - cycles per frame are noisy (±20% between runs of one binary) and averaged
   ~33.4M against ~35.5M.
 
-Next candidate: the 10-byte `mov r11, imm64` host base per access. No free
-callee-saved register can hold it; r12, r13 and rbp are the GPR cache, and
-r14 and r15 are x87.
+## Progress (2026-09-23) -- no bounds check under a guard page
+
+Desktop guest memory is identity-mapped: the log reads "guest arena at the
+host's own addresses". So an access forms its host pointer with a 3-byte move,
+not an immediate. The remaining per-access cost was the bounds check, a
+`cmp`/`ja` pair of about 12 bytes. For a span covering the whole 32-bit space,
+that check only catches an access overrunning the top by less than its width.
+
+`src/native/guest_memory_arena.c` now maps a no-access page at 4 GB, or
+includes it in a reserved arena. It reports the page as
+`GuestMemoryWindow.guard_above`. x86port `3236ad1`
+(`X86pMem.guard_above`) then drops the check for every access no wider than
+the guard, and the overrun faults in the host like any unmapped guest page.
+Either way such a fault is fatal (`refuse`), but the report now names a host
+PC rather than the guest EIP. The engine's ready line says which mode is live.
+
+Same windows as above, alternating binaries:
+
+- host instructions per frame fell from ~53.3M to ~49.9M (-6.3%) on every run;
+- instruction-cache misses per frame fell from ~2.70M to ~2.51M;
+- cycles per frame are bimodal (~28M or ~42M) in both binaries, so no
+  cycle figure is claimed.

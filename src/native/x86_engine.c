@@ -101,6 +101,7 @@ int x2_engine_init(char *reason, unsigned reason_len) {
     g_engine.mem.size = window.size;
     g_engine.mem.perms = window.perms;
     g_engine.mem.page_shift = window.page_shift;
+    g_engine.mem.guard_above = window.guard_above;
   }
   g_engine.jit = x86_engine_jit_pool_create(&g_engine.mem, reason, reason_len);
   if (!g_engine.jit)
@@ -108,10 +109,12 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   g_engine.ready = 1;
   lucent_log_info(
       "engine",
-      "runtime JIT ready; guest arena %s, return trampoline at 0x%08x",
+      "runtime JIT ready; guest arena %s, %s, return trampoline at 0x%08x",
       g_engine.mem.perms    ? "a window with its own page permissions"
       : g_guest_memory_base ? "relocated"
                             : "at the host's own addresses",
+      g_engine.mem.guard_above ? "accesses unchecked under a guard page at 4 GB"
+                               : "every access bounds-checked",
       ENGINE_RETURN_ADDR);
   return 1;
 }

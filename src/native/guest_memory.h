@@ -26,6 +26,9 @@ typedef struct GuestMemoryWindow {
   uint32_t size;
   const uint8_t *perms;
   uint32_t page_shift;
+  /* Bytes from host + 4 GB guaranteed to fault on any access, for a window
+     spanning the whole space; 0 when there is no such guard. */
+  uint32_t guard_above;
 } GuestMemoryWindow;
 
 GuestMemoryWindow guest_memory_window(void);

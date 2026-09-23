@@ -403,13 +403,13 @@ target_link_libraries(test_movie_audio PRIVATE m pthread)
 add_test(NAME movie_audio COMMAND test_movie_audio)
 
 add_executable(test_cutscene_script_audio tests/test_cutscene_script_audio.c
-               src/native/cutscene_script_audio.c src/native/guest_memory.c)
+               src/native/cutscene_script_audio.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_cutscene_script_audio PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_cutscene_script_audio PRIVATE X86_NATIVE)
 add_test(NAME cutscene_script_audio COMMAND test_cutscene_script_audio)
 
 add_executable(test_behaved_context tests/test_behaved_context.c
-               src/native/behaved_context.c src/native/guest_memory.c)
+               src/native/behaved_context.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_behaved_context PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_behaved_context PRIVATE X86_NATIVE)
 add_test(NAME behaved_context COMMAND test_behaved_context)
@@ -661,7 +661,7 @@ add_test(NAME controller_instance COMMAND test_controller_instance)
 add_executable(test_dinput8_controller_slots
                tests/test_dinput8_controller_slots.c
                src/native/dinput8_controller_slots.c
-               src/native/guest_memory.c)
+               src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_dinput8_controller_slots PRIVATE src/native)
 target_link_libraries(test_dinput8_controller_slots PRIVATE pthread)
 add_test(NAME dinput8_controller_slots COMMAND test_dinput8_controller_slots)
@@ -717,7 +717,7 @@ add_test(NAME cutscene_player_policy COMMAND test_cutscene_player_policy)
 add_executable(test_cutscene_dialogue
                tests/test_cutscene_dialogue.c
                src/native/cutscene_dialogue.c
-               src/native/guest_memory.c)
+               src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_cutscene_dialogue PRIVATE
                            src/native src/runtime/x86_abi)
 target_compile_definitions(test_cutscene_dialogue PRIVATE X86_NATIVE)
@@ -726,7 +726,7 @@ add_test(NAME cutscene_dialogue COMMAND test_cutscene_dialogue)
 
 add_executable(test_behaved_player_heap
                tests/test_behaved_player_heap.c
-               src/native/behaved_player.c src/native/guest_memory.c)
+               src/native/behaved_player.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_behaved_player_heap PRIVATE
                            src/native src/runtime/x86_abi)
 target_compile_definitions(test_behaved_player_heap PRIVATE X86_NATIVE)
@@ -735,7 +735,7 @@ add_test(NAME behaved_player_heap COMMAND test_behaved_player_heap)
 
 add_executable(test_cutscene_event_player
                tests/test_cutscene_event_player.c
-               src/native/cutscene_event_player.c src/native/guest_memory.c)
+               src/native/cutscene_event_player.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_cutscene_event_player PRIVATE
                            src/native src/runtime/x86_abi)
 target_compile_definitions(test_cutscene_event_player PRIVATE X86_NATIVE)
@@ -839,7 +839,7 @@ add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/prompt_action_labels.c src/native/prompt_glyphs.c
                src/native/prompt_labels.c src/native/input_binding_sets.c
                src/native/input_bindings.c
-               src/native/guest_memory.c
+               src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/runtime/x86_abi src/native
@@ -858,7 +858,7 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
                src/native/text_put.c
                src/native/prompt_glyph_quads.c
                src/native/prompt_action_labels.c
-               src/native/guest_memory.c
+               src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
@@ -891,7 +891,7 @@ add_executable(test_prompt_touch_buttons tests/test_prompt_touch_buttons.c
                src/native/text_put.c
                src/native/prompt_glyph_quads.c
                src/presentation/aspect_fit.c
-               src/native/guest_memory.c
+               src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_touch_buttons x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
@@ -908,7 +908,7 @@ add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
                src/native/prompt_glyph_metrics.c
                src/native/text_put.c
                src/native/prompt_glyphs.c
-               src/native/prompt_glyph_atlas.c src/native/guest_memory.c
+               src/native/prompt_glyph_atlas.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_metrics x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
@@ -929,7 +929,7 @@ add_test(NAME prompt_glyph_batch COMMAND test_prompt_glyph_batch)
 
 add_executable(test_ui_transform tests/test_ui_transform.c
                src/native/ui_transform.c src/gpu/gpu_matrix.c
-               src/native/guest_memory.c tests/native_stubs.c)
+               src/native/guest_memory.c src/native/guest_memory_arena.c tests/native_stubs.c)
 target_include_directories(test_ui_transform
                            PRIVATE src/runtime/x86_abi src/native src/gpu)
 target_compile_definitions(test_ui_transform PRIVATE X86_NATIVE)
@@ -937,7 +937,7 @@ target_link_libraries(test_ui_transform PRIVATE pthread)
 add_test(NAME ui_transform COMMAND test_ui_transform)
 
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
-               src/native/dialog_prompts.c src/native/guest_memory.c
+               src/native/dialog_prompts.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_dialog_prompts PRIVATE src/runtime/x86_abi src/native
                                                        src/input)
@@ -960,7 +960,7 @@ add_executable(test_vformat tests/test_vformat.c src/native/crt.c
                src/native/guest_file_io.c
                src/native/crt_write_watch.c src/runtime/x86_abi/x87crt.c
             tests/native_stubs.c
-               src/native/guest_heap.c src/native/guest_memory.c)
+               src/native/guest_heap.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_vformat PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE X86_NATIVE)
 target_link_libraries(test_vformat PRIVATE m pthread)
@@ -968,7 +968,7 @@ add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.c src/runtime/x86_abi/x87crt.c)
 
-add_library(guest_memory_test_impl OBJECT src/native/guest_memory.c)
+add_library(guest_memory_test_impl OBJECT src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_compile_definitions(guest_memory_test_impl PRIVATE X2_GUEST_ARENA_RESERVED=1
     sysconf=x2_test_sysconf mmap=x2_test_mmap mprotect=x2_test_mprotect)
 add_executable(test_guest_memory tests/test_guest_memory.c
@@ -1024,35 +1024,35 @@ target_include_directories(test_frame_limiter_wait PRIVATE src/native)
 add_test(NAME frame_limiter_wait COMMAND test_frame_limiter_wait)
 
 add_executable(test_audio_adpcm tests/test_audio_adpcm.c
-               src/native/audio_adpcm.c src/native/guest_memory.c
+               src/native/audio_adpcm.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_audio_adpcm PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_audio_adpcm PRIVATE X86_NATIVE)
 add_test(NAME audio_adpcm COMMAND test_audio_adpcm)
 
 add_executable(test_vertex_color_swizzle tests/test_vertex_color_swizzle.c
-               src/native/vertex_color_swizzle.c src/native/guest_memory.c
+               src/native/vertex_color_swizzle.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_vertex_color_swizzle PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_vertex_color_swizzle PRIVATE X86_NATIVE)
 add_test(NAME vertex_color_swizzle COMMAND test_vertex_color_swizzle)
 
 add_executable(test_vertex_builder tests/test_vertex_builder.c
-               src/native/vertex_builder.c src/native/guest_memory.c
+               src/native/vertex_builder.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_vertex_builder PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_vertex_builder PRIVATE X86_NATIVE)
 add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
 add_executable(test_override_leaf tests/test_override_leaf.c
-               src/native/override_leaf.c src/native/guest_memory.c)
+               src/native/override_leaf.c src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_override_leaf PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_override_leaf PRIVATE X86_NATIVE)
 target_link_libraries(test_override_leaf PRIVATE x86port_runtime lucent::lucent)
 add_test(NAME override_leaf COMMAND test_override_leaf)
 
 add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
-               src/native/x86_import_fastpath.c src/native/guest_memory.c
+               src/native/x86_import_fastpath.c src/native/guest_memory.c src/native/guest_memory_arena.c
                src/native/guest_clock.c tests/native_stubs.c)
 target_include_directories(test_x86_import_fastpath PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1 X86_NATIVE)
@@ -1060,7 +1060,7 @@ target_link_libraries(test_x86_import_fastpath PRIVATE x86port_runtime lucent::l
 add_test(NAME x86_import_fastpath COMMAND test_x86_import_fastpath)
 
 add_executable(test_attr_stack tests/test_attr_stack.c
-               src/native/attr_stack.c src/native/guest_memory.c
+               src/native/attr_stack.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_attr_stack PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1 X86_NATIVE)
@@ -1068,7 +1068,7 @@ target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
 
 add_executable(test_guest_heap tests/test_guest_heap.c src/native/guest_heap.c
-               src/native/guest_memory.c)
+               src/native/guest_memory.c src/native/guest_memory_arena.c)
 target_include_directories(test_guest_heap PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_guest_heap PRIVATE X86_NATIVE)
 target_link_libraries(test_guest_heap PRIVATE pthread)
@@ -1091,7 +1091,7 @@ target_include_directories(test_skin PRIVATE src/native)
 add_test(NAME skin COMMAND test_skin)
 
 add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
-               src/native/audio_channel_poll.c src/native/guest_memory.c
+               src/native/audio_channel_poll.c src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 target_include_directories(test_audio_channel_poll PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_audio_channel_poll PRIVATE TEST_SUITE=1 X86_NATIVE)
@@ -1115,7 +1115,7 @@ endif()
 
 add_executable(test_x86callbacks
     tests/test_x86callbacks.c src/runtime/x86_abi/x86callbacks.c
-    src/native/guest_memory.c tests/native_stubs.c)
+    src/native/guest_memory.c src/native/guest_memory_arena.c tests/native_stubs.c)
 target_include_directories(test_x86callbacks PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_x86callbacks PRIVATE X86_NATIVE)
 target_link_libraries(test_x86callbacks PRIVATE pthread)
@@ -1141,7 +1141,7 @@ add_test(NAME x2native_options COMMAND test_x2native_options)
 
 add_executable(test_options_menu
     tests/test_options_menu.c src/native/options_menu.c
-    src/native/guest_heap.c src/native/guest_memory.c
+    src/native/guest_heap.c src/native/guest_memory.c src/native/guest_memory_arena.c
     src/ui/settings_overlay_state.c
     tests/options_menu_stubs.c)
 target_include_directories(test_options_menu PRIVATE src/runtime/x86_abi src/native src/ui)
@@ -1574,7 +1574,7 @@ set(X2_NATIVE_SOURCES
     src/native/x2native.c
     src/native/fault_report.c
     src/native/engine_file_path.c
-    src/native/guest_memory.c
+    src/native/guest_memory.c src/native/guest_memory_arena.c
     src/native/guest_memory_probe.c
     src/native/x2native_options.c
     src/native/install_picker.cpp
@@ -1979,7 +1979,7 @@ if(NOT TARGET x86port_runtime)
 endif()
 
 add_executable(test_guest_memory_window tests/test_guest_memory_window.c
-    src/native/guest_memory.c src/native/guest_memory_probe.c
+    src/native/guest_memory.c src/native/guest_memory_arena.c src/native/guest_memory_probe.c
     src/native/guest_file_io.c)
 target_include_directories(test_guest_memory_window PRIVATE
     src/native src/runtime/x86_abi)

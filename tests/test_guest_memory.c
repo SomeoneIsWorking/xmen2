@@ -12,6 +12,7 @@
  * real anonymous memory, with the requested host's alignment enforced here. */
 static long host_page_size;
 static unsigned queries, mappings, protections, alignment_failures;
+static uint64_t reserved_length;
 static unsigned checks, failures;
 
 static void check(int condition, const char *description) {
@@ -39,6 +40,7 @@ void *x2_test_mmap(void *address, size_t length, int protection, int flags,
                    int fd, off_t offset) {
   size_t granule = (size_t)host_page_size;
   mappings++;
+  reserved_length = length;
   check(address == NULL, "reserves an independently placed guest arena");
   void *allocation =
       mmap(address, length + granule, protection, flags, fd, offset);
@@ -73,6 +75,9 @@ static void exercise_pages(void) {
   check(guest_memory_init() == 0, "initializes the reserved arena");
   check(guest_memory_init() == 0 && queries == 1 && mappings == 1,
         "initialization queries and reserves once");
+  check(reserved_length == (UINT64_C(1) << 32) + (uint64_t)host_page_size &&
+            guest_memory_window().guard_above == (uint32_t)host_page_size,
+        "reserves one host page above the space and reports it as the guard");
   check(guest_memory_map_fixed(0x80000u, 4096, PROT_READ | PROT_WRITE) == 0,
         "maps the boot return trampoline");
   check(guest_memory_map_fixed(base, 32768, PROT_READ | PROT_WRITE) == 0,
