@@ -246,11 +246,22 @@ static int execute_batch(const D3D8VSProgram *p,
 }
 
 /* Every register but the constants starts a vertex at zero, and oD0 at one;
-   then the declaration's inputs are loaded into their lanes. */
+   then the declaration's inputs are loaded into their lanes. Only the batch's
+   n lanes are set: nothing reads a lane past n, and zeroing the whole file
+   was 43 KB per batch however few vertices it held. A declared input is
+   loaded whole, so it is not zeroed first. a0_index needs no clearing:
+   a0_current = 0 makes the first relative read compute it. */
 static void load_batch(const D3D8VSProgram *p, const uint8_t *first_vertex,
                        uint32_t stride, unsigned n, Batch *b) {
-  unsigned lane, i, c;
-  memset(b, 0, sizeof *b);
+  unsigned lane, i, c, r;
+  for (r = 0; r < VS_FILE_CONST; ++r) {
+    const unsigned input = r - VS_FILE_INPUT;
+    if (r >= VS_FILE_INPUT && input < VS_INPUTS && p->input[input].present)
+      continue;
+    for (c = 0; c < 4; ++c)
+      memset(b->reg[r][c], 0, n * sizeof(float));
+  }
+  b->a0_current = 0;
   for (c = 0; c < 4; ++c)
     for (lane = 0; lane < n; ++lane)
       b->reg[VS_OUT_D0][c][lane] = 1.0f;
@@ -328,6 +339,11 @@ int d3d8_vs_selftest(void) {
       0x0000ffff};
   static const uint32_t bad_code[] = {0xfffe0101, 0x00001234, 0x800f0000,
                                       0x0000ffff};
+  static const uint32_t zero_start_code[] = {
+      0xfffe0101, 0x00000002, 0xc00f0000,
+      0x80e40000, 0x90e40000,             /* add oPos, r0, v0 */
+      0x00000001, 0x800f0000, 0x90e40000, /* mov r0, v0 */
+      0x0000ffff};
   struct {
     float p[4], selector, colour[4];
   } vertex = {{1, 2, 3, 1}, 1, {0.25f, 0.5f, 0.75f, 1.0f}};
@@ -414,6 +430,41 @@ int d3d8_vs_selftest(void) {
   if (h)
     d3d8_vs_delete(h);
 
+  /* A register starts every vertex at zero, in every batch: r0 is read
+     before this program writes it, and oT0 is never written. Writing r0
+     afterwards makes a second batch that kept the first one's lanes read
+     them back. */
+  h = d3d8_vs_create(decl, zero_start_code, 0);
+  for (unsigned v = 0; v < kBatchVertices; ++v) {
+    batch[v].p[0] = (float)(v + 1u);
+    batch[v].p[1] = -(float)(v + 3u);
+    batch[v].p[2] = 0.5f;
+    batch[v].p[3] = 1;
+    batch[v].selector = 0;
+  }
+  if (!h || !d3d8_vs_execute(h, c, batch, sizeof batch, sizeof batch[0], 0,
+                             kBatchVertices, batch_out)) {
+    x2_log_info("d3d8 VS selftest: FAILED -- the zero-start draw was "
+                "refused.\n");
+    fails++;
+  } else {
+    for (unsigned v = 0; v < kBatchVertices; ++v) {
+      if (memcmp(batch_out[v].position, batch[v].p, sizeof batch[v].p) != 0 ||
+          batch_out[v].texcoord[0] != 0.0f ||
+          batch_out[v].texcoord[1] != 0.0f) {
+        x2_log_info("d3d8 VS selftest: FAILED -- vertex %u read a register "
+                    "it never wrote as [%g %g %g %g], texcoord [%g %g].\n",
+                    v, batch_out[v].position[0], batch_out[v].position[1],
+                    batch_out[v].position[2], batch_out[v].position[3],
+                    batch_out[v].texcoord[0], batch_out[v].texcoord[1]);
+        fails++;
+        break;
+      }
+    }
+  }
+  if (h)
+    d3d8_vs_delete(h);
+
   bad = d3d8_vs_create(decl, bad_code, 0);
   if (!bad || d3d8_vs_execute(bad, c, &vertex, sizeof vertex, sizeof vertex, 0,
                               1, &out)) {
@@ -424,8 +475,8 @@ int d3d8_vs_selftest(void) {
   if (bad)
     d3d8_vs_delete(bad);
   x2_log_info("d3d8 VS selftest: %s -- relative-addressed program on one "
-              "vertex and across batches, an out-of-file lane, and an "
-              "unsupported opcode all exercised\n",
+              "vertex and across batches, zero-started registers, an "
+              "out-of-file lane, and an unsupported opcode all exercised\n",
               fails ? "FAILED" : "PASSED");
   return fails;
 }
