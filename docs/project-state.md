@@ -614,9 +614,14 @@ limiter's own `CALL 0x0055b610` (`src/native/frame_limiter_wait.{c,h}`); the
 retail loop still reads the clock and ends the frame. Dead Zone, paced: the
 game thread fell from 89% to 79% of a core at an unchanged 16.7 ms median
 frame. Scenes lighter than Dead Zone save most of each frame.
-The other lever is an x86port backend project: keeping guest registers in
-host registers across a block instead of loading and storing `X86pCpu` for
-every access.
+x86port `50d6829` caches a block's first three guest registers in host
+registers, write-through, so a register one instruction wrote reaches the
+next without a store-forwarded load: matched perf-stat runs executed 6.8% more
+guest blocks in the same cycles. What remains of translated code is spread over
+guest memory loads, x87 (the popped-register ten-byte stores FSAVE fidelity
+needs) and about 400M failed store-to-load forwards per 10 s whose sources a
+cycle-skidding sample cannot place; locating them needs precise (IBS)
+sampling.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
