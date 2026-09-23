@@ -57,12 +57,14 @@ static int g_noverride;
 static int g_overrides_resolved;
 
 /*
- * The set of mapped addresses this dispatcher owns, as a hash set.
+ * The set of mapped addresses this dispatcher owns, as a hash map from an
+ * override's entry point to its g_override index.
  *
  * The execution engine asks "is there host code here?" at EVERY guest
- * instruction, so the answer has to be a probe rather than a walk. The thunk
- * range answers itself (it is contiguous); this holds the override entry
- * points, which are not.
+ * instruction, and every override call asks which override it is, so both
+ * answers have to be a probe rather than a walk. The thunk range answers
+ * itself (it is contiguous); this holds the override entry points, which are
+ * not.
  *
  * Zero means empty, which is safe because 0 is never a mapped entry point --
  * an image mapped at 0 is refused by pe_map long before this. Sized a power of
@@ -72,6 +74,8 @@ static int g_overrides_resolved;
  */
 #define OWNED_SLOTS (X2_MAX_OVERRIDES * 4)
 static uint32_t g_owned[OWNED_SLOTS];
+static uint8_t g_owned_override[OWNED_SLOTS];
+_Static_assert(X2_MAX_OVERRIDES <= 256, "g_owned_override holds an index");
 X2_INTERNAL uint32_t g_override_bloom[64];
 
 static unsigned owned_slot(uint32_t addr) {
@@ -80,7 +84,7 @@ static unsigned owned_slot(uint32_t addr) {
   return (unsigned)(((addr * 2654435761u) >> 8) & (OWNED_SLOTS - 1u));
 }
 
-static void owned_insert(uint32_t addr) {
+static void owned_insert(uint32_t addr, int override_index) {
   unsigned i = owned_slot(addr), n = 0;
   while (g_owned[i]) {
     if (g_owned[i] == addr)
@@ -93,17 +97,19 @@ static void owned_insert(uint32_t addr) {
     }
   }
   g_owned[i] = addr;
+  g_owned_override[i] = (uint8_t)override_index;
   x86_override_bloom_add(addr);
 }
 
-static int owned_has(uint32_t addr) {
+/* The g_override index whose entry point is `addr`, or -1. */
+static int owned_find(uint32_t addr) {
   unsigned i = owned_slot(addr);
   for (;;) {
     uint32_t v = g_owned[i];
     if (!v)
-      return 0;
+      return -1;
     if (v == addr)
-      return 1;
+      return g_owned_override[i];
     i = (i + 1u) & (OWNED_SLOTS - 1u);
   }
 }
@@ -159,7 +165,7 @@ void x86_register_override(const char *module, uint32_t linked_ep,
       abort();
     }
     g_override[g_noverride - 1].mapped_ep = mapped;
-    owned_insert(mapped);
+    owned_insert(mapped, g_noverride - 1);
   }
 }
 
@@ -256,7 +262,7 @@ void x86_overrides_resolve(void) {
       continue;
     }
     g_override[i].mapped_ep = mapped;
-    owned_insert(mapped);
+    owned_insert(mapped, i);
   }
   if (bad) {
     x2_log_error("x86_overrides_resolve: %d of %d override(s) could not "
@@ -658,9 +664,11 @@ void x86_stackcheck_arm(int on) {
    the mapped address, every relocated DLL missed the checker's expectation
    table and 86%% of a run came back "no known RET" -- unchecked calls counted
    as clean. The module knows where it was placed, so it converts here. */
-static void stackcheck_note(X86Module *m, uint32_t ep, uint32_t in,
-                            uint32_t out) {
+static void stackcheck_note(uint32_t ep, uint32_t in, uint32_t out) {
   if (!g_sc_armed || !g_sc_out)
+    return;
+  X86Module *m = x86_module_for(ep);
+  if (!m)
     return;
   g_sc_records++;
   fprintf(g_sc_out, "%s %08x %08x %08x\n", m->name,
@@ -668,7 +676,6 @@ static void stackcheck_note(X86Module *m, uint32_t ep, uint32_t in,
 }
 
 int x86_native_call_at(uint32_t addr, CPU *C) {
-  X86Module *m;
   if (g_ntrig) {
     int i;
     for (i = 0; i < g_ntrig; i++)
@@ -705,24 +712,20 @@ int x86_native_call_at(uint32_t addr, CPU *C) {
                    g_noverride);
       abort();
     }
-    for (i = 0; i < g_noverride; i++)
-      if (g_override[i].mapped_ep == addr) {
-        uint32_t in = C->reg[kX86pEsp];
-        g_override[i].fn(C);
-        /* Overrides are checked TOO. A hand-written override has to
-           emulate the guest RET itself -- pop the return address and
-           whatever the callee pops -- and getting that wrong shifts
-           the guest stack by a word, which surfaces later as memory
-           corruption somewhere unrelated. Returning before this point
-           made the 19 overrides the one thing the stack check could
-           not see, which is the wrong place to have a blind spot. */
-        {
-          X86Module *om = x86_module_for(addr);
-          if (om)
-            stackcheck_note(om, addr, in, C->reg[kX86pEsp]);
-        }
-        return 1;
-      }
+    i = owned_find(addr);
+    if (i >= 0) {
+      uint32_t in = C->reg[kX86pEsp];
+      g_override[i].fn(C);
+      /* Overrides are checked TOO. A hand-written override has to emulate
+         the guest RET itself -- pop the return address and whatever the
+         callee pops -- and getting that wrong shifts the guest stack by a
+         word, which surfaces later as memory corruption somewhere
+         unrelated. Returning before this point made the overrides the one
+         thing the stack check could not see, which is the wrong place to
+         have a blind spot. */
+      stackcheck_note(addr, in, C->reg[kX86pEsp]);
+      return 1;
+    }
   }
   return 0;
 }
@@ -1054,7 +1057,7 @@ int x86_native_body_at(uint32_t addr) {
     uint32_t t = (addr - THUNK_BASE) / 16u;
     return (int)t < g_nthunk && g_thunk[t].stub ? 1 : 0;
   }
-  return x86_override_bloom_has(addr) && owned_has(addr);
+  return x86_override_bloom_has(addr) && owned_find(addr) >= 0;
 }
 
 /* ---- the boundary ring -------------------------------------------------

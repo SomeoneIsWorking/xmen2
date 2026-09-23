@@ -642,6 +642,11 @@ base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new
 reaches it. It keeps segregated free lists with boundary tags now, so both are
 constant-time in the common case, and the same route shows it at 0.01%.
+Every native override call then found its override by a linear scan of the
+override table and walked the module list for a stack-check record nobody had
+armed: `x86_native_call_at` was 2.8% of samples. The owned-address hash set
+now maps an entry point to its override, the module lookup happens only when
+the stack check is armed, and the same route shows it at 0.7%.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
