@@ -153,6 +153,69 @@ class LauncherContract(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "vendor/zydis"):
                     bootstrap.validate_checkout(repo, target)
 
+    def test_a_launcher_clone_follows_a_pin_bump(self):
+        """`git pull && ./run.sh` after a pin bump moves vendor/shared itself."""
+        def git(cwd: Path, *arguments: str) -> str:
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                                   "-c", "commit.gpgsign=false", *arguments],
+                                  cwd=cwd, check=True, text=True,
+                                  capture_output=True).stdout.strip()
+
+        with scratch_directory() as raw:
+            upstream = Path(raw) / "upstream"
+            upstream.mkdir()
+            git(upstream, "init", "--quiet", "--initial-branch=main")
+            (upstream / "marker").write_text("1")
+            git(upstream, "add", "marker")
+            git(upstream, "commit", "--quiet", "-m", "old pin")
+            old = git(upstream, "rev-parse", "HEAD")
+            (upstream / "marker").write_text("2")
+            git(upstream, "commit", "--quiet", "-am", "new pin")
+            new = git(upstream, "rev-parse", "HEAD")
+            repo = bootstrap.SharedRepo("fixture", str(upstream), new, "marker")
+
+            clone = Path(raw) / "clone"
+            git(Path(raw), "clone", "--quiet", str(upstream), str(clone))
+            git(clone, "checkout", "--quiet", "--detach", old)
+            # Untracked work: git itself would carry it across the checkout.
+            (clone / "notes").write_text("unsaved")
+            with self.assertRaisesRegex(SystemExit, "local changes"):
+                bootstrap.advance_clone(repo, clone)
+            self.assertEqual(git(clone, "rev-parse", "HEAD"), old)
+            (clone / "notes").unlink()
+
+            git(clone, "checkout", "--quiet", "-b", "mine")
+            (clone / "marker").write_text("mine")
+            git(clone, "commit", "--quiet", "-am", "local only")
+            mine = git(clone, "rev-parse", "HEAD")
+            with self.assertRaisesRegex(SystemExit, "no branch"):
+                bootstrap.advance_clone(repo, clone)
+            self.assertEqual(git(clone, "rev-parse", "HEAD"), mine)
+
+            git(clone, "checkout", "--quiet", "--detach", old)
+            self.assertTrue(bootstrap.advance_clone(repo, clone))
+            self.assertEqual(git(clone, "rev-parse", "HEAD"), new)
+            bootstrap.validate_checkout(repo, clone)
+            self.assertFalse(bootstrap.advance_clone(repo, clone))
+
+            other = bootstrap.SharedRepo("fixture", "https://github.com/example/other.git",
+                                         new, "marker")
+            with self.assertRaisesRegex(SystemExit, "refusing to mutate"):
+                bootstrap.advance_clone(other, clone)
+
+    def test_a_configured_checkout_is_never_moved(self):
+        repo = bootstrap.SharedRepo("fixture", "https://github.com/example/fixture.git",
+                                    "a" * 40, "marker")
+        with scratch_directory() as raw, \
+             mock.patch.object(bootstrap, "SHARED_REPOS", [repo]), \
+             mock.patch.dict(os.environ, {"FIXTURE_DIR": raw}), \
+             mock.patch.object(bootstrap, "advance_clone") as advance, \
+             mock.patch.object(bootstrap, "validate_checkout",
+                               side_effect=SystemExit("move it aside")):
+            with self.assertRaisesRegex(SystemExit, "move it aside"):
+                bootstrap.ensure_shared()
+            advance.assert_not_called()
+
     def test_atomic_text_publication_preserves_old_value_on_failure(self):
         with scratch_directory() as raw:
             target = Path(raw) / "cache.txt"

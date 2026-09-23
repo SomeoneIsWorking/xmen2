@@ -228,6 +228,11 @@ def shared_target(repo: SharedRepo) -> Path:
     shared = os.environ.get("SHARED_DIR")
     if shared:
         return (Path(shared).expanduser() / repo.name).resolve()
+    return launcher_clone(repo)
+
+
+def launcher_clone(repo: SharedRepo) -> Path:
+    """Where the launcher clones `repo` itself when nothing else is configured."""
     return (ROOT / "vendor/shared" / repo.name).resolve()
 
 
@@ -273,18 +278,46 @@ def clone_repo(repo: SharedRepo, target: Path) -> None:
         staged.replace(target)
 
 
+def advance_clone(repo: SharedRepo, target: Path) -> bool:
+    """Move a launcher-owned clone left at an older pin to `repo.revision`.
+
+    `git pull && ./run.sh` must keep working after a pin bump, and the clone
+    under vendor/shared is the launcher's own. It still refuses whatever it
+    would destroy: another origin, local changes, or a local commit no remote
+    branch holds. Returns whether it moved the clone.
+    """
+    if not (target / ".git").is_dir():
+        refuse(f"{target} exists but is not a git checkout")
+    origin = run_git(["remote", "get-url", "origin"], target)
+    if canonical_url(origin) != canonical_url(repo.url):
+        refuse(f"{target} has origin {origin}, expected {repo.url}; refusing to mutate it")
+    if run_git(["rev-parse", "HEAD"], target) == repo.revision:
+        return False
+    if run_git(["status", "--porcelain"], target):
+        refuse(f"{target} has local changes; preserve them before provisioning")
+    print(f"bootstrap: moving {target} to {repo.revision}")
+    run_git(["fetch", "--quiet", "origin"], target)
+    if not run_git(["branch", "--remotes", "--contains", "HEAD"], target):
+        refuse(f"{target} holds a commit no branch of {repo.url} has; "
+               "push or move it aside before provisioning")
+    run_git(["checkout", "--quiet", "--detach", repo.revision], target)
+    run_git(["submodule", "update", "--init", "--recursive"], target)
+    return True
+
+
 def ensure_shared() -> None:
-    cloned = 0
+    cloned = moved = 0
     for repo in SHARED_REPOS:
         target = shared_target(repo)
-        if target.exists():
-            validate_checkout(repo, target)
-        else:
+        if not target.exists():
             clone_repo(repo, target)
             cloned += 1
+        elif target == launcher_clone(repo) and advance_clone(repo, target):
+            moved += 1
+        validate_checkout(repo, target)
         os.environ[f"{repo.name.replace('-', '_').upper()}_DIR"] = str(target)
-    print(f"bootstrap: shared repositories OK ({cloned} cloned, "
-          f"{len(SHARED_REPOS) - cloned} already pinned)")
+    print(f"bootstrap: shared repositories OK ({cloned} cloned, {moved} moved "
+          f"to a new pin, {len(SHARED_REPOS) - cloned - moved} already pinned)")
 
 
 def run_tool(arguments: list[str], purpose: str, capture: bool = False) -> str:
