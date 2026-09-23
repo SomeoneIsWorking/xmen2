@@ -13,12 +13,19 @@ enum {
   kSpillAll = kSpillBase | kSpillTerm0 | kSpillTerm1 | kSpillTerm2,
 };
 
-/* Indexed by output axis: x stays in registers, y keeps only extent.x's term
-   there, z and w are spilled whole. */
-static const unsigned kAxisSpills[4] = {
-    0u, kSpillBase | kSpillTerm1 | kSpillTerm2, kSpillAll, kSpillAll};
+/* Axis x stays in registers, y keeps only extent.x's term there, z and w are
+   spilled whole. Each axis is its own call with its spill set a constant, so
+   the compiler drops the rounding a value does not get instead of computing
+   both and selecting with FCMOV -- which, over a table indexed in a loop, was
+   the hottest part of the function. */
+enum {
+  kSpillsX = 0u,
+  kSpillsY = kSpillBase | kSpillTerm1 | kSpillTerm2,
+  kSpillsZW = kSpillAll,
+};
 
-static long double spilled(long double value, unsigned spills, unsigned which) {
+static inline long double spilled(long double value, unsigned spills,
+                                  unsigned which) {
   return (spills & which) ? (long double)(float)value : value;
 }
 
@@ -28,36 +35,42 @@ void box_cull_extent(float out[3], const float box[6]) {
   }
 }
 
+static inline void corner_axis(float out[BOX_CULL_CORNER_FLOATS],
+                               const float min[3], const float extent[3],
+                               const float matrix[16], long double k,
+                               unsigned axis, unsigned spills) {
+  const long double base = spilled((((long double)min[0] * matrix[axis] +
+                                     (long double)min[2] * matrix[8u + axis]) +
+                                    (long double)min[1] * matrix[4u + axis]) +
+                                       matrix[12u + axis],
+                                   spills, kSpillBase);
+  const long double t0 =
+      spilled((long double)extent[0] * matrix[axis], spills, kSpillTerm0);
+  const long double t1 =
+      spilled((long double)extent[1] * matrix[4u + axis], spills, kSpillTerm1);
+  const long double t2 =
+      spilled((long double)extent[2] * matrix[8u + axis], spills, kSpillTerm2);
+  /* Corner c adds extent.z for bit 0 of c, extent.y for bit 1 and extent.x
+     for bit 2; the guest multiplies the extents a corner leaves out by
+     `zero` and adds that first. */
+  out[0u * 4u + axis] = (float)base;
+  out[1u * 4u + axis] = (float)(((t1 + t0) * k + base) + t2);
+  out[2u * 4u + axis] = (float)(((t2 + t0) * k + base) + t1);
+  out[3u * 4u + axis] = (float)(((t0 * k + base) + t2) + t1);
+  out[4u * 4u + axis] = (float)(((t2 + t1) * k + base) + t0);
+  out[5u * 4u + axis] = (float)(((t1 * k + base) + t2) + t0);
+  out[6u * 4u + axis] = (float)(((t2 * k + base) + t1) + t0);
+  out[7u * 4u + axis] = (float)(((base + t2) + t1) + t0);
+}
+
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero) {
   const long double k = zero;
-  for (unsigned axis = 0; axis < 4u; axis++) {
-    const unsigned spills = kAxisSpills[axis];
-    const long double base =
-        spilled((((long double)min[0] * matrix[axis] +
-                  (long double)min[2] * matrix[8u + axis]) +
-                 (long double)min[1] * matrix[4u + axis]) +
-                    matrix[12u + axis],
-                spills, kSpillBase);
-    const long double t0 =
-        spilled((long double)extent[0] * matrix[axis], spills, kSpillTerm0);
-    const long double t1 = spilled((long double)extent[1] * matrix[4u + axis],
-                                   spills, kSpillTerm1);
-    const long double t2 = spilled((long double)extent[2] * matrix[8u + axis],
-                                   spills, kSpillTerm2);
-    /* Corner c adds extent.z for bit 0 of c, extent.y for bit 1 and extent.x
-       for bit 2; the guest multiplies the extents a corner leaves out by
-       `zero` and adds that first. */
-    out[0u * 4u + axis] = (float)base;
-    out[1u * 4u + axis] = (float)(((t1 + t0) * k + base) + t2);
-    out[2u * 4u + axis] = (float)(((t2 + t0) * k + base) + t1);
-    out[3u * 4u + axis] = (float)(((t0 * k + base) + t2) + t1);
-    out[4u * 4u + axis] = (float)(((t2 + t1) * k + base) + t0);
-    out[5u * 4u + axis] = (float)(((t1 * k + base) + t2) + t0);
-    out[6u * 4u + axis] = (float)(((t2 * k + base) + t1) + t0);
-    out[7u * 4u + axis] = (float)(((base + t2) + t1) + t0);
-  }
+  corner_axis(out, min, extent, matrix, k, 0u, kSpillsX);
+  corner_axis(out, min, extent, matrix, k, 1u, kSpillsY);
+  corner_axis(out, min, extent, matrix, k, 2u, kSpillsZW);
+  corner_axis(out, min, extent, matrix, k, 3u, kSpillsZW);
 }
 
 /* The sign bit of the guest's 32-bit spill of `value`. */
