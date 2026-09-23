@@ -1,6 +1,14 @@
 /*
- * box_cull_override.c -- libIGSg.dll 0x10047570 and 0x100478e0 as native
- * overrides over box_cull.c.
+ * box_cull_override.c -- libIGSg.dll's box test as native overrides over
+ * box_cull.c: the leaves 0x10047570 and 0x100478e0, and the driver at
+ * 0x10047470 that calls them.
+ *
+ * THE DRIVER, `int box_test(traversal, box)`, cdecl, finds the current view
+ * and projection matrices through two attribute stacks, has the traversal
+ * recompute its composite matrix only when either changed, and then runs the
+ * two leaves on the box. Natively it is one crossing where the guest body was
+ * three. A changed matrix pair, and classify's guard-band case, run the guest
+ * body: neither writes anything the body would not write again.
  *
  * Each override answers natively only where that is exact: box_cull's host
  * test, the guest's own control word X86P_X87_CW_INIT, and enough empty x87
@@ -32,21 +40,34 @@
 
 #define LIBIGSG "libIGSg.dll"
 #define LIBIGSG_PREFERRED_BASE 0x10000000u
+#define DRIVER_EP 0x10047470u
 #define CORNERS_EP 0x10047570u
 #define CLASSIFY_EP 0x100478e0u
 /* The .rdata 0.0f corners multiplies the extents it leaves out by. */
 #define CORNERS_ZERO_LINKED 0x10077ba8u
-/* The deepest each body pushes the x87 stack before its first pop back. */
+/* The import slots of the two attribute-stack indices the driver reads. */
+#define DRIVER_VIEW_INDEX_SLOT_LINKED 0x10070314u
+#define DRIVER_PROJECTION_INDEX_SLOT_LINKED 0x10070310u
+/* igFrustCullTraversal: its composite matrix, and the two matrices it was
+   composed from. */
+#define TRAVERSAL_ATTRIBUTES 0x34u
+#define TRAVERSAL_COMPOSITE 0x1dcu
+#define TRAVERSAL_COMPOSED_VIEW 0x21cu
+#define TRAVERSAL_COMPOSED_PROJECTION 0x220u
+/* The box's min and max, six floats. */
+#define BOX_BOUNDS 0x8u
+/* The deepest each body pushes the x87 stack before its first pop back; the
+   driver's own pushes are one deep, under its callees'. */
 #define CORNERS_PUSHES 6u
 #define CLASSIFY_PUSHES 3u
 
 /* -1 until first use, then the cvar's answer. */
 static int s_enabled = -1;
 static int s_verify = -1;
-static uint32_t s_corners_zero;
+static uint32_t s_libigsg_base;
 /* Verify mode's coverage: native answers checked, per function, and classify
    calls the guard band sent to the guest body. */
-static uint64_t s_verified[2];
+static uint64_t s_verified[3];
 static uint64_t s_undecided;
 
 static int enabled(void) {
@@ -77,22 +98,26 @@ static void read_floats(uint32_t address, float *out, unsigned count) {
   }
 }
 
-static uint32_t corners_zero_address(void) {
-  if (__builtin_expect(!s_corners_zero, 0)) {
-    const uint32_t base = x86_module_base(LIBIGSG);
-    if (!base) {
-      x2_log_error("box_cull: %s is not mapped, yet its override at 0x%08x "
+static uint32_t libigsg_base(void) {
+  if (__builtin_expect(!s_libigsg_base, 0)) {
+    s_libigsg_base = x86_module_base(LIBIGSG);
+    if (!s_libigsg_base) {
+      x2_log_error("box_cull: %s is not mapped, yet its box-test override "
                    "ran; not continuing.\n",
-                   LIBIGSG, CORNERS_EP);
+                   LIBIGSG);
       abort();
     }
-    s_corners_zero = base + (CORNERS_ZERO_LINKED - LIBIGSG_PREFERRED_BASE);
   }
-  return s_corners_zero;
+  return s_libigsg_base;
+}
+
+/* A linked libIGSg address, where the module was placed. */
+static uint32_t libigsg_mapped(uint32_t linked) {
+  return libigsg_base() + (linked - LIBIGSG_PREFERRED_BASE);
 }
 
 /* The guest body on a copy of the state the override started from, which
-   must end where the native answer did: the same EAX (classify only), ESP,
+   must end where the native answer did: the same EAX (not corners'), ESP,
    x87 control state, and `out_floats` output words. */
 static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
                             uint32_t out, const float *native_out,
@@ -104,7 +129,7 @@ static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
              memcmp(guest.x87.tag, C->x87.tag, sizeof guest.x87.tag) == 0 &&
              guest.x87.control == C->x87.control &&
              guest.x87.status == C->x87.status &&
-             (ep != CLASSIFY_EP || guest.reg[kX86pEax] == native_eax);
+             (ep == CORNERS_EP || guest.reg[kX86pEax] == native_eax);
   unsigned word = 0;
   for (; same && word < out_floats; word++) {
     uint32_t native_word;
@@ -122,16 +147,75 @@ static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
                  word ? word - 1u : 0u, out_floats);
     abort();
   }
-  const uint64_t total =
-      ++s_verified[ep == CLASSIFY_EP] + s_verified[ep != CLASSIFY_EP];
+  s_verified[ep == DRIVER_EP ? 2 : ep == CLASSIFY_EP]++;
+  const uint64_t total = s_verified[0] + s_verified[1] + s_verified[2];
   if ((total & (total - 1u)) == 0u && (total & 0x5555555555555555ull)) {
     x2_log_info("sg.box_cull_verify: %llu native answers match the guest "
-                "body (corners %llu, classify %llu; %llu classify calls "
-                "undecided, run as guest body)\n",
+                "body (corners %llu, classify %llu, driver %llu; %llu calls "
+                "undecided or recomposing, run as guest body)\n",
                 (unsigned long long)total, (unsigned long long)s_verified[0],
                 (unsigned long long)s_verified[1],
+                (unsigned long long)s_verified[2],
                 (unsigned long long)s_undecided);
   }
+}
+
+/* The matrix an attribute stack's top names, found as the driver finds it:
+   the stack's index is read through the import slot `slot_linked`. */
+static uint32_t attribute_matrix(uint32_t attributes, uint32_t slot_linked) {
+  const uint32_t index = RD32(RD32(RD32(libigsg_mapped(slot_linked))) + 8u);
+  const uint32_t which = RD32(RD32(attributes + 0x44u) + index * 4u);
+  const uint32_t stack =
+      RD32(RD32(RD32(attributes + 0x10u) + 0x10u) + which * 4u);
+  const uint32_t top = RD32(stack + 0x18u);
+  uint32_t entry;
+  if ((int32_t)top >= 0) {
+    entry = RD32(RD32(stack + 0x10u) + top * 4u);
+  } else if (RD32(stack + 8u) != 0u) {
+    entry = RD32(RD32(stack + 0x10u) + RD32(stack + 8u) * 4u - 4u);
+  } else {
+    entry = RD32(stack + 0x14u);
+  }
+  return entry + 0xcu;
+}
+
+void x2_override_10047470(CPU *C) {
+  if (!native_exact(C, CORNERS_PUSHES)) {
+    x86_guest_body(C, LIBIGSG, DRIVER_EP);
+    return;
+  }
+  const uint32_t esp = C->reg[kX86pEsp];
+  const uint32_t traversal = RD32(esp + 4u);
+  const uint32_t box = RD32(esp + 8u);
+  const uint32_t attributes = RD32(traversal + TRAVERSAL_ATTRIBUTES);
+  if (RD32(traversal + TRAVERSAL_COMPOSED_VIEW) !=
+          attribute_matrix(attributes, DRIVER_VIEW_INDEX_SLOT_LINKED) ||
+      RD32(traversal + TRAVERSAL_COMPOSED_PROJECTION) !=
+          attribute_matrix(attributes, DRIVER_PROJECTION_INDEX_SLOT_LINKED)) {
+    s_undecided += (uint64_t)s_verify;
+    x86_guest_body(C, LIBIGSG, DRIVER_EP);
+    return;
+  }
+  float bounds[6];
+  float extent[3];
+  float matrix[16];
+  float corners[BOX_CULL_CORNER_FLOATS];
+  read_floats(box + BOX_BOUNDS, bounds, 6u);
+  read_floats(traversal + TRAVERSAL_COMPOSITE, matrix, 16u);
+  box_cull_extent(extent, bounds);
+  box_cull_corners(corners, bounds, extent, matrix,
+                   x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
+  const BoxCullVerdict verdict = box_cull_classify(corners);
+  if (verdict == kBoxCullUndecided) {
+    s_undecided += (uint64_t)s_verify;
+    x86_guest_body(C, LIBIGSG, DRIVER_EP);
+    return;
+  }
+  if (s_verify) {
+    verify_or_abort(C, DRIVER_EP, (uint32_t)verdict, 0u, NULL, 0u);
+  }
+  C->reg[kX86pEax] = (uint32_t)verdict;
+  C->reg[kX86pEsp] = esp + 4u;
 }
 
 void x2_override_10047570(CPU *C) {
@@ -149,7 +233,7 @@ void x2_override_10047570(CPU *C) {
   read_floats(RD32(esp + 12u), extent, 3u);
   read_floats(RD32(esp + 16u), matrix, 16u);
   box_cull_corners(corners, min, extent, matrix,
-                   x86_loadf32(corners_zero_address()));
+                   x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
   for (unsigned i = 0; i < BOX_CULL_CORNER_FLOATS; i++) {
     uint32_t word;
     memcpy(&word, &corners[i], sizeof word);
@@ -184,6 +268,7 @@ void x2_override_100478e0(CPU *C) {
 }
 
 __attribute__((constructor)) static void box_cull_register_overrides(void) {
+  x86_register_override("libIGSg.dll", DRIVER_EP, x2_override_10047470);
   x86_register_override("libIGSg.dll", CORNERS_EP, x2_override_10047570);
   x86_register_override("libIGSg.dll", CLASSIFY_EP, x2_override_100478e0);
 }

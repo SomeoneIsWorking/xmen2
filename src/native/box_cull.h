@@ -1,8 +1,8 @@
 /*
  * box_cull.h -- libIGSg.dll's bounding-box frustum test, as host arithmetic.
  *
- * igFrustCullNode (0x100485b0) and its sibling at 0x10047470 decide whether a
- * node's bounding box is visible with two leaf calls:
+ * igFrustCullNode (0x100485b0) and the box-test driver at 0x10047470 decide
+ * whether a node's bounding box is visible with two leaf calls:
  *
  *   0x10047570  corners(out, min, extent, matrix)
  *     the box's eight corners, min + {0|1}*extent per axis, through a 4x4
@@ -48,6 +48,10 @@ typedef enum BoxCullVerdict {
 /* 1 when this host's long double is the x87 ten-byte format and its FPU
    control word is X86P_X87_CW_INIT, so the functions below are exact. */
 int box_cull_host_exact(void);
+
+/* The driver's extent, max - min per axis: the guest's fsub, spilled to a
+   32-bit slot. `box` is its six floats from min.x. */
+void box_cull_extent(float out[3], const float box[6]);
 
 /* 0x10047570. `zero` is the guest's constant at 0x10077ba8 (0.0f), which the
    guest multiplies the unused extents by; it is read, not assumed. */

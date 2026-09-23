@@ -31,6 +31,17 @@ static void expect_verdict(const char *what, BoxCullVerdict got,
   }
 }
 
+/* max - min per axis; a subtraction whose operands are swapped comes out
+   negated. */
+static void test_extent(void) {
+  const float box[6] = {1.0f, -2.0f, 3.0f, 5.0f, 6.0f, 3.0f};
+  float extent[3];
+  box_cull_extent(extent, box);
+  expect_float("extent x", extent[0], 4.0f);
+  expect_float("extent y", extent[1], 8.0f);
+  expect_float("extent z", extent[2], 0.0f);
+}
+
 static void test_identity_corners(void) {
   const float min[3] = {1.0f, 2.0f, 3.0f};
   const float extent[3] = {4.0f, 8.0f, 16.0f};
@@ -122,6 +133,7 @@ int main(void) {
                     "process default\n");
     return 1;
   }
+  test_extent();
   test_identity_corners();
   test_base_spill();
   test_term_spill();

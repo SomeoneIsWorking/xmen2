@@ -637,6 +637,10 @@ one value too early. Same binary, `sg.box_cull` on against off: unpaced
 presents/s 97.5 and 87.9 against 74.4 and 68.9 (+29%), p95 frame 11-13 ms
 against 16-17 ms; paced, the game thread fell from 82.5% to about 69% of a
 core.
+The driver that calls both (0x10047470) runs natively too, one crossing
+where there were three: the translated code around its calls was ~5% of JIT
+samples and the native driver is 0.35%. Its gate matched 5.2M driver answers;
+an extent computed min - max aborted it at the first box.
 The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
 base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new

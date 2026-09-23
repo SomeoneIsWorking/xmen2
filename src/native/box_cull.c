@@ -34,6 +34,12 @@ static long double spilled(long double value, unsigned spills, unsigned which) {
   return (spills & which) ? (long double)(float)value : value;
 }
 
+void box_cull_extent(float out[3], const float box[6]) {
+  for (unsigned axis = 0; axis < 3u; axis++) {
+    out[axis] = (float)((long double)box[3u + axis] - box[axis]);
+  }
+}
+
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero) {
