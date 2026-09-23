@@ -22,7 +22,7 @@ LEGACY_LIMITS = {
     "src/native/kernel32.c": 3624,            # waits extracted into kernel32_wait.c
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
     "src/native/x2native.c": 2329,            # was 2152
-    "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
+    "src/d3d8/d3d8_drawcall.c": 1695,         # was 1650
     "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
     "src/gpu/gpu_draw.c": 1369,               # was 1250

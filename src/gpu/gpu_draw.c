@@ -37,6 +37,10 @@ int gpu_buffer_upload(GpuBuffer b, uint32_t o, const void *d, uint32_t n) {
   return no_sdl("buffer upload");
 }
 void gpu_buffer_destroy(GpuBuffer b) { (void)b; }
+uint64_t gpu_buffer_serial(GpuBuffer b) {
+  (void)b;
+  return 0;
+}
 GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat f, uint32_t l) {
   (void)w;
   (void)h;
@@ -338,6 +342,12 @@ int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
     return 0;
   }
   return upload_bytes(r, offset, data, bytes);
+}
+
+uint64_t gpu_buffer_serial(GpuBuffer b) {
+  if (!b || b > (uint32_t)g_nres || !g_res[b - 1].live)
+    return 0;
+  return g_res[b - 1].serial;
 }
 
 void gpu_buffer_destroy(GpuBuffer b) {

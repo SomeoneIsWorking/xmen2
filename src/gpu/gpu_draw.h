@@ -291,6 +291,9 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes);
 int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
                       uint32_t bytes);
 void gpu_buffer_destroy(GpuBuffer b);
+/* The buffer's contents: new at creation and at every upload, and unique
+   across buffers. 0 for a handle that names no live buffer. */
+uint64_t gpu_buffer_serial(GpuBuffer b);
 
 GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
                               uint32_t levels);

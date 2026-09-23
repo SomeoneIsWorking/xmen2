@@ -355,6 +355,12 @@ add_executable(test_gpu_pass_binds tests/test_gpu_pass_binds.c
 target_include_directories(test_gpu_pass_binds PRIVATE src/gpu)
 add_test(NAME gpu_pass_binds COMMAND test_gpu_pass_binds)
 
+add_executable(test_d3d8_index_max tests/test_d3d8_index_max.c
+               src/d3d8/d3d8_draw_range.c)
+target_include_directories(test_d3d8_index_max PRIVATE src/d3d8 src/gpu
+                           src/native src/runtime/x86_abi)
+add_test(NAME d3d8_index_max COMMAND test_d3d8_index_max)
+
 add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
                src/gpu/gpu_frame_timing.c)
 target_include_directories(test_gpu_frame_timing PRIVATE src/gpu)
@@ -1852,6 +1858,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vertex_layout.c
     src/d3d8/d3d8_frame_material.c
     src/d3d8/d3d8_drawcall.c
+    src/d3d8/d3d8_draw_range.c
     src/d3d8/d3d8_lighting.c
     src/d3d8/d3d8_light_dump.c
     src/d3d8/d3d8_light_survey.c
