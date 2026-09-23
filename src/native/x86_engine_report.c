@@ -226,11 +226,13 @@ static void report_last_block_entry(const X86EngineJitPool *jit,
 
 void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
                                          unsigned long callouts) {
-  X86pJitEngineStats js = {0};
+  /* Every engine call passes here, so the stats block is zeroed only once a
+     report is actually due: zeroing it first was a memset per call. */
   if (!atomic_load_explicit(&g_live_requested, memory_order_relaxed) ||
       !atomic_exchange_explicit(&g_live_requested, 0, memory_order_relaxed)) {
     return;
   }
+  X86pJitEngineStats js = {0};
   if (jit) {
     x86_engine_jit_pool_stats(jit, &js);
   }
