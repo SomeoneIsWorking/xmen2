@@ -15,10 +15,11 @@
  * sets stale inside SDL but keeps the bound samplers, so a kept sampler set
  * survives a new pipeline.
  *
- * An index buffer is named by its handle AND a serial that changes at every
- * upload: an upload cycles the buffer to new backing storage while the pass
- * is open, and only a fresh bind picks that storage up. Serials are unique
- * across buffers, so a buffer recreated at a freed one's address is new too.
+ * A vertex or index buffer is named by its handle AND a serial that changes
+ * at every upload: an upload cycles the buffer to new backing storage while
+ * the pass is open, and only a fresh bind picks that storage up. Serials are
+ * unique across buffers, so a buffer recreated at a freed one's address is new
+ * too.
  *
  * Identities are opaque pointers so the decisions are testable without a
  * device; the caller does the binding a `*_changed` call asks for.
@@ -29,13 +30,15 @@ enum { kGpuPassFragmentSamplers = 4 };
 
 typedef struct GpuPassBinds {
   const void *pipeline;
+  const void *vertex_buffer; /* slot 0, the only one bound */
+  uint64_t vertex_serial;
   const void *index_buffer;
   uint64_t index_serial;
   unsigned index_size;
   /* texture, sampler for each bound slot from 0; `samplers` slots bound */
   const void *sampler_pairs[2 * kGpuPassFragmentSamplers];
   unsigned samplers;
-  unsigned long pipelines_kept, indices_kept, samplers_kept;
+  unsigned long pipelines_kept, vertices_kept, indices_kept, samplers_kept;
 } GpuPassBinds;
 
 /* The frame render pass's record. */
@@ -52,6 +55,11 @@ int gpu_pass_binds_pipeline_changed(GpuPassBinds *binds, const void *pipeline);
    A longer set is always bound and never remembered. */
 int gpu_pass_binds_samplers_changed(GpuPassBinds *binds,
                                     const void *const pairs[], unsigned count);
+
+/* 1, and remembered, when the vertex buffer for slot 0 or its serial
+   differs from what is bound. */
+int gpu_pass_binds_vertex_changed(GpuPassBinds *binds, const void *buffer,
+                                  uint64_t serial);
 
 /* 1, and remembered, when the index buffer, its serial or its element size
    differs from what is bound. */

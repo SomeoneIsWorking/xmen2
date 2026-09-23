@@ -20,8 +20,8 @@ struct SDL_GPUTexture;
 void gpu_shadow_configure(int enabled, uint32_t resolution);
 void gpu_shadow_frame_begin(void);
 void gpu_shadow_record(const GpuDraw *draw, struct SDL_GPUBuffer *vertices,
-                       struct SDL_GPUBuffer *indices, uint64_t index_serial,
-                       struct SDL_GPUTexture *texture,
+                       uint64_t vertex_serial, struct SDL_GPUBuffer *indices,
+                       uint64_t index_serial, struct SDL_GPUTexture *texture,
                        struct SDL_GPUSampler *sampler, uint32_t index_count);
 void gpu_shadow_frame_submit(void);
 int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample);

@@ -9,6 +9,8 @@ GpuPassBinds *gpu_pass_binds(void) { return &g_binds; }
 
 void gpu_pass_binds_reset(GpuPassBinds *binds) {
   binds->pipeline = 0;
+  binds->vertex_buffer = 0;
+  binds->vertex_serial = 0;
   binds->index_buffer = 0;
   binds->index_serial = 0;
   binds->index_size = 0;
@@ -21,6 +23,18 @@ int gpu_pass_binds_pipeline_changed(GpuPassBinds *binds, const void *pipeline) {
     return 0;
   }
   binds->pipeline = pipeline;
+  return 1;
+}
+
+int gpu_pass_binds_vertex_changed(GpuPassBinds *binds, const void *buffer,
+                                  uint64_t serial) {
+  if (binds->vertex_buffer && binds->vertex_buffer == buffer &&
+      binds->vertex_serial == serial) {
+    binds->vertices_kept++;
+    return 0;
+  }
+  binds->vertex_buffer = buffer;
+  binds->vertex_serial = serial;
   return 1;
 }
 

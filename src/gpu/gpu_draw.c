@@ -942,7 +942,7 @@ int gpu_draw(const GpuDraw *d) {
 
   if (!ires || (uint64_t)(d->first_index + n) * (d->index_is_32bit ? 4u : 2u) <=
                    ires->bytes)
-    gpu_shadow_record(d, vres->buf, ires ? ires->buf : NULL,
+    gpu_shadow_record(d, vres->buf, vres->serial, ires ? ires->buf : NULL,
                       ires ? ires->serial : 0u, tres->tex, smp, n);
   gpu_shadow_sample(d, &shadow);
 
@@ -952,10 +952,13 @@ int gpu_draw(const GpuDraw *d) {
   if (gpu_pass_binds_pipeline_changed(gpu_pass_binds(), pipe))
     SDL_BindGPUGraphicsPipeline(g_pass, pipe);
 
-  memset(&vb, 0, sizeof vb);
-  vb.buffer = vres->buf;
-  vb.offset = 0;
-  SDL_BindGPUVertexBuffers(g_pass, 0, &vb, 1);
+  if (gpu_pass_binds_vertex_changed(gpu_pass_binds(), vres->buf,
+                                    vres->serial)) {
+    memset(&vb, 0, sizeof vb);
+    vb.buffer = vres->buf;
+    vb.offset = 0;
+    SDL_BindGPUVertexBuffers(g_pass, 0, &vb, 1);
+  }
 
   memcpy(g_vu.mvp, d->mvp, sizeof g_vu.mvp);
   g_vu.viewport[0] = 0.0f;
@@ -1173,9 +1176,10 @@ void gpu_draw_report(void) {
       "differ whenever the engine released the device first)\n",
       g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
   x2_log_info("        of those draws, %lu kept the pass's pipeline, %lu "
-              "its index buffer and %lu its samplers, none bound again\n",
-              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->indices_kept,
-              gpu_pass_binds()->samplers_kept);
+              "its vertex buffer, %lu its index buffer and %lu its samplers, "
+              "none bound again\n",
+              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->vertices_kept,
+              gpu_pass_binds()->indices_kept, gpu_pass_binds()->samplers_kept);
   if (g_draws)
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
                 "total (%.3f alloc+copy, %.3f record) across %lu "

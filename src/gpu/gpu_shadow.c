@@ -17,11 +17,12 @@ void gpu_shadow_configure(int enabled, uint32_t resolution) {
 }
 void gpu_shadow_frame_begin(void) {}
 void gpu_shadow_record(const GpuDraw *draw, struct SDL_GPUBuffer *vertices,
-                       struct SDL_GPUBuffer *indices, uint64_t index_serial,
-                       struct SDL_GPUTexture *texture,
+                       uint64_t vertex_serial, struct SDL_GPUBuffer *indices,
+                       uint64_t index_serial, struct SDL_GPUTexture *texture,
                        struct SDL_GPUSampler *sampler, uint32_t index_count) {
   (void)draw;
   (void)vertices;
+  (void)vertex_serial;
   (void)indices;
   (void)index_serial;
   (void)texture;
@@ -284,9 +285,9 @@ static int begin_pass(void) {
 }
 
 void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
-                       SDL_GPUBuffer *indices, uint64_t index_serial,
-                       SDL_GPUTexture *texture, SDL_GPUSampler *sampler,
-                       uint32_t index_count) {
+                       uint64_t vertex_serial, SDL_GPUBuffer *indices,
+                       uint64_t index_serial, SDL_GPUTexture *texture,
+                       SDL_GPUSampler *sampler, uint32_t index_count) {
   SDL_GPUGraphicsPipeline *pipeline;
   SDL_GPUBufferBinding binding;
   SDL_GPUTextureSamplerBinding texture_binding;
@@ -318,12 +319,17 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
     SDL_BindGPUGraphicsPipeline(g_shadow_pass, pipeline);
   memset(&binding, 0, sizeof binding);
   binding.buffer = vertices;
-  SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
+  if (gpu_pass_binds_vertex_changed(&g_binds, vertices, vertex_serial))
+    SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
   SDL_PushGPUVertexUniformData(g_shadow_command, 0, matrix, sizeof matrix);
   memset(&texture_binding, 0, sizeof texture_binding);
   texture_binding.texture = texture;
   texture_binding.sampler = sampler;
-  SDL_BindGPUFragmentSamplers(g_shadow_pass, 0, &texture_binding, 1);
+  {
+    const void *const pair[2] = {texture, sampler};
+    if (gpu_pass_binds_samplers_changed(&g_binds, pair, 1))
+      SDL_BindGPUFragmentSamplers(g_shadow_pass, 0, &texture_binding, 1);
+  }
   memset(&alpha, 0, sizeof alpha);
   alpha.enabled = draw->alpha_test != 0;
   alpha.reference = draw->alpha_ref;
@@ -391,13 +397,14 @@ void gpu_shadow_report(void) {
   x2_log_info("  gpu shadow: %s, %ux%u; %lu/%lu frames selected a title "
               "directional light, %lu submitted; %lu caster (%lu programmable) "
               "and %lu receiver (%lu programmable) draw(s), %lu resource/pass "
-              "failure(s); %lu caster(s) kept the pipeline, %lu the index "
-              "buffer\n",
+              "failure(s); %lu caster(s) kept the pipeline, %lu the vertex "
+              "buffer, %lu the index buffer and %lu the sampler\n",
               g_enabled ? "enabled" : "disabled", g_resolution, g_resolution,
               g_frames_with_light, g_frames, g_frames_submitted, g_casters,
               g_programmable_casters, g_receivers, g_programmable_receivers,
               g_resource_failures, g_binds.pipelines_kept,
-              g_binds.indices_kept);
+              g_binds.vertices_kept, g_binds.indices_kept,
+              g_binds.samplers_kept);
 }
 
 void gpu_shadow_shutdown(void) {
