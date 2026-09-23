@@ -1296,7 +1296,7 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
   unsigned long i;
   /* The owner of the thread table stamps its own record: the ring is one
      shared history and the thread that is stuck is not the one filling it. */
-  guest_thread_note_crossing(what, addr, guest_clock_now_s());
+  guest_thread_note_crossing(what, addr, guest_clock_coarse_now_s());
   if (g_ring_n) {
     i = (g_ring_n - 1) % RING;
     if (g_ring[i].addr == addr && g_ring[i].base == base &&

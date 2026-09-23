@@ -50,8 +50,26 @@ int main(void) {
   seconds_after = guest_clock_now_s();
   check(after >= before, "the nanosecond counter went backwards");
   check(seconds_after >= seconds_before, "the seconds counter went backwards");
-  check((double)before / 1e9 >= seconds_before - 0.01 && (double)after / 1e9 <= seconds_after + 0.01,
-        "the nanosecond and seconds views of the same clock disagree by more than 10 ms");
+  check((double)before / 1e9 >= seconds_before - 0.01 &&
+            (double)after / 1e9 <= seconds_after + 0.01,
+        "the nanosecond and seconds views of the same clock disagree by more "
+        "than 10 ms");
+
+  /* The coarse view is the same clock at tick resolution: never ahead of a
+     precise reading taken after it, and never a tick-sized step behind one
+     taken before it. A different clock -- REALTIME counts from 1970, not from
+     boot -- is off by decades either way. */
+  {
+    const double fine_before = guest_clock_now_s();
+    const double coarse = guest_clock_coarse_now_s();
+    const double fine_after = guest_clock_now_s();
+    check(coarse <= fine_after,
+          "the coarse clock ran ahead of the precise one");
+    check(coarse > fine_before - 0.1,
+          "the coarse clock lags the precise one by more than 100 ms");
+    printf("  coarse reading %.6f s behind the precise one\n",
+           fine_after - coarse);
+  }
 
   /*
    * The idle skip, which is the whole reason a private clock reading is a
@@ -61,20 +79,28 @@ int main(void) {
    */
   guest_clock_set_unbounded(1);
   before = guest_clock_ns();
-  check(guest_clock_skip_idle_to(guest_clock_now_s() + 5.0), "skipping five seconds forward was refused");
+  check(guest_clock_skip_idle_to(guest_clock_now_s() + 5.0),
+        "skipping five seconds forward was refused");
   after = guest_clock_ns();
   check(after > before + 4000000000ULL,
-        "the nanosecond counter did not follow the idle skip, so a private clock reading would disagree with it");
-  check(after < before + 6000000000ULL, "the idle skip moved the nanosecond counter further than it was asked to");
-  printf("  the five-second skip moved the counter by %" PRIu64 " ns\n", after - before);
+        "the nanosecond counter did not follow the idle skip, so a private "
+        "clock reading would disagree with it");
+  check(after < before + 6000000000ULL, "the idle skip moved the nanosecond "
+                                        "counter further than it was asked to");
+  check(guest_clock_coarse_now_s() > (double)before / 1e9 + 4.0,
+        "the coarse clock did not follow the idle skip");
+  printf("  the five-second skip moved the counter by %" PRIu64 " ns\n",
+         after - before);
 
   /* And with unbounded off, the same request must change nothing, so the
      check above is measuring the skew and not the passage of real time. */
   guest_clock_set_unbounded(0);
   before = guest_clock_ns();
-  check(!guest_clock_skip_idle_to(guest_clock_now_s() + 5.0), "a bounded run must refuse to skip");
+  check(!guest_clock_skip_idle_to(guest_clock_now_s() + 5.0),
+        "a bounded run must refuse to skip");
   after = guest_clock_ns();
-  check(after < before + 1000000000ULL, "a refused skip moved the clock anyway");
+  check(after < before + 1000000000ULL,
+        "a refused skip moved the clock anyway");
 
   printf("guest clock: %u checks, %u failures\n", checks, failures);
   return failures ? 1 : 0;

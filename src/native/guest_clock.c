@@ -25,10 +25,26 @@ static uint64_t real_now_ns(void) {
 
 static double real_now_s(void) { return (double)real_now_ns() / 1e9; }
 
+/* CLOCK_MONOTONIC as of the last scheduler tick; Emscripten's libc has the
+   constant but refuses the clock, so only the hosts that serve it use it. */
+static uint64_t real_coarse_ns(void) {
+#if defined(__linux__) && defined(CLOCK_MONOTONIC_COARSE)
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#else
+  return real_now_ns();
+#endif
+}
+
 double guest_clock_now_s(void) {
   if (g_start_real == 0.0)
     g_start_real = real_now_s();
   return real_now_s() + g_skew;
+}
+
+double guest_clock_coarse_now_s(void) {
+  return (double)real_coarse_ns() / 1e9 + g_skew;
 }
 
 /*

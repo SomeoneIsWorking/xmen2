@@ -30,6 +30,16 @@ double guest_clock_now_s(void);
    human reading a status line very much does. */
 double guest_clock_elapsed_s(void);
 
+/*
+ * guest_clock_now_s at the host's scheduler-tick resolution (a few
+ * milliseconds): never ahead of it, and, on Linux and Android, a read of the
+ * vDSO's last tick instead of the timestamp counter. For a stamp taken at
+ * every host crossing only to say later how long ago the last one was,
+ * where the precise read was ~4% of the product's samples. Elsewhere it is
+ * the precise clock.
+ */
+double guest_clock_coarse_now_s(void);
+
 /* The same instant in nanoseconds, for QueryPerformanceCounter (which this
    port defines as a nanosecond counter) and GetTickCount. */
 uint64_t guest_clock_ns(void);
