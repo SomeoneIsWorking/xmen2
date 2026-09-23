@@ -16,7 +16,7 @@ static FILE *g_log;
 static int g_tried;
 static long g_t0;
 
-long d3d8_lightlog_ms(void) {
+static long lightlog_ms(void) {
   struct timespec ts;
   long ms;
   clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -46,10 +46,11 @@ static int lightlog_on(void) {
   return 1;
 }
 
-void d3d8_lightlog(const char *fmt, ...) {
+void d3d8_lightlog(const char *event, const char *fmt, ...) {
   va_list ap;
   if (!lightlog_on())
     return;
+  fprintf(g_log, "%s t=%lu ", event, (unsigned long)lightlog_ms());
   va_start(ap, fmt);
   vfprintf(g_log, fmt, ap);
   va_end(ap);

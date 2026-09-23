@@ -572,11 +572,9 @@ static void dev_SetRenderState(D3D8Object *self, CPU *C) {
   /* Only the two lighting states, as the control's proxy logs: the rest
      arrive at Present rate and would bury the light path. */
   if (which == D3D8_RS_LIGHTING)
-    d3d8_lightlog("SETRENDERSTATE t=%lu LIGHTING=%lu", d3d8_lightlog_ms(),
-                  (unsigned long)value);
+    d3d8_lightlog("SETRENDERSTATE", "LIGHTING=%lu", (unsigned long)value);
   else if (which == D3D8_RS_AMBIENT)
-    d3d8_lightlog("SETRENDERSTATE t=%lu AMBIENT=%08lx", d3d8_lightlog_ms(),
-                  (unsigned long)value);
+    d3d8_lightlog("SETRENDERSTATE", "AMBIENT=%08lx", (unsigned long)value);
   else if (which == D3D8_RS_TEXTUREFACTOR)
     trace_texture_factor_write(C, value);
   d3d8_ret(C, d3d8_state_set_render(&g_dev.state, which, value)

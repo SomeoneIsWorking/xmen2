@@ -62,12 +62,12 @@ void d3d8_dev_SetMaterial(D3D8Object *self, CPU *C) {
                    m[13], m[14], m[16]);
     }
   }
-  d3d8_lightlog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
+  d3d8_lightlog("SETMATERIAL",
+                "diffuse=%.4f,%.4f,%.4f,%.4f "
                 "ambient=%.4f,%.4f,%.4f,%.4f emissive=%.4f,%.4f,%.4f,%.4f "
                 "specular=%.4f,%.4f,%.4f,%.4f power=%.2f",
-                d3d8_lightlog_ms(), m[0], m[1], m[2], m[3], m[4], m[5], m[6],
-                m[7], m[12], m[13], m[14], m[15], m[8], m[9], m[10], m[11],
-                m[16]);
+                m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[12], m[13],
+                m[14], m[15], m[8], m[9], m[10], m[11], m[16]);
   memcpy(d3d8_device_state()->material, m,
          sizeof d3d8_device_state()->material);
   d3d8_device_state()->material_set = 1;
@@ -127,19 +127,18 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   (void)self;
   /* Before the refusal, for the reason given at dev_LightEnable. */
   if (!l)
-    d3d8_lightlog("SETLIGHT t=%lu idx=%lu NULL-POINTER", d3d8_lightlog_ms(),
-                  (unsigned long)idx);
+    d3d8_lightlog("SETLIGHT", "idx=%lu NULL-POINTER", (unsigned long)idx);
   else
-    d3d8_lightlog("SETLIGHT t=%lu idx=%lu type=%u "
+    d3d8_lightlog("SETLIGHT",
+                  "idx=%lu type=%u "
                   "diffuse=%.4f,%.4f,%.4f,%.4f specular=%.4f,%.4f,%.4f,%.4f "
                   "ambient=%.4f,%.4f,%.4f,%.4f pos=%.2f,%.2f,%.2f "
                   "dir=%.3f,%.3f,%.3f range=%.2f falloff=%.2f "
                   "atten=%.6f,%.6f,%.8f theta=%.3f phi=%.3f",
-                  d3d8_lightlog_ms(), (unsigned long)idx,
-                  ((const uint32_t *)l)[0], l[1], l[2], l[3], l[4], l[5], l[6],
-                  l[7], l[8], l[9], l[10], l[11], l[12], l[13], l[14], l[15],
-                  l[16], l[17], l[18], l[19], l[20], l[21], l[22], l[23], l[24],
-                  l[25]);
+                  (unsigned long)idx, ((const uint32_t *)l)[0], l[1], l[2],
+                  l[3], l[4], l[5], l[6], l[7], l[8], l[9], l[10], l[11], l[12],
+                  l[13], l[14], l[15], l[16], l[17], l[18], l[19], l[20], l[21],
+                  l[22], l[23], l[24], l[25]);
   if (idx >= D3D8_MAX_LIGHTS)
     light_index_refused("SetLight", idx);
   if (!l || idx >= D3D8_MAX_LIGHTS) {
@@ -368,8 +367,7 @@ void d3d8_dev_LightEnable(D3D8Object *self, CPU *C) {
   /* Logged BEFORE the range refusal: an index we refuse and the control
      accepts is exactly the kind of difference this log exists to show, and
      it cannot show it from behind the refusal. */
-  d3d8_lightlog("LIGHTENABLE t=%lu idx=%lu on=%d", d3d8_lightlog_ms(),
-                (unsigned long)idx, on != 0);
+  d3d8_lightlog("LIGHTENABLE", "idx=%lu on=%d", (unsigned long)idx, on != 0);
   g_lightenable_calls++;
   if (idx >= D3D8_MAX_LIGHTS) {
     light_index_refused("LightEnable", idx);
