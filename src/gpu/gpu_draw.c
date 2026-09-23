@@ -663,6 +663,14 @@ typedef struct {
   uint32_t shadow_pad[3];
 } VertexUniforms;
 
+/* The block each draw pushes, kept between draws rather than cleared for
+   each: clearing its 1.1 KB was 9% of gpu_draw. Every field is written on
+   every draw except the lighting block, read only when `lighting` is set, and
+   shadow_mvp, read only when `shadow_enabled` is -- and those gates are
+   written every draw (the fragment stage's own shadow gate, in the pixel
+   block, is rebuilt from zero every draw). The pads stay zero from here. */
+static VertexUniforms g_vu;
+
 typedef struct {
   uint32_t texture_op;
   uint32_t alpha_test;
@@ -731,7 +739,6 @@ int gpu_draw(const GpuDraw *d) {
   SDL_GPUGraphicsPipeline *pipe;
   SDL_GPUBufferBinding vb, ib;
   SDL_GPUTextureSamplerBinding tsb;
-  VertexUniforms vu;
   PixelUniforms pu;
   GpuShadowSample shadow;
   Res *vres, *ires = NULL, *tres = NULL, *tres1 = NULL, *cres = NULL;
@@ -950,56 +957,59 @@ int gpu_draw(const GpuDraw *d) {
   vb.offset = 0;
   SDL_BindGPUVertexBuffers(g_pass, 0, &vb, 1);
 
-  memset(&vu, 0, sizeof vu);
-  memcpy(vu.mvp, d->mvp, sizeof vu.mvp);
-  vu.viewport[0] = 0.0f;
-  vu.viewport[1] = 0.0f;
-  vu.viewport[2] = (float)g_swap_w;
-  vu.viewport[3] = (float)g_swap_h;
-  vu.pretransformed = d->pretransformed ? 1u : 0u;
-  vu.programmable = d->programmable ? 1u : 0u;
-  vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
-  vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
-  vu.has_specular = d->specular_offset >= 0 ? 1u : 0u;
-  vu.lighting = d->lighting ? 1u : 0u;
-  vu.color_vertex = d->color_vertex ? 1u : 0u;
-  vu.normalize_normals = d->normalize_normals ? 1u : 0u;
-  vu.diffuse_source = d->diffuse_source;
-  vu.ambient_source = d->ambient_source;
-  vu.emissive_source = d->emissive_source;
-  vu.texgen = (uint32_t)d->texgen;
-  memcpy(vu.worldview, d->worldview, sizeof vu.worldview);
-  vu.texture_transform = d->texture_transform;
-  memcpy(vu.texture_matrix, d->texture_matrix, sizeof vu.texture_matrix);
-  vu.texgen1 = (uint32_t)d->texgen1;
-  vu.texture_transform1 = (uint32_t)d->texture_transform1;
-  memcpy(vu.texture_matrix1, d->texture_matrix1, sizeof vu.texture_matrix1);
+  memcpy(g_vu.mvp, d->mvp, sizeof g_vu.mvp);
+  g_vu.viewport[0] = 0.0f;
+  g_vu.viewport[1] = 0.0f;
+  g_vu.viewport[2] = (float)g_swap_w;
+  g_vu.viewport[3] = (float)g_swap_h;
+  g_vu.pretransformed = d->pretransformed ? 1u : 0u;
+  g_vu.programmable = d->programmable ? 1u : 0u;
+  g_vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
+  g_vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
+  g_vu.has_specular = d->specular_offset >= 0 ? 1u : 0u;
+  g_vu.lighting = d->lighting ? 1u : 0u;
+  g_vu.color_vertex = d->color_vertex ? 1u : 0u;
+  g_vu.normalize_normals = d->normalize_normals ? 1u : 0u;
+  g_vu.diffuse_source = d->diffuse_source;
+  g_vu.ambient_source = d->ambient_source;
+  g_vu.emissive_source = d->emissive_source;
+  g_vu.texgen = (uint32_t)d->texgen;
+  memcpy(g_vu.worldview, d->worldview, sizeof g_vu.worldview);
+  g_vu.texture_transform = d->texture_transform;
+  memcpy(g_vu.texture_matrix, d->texture_matrix, sizeof g_vu.texture_matrix);
+  g_vu.texgen1 = (uint32_t)d->texgen1;
+  g_vu.texture_transform1 = (uint32_t)d->texture_transform1;
+  memcpy(g_vu.texture_matrix1, d->texture_matrix1, sizeof g_vu.texture_matrix1);
   if (d->lighting) {
     int li;
-    memcpy(vu.world, d->world, sizeof vu.world);
-    memcpy(vu.global_ambient, d->global_ambient, sizeof vu.global_ambient);
-    memcpy(vu.mat_diffuse, d->mat_diffuse, sizeof vu.mat_diffuse);
-    memcpy(vu.mat_ambient, d->mat_ambient, sizeof vu.mat_ambient);
-    memcpy(vu.mat_emissive, d->mat_emissive, sizeof vu.mat_emissive);
-    vu.nlights =
+    memcpy(g_vu.world, d->world, sizeof g_vu.world);
+    memcpy(g_vu.global_ambient, d->global_ambient, sizeof g_vu.global_ambient);
+    memcpy(g_vu.mat_diffuse, d->mat_diffuse, sizeof g_vu.mat_diffuse);
+    memcpy(g_vu.mat_ambient, d->mat_ambient, sizeof g_vu.mat_ambient);
+    memcpy(g_vu.mat_emissive, d->mat_emissive, sizeof g_vu.mat_emissive);
+    g_vu.nlights =
         (uint32_t)(d->nlights > GPU_MAX_LIGHTS ? GPU_MAX_LIGHTS : d->nlights);
-    for (li = 0; li < (int)vu.nlights; li++) {
+    for (li = 0; li < (int)g_vu.nlights; li++) {
       const GpuLight *L = &d->light[li];
-      memcpy(vu.light[li * 5 + 0], L->diffuse, sizeof L->diffuse);
-      memcpy(vu.light[li * 5 + 1], L->ambient, sizeof L->ambient);
-      memcpy(vu.light[li * 5 + 2], L->position, 3 * sizeof(float));
-      vu.light[li * 5 + 2][3] = L->range;
-      memcpy(vu.light[li * 5 + 3], L->direction, 3 * sizeof(float));
-      vu.light[li * 5 + 3][3] = (float)L->type;
-      memcpy(vu.light[li * 5 + 4], L->atten, sizeof L->atten);
-      vu.light[li * 5 + 4][3] = 0.0f;
+      memcpy(g_vu.light[li * 5 + 0], L->diffuse, sizeof L->diffuse);
+      memcpy(g_vu.light[li * 5 + 1], L->ambient, sizeof L->ambient);
+      memcpy(g_vu.light[li * 5 + 2], L->position, 3 * sizeof(float));
+      g_vu.light[li * 5 + 2][3] = L->range;
+      memcpy(g_vu.light[li * 5 + 3], L->direction, 3 * sizeof(float));
+      g_vu.light[li * 5 + 3][3] = (float)L->type;
+      memcpy(g_vu.light[li * 5 + 4], L->atten, sizeof L->atten);
+      g_vu.light[li * 5 + 4][3] = 0.0f;
     }
+  } else {
+    g_vu.nlights = 0;
   }
   if (shadow.enabled) {
-    memcpy(vu.shadow_mvp, shadow.matrix, sizeof vu.shadow_mvp);
-    vu.shadow_enabled = 1;
+    memcpy(g_vu.shadow_mvp, shadow.matrix, sizeof g_vu.shadow_mvp);
+    g_vu.shadow_enabled = 1;
+  } else {
+    g_vu.shadow_enabled = 0;
   }
-  SDL_PushGPUVertexUniformData(g_cmd, 0, &vu, sizeof vu);
+  SDL_PushGPUVertexUniformData(g_cmd, 0, &g_vu, sizeof g_vu);
 
   memset(&pu, 0, sizeof pu);
   pu.texture_op = (uint32_t)d->texop;
