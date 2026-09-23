@@ -18,6 +18,11 @@ int guest_thread_ready_to_run(const GuestThread *t, double now) {
   return 0;
 }
 
+int guest_thread_others_live(int live, const GuestThread *self) {
+  const int self_live = self && self->used && !self->finished;
+  return live > self_live;
+}
+
 int guest_thread_any_ready(const GuestThread *table, int count,
                            const GuestThread *self, double (*clock)(void)) {
   double now = 0.0;

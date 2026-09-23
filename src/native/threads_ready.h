@@ -31,6 +31,15 @@ int guest_thread_any_ready(const GuestThread *table, int count,
                            const GuestThread *self, double (*clock)(void));
 
 /*
+ * Can any record other than `self` be ready at all? `live` counts the records
+ * that are used and not finished, which the scheduler keeps as threads start
+ * and end. The calling thread running alone then answers without walking the
+ * table, whose every slot is its own cache line: the walk was asked after
+ * every JIT run and cost ~0.7% of gameplay samples with no other thread alive.
+ */
+int guest_thread_others_live(int live, const GuestThread *self);
+
+/*
  * Entering and leaving a condition wait, as far as readiness is concerned:
  * `ms` is the Win32 deadline, 0xFFFFFFFF for INFINITE, and `now` the guest
  * clock. The pair keeps the deadline and the broadcast flag in one place

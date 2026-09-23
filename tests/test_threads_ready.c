@@ -120,6 +120,27 @@ int main(void) {
   }
 
   {
+    /* The live count decides whether the table is worth walking: the caller
+       alone is not, any other live record is, and a caller that is not live
+       itself -- unattached, or finished -- leaves every live record to
+       another thread. */
+    GuestThread self;
+    memset(&self, 0, sizeof self);
+    self.used = 1;
+    self.state = TS_RUNNING;
+    expect(!guest_thread_others_live(1, &self),
+           "the caller alone has no other live thread");
+    expect(guest_thread_others_live(2, &self),
+           "a second live thread is worth a scan");
+    expect(guest_thread_others_live(1, NULL),
+           "with no calling record the one live thread is another");
+    expect(!guest_thread_others_live(0, NULL), "no live thread at all");
+    self.finished = 1;
+    expect(guest_thread_others_live(1, &self),
+           "a finished caller is not the live thread counted");
+  }
+
+  {
     struct timespec base, out;
     base.tv_sec = 10;
     base.tv_nsec = 900000000L;

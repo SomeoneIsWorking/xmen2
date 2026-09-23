@@ -22,7 +22,6 @@ void guest_unlock(void);
  * only releases at syscalls cannot schedule two spinning threads.
  */
 void guest_quantum(void);
-void guest_quantum_configure(unsigned long crossings);
 void guest_quantum_from_env(void);
 unsigned long guest_quantum_size(void);
 unsigned long guest_quantum_count(void);

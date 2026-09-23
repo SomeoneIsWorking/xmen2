@@ -1797,6 +1797,7 @@ set(X2_NATIVE_SOURCES
     src/native/winmm.c
     src/native/thread_report.c
     src/native/threads.c
+    src/native/threads_quantum.c
     src/native/threads_ready.c
     src/native/threads_engine_report.c
     src/native/threads_yield.c

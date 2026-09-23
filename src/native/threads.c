@@ -59,8 +59,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <lucent/cvar_c.h>
-
 /* kernel32 owns the handle table and the TLS arrays; these are the hooks. */
 uint32_t k32_handle_for_thread(void *rec);
 void *k32_thread_record(uint32_t handle);
@@ -83,6 +81,9 @@ int k32_tls_slot_count(void);
 #define HSTACK_BYTES (8u * 1024u * 1024u)
 
 static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
+/* Records in g_thread that are used and not finished; see
+   guest_thread_others_live. */
+static _Atomic int g_live_threads;
 static __thread GuestThread *g_self;
 /* Declared in x86rt.h and naturally separated by the host pthreads. */
 extern __thread uint32_t g_fsbase, g_gsbase;
@@ -158,7 +159,6 @@ static _Atomic int g_waiters, g_cond_waiters;
 static unsigned long g_contended;
 static unsigned long g_switches; /* mutex hand-offs performed */
 static unsigned long g_quanta;   /* preemptions actually taken */
-static unsigned long g_quantum = 20000;
 static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
 static unsigned long g_resume_unknown, g_suspend_unknown, g_resume_noop;
 static uint32_t g_next_tid = 1000;
@@ -167,6 +167,9 @@ static void guest_suspend_point(void);
 int scheduler_has_waiter(void) {
   if (g_waiters)
     return 1;
+  if (!guest_thread_others_live(
+          atomic_load_explicit(&g_live_threads, memory_order_relaxed), g_self))
+    return 0;
   return guest_thread_any_ready(g_thread, MAX_THREADS + 1, g_self, now_s);
 }
 
@@ -182,6 +185,7 @@ static void sched_attach_main(void) {
   t->tid = MAIN_TID;
   t->state = TS_RUNNING;
   t->state_since = now_s();
+  atomic_fetch_add_explicit(&g_live_threads, 1, memory_order_relaxed);
   g_self = t;
   k32_tls_switch(MAIN_SLOT);
 }
@@ -233,28 +237,6 @@ void guest_quantum(void) {
   guest_yield_turn();
 }
 
-void guest_quantum_configure(unsigned long crossings) { g_quantum = crossings; }
-
-/*
- * X2_QUANTUM: boundary crossings between preemptions. 0 disables it, which is
- * the CONTROL -- a scheduling change has to be measured against a build where
- * the mechanism is off, or "it stopped happening" is not evidence.
- */
-void guest_quantum_from_env(void) {
-  const unsigned long v = (unsigned long)lucent_cvar_number("quantum", 20000);
-  if (!v) {
-    g_quantum = 0u - 1ul; /* effectively never */
-    x2_log_info("threads: X2_QUANTUM=0 -- preemption DISABLED. Two guest "
-                "threads that both spin cannot take turns; this is the control "
-                "for issue #57, not a configuration to run in.\n");
-    return;
-  }
-  g_quantum = v;
-  x2_log_info("threads: preemption quantum set to %lu boundary crossing(s).\n",
-              g_quantum);
-}
-
-unsigned long guest_quantum_size(void) { return g_quantum; }
 unsigned long guest_quantum_count(void) { return g_quanta; }
 
 /*
@@ -391,6 +373,7 @@ static void *thread_main(void *argument) {
   x2_engine_detach_thread();
 
   t->finished = 1;
+  atomic_fetch_sub_explicit(&g_live_threads, 1, memory_order_relaxed);
   t->state = TS_DONE;
   t->state_since = now_s();
   g_exited++;
@@ -474,6 +457,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
     return 0;
   }
   pthread_detach(t->thread);
+  atomic_fetch_add_explicit(&g_live_threads, 1, memory_order_relaxed);
 
   /*
    * The creator still holds the guest mutex, so the pthread cannot enter
@@ -678,6 +662,7 @@ void guest_thread_exit(uint32_t code) {
   }
   t->exit_code = code;
   t->finished = 1;
+  atomic_fetch_sub_explicit(&g_live_threads, 1, memory_order_relaxed);
   t->state = TS_DONE;
   g_exited++;
   k32_handle_thread_done(t);
@@ -703,6 +688,6 @@ void guest_thread_totals(GuestThreadTotals *out) {
   out->suspend_unknown = g_suspend_unknown;
   out->switches = g_switches;
   out->quanta = g_quanta;
-  out->quantum = g_quantum;
+  out->quantum = guest_quantum_size();
   out->contended = g_contended;
 }
