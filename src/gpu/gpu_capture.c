@@ -309,14 +309,15 @@ void gpu_capture_frame_complete(SDL_GPUDevice *device, int submitted) {
 }
 
 int gpu_capture_submit_frame(SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *command,
-                             int wait_without_capture, SDL_GPUTexture *rendered,
-                             SDL_GPUTexture *output, uint32_t width,
-                             uint32_t height) {
+                             SDL_GPUCommandBuffer *command, int windowless,
+                             SDL_GPUTexture *rendered, SDL_GPUTexture *output,
+                             uint32_t width, uint32_t height) {
   int recorded = gpu_capture_frame_record(device, command, rendered, output,
                                           width, height);
-  int submitted =
-      gpu_frame_submit(device, command, wait_without_capture || recorded);
+  const GpuFrameWait wait = recorded     ? kGpuFrameWaitComplete
+                            : windowless ? kGpuFrameWaitBounded
+                                         : kGpuFrameWaitNone;
+  int submitted = gpu_frame_submit(device, command, wait);
   gpu_capture_frame_complete(device, submitted);
   if (g_frame_observer)
     g_frame_observer();
@@ -326,6 +327,8 @@ int gpu_capture_submit_frame(SDL_GPUDevice *device,
 
 void gpu_capture_shutdown(void) {
 #ifdef X2_WITH_SDL
+  /* Frames this module submitted may still hold fences on the device. */
+  gpu_frame_submit_drain(g_gpu);
   if (g_gpu && g_capture_transfer)
     SDL_ReleaseGPUTransferBuffer(g_gpu, g_capture_transfer);
   if (g_gpu && g_capture_texture)

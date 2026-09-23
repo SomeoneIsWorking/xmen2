@@ -9,7 +9,7 @@ depends: src/gpu/gpu_upload.c#gpu_upload_stage, src/gpu/gpu_frame_submit.c#gpu_f
 
 ## Claim
 
-Windowless FMV playback no longer stalls from unbounded GPU upload allocation: resources retain cycled staging storage and headless frames apply completion backpressure
+Windowless FMV playback no longer stalls from unbounded GPU upload allocation: resources retain cycled staging storage and headless frames apply completion backpressure, bounded like a swapchain at kGpuFramesInFlight frames in flight
 
 ## Evidence
 

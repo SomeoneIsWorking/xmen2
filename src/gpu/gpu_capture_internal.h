@@ -26,10 +26,9 @@ void gpu_capture_frame_complete(SDL_GPUDevice *device, int submitted);
 
 /* Apply capture's fence requirement around the ordinary frame submit. */
 int gpu_capture_submit_frame(SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *command,
-                             int wait_without_capture, SDL_GPUTexture *rendered,
-                             SDL_GPUTexture *output, uint32_t width,
-                             uint32_t height);
+                             SDL_GPUCommandBuffer *command, int windowless,
+                             SDL_GPUTexture *rendered, SDL_GPUTexture *output,
+                             uint32_t width, uint32_t height);
 #endif
 
 #endif

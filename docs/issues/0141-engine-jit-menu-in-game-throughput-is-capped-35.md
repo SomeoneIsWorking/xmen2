@@ -481,3 +481,21 @@ Same windows as above, alternating binaries:
 - instruction-cache misses per frame fell from ~2.70M to ~2.51M;
 - cycles per frame are bimodal (~28M or ~42M) in both binaries, so no
   cycle figure is claimed.
+
+## Progress (2026-09-23) -- headless frames no longer serialise CPU and GPU
+
+`X2_HOTEP` showed windowless `Present` taking 1168 ms of a 5 s interval,
+about 3.6 ms per call. `gpu_frame_submit` waited for the frame it had just
+submitted, so the guest's CPU work never overlapped the GPU's. A windowless
+frame now waits for the frame submitted `kGpuFramesInFlight` frames earlier:
+the same bound a swapchain imposes by blocking acquisition. A captured frame
+still waits for its own completion.
+
+- `Present` fell to 0.18 ms per call.
+- Frames per 30 s window rose from 2644/3396 to 3651/5169 in paired runs.
+- Transfer-buffer allocations stay at 1.
+- Screenshots over the control channel still come back as distinct,
+  correct frames.
+
+This also removes the caveat that headless runs understate what a
+windowed run does, since windowed presentation already pipelined.
