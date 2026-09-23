@@ -554,8 +554,7 @@ removes the intercept call from 95.7% of block entries: `x86_engine_jit_run_stop
 declares that the intercept can fire only where the boundary predicate says or
 at the run's return address, blocks at boundary addresses are cached guarded,
 and host thunks are remembered in the front cache as "ask first" (best 122.0
--> 115.3 M cycles per frame, -5.5%; 209 -> 191 M instructions). The remaining
-lever inside dispatch is block chaining for constant successors.
+-> 115.3 M cycles per frame, -5.5%; 209 -> 191 M instructions).
 Classifying the samples inside translated code by instruction then found its
 largest single cost: every inline x87 result was stored as ten bytes and read
 back to compute its tag, a store that cannot forward to the narrower loads,
@@ -572,6 +571,11 @@ translated-code samples), and `55fae7b` replaces the per-operation FNSTCW
 host control-word read with a constant fixed at translation, which the x64
 ABI's callee-saved control word makes sound within a run and the engine
 re-checks at run entry (best 83.3 -> 78.9 M cycles per frame, -5.3%).
+x86port `67807ff` chains translated blocks: each exit keeps an inline cache
+of the successor it last left for and jumps into it without returning to the
+dispatcher, still honoring the run's stop address and step budget, and any
+invalidation unlinks every slot (best 80.0 -> 67.2 M cycles per frame, -16%;
+170 -> 150 M instructions, three alternating pairs).
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
