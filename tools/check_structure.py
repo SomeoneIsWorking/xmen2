@@ -23,10 +23,10 @@ LEGACY_LIMITS = {
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
     "src/native/x2native.c": 2329,            # was 2152
     "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
-    "src/d3d8/d3d8_device.c": 1744,           # was 1640
+    "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
     "src/gpu/gpu_draw.c": 1369,               # was 1250
-    "src/d3d8/d3d8_report.c": 1530,           # was 1395
+    "src/d3d8/d3d8_report.c": 1514,           # vtable call -> d3d8_selftest_call.c
     "src/native/threads.c": 717,              # was 1070, then 842; the reports -> thread_report.c
     "src/gpu/gpu_device.c": 818,              # was 841
     "src/d3d8/d3d8_resource.c": 1050,         # was 924

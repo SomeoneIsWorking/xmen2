@@ -18,6 +18,7 @@
 #include "d3d8_caps.h"
 #include "d3d8_com.h"
 #include "d3d8_device.h"
+#include "d3d8_device_bindings.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_host.h"
 #include "d3d8_lightlog.h"
@@ -127,32 +128,6 @@ void *d3d8_guest_ptr(uint32_t a, const char *what) {
     return NULL;
   }
   return guest_memory_pointer(a);
-}
-
-/*
- * The device holds a REFERENCE on whatever is bound to it.
- *
- * D3D8 does, and it is not bookkeeping: the engine creates an index buffer per
- * mesh, binds it, draws, and releases it, expecting the device's own reference
- * to keep it alive until something else is bound. Without that reference the
- * release takes the object to zero, this host retires it and destroys its GPU
- * buffer -- and the still-bound guest pointer then resolves to a RECYCLED gpu
- * slot holding somebody else's, smaller, buffer. That is issue #38: a draw
- * asking for 204 indices out of a 152-byte buffer, one per frame, which was
- * the game's missing caption.
- *
- * Order matters: addref the new one BEFORE releasing the old, or binding a
- * resource to itself frees it.
- */
-static void bind_ref(uint32_t *slot, uint32_t next) {
-  D3D8Object *o;
-  if (*slot == next)
-    return;
-  if (next && (o = d3d8_object_from_guest(next)) != NULL)
-    d3d8_object_addref(o);
-  if (*slot && (o = d3d8_object_from_guest(*slot)) != NULL)
-    d3d8_object_release(o);
-  *slot = next;
 }
 
 /* ---- IUnknown ---------------------------------------------------------- */
@@ -517,40 +492,15 @@ static void dev_CreateStateBlock(D3D8Object *self, CPU *C) {
 }
 
 static void dev_ApplyStateBlock(D3D8Object *self, CPU *C) {
-  /* Issue #38: the engine creates, applies and deletes exactly one block per
-     frame, and exactly one draw per frame runs off the end of its index
-     buffer. Whether Apply is what MOVES the index binding is the question,
-     so the binding is printed on both sides of it. Capped: the answer is in
-     the first frames or it is nowhere. */
   /* A block replaces the bindings wholesale, so the device's references have
-     to follow it: the same invariant bind_ref keeps, re-established after
-     the copy rather than during it. */
-  uint32_t old_idx = g_dev.state.indices;
-  uint32_t old_str[D3D8_MAX_STREAMS], old_tex[D3D8_MAX_STAGES];
-  unsigned i;
+     to follow it. */
+  D3D8BoundObjects before;
   int ok;
   (void)self;
-  for (i = 0; i < D3D8_MAX_STREAMS; i++)
-    old_str[i] = g_dev.state.stream[i].guest_ptr;
-  for (i = 0; i < D3D8_MAX_STAGES; i++)
-    old_tex[i] = g_dev.state.texture[i];
+  d3d8_bound_objects_snapshot(&before, &g_dev.state);
   ok = d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state);
-  if (ok) {
-    uint32_t nw;
-    nw = g_dev.state.indices;
-    g_dev.state.indices = old_idx;
-    bind_ref(&g_dev.state.indices, nw);
-    for (i = 0; i < D3D8_MAX_STREAMS; i++) {
-      nw = g_dev.state.stream[i].guest_ptr;
-      g_dev.state.stream[i].guest_ptr = old_str[i];
-      bind_ref(&g_dev.state.stream[i].guest_ptr, nw);
-    }
-    for (i = 0; i < D3D8_MAX_STAGES; i++) {
-      nw = g_dev.state.texture[i];
-      g_dev.state.texture[i] = old_tex[i];
-      bind_ref(&g_dev.state.texture[i], nw);
-    }
-  }
+  if (ok)
+    d3d8_bound_objects_follow(&g_dev.state, &before);
   d3d8_ret(C, ok ? D3D_OK : D3DERR_INVALIDCALL);
 }
 
@@ -790,59 +740,6 @@ static void dev_CreateIndexBuffer(D3D8Object *self, CPU *C) {
 }
 
 /* ---- what is bound ----------------------------------------------------- */
-
-static void dev_SetTexture(D3D8Object *self, CPU *C) {
-  uint32_t stage = d3d8_arg(C, 0), tex = d3d8_arg(C, 1);
-  (void)self;
-  if (stage >= D3D8_MAX_STAGES) {
-    d3d8_ret(C, D3DERR_INVALIDCALL);
-    return;
-  }
-  if (tex && !d3d8_object_from_guest(tex)) {
-    x2_log_error("d3d8: SetTexture(%u, 0x%08x) -- that is not a texture "
-                 "this host made.\n",
-                 stage, tex);
-    d3d8_ret(C, D3DERR_INVALIDCALL);
-    return;
-  }
-  bind_ref(&g_dev.state.texture[stage], tex);
-  d3d8_ret(C, D3D_OK);
-}
-
-static void dev_SetStreamSource(D3D8Object *self, CPU *C) {
-  uint32_t stream = d3d8_arg(C, 0), buf = d3d8_arg(C, 1);
-  uint32_t stride = d3d8_arg(C, 2);
-  (void)self;
-  if (stream >= D3D8_MAX_STREAMS) {
-    d3d8_ret(C, D3DERR_INVALIDCALL);
-    return;
-  }
-  if (buf && !d3d8_object_from_guest(buf)) {
-    x2_log_error("d3d8: SetStreamSource was given 0x%08x, which is not "
-                 "a buffer this host made.\n",
-                 buf);
-    d3d8_ret(C, D3DERR_INVALIDCALL);
-    return;
-  }
-  bind_ref(&g_dev.state.stream[stream].guest_ptr, buf);
-  g_dev.state.stream[stream].stride = stride;
-  d3d8_ret(C, D3D_OK);
-}
-
-static void dev_SetIndices(D3D8Object *self, CPU *C) {
-  uint32_t buf = d3d8_arg(C, 0), base = d3d8_arg(C, 1);
-  (void)self;
-  if (buf && !d3d8_object_from_guest(buf)) {
-    x2_log_error("d3d8: SetIndices was given 0x%08x, which is not a "
-                 "buffer this host made.\n",
-                 buf);
-    d3d8_ret(C, D3DERR_INVALIDCALL);
-    return;
-  }
-  bind_ref(&g_dev.state.indices, buf);
-  g_dev.state.base_vertex_index = base;
-  d3d8_ret(C, D3D_OK);
-}
 
 /*
  * Every DISTINCT value SetVertexShader is handed, with its count.
@@ -1567,7 +1464,7 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                           /* 58 SetClipStatus */
     NULL,                           /* 59 GetClipStatus */
     NULL,                           /* 60 GetTexture */
-    dev_SetTexture,                 /* 61 */
+    d3d8_dev_SetTexture,            /* 61 */
     dev_GetTextureStageState,       /* 62 */
     dev_SetTextureStageState,       /* 63 */
     dev_ValidateDevice,             /* 64 */
@@ -1589,9 +1486,9 @@ static const D3D8MethodFn g_impl[] = {
     dev_GetVertexShaderConstant,    /* 80 */
     dev_GetVertexShaderDeclaration, /* 81 */
     dev_GetVertexShaderFunction,    /* 82 */
-    dev_SetStreamSource,            /* 83 */
+    d3d8_dev_SetStreamSource,       /* 83 */
     NULL,                           /* 84 GetStreamSource */
-    dev_SetIndices,                 /* 85 */
+    d3d8_dev_SetIndices,            /* 85 */
     NULL,                           /* 86 GetIndices */
     NULL,                           /* 87 CreatePixelShader */
     dev_SetPixelShader,             /* 88 */

@@ -1836,6 +1836,9 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vs_decode.cpp
     src/d3d8/d3d8_vs_execute.cpp
     src/d3d8/d3d8_screen_space_test.c
+    src/d3d8/d3d8_device_bindings.c
+    src/d3d8/d3d8_binding_selftest.c
+    src/d3d8/d3d8_selftest_call.c
     src/d3d8/d3d8_light_selftest.c
     src/d3d8/d3d8_host_report.c
     src/d3d8/d3d8_report.c

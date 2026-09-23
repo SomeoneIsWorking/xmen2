@@ -2,6 +2,7 @@
 #include "../native/x2_log.h"
 
 #include "d3d8_device.h"
+#include "d3d8_selftest_call.h"
 #include "d3d8_types.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -28,7 +29,7 @@ void d3d8_light_selftest_configure(D3D8State *state) {
   state->light_on[CONTROL_LIGHT_INDEX] = 1;
 }
 
-int d3d8_light_selftest(D3D8SelftestCall call) {
+int d3d8_light_selftest(void) {
   D3D8Object *device;
   uint32_t args[2], light_address;
   float *light, retained[3];
@@ -65,7 +66,7 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
 
   args[0] = CONTROL_LIGHT_INDEX;
   args[1] = light_address;
-  result = call(device, 44, args, 2); /* SetLight */
+  result = d3d8_selftest_call(device, 44, args, 2); /* SetLight */
   if (result != D3D_OK ||
       !d3d8_last_setlight_diffuse(CONTROL_LIGHT_INDEX, retained) ||
       retained[0] != light[1] || retained[1] != light[2] ||
@@ -78,7 +79,7 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
 
   args[0] = CONTROL_LIGHT_INDEX;
   args[1] = 1;
-  result = call(device, 46, args, 2); /* LightEnable */
+  result = d3d8_selftest_call(device, 46, args, 2); /* LightEnable */
   if (result != D3D_OK) {
     x2_log_info("d3d8 light-slot selftest: FAILED -- LightEnable(51, TRUE) "
                 "returned 0x%08x, not D3D_OK.\n",
