@@ -1,15 +1,16 @@
 #include "x86_engine.h"
 
 #include "guest_memory.h"
+#include "override_leaf.h"
 #include "platform_mman.h"
 #include "x2_log.h"
 #include "x86_engine_diagnostic.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
 #include "x86_engine_jit_pool.h"
-#include "x86_engine_x87_census.h"
 #include "x86_engine_private.h"
 #include "x86_engine_report.h"
+#include "x86_engine_x87_census.h"
 #include "x86_guest_call_stack.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -174,6 +175,7 @@ void x2_engine_note_callout(void) { g_engine.callouts++; }
 
 int x2_engine_call(uint32_t addr, CPU *C) {
   X86pCpu *cpu = C;
+  x86_override_leaf_forbid("called guest code");
   /*
    * volatile because this frame takes a host setjmp below, and a longjmp
    * back into it leaves every non-volatile local indeterminate. `cpu` points

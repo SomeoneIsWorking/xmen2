@@ -1044,6 +1044,13 @@ target_include_directories(test_vertex_builder PRIVATE src/native src/runtime/x8
 target_compile_definitions(test_vertex_builder PRIVATE X86_NATIVE)
 add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
+add_executable(test_override_leaf tests/test_override_leaf.c
+               src/native/override_leaf.c src/native/guest_memory.c)
+target_include_directories(test_override_leaf PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_override_leaf PRIVATE X86_NATIVE)
+target_link_libraries(test_override_leaf PRIVATE x86port_runtime lucent::lucent)
+add_test(NAME override_leaf COMMAND test_override_leaf)
+
 add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
                src/native/x86_import_fastpath.c src/native/guest_memory.c
                src/native/guest_clock.c tests/native_stubs.c)
@@ -1802,6 +1809,7 @@ set(X2_NATIVE_SOURCES
     src/native/threads_ready.c
     src/native/threads_engine_report.c
     src/native/threads_yield.c
+    src/native/threads_memory.c
     src/native/x86_hotep.c
     src/native/x86_thunk_probe.c
     src/native/run_reports.c
@@ -1829,6 +1837,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_stateblock.c
     src/d3d8/d3d8_d3d8.c
     src/d3d8/d3d8_device.c
+    src/d3d8/d3d8_leaf_methods.c
     src/d3d8/d3d8_device_lights.c
     src/d3d8/d3d8_live_resolution.c
     src/d3d8/d3d8_selector_probe.c

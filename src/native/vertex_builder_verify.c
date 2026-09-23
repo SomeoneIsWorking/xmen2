@@ -25,16 +25,18 @@ enum {
   SELF_DST_UV = 0x30u,
 };
 
-static int verify_enabled(void) {
-  static int cached = -1;
-  if (cached < 0)
-    cached = lucent_cvar_flag("gfx.vtx_builder_verify", 0) ? 1 : 0;
-  return cached;
+/* -1 until first asked, then the cvar's answer. */
+static int s_verify = -1;
+
+int vtx_builder_verifying(void) {
+  if (s_verify < 0)
+    s_verify = lucent_cvar_flag("gfx.vtx_builder_verify", 0) ? 1 : 0;
+  return s_verify;
 }
 
 void vtx_builder_verify_begin(VtxBuilderVerify *v, uint32_t self) {
   memset(v, 0, sizeof *v);
-  if (!verify_enabled())
+  if (!vtx_builder_verifying())
     return;
 
   v->active = 1;

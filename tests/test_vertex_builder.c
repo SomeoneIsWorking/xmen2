@@ -4,6 +4,7 @@
 #include "vertex_builder.h"
 
 #include "guest_memory.h"
+#include "override_leaf.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -12,7 +13,25 @@
 #include <string.h>
 #include <sys/mman.h>
 
+static unsigned failures;
+
 int native_stubs_registered(const char *module, uint32_t linked_ep);
+x86_override_leaf_fn native_stubs_leaf(const char *module, uint32_t linked_ep);
+
+/* The override and its leaf share one append; every case runs through each,
+   and the leaf must complete every call, since verification is off. */
+static int s_use_leaf;
+
+static void add_vertex(CPU *c) {
+  if (!s_use_leaf) {
+    x2_override_005840a0(c);
+  } else if (!x2_vertex_builder_leaf(c)) {
+    fprintf(stderr, "the leaf declined with verification off\n");
+    failures++;
+  }
+}
+
+int vtx_builder_verifying(void) { return 0; }
 
 void vtx_builder_verify_begin(VtxBuilderVerify *v, uint32_t self) {
   (void)self;
@@ -35,8 +54,6 @@ enum {
   COL_DST = ARENA + 0x3000u,
   UV_DST = ARENA + 0x4000u,
 };
-
-static unsigned failures;
 
 static void setup_builder(uint32_t cap, uint32_t c14, uint32_t count,
                           int32_t has_uv) {
@@ -71,7 +88,7 @@ static void test_add_vertex_with_uv(void) {
   WR32(STACK + 8u, UV_SRC);
   WR32(STACK + 12u, 0xff00ff00u); /* col */
 
-  x2_override_005840a0(&c);
+  add_vertex(&c);
 
   if (c.reg[kX86pEsp] != STACK + 16u) {
     fprintf(stderr, "esp = %08x, want %08x (ret 0xc)\n", c.reg[kX86pEsp],
@@ -125,7 +142,7 @@ static void test_add_vertex_no_uv(void) {
   WR32(STACK + 8u, UV_SRC);
   WR32(STACK + 12u, 0x12345678u);
 
-  x2_override_005840a0(&c);
+  add_vertex(&c);
 
   if (RD32(SELF + 0x20u) != 6u) {
     fprintf(stderr, "count = %u, want 6\n", RD32(SELF + 0x20u));
@@ -153,7 +170,7 @@ static void test_capacity_limit(void) {
   WR32(STACK + 8u, UV_SRC);
   WR32(STACK + 12u, 0x12345678u);
 
-  x2_override_005840a0(&c);
+  add_vertex(&c);
 
   if (c.reg[kX86pEsp] != STACK + 16u) {
     fprintf(stderr, "esp not cleaned on cap limit\n");
@@ -176,9 +193,15 @@ int main(void) {
     return 1;
   }
 
-  test_add_vertex_with_uv();
-  test_add_vertex_no_uv();
-  test_capacity_limit();
+  for (s_use_leaf = 0; s_use_leaf < 2; s_use_leaf++) {
+    test_add_vertex_with_uv();
+    test_add_vertex_no_uv();
+    test_capacity_limit();
+  }
+  if (native_stubs_leaf("XMen2.exe", 0x005840a0u) != x2_vertex_builder_leaf) {
+    fprintf(stderr, "constructor did not register the leaf\n");
+    failures++;
+  }
 
   if (!native_stubs_registered("XMen2.exe", 0x005840a0u)) {
     fprintf(stderr, "constructor did not register 0x005840a0\n");

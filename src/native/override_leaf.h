@@ -33,7 +33,19 @@ typedef int (*x86_override_leaf_fn)(CPU *C);
 void x86_register_override_leaf(const char *module, uint32_t linked_ep,
                                 x86_override_leaf_fn leaf);
 
-/* x86port's leaf resolver: the leaf for a direct CALL to mapped `target`. */
+/* Declare the bound thunk at `thunk` leaf-safe: its whole dispatch, stub
+   included, completes the call without running guest code or releasing the
+   guest lock. Its owner promises that; x86_override_leaf_forbid enforces it.
+   The leaf-safe import fast-path handlers need no registration. */
+void x86_register_thunk_leaf(uint32_t thunk);
+
+/* The contract guard: aborts, naming the leaf and `what` it attempted, when
+   this thread is running a leaf. Called where guest execution begins and
+   where the guest lock is released. */
+void x86_override_leaf_forbid(const char *what);
+
+/* x86port's leaf resolver: the leaf for a CALL to mapped `target`, a direct
+   one while translating or one through a register or memory at run time. */
 X86pJitLeafFn x86_override_leaf_at(uint32_t target, void *user);
 
 /* Install the resolver on `jit` unless `jit.leaves=0` or the stack check is

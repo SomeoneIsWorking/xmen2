@@ -27,7 +27,7 @@ LEGACY_LIMITS = {
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1514,           # vtable call -> d3d8_selftest_call.c
-    "src/native/threads.c": 694,              # was 1070, 842, 717; reports -> thread_report.c, quantum -> threads_quantum.c
+    "src/native/threads.c": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.c
     "src/gpu/gpu_device.c": 760,              # pass attachments -> gpu_pass_attachments.c
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
     "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c

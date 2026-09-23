@@ -38,6 +38,11 @@ int x86_import_fastpath_register(const char *mod, const char *sym,
 int x86_import_fastpath_register_at(uint32_t addr,
                                     X86ImportFastpathHandler handler);
 
+/* Whether the handler for thunk `addr` may run as a JIT leaf, called through
+   x86_import_fastpath_dispatch from inside a translated block: it never runs
+   guest code or releases the guest lock. 0 while the fast path is disabled. */
+int x86_import_fastpath_leaf_safe(uint32_t addr);
+
 #ifdef __cplusplus
 }
 #endif

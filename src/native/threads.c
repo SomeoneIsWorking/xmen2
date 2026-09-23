@@ -39,11 +39,12 @@
  *     guest execution runs on.
  */
 #include "guest_clock.h"
-#include "guest_heap.h"
 #include "guest_memory.h"
+#include "override_leaf.h"
 #include "pe_map.h"
 #include "threads.h"
 #include "threads_internal.h"
+#include "threads_memory.h"
 #include "threads_ready.h"
 #include "threads_yield.h"
 #include "x86_engine.h"
@@ -65,8 +66,6 @@ void *k32_thread_record(uint32_t handle);
 unsigned k32_thread_handle_count(void *rec);
 void k32_handle_thread_done(void *rec);
 void k32_tls_switch(int slot);
-uint32_t k32_tls_peek(int slot, uint32_t index);
-int k32_tls_slot_count(void);
 /* ---- what each guest thread is doing ------------------------------------ */
 
 #define MAIN_SLOT MAX_THREADS /* the main thread's TLS slot */
@@ -75,9 +74,6 @@ int k32_tls_slot_count(void);
 #error                                                                         \
     "MAIN_SLOT and GUEST_MAIN_TLS_SLOT disagree; kernel32 would give the main thread the wrong TLS"
 #endif
-#define TIB_BYTES 0x1000u
-#define STACK_DEFAULT (256u * 1024u)
-
 #define HSTACK_BYTES (8u * 1024u * 1024u)
 
 static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
@@ -213,6 +209,7 @@ void guest_lock(void) {
 void guest_unlock(void) {
   if (!g_self || g_self->depth <= 0)
     return;
+  x86_override_leaf_forbid("released the guest lock");
   if (--g_self->depth == 0)
     pthread_mutex_unlock(&g_lock);
 }
@@ -273,6 +270,7 @@ void guest_cond_wait_ms(uint32_t ms) {
     sched_attach_main();
     t = g_self;
   }
+  x86_override_leaf_forbid("waited, releasing the guest lock");
   guest_thread_enter_cond_wait(t, ms, now_s());
   state_set(TS_COND);
   g_switches++;
@@ -411,21 +409,8 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   }
   memset(t, 0, sizeof *t);
   t->slot = i;
-  t->stack_bytes =
-      stack_bytes ? ((stack_bytes + 0xFFFu) & ~0xFFFu) : STACK_DEFAULT;
-  t->stack_base = guest_malloc(t->stack_bytes);
-  t->tib = guest_malloc(TIB_BYTES);
-  if (!t->stack_base || !t->tib) {
-    x2_log_error("threads: no guest memory for a %u-byte stack and a "
-                 "TIB; the thread is NOT created and the caller is told "
-                 "so.\n",
-                 t->stack_bytes);
-    if (t->stack_base)
-      guest_free(t->stack_base);
-    if (t->tib)
-      guest_free(t->tib);
+  if (!guest_thread_memory_alloc(t, stack_bytes))
     return 0;
-  }
   t->used = 1;
   /* Stamped at creation, not at the first state change: a thread that has
      not run yet reported its age as the process uptime -- 8,989 seconds on
@@ -452,8 +437,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
                  "told the thread could not be created.\n",
                  strerror(result));
     t->used = 0;
-    guest_free(t->stack_base);
-    guest_free(t->tib);
+    guest_thread_memory_free(t);
     return 0;
   }
   pthread_detach(t->thread);
@@ -502,11 +486,7 @@ void guest_thread_handle_closed(uint32_t handle) {
       /* This call happens before kernel32 clears the closing alias, so
          one means it is the LAST open handle to this thread object. */
       if (k32_thread_handle_count(t) == 1) {
-        if (t->stack_base)
-          guest_free(t->stack_base);
-        if (t->tib)
-          guest_free(t->tib);
-        t->stack_base = t->tib = 0;
+        guest_thread_memory_free(t);
         t->reaped = 1;
         t->used = 0; /* slot is free for the next thread */
         g_reaped++;

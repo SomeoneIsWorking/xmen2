@@ -6,6 +6,7 @@
  */
 #include "vertex_builder.h"
 
+#include "override_leaf.h"
 #include "x86rt_native.h"
 
 #include <stdint.h>
@@ -24,14 +25,12 @@ enum {
   SELF_STRIDE_UV = 0x80u,
 };
 
-void x2_override_005840a0(CPU *C) {
+/* The body up to its RET: EAX and the builder, not ESP. */
+static void append(CPU *C) {
   const uint32_t self = C->reg[kX86pEcx];
   const uint32_t pos_ptr = RD32(C->reg[kX86pEsp] + 4u);
   const uint32_t uv_ptr = RD32(C->reg[kX86pEsp] + 8u);
   const uint32_t col = RD32(C->reg[kX86pEsp] + 12u);
-
-  VtxBuilderVerify v;
-  vtx_builder_verify_begin(&v, self);
 
   const uint32_t c14 = RD32(self + SELF_C14);
   const uint32_t count = RD32(self + SELF_COUNT);
@@ -39,8 +38,6 @@ void x2_override_005840a0(CPU *C) {
 
   if ((int32_t)(c14 + count + 1u) >= (int32_t)cap) {
     C->reg[kX86pEax] = count;
-    vtx_builder_verify_end(C, &v, self);
-    C->reg[kX86pEsp] += 16u;
     return;
   }
 
@@ -99,12 +96,26 @@ void x2_override_005840a0(CPU *C) {
       C->reg[kX86pEax] = (uint32_t)has_uv;
     }
   }
+}
 
+void x2_override_005840a0(CPU *C) {
+  const uint32_t self = C->reg[kX86pEcx];
+  VtxBuilderVerify v;
+  vtx_builder_verify_begin(&v, self);
+  append(C);
   vtx_builder_verify_end(C, &v, self);
-
   C->reg[kX86pEsp] += 16u; /* ret $0xc: pop return address and 3 dword args */
+}
+
+int x2_vertex_builder_leaf(CPU *C) {
+  if (vtx_builder_verifying())
+    return 0;
+  append(C);
+  C->reg[kX86pEsp] += 16u;
+  return 1;
 }
 
 __attribute__((constructor)) static void vertex_builder_register(void) {
   x86_register_override("XMen2.exe", 0x005840a0u, x2_override_005840a0);
+  x86_register_override_leaf("XMen2.exe", 0x005840a0u, x2_vertex_builder_leaf);
 }

@@ -404,3 +404,39 @@ probe inlined in `run_host_at`, so the real before is somewhat lower. The
 Still hand-backs: indirect CALLs (IAT and vtable) -- the vertex builder
 `0x005840a0` (6.1M), `igMatrix44f::multiply` (2.7M) and the import thunks.
 x86port's leaf resolver covers direct CALL only.
+
+## Progress (2026-09-23) -- indirect CALLs complete in place through leaf sites
+
+x86port `c3eacff` gives each CALL through a register or memory a leaf site: the
+target it last called and that target's leaf, refilled at most four times.
+The consumer's resolver now also answers import thunks: the D3D8 methods named
+in `src/d3d8/d3d8_leaf_methods.c` and the leaf-safe fast-path imports
+(`x86_import_fastpath_leaf_safe`; QueryPerformanceCounter is excluded because
+its timer pump can run guest callbacks). The vertex builder and
+`igMatrix44f::multiply` gained leaves. A per-thread guard in
+`override_leaf.c` aborts, naming the leaf, if one calls guest code
+(`x2_engine_call`), releases the guest lock (`guest_unlock`) or waits
+(`guest_cond_wait_ms`); `tests/test_override_leaf.c` proves it fires.
+
+In the same Dead Zone scene:
+
+- 13.4M D3D8 method calls were completed in place. SetTextureStageState
+  accounted for 4.8M of them.
+- The vertex builder completed 6.5M calls in place, and matrix multiply 2.7M,
+  both of every call offered.
+- 18,196 indirect CALL sites were translated with a site, and 525 used up
+  their refills.
+- The hand-back symbols fell from 1.3% to 0.74% of process samples.
+- Frames per 5 s rose from ~555 to 563-595 across two runs, at the same
+  ~297 draws per frame. Cross-run numbers are scene noise at this size, so
+  the completed-call counts are the evidence.
+
+At first no fast-path import took a leaf; the thunk report named only the
+D3D8 methods. A scan of the retail images showed why: every module reaches
+`_ftol` and `_CIfmod` by a direct CALL to the linker's `JMP [IAT]` stub. It
+finds 0 `CALL [IAT]` sites, and one stub per module with 1-176 direct CALLs
+to it. The resolver now answers such a stub with the leaf of the thunk its
+slot holds. The leaf re-reads the stub and the slot on every call. In the
+next run `_ftol` completed 6.2M calls in place and `_stricmp` 1.3M, 23.8M
+thunk calls in all. The hand-back symbols fell to 0.59%. The rest of `x86p_jit_engine_run`'s self time is
+block-table lookups.

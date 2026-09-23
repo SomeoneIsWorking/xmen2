@@ -26,6 +26,7 @@
 
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "override_leaf.h"
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -99,7 +100,9 @@ static void verify_or_abort(const CPU *C, const CPU *native,
   }
 }
 
-void x2_override_10019520(CPU *C) {
+/* The whole call, RET included, where the native answer is exact; 0, having
+   changed nothing, where the guest body must run. */
+static int multiply_native(CPU *C) {
   const uint32_t esp = C->reg[kX86pEsp];
   const uint32_t self = C->reg[kX86pEcx];
   const uint32_t a = RD32(esp + 4u);
@@ -107,8 +110,7 @@ void x2_override_10019520(CPU *C) {
   const int aliased = self == a || self == b;
   if (!enabled() || !x87_exact_for_guest(&C->x87, MULTIPLY_PUSHES) ||
       (!aliased && (overlaps(self, a) || overlaps(self, b)))) {
-    x86_guest_body(C, LIBIGMATH, MULTIPLY_EP);
-    return;
+    return 0;
   }
   float ma[16];
   float mb[16];
@@ -136,8 +138,21 @@ void x2_override_10019520(CPU *C) {
   C->reg[kX86pEax] = native.reg[kX86pEax];
   C->reg[kX86pEdx] = native.reg[kX86pEdx];
   C->reg[kX86pEsp] = native.reg[kX86pEsp];
+  return 1;
+}
+
+void x2_override_10019520(CPU *C) {
+  if (!multiply_native(C)) {
+    x86_guest_body(C, LIBIGMATH, MULTIPLY_EP);
+  }
+}
+
+/* Declined while math.matrix_verify runs the guest body after each answer. */
+static int multiply_leaf(CPU *C) {
+  return enabled() && !s_verify && multiply_native(C);
 }
 
 __attribute__((constructor)) static void ig_matrix_register_overrides(void) {
   x86_register_override("libIGMath.dll", MULTIPLY_EP, x2_override_10019520);
+  x86_register_override_leaf("libIGMath.dll", MULTIPLY_EP, multiply_leaf);
 }

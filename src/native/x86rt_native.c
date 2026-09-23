@@ -285,7 +285,6 @@ void x86_overrides_resolve(void) {
               g_noverride);
 }
 
-static int thunk_call(uint32_t addr, CPU *C);
 static FILE *g_sc_out;
 static int g_sc_armed;
 static unsigned long g_sc_records;
@@ -714,7 +713,7 @@ int x86_native_call_at(uint32_t addr, CPU *C) {
         g_trig[i].active = 0;
       }
   }
-  if (thunk_call(addr, C))
+  if (x86_native_thunk_call(addr, C))
     return 1;
   /* A native override shadows ordinary guest execution. Checked before module
      lookup so the override path skips the find() scan and the epcount/ring
@@ -1018,7 +1017,7 @@ const char *x86_thunk_name(uint32_t addr, const char **mod) {
   return g_thunk[i].sym;
 }
 
-static int thunk_call(uint32_t addr, CPU *C) {
+int x86_native_thunk_call(uint32_t addr, CPU *C) {
   uint32_t i, in;
   if (addr < THUNK_BASE || addr >= THUNK_BASE + (uint32_t)THUNK_MAX * 16u)
     return 0;

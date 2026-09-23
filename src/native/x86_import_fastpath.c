@@ -29,6 +29,9 @@
 uint32_t k32_tls_get_value(uint32_t index);
 
 static X86ImportFastpathHandler s_import_handlers[THUNK_MAX];
+/* Handlers that may also run as JIT leaves (override_leaf.h): they touch only
+   the CPU, guest memory and host state that runs no guest code. */
+static uint8_t s_import_leaf_safe[THUNK_MAX];
 static int s_imports_initialized = 0;
 static int s_import_fastpath_enabled = 1;
 
@@ -166,29 +169,44 @@ int x86_import_fastpath_register(const char *mod, const char *sym,
   return x86_import_fastpath_register_at(addr, handler);
 }
 
+static void register_leaf(const char *mod, const char *sym,
+                          X86ImportFastpathHandler handler) {
+  const uint32_t addr = x86_native_thunk(mod, sym);
+  if (addr && x86_import_fastpath_register_at(addr, handler))
+    s_import_leaf_safe[(addr - THUNK_BASE) >> 4] = 1;
+}
+
+int x86_import_fastpath_leaf_safe(uint32_t addr) {
+  if (!s_imports_initialized)
+    x86_import_fastpath_init();
+  if (!s_import_fastpath_enabled || !x86_is_thunk(addr))
+    return 0;
+  const uint32_t idx = (addr - THUNK_BASE) >> 4;
+  return s_import_handlers[idx] != NULL && s_import_leaf_safe[idx];
+}
+
 void x86_import_fastpath_init(void) {
   if (s_imports_initialized)
     return;
   s_imports_initialized = 1;
 
-  x86_import_fastpath_register("MSVCR71.DLL", "_ftol", import_ftol);
-  x86_import_fastpath_register("MSVCRT.DLL", "_ftol", import_ftol);
-  x86_import_fastpath_register("MSVCR71.DLL", "_stricmp", import_stricmp);
-  x86_import_fastpath_register("MSVCRT.DLL", "_stricmp", import_stricmp);
-  x86_import_fastpath_register("MSVCR71.DLL", "_strcmpi", import_stricmp);
-  x86_import_fastpath_register("MSVCRT.DLL", "_strcmpi", import_stricmp);
+  register_leaf("MSVCR71.DLL", "_ftol", import_ftol);
+  register_leaf("MSVCRT.DLL", "_ftol", import_ftol);
+  register_leaf("MSVCR71.DLL", "_stricmp", import_stricmp);
+  register_leaf("MSVCRT.DLL", "_stricmp", import_stricmp);
+  register_leaf("MSVCR71.DLL", "_strcmpi", import_stricmp);
+  register_leaf("MSVCRT.DLL", "_strcmpi", import_stricmp);
+  /* Not a leaf: pumping the winmm timers can run a guest timer callback. */
   x86_import_fastpath_register("KERNEL32.DLL", "QueryPerformanceCounter",
                                import_qpc);
-  x86_import_fastpath_register("KERNEL32.DLL", "QueryPerformanceFrequency",
-                               import_qpf);
-  x86_import_fastpath_register("MSVCR71.DLL", "toupper", import_toupper);
-  x86_import_fastpath_register("MSVCRT.DLL", "toupper", import_toupper);
-  x86_import_fastpath_register("MSVCR71.DLL", "tolower", import_tolower);
-  x86_import_fastpath_register("MSVCRT.DLL", "tolower", import_tolower);
-  x86_import_fastpath_register("MSVCR71.DLL", "strstr", import_strstr);
-  x86_import_fastpath_register("MSVCRT.DLL", "strstr", import_strstr);
-  x86_import_fastpath_register("KERNEL32.DLL", "TlsGetValue",
-                               import_tls_get_value);
+  register_leaf("KERNEL32.DLL", "QueryPerformanceFrequency", import_qpf);
+  register_leaf("MSVCR71.DLL", "toupper", import_toupper);
+  register_leaf("MSVCRT.DLL", "toupper", import_toupper);
+  register_leaf("MSVCR71.DLL", "tolower", import_tolower);
+  register_leaf("MSVCRT.DLL", "tolower", import_tolower);
+  register_leaf("MSVCR71.DLL", "strstr", import_strstr);
+  register_leaf("MSVCRT.DLL", "strstr", import_strstr);
+  register_leaf("KERNEL32.DLL", "TlsGetValue", import_tls_get_value);
 
 #if !defined(TEST_SUITE)
   s_import_fastpath_enabled =

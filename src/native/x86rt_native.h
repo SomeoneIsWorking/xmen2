@@ -128,6 +128,9 @@ X86Module *x86_modules(void);
  * an intentionally unmapped placeholder for an import that could not bind. */
 const char *x86_thunk_name(uint32_t addr, const char **module_out);
 const char *x86_poison_name(uint32_t addr, const char **module_out);
+/* Run the thunk at `addr` as the dispatcher does -- its stub pops its own
+   arguments and the return address. 0 when `addr` is no bound thunk. */
+int x86_native_thunk_call(uint32_t addr, struct X86pCpu *C);
 
 /* Run `fn` when the guest calls `addr`, before the body, RETRYING on every
    call until it returns non-zero. Used to act at a moment during the run --

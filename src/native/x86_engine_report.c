@@ -349,6 +349,19 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         100.0 * (double)js.exits_backward / (double)js.exits,
         (unsigned long long)js.exits_self,
         100.0 * (double)js.exits_self / (double)js.exits);
+  /* Leaves: direct CALLs translated to call one, and CALLs through a register
+     or memory given a site that asks for one at run time. Zero sites with
+     leaves installed is a translator that never reached an indirect CALL. */
+  lucent_log_info(
+      "engine",
+      "JIT leaves: %llu direct CALL(s) call a leaf; %llu indirect CALL(s) "
+      "have a site (%llu more found the pool spent), whose %llu target "
+      "answer(s) named %llu leaf/leaves, %llu site(s) out of answers",
+      (unsigned long long)js.leaf_calls, (unsigned long long)js.leaf_sites,
+      (unsigned long long)js.leaf_sites_refused,
+      (unsigned long long)js.leaf_site_fills,
+      (unsigned long long)js.leaf_site_leaf_fills,
+      (unsigned long long)js.leaf_sites_exhausted);
   /* FLD m32/m64, and how much of it the emitted code widens itself instead
      of crossing out of its module. Same negative as the two above: a zero
      inline count on a nonzero total is a backend that declined, and a zero
