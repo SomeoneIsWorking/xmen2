@@ -67,6 +67,11 @@ static int render_answer(int enabled, int include_caster, GpuDraw *caster,
   return 1;
 }
 
+/* A second shadow pass drawn with the pipeline the first one bound: the
+   shadow pass's bind record must start empty with each pass, or this pass
+   draws with no pipeline bound. */
+static uint32_t g_second_pass[SHADOW_TEST_W * SHADOW_TEST_H];
+
 static unsigned rgb_sum(uint32_t pixel) {
   return (pixel & 0xffu) + ((pixel >> 8) & 0xffu) + ((pixel >> 16) & 0xffu);
 }
@@ -118,8 +123,14 @@ int gpu_shadow_selftest(void) {
   describe_draw(&receiver, receiver_buffer, 2);
   if (!render_answer(0, 1, &caster, &receiver, disabled) ||
       !render_answer(1, 1, &caster, &receiver, enabled) ||
-      !render_answer(1, 0, &caster, &receiver, no_caster))
+      !render_answer(1, 0, &caster, &receiver, no_caster) ||
+      !render_answer(1, 1, &caster, &receiver, g_second_pass))
     goto done;
+  if (memcmp(g_second_pass, enabled, sizeof enabled) != 0) {
+    x2_log_info("gpu shadow selftest: FAILED -- a second shadow pass with the "
+                "same caster drew a different image from the first.\n");
+    goto done;
+  }
 
   for (unsigned i = 0; i < SHADOW_TEST_W * SHADOW_TEST_H; i++) {
     unsigned off = rgb_sum(disabled[i]);

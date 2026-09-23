@@ -925,7 +925,8 @@ int gpu_draw(const GpuDraw *d) {
 
   if (!ires || (uint64_t)(d->first_index + n) * (d->index_is_32bit ? 4u : 2u) <=
                    ires->bytes)
-    gpu_shadow_record(d, vres->buf, ires ? ires->buf : NULL, tres->tex, smp, n);
+    gpu_shadow_record(d, vres->buf, ires ? ires->buf : NULL,
+                      ires ? ires->serial : 0u, tres->tex, smp, n);
   gpu_shadow_sample(d, &shadow);
 
   gpu_pass_begin();

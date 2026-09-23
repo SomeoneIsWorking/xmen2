@@ -3,6 +3,7 @@
 
 #include "gpu_depth_binding.h"
 #include "gpu_internal.h"
+#include "gpu_pass_binds.h"
 #include "gpu_shader_data.h"
 #include "shadow_policy.h"
 
@@ -16,12 +17,13 @@ void gpu_shadow_configure(int enabled, uint32_t resolution) {
 }
 void gpu_shadow_frame_begin(void) {}
 void gpu_shadow_record(const GpuDraw *draw, struct SDL_GPUBuffer *vertices,
-                       struct SDL_GPUBuffer *indices,
+                       struct SDL_GPUBuffer *indices, uint64_t index_serial,
                        struct SDL_GPUTexture *texture,
                        struct SDL_GPUSampler *sampler, uint32_t index_count) {
   (void)draw;
   (void)vertices;
   (void)indices;
+  (void)index_serial;
   (void)texture;
   (void)sampler;
   (void)index_count;
@@ -41,6 +43,9 @@ void gpu_shadow_shutdown(void) {}
 static const uint32_t DEFAULT_RESOLUTION = 1024;
 static const float SAMPLE_DEPTH_BIAS = 0.0015f;
 static const float SHADOW_DARKNESS = 0.55f;
+
+/* What the shadow pass has bound; see gpu_pass_binds.h. */
+static GpuPassBinds g_binds;
 
 static const GpuShaderWord shadow_depth_vert_code[] =
 #include "shaders/shadow_depth_vert.inc"
@@ -274,12 +279,14 @@ static int begin_pass(void) {
   depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
   depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
   g_shadow_pass = SDL_BeginGPURenderPass(g_shadow_command, NULL, 0, &depth);
+  gpu_pass_binds_reset(&g_binds);
   return g_shadow_pass != NULL;
 }
 
 void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
-                       SDL_GPUBuffer *indices, SDL_GPUTexture *texture,
-                       SDL_GPUSampler *sampler, uint32_t index_count) {
+                       SDL_GPUBuffer *indices, uint64_t index_serial,
+                       SDL_GPUTexture *texture, SDL_GPUSampler *sampler,
+                       uint32_t index_count) {
   SDL_GPUGraphicsPipeline *pipeline;
   SDL_GPUBufferBinding binding;
   SDL_GPUTextureSamplerBinding texture_binding;
@@ -307,7 +314,8 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
     return;
   }
   gpu_shadow_draw_matrix(&g_frame_policy, draw, matrix);
-  SDL_BindGPUGraphicsPipeline(g_shadow_pass, pipeline);
+  if (gpu_pass_binds_pipeline_changed(&g_binds, pipeline))
+    SDL_BindGPUGraphicsPipeline(g_shadow_pass, pipeline);
   memset(&binding, 0, sizeof binding);
   binding.buffer = vertices;
   SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
@@ -322,10 +330,12 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   SDL_PushGPUFragmentUniformData(g_shadow_command, 0, &alpha, sizeof alpha);
   if (indices) {
     binding.buffer = indices;
-    SDL_BindGPUIndexBuffer(g_shadow_pass, &binding,
-                           draw->index_is_32bit
-                               ? SDL_GPU_INDEXELEMENTSIZE_32BIT
-                               : SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    if (gpu_pass_binds_index_changed(&g_binds, indices, index_serial,
+                                     draw->index_is_32bit ? 4u : 2u))
+      SDL_BindGPUIndexBuffer(g_shadow_pass, &binding,
+                             draw->index_is_32bit
+                                 ? SDL_GPU_INDEXELEMENTSIZE_32BIT
+                                 : SDL_GPU_INDEXELEMENTSIZE_16BIT);
     SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1,
                                  draw->first_index, (int32_t)draw->base_vertex,
                                  0);
@@ -381,11 +391,13 @@ void gpu_shadow_report(void) {
   x2_log_info("  gpu shadow: %s, %ux%u; %lu/%lu frames selected a title "
               "directional light, %lu submitted; %lu caster (%lu programmable) "
               "and %lu receiver (%lu programmable) draw(s), %lu resource/pass "
-              "failure(s)\n",
+              "failure(s); %lu caster(s) kept the pipeline, %lu the index "
+              "buffer\n",
               g_enabled ? "enabled" : "disabled", g_resolution, g_resolution,
               g_frames_with_light, g_frames, g_frames_submitted, g_casters,
               g_programmable_casters, g_receivers, g_programmable_receivers,
-              g_resource_failures);
+              g_resource_failures, g_binds.pipelines_kept,
+              g_binds.indices_kept);
 }
 
 void gpu_shadow_shutdown(void) {
