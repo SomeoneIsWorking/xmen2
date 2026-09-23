@@ -267,10 +267,13 @@ same route: frame wall 88.4 -> 49.6 ms, p50 82.0 -> 48.6 ms, host upload 85.04
 allocation for the whole run. The picture is unchanged -- `deadzone-render` 6
 of 6 and all 15 GPU selftests pass, including the two-generation upload-order
 check (issue #182). This is desktop evidence for work removed, not Android
-performance evidence; the same driver path is what a device pays for too. The
-remaining frame is about 62% x87 softfloat in `shared/x86port`, and the JIT
-reports its x87-widening, x87-narrowing and host-SIMD lowering as `0 of 0` on
-this title, so those levers are dormant rather than exhausted.
+performance evidence; the same driver path is what a device pays for too.
+On an x86-64 host the x87 forms now translate to inline host x87 code
+(x86port `9e6de9f` onwards), so softfloat is no longer the desktop frame's
+bulk: on 2026-09-23 Dead Zone ran unpaced at about 180 presents/s (5.6 ms)
+with a flat profile, its hottest translated block (`igTraversal::dispatch`,
+2.9%) stalled on the scene-graph node load. ARM64 has no host x87, so this
+Android frame has not been re-measured against that change.
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
