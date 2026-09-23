@@ -76,8 +76,20 @@
 
 uintptr_t g_guest_memory_base;
 
-static unsigned char g_pages[GUEST_PAGE_COUNT];
+/* Writers hold g_pages_lock, which orders them against each other. The
+   entries are atomic so guest_memory_is_readable can read them without it:
+   its answer was already stale by the time a caller used it (the lock was
+   released before the copy it guards), and the lock per call was ~1.5% of
+   samples under a native override that validates each field it reads. */
+static _Atomic unsigned char g_pages[GUEST_PAGE_COUNT];
 static pthread_mutex_t g_pages_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Call with g_pages_lock held. */
+static void pages_fill(uint32_t first, uint32_t count, unsigned char value) {
+  uint32_t i;
+  for (i = 0; i < count; i++)
+    atomic_store_explicit(&g_pages[first + i], value, memory_order_relaxed);
+}
 static int g_ready;
 static GuestMemoryWindow g_window;
 static GuestMemoryRemapObserver g_remapped;
@@ -333,9 +345,9 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   host = host_pointer((uint32_t)start);
   notify_remap(kGuestRemapMap, (uint32_t)start, count * GUEST_PAGE_SIZE);
 #if GUEST_ARENA_OWNED
-  memset(g_pages + first, PAGE_MAPPED | (unsigned char)protection, count);
+  pages_fill(first, count, PAGE_MAPPED | (unsigned char)protection);
   if (apply_host_protection(first, count) != 0) {
-    memset(g_pages + first, 0, count);
+    pages_fill(first, count, 0);
     (void)apply_host_protection(first, count);
     pthread_mutex_unlock(&g_pages_lock);
     return -1;
@@ -352,7 +364,7 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   }
 #endif
 #if !GUEST_ARENA_OWNED
-  memset(g_pages + first, PAGE_MAPPED | (unsigned char)protection, count);
+  pages_fill(first, count, PAGE_MAPPED | (unsigned char)protection);
 #endif
   pthread_mutex_unlock(&g_pages_lock);
   return 0;
@@ -448,14 +460,14 @@ int guest_memory_is_readable(uint32_t address, size_t size) {
   int readable = 1;
   if (span(address, size, &first, &count) != 0)
     return 0;
-  pthread_mutex_lock(&g_pages_lock);
-  for (i = 0; i < count; i++)
-    if (!(g_pages[first + i] & PAGE_MAPPED) ||
-        !(g_pages[first + i] & PROT_READ)) {
+  for (i = 0; i < count; i++) {
+    const unsigned page =
+        atomic_load_explicit(&g_pages[first + i], memory_order_relaxed);
+    if (!(page & PAGE_MAPPED) || !(page & PROT_READ)) {
       readable = 0;
       break;
     }
-  pthread_mutex_unlock(&g_pages_lock);
+  }
   return readable;
 }
 
