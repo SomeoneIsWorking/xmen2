@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define X2_MAX_OVERRIDE_LEAVES 8
+#define X2_MAX_OVERRIDE_LEAVES 16
 
 /* Counted without atomics: a leaf runs in guest code, which one guest lock
    serializes across every guest thread. */
@@ -147,11 +147,21 @@ X2_LEAF_SLOT(4)
 X2_LEAF_SLOT(5)
 X2_LEAF_SLOT(6)
 X2_LEAF_SLOT(7)
+X2_LEAF_SLOT(8)
+X2_LEAF_SLOT(9)
+X2_LEAF_SLOT(10)
+X2_LEAF_SLOT(11)
+X2_LEAF_SLOT(12)
+X2_LEAF_SLOT(13)
+X2_LEAF_SLOT(14)
+X2_LEAF_SLOT(15)
 #undef X2_LEAF_SLOT
 
 static const X86pJitLeafFn kLeafSlots[X2_MAX_OVERRIDE_LEAVES] = {
-    leaf_slot_0, leaf_slot_1, leaf_slot_2, leaf_slot_3,
-    leaf_slot_4, leaf_slot_5, leaf_slot_6, leaf_slot_7,
+    leaf_slot_0,  leaf_slot_1,  leaf_slot_2,  leaf_slot_3,
+    leaf_slot_4,  leaf_slot_5,  leaf_slot_6,  leaf_slot_7,
+    leaf_slot_8,  leaf_slot_9,  leaf_slot_10, leaf_slot_11,
+    leaf_slot_12, leaf_slot_13, leaf_slot_14, leaf_slot_15,
 };
 
 void x86_register_override_leaf(const char *module, uint32_t linked_ep,

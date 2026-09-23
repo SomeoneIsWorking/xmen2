@@ -96,6 +96,16 @@ lucent::cvar::Var<bool> g_math_matrix{"math.matrix", true};
  * normal play. */
 lucent::cvar::Var<bool> g_math_matrix_verify{"math.matrix_verify", false};
 
+/* on: native override for libIGMath.dll's igMatrix44f::invert (0x1001b540)
+ * with its adjoint and determinant, ig_matrix_invert.c. off restores full
+ * guest JIT execution. */
+lucent::cvar::Var<bool> g_math_invert{"math.invert", true};
+
+/* on: after each native invert, re-run the guest's own body from the same
+ * start state and abort on any difference in the matrix, the igResult, ESP,
+ * EAX, ECX, EDX or x87 state. off in normal play. */
+lucent::cvar::Var<bool> g_math_invert_verify{"math.invert_verify", false};
+
 /* on: native override for the per-frame audio channel poll (XMen2.exe
  * 0x00594500). off restores full guest JIT execution of the 24-channel
  * completion sweep. */
@@ -307,6 +317,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_math_skin_verify);
   lucent::cvar::register_var(g_math_matrix);
   lucent::cvar::register_var(g_math_matrix_verify);
+  lucent::cvar::register_var(g_math_invert);
+  lucent::cvar::register_var(g_math_invert_verify);
   lucent::cvar::register_var(g_audio_channel_poll);
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);

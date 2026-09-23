@@ -655,6 +655,11 @@ natively in its per-row x87 summation order (`src/native/ig_matrix.{c,h}`)
 at 0.4%. `math.matrix_verify` matched 4.2M products against the guest body,
 including the in-place path's registers, which it had caught modelled wrong;
 a float-precision build aborted it.
+igMatrix44f::invert (libIGMath 0x1001b540) with the adjoint and determinant
+it calls, ~3.1% of JIT samples, runs natively in their x87 order and float
+spills (`src/native/ig_matrix_invert.{c,h}`) at 0.4%. `math.invert_verify`
+matched 262,144 inverts against the guest body, the igResult, registers and
+x87 status included.
 The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
 base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new

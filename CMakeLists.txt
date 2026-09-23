@@ -1097,6 +1097,12 @@ target_include_directories(test_ig_matrix PRIVATE src/native)
 target_link_libraries(test_ig_matrix PRIVATE x86port_runtime)
 add_test(NAME ig_matrix COMMAND test_ig_matrix)
 
+add_executable(test_ig_matrix_invert tests/test_ig_matrix_invert.c
+               src/native/ig_matrix_invert.c)
+target_include_directories(test_ig_matrix_invert PRIVATE src/native)
+target_link_libraries(test_ig_matrix_invert PRIVATE x86port_runtime)
+add_test(NAME ig_matrix_invert COMMAND test_ig_matrix_invert)
+
 add_executable(test_skin tests/test_skin.c src/native/skin.c)
 target_include_directories(test_skin PRIVATE src/native)
 add_test(NAME skin COMMAND test_skin)
@@ -1650,6 +1656,8 @@ set(X2_NATIVE_SOURCES
     src/native/skin_override.c
     src/native/ig_matrix.c
     src/native/ig_matrix_override.c
+    src/native/ig_matrix_invert.c
+    src/native/ig_matrix_invert_override.c
     src/native/x86_engine_jit_diag.c
     src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c
