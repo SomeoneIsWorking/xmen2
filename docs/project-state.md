@@ -576,6 +576,11 @@ of the successor it last left for and jumps into it without returning to the
 dispatcher, still honoring the run's stop address and step budget, and any
 invalidation unlinks every slot (best 80.0 -> 67.2 M cycles per frame, -16%;
 170 -> 150 M instructions, three alternating pairs).
+x86port `9e6de9f` keeps consecutive x87 forms' values on the host x87 stack
+instead of reloading each operand from the guest register file (the per-form
+80-bit reload chain left the profile, about 5% of cycles), and `22c3dfb`
+translates FXCH, FCHS, FABS, FCOM/FUCOM, FLDZ/FLD1 and FNSTSW AX inline so
+they no longer break that run with a helper call.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
