@@ -599,6 +599,11 @@ x86port `20f66ab` lets an indirect exit (RET, JMP/CALL through a register or
 memory) that misses its chain slot probe the block cache's front array and
 transfer directly: `x86p_jit_engine_run` fell from 4.5% to 1.8% of samples and
 dispatcher lookups from 13.5% to 8.3% of block entries.
+The VS 1.1 executor (`src/d3d8/d3d8_vs_execute.cpp`) decodes a program and
+its declaration once instead of for every vertex: 7.2% of samples became 3.8%,
+bit-identical to the previous executor on the game's skinning shader over 1632
+randomized draws. What remains is the arithmetic itself; running the shader on
+the GPU is the next lever there.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.

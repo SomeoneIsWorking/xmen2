@@ -35,6 +35,47 @@
 extern "C" {
 #endif
 
+/*
+ * The program decoded once, by the executor, the first time it runs: register
+ * numbers resolved to one flat register file, swizzles to indices, and the
+ * declaration to input offsets. Decoding every token again for every vertex
+ * was 7% of the Dead Zone route's samples. VS 1.1 allows 128 instruction
+ * slots.
+ */
+#define VS_MAX_INSTRUCTIONS 128
+#define VS_INPUTS 17
+
+typedef struct {
+  uint16_t reg; /* flat register, or the constant number when relative */
+  uint8_t swizzle[4];
+  uint8_t negate;
+  uint8_t relative; /* c[reg + a0.x] */
+} D3D8VSSource;
+
+typedef struct {
+  uint8_t op;
+  uint8_t mask;
+  uint16_t dst;
+  D3D8VSSource src[3];
+} D3D8VSInstruction;
+
+typedef struct {
+  uint8_t present;
+  uint8_t type;
+  uint16_t offset;
+  uint16_t end; /* offset + the type's size */
+} D3D8VSInput;
+
+typedef struct {
+  /* 0 not yet decoded, 1 decoded, -1 refused (decoded again, and the reason
+     logged again, at every draw that asks). */
+  int state;
+  uint16_t count;
+  uint16_t input_end; /* the furthest byte any input reads */
+  D3D8VSInstruction insn[VS_MAX_INSTRUCTIONS];
+  D3D8VSInput input[VS_INPUTS];
+} D3D8VSProgram;
+
 struct D3D8VertexShader {
   int used;
   uint16_t generation;
@@ -43,6 +84,7 @@ struct D3D8VertexShader {
   uint32_t function[VS_CODE_MAX_DWORDS];
   uint16_t declaration_dwords;
   uint16_t function_dwords;
+  D3D8VSProgram program;
 };
 
 /* How much the executor did, for the store's run report. */
