@@ -386,3 +386,21 @@ correctness-sensitive (control word, precision, the 8-deep register stack) --
 it belongs in its own issue, not an ad-hoc extension here. Levers (b) cross-block
 flag liveness and the fault-exit `jit.verify` extension for memory-operand ALU
 killers remain open.
+
+## Progress (2026-09-23) -- direct CALLs to hot overrides complete in place
+
+A census of one Dead Zone run counted ~43M override hand-backs reached by a
+direct CALL, nearly all to six overrides (`_ftol2`, the timer accessor, the
+/GS cookie check, libIGSg's box driver/corners/classify). x86port `508f2c8`
+calls a consumer leaf inside the translated CALL; `src/native/override_leaf.c`
+supplies them (xmen2 `e290a7a`, `jit.leaves=0` is the A/B). The same scene then
+completed ~48M calls in place (report line `OVERRIDE LEAVES`). The hand-back
+symbols (`x86_engine_run_host_at`, `x86_native_call_at`,
+`x86_engine_jit_dispatch`, `x86_engine_host_body_at`, `x86_dispatch`) went
+from 3.5% to 1.3% of process samples. The 3.5% was measured with the census
+probe inlined in `run_host_at`, so the real before is somewhat lower. The
+`e290a7a` commit message's "~4.2%" is wrong; these are the numbers.
+
+Still hand-backs: indirect CALLs (IAT and vtable) -- the vertex builder
+`0x005840a0` (6.1M), `igMatrix44f::multiply` (2.7M) and the import thunks.
+x86port's leaf resolver covers direct CALL only.
