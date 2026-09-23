@@ -165,18 +165,9 @@ static uint32_t g_next_tid = 1000;
 
 static void guest_suspend_point(void);
 int scheduler_has_waiter(void) {
-  int i;
-  double now = now_s();
   if (g_waiters)
     return 1;
-  for (i = 0; i <= MAX_THREADS; i++) {
-    GuestThread *t = &g_thread[i];
-    if (t == g_self)
-      continue;
-    if (guest_thread_ready_to_run(t, now))
-      return 1;
-  }
-  return 0;
+  return guest_thread_any_ready(g_thread, MAX_THREADS + 1, g_self, now_s);
 }
 
 /* Attach the process main thread to the same bookkeeping as created threads. */

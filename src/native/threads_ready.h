@@ -21,6 +21,16 @@
 int guest_thread_ready_to_run(const GuestThread *t, double now);
 
 /*
+ * Is any thread in `table` other than `self` ready to run? `clock` is the
+ * guest clock, and it is read at most once and only when some thread's answer
+ * depends on it -- a condition wait no broadcast has ended. The scheduler asks
+ * this at every host crossing, where a clock read per call was ~2% of the
+ * product's samples while the main thread ran alone.
+ */
+int guest_thread_any_ready(const GuestThread *table, int count,
+                           const GuestThread *self, double (*clock)(void));
+
+/*
  * Entering and leaving a condition wait, as far as readiness is concerned:
  * `ms` is the Win32 deadline, 0xFFFFFFFF for INFINITE, and `now` the guest
  * clock. The pair keeps the deadline and the broadcast flag in one place

@@ -18,6 +18,28 @@ int guest_thread_ready_to_run(const GuestThread *t, double now) {
   return 0;
 }
 
+int guest_thread_any_ready(const GuestThread *table, int count,
+                           const GuestThread *self, double (*clock)(void)) {
+  double now = 0.0;
+  int have_now = 0;
+  int i;
+  for (i = 0; i < count; i++) {
+    const GuestThread *t = &table[i];
+    if (t == self) {
+      continue;
+    }
+    if (!have_now && t->used && !t->finished && t->state == TS_COND &&
+        !t->cond_ready) {
+      now = clock();
+      have_now = 1;
+    }
+    if (guest_thread_ready_to_run(t, now)) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void guest_thread_mark_cond_ready(GuestThread *table, int count) {
   int i;
   for (i = 0; i < count; i++) {
