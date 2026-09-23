@@ -636,10 +636,13 @@ Attributing translated-code samples to guest addresses then named one
 function pair as ~38% of them: libIGSg.dll's bounding-box frustum test, the
 clip-space box corners (`0x10047570`, ~250 straight-line x87 instructions)
 and their clip-code classification (`0x100478e0`). Both are native overrides
-now (`src/native/box_cull.{c,h}`, `box_cull_override.c`), computed in `long
-double` in the guest's own operation order and 32-bit spills, and answered
-natively only on an x87 host at the guest's control word with room on the
-x87 stack; classify's guard-band case (13.6% of calls) runs the guest body.
+now (`src/native/box_cull.{c,h}`, `box_cull_override.c`), computed in `x87_real`
+in the guest's own operation order and 32-bit spills, and answered natively
+at the guest's control word with room on the x87 stack. `x87_real` is `long
+double` on an x87 host, where the answer is the guest's bits, and `double` on
+the browser, ARM64 and Apple Silicon, where `test_x87_real_double` holds it
+within one float ulp of those bits with identical cull verdicts over 50,000
+random boxes (and within four ulps for invert); classify's guard-band case (13.6% of calls) runs the guest body.
 `sg.box_cull_verify` re-ran the guest body behind 16.8M native answers on
 Dead Zone with no difference, and aborted on a build whose spill map rounded
 one value too early. Same binary, `sg.box_cull` on against off: unpaced
@@ -1258,6 +1261,15 @@ with "the five-second skip moved the counter by 110 ns". Its browser effect is
 measured and small: `_emscripten_get_now` 4.19% to 3.88%, so the pump's second
 reading was a minority of the clock cost and the rest is the guest's own call
 rate. The correctness half is why it stays.
+
+**The x87-order overrides now answer in the browser** (#165). They were
+gated on an x87 host, so wasm ran the frustum test, matrix multiply and
+invert as translated x87. With `x87_real` a double there, the same wasm
+(10,088,465 bytes, `#test-play`, 150 s) presents 105-121 times per 5 s with
+the overrides against 51-58 with `sg.box_cull=0`, and the culling cluster's
+share of block entries falls from 20.5% to 9.3%. The rest of that 9.3% is
+`igFrustCullNode` and its child dispatch (`0x0485b0`, `0x0484c0`), which are
+not overridden. The frame-rate readings below predate this change.
 
 **None of this is the frame rate.** The route presents **11.552 +/- 0.011 per
 second**, measured over 1042 presents in a 90.2 s plateau at load average 5.0;

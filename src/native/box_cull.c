@@ -1,5 +1,6 @@
 /* box_cull.c -- see box_cull.h. */
 #include "box_cull.h"
+#include "x87_exact.h"
 
 #include "x87.h"
 
@@ -37,37 +38,35 @@ enum {
   kSpillsZW = kSpillAll,
 };
 
-BOX_CULL_INLINE long double spilled(long double value, unsigned spills,
-                                    unsigned which) {
-  return (spills & which) ? (long double)(float)value : value;
+BOX_CULL_INLINE x87_real spilled(x87_real value, unsigned spills,
+                                 unsigned which) {
+  return (spills & which) ? (x87_real)(float)value : value;
 }
 
 void box_cull_extent(float out[3], const float box[6]) {
   for (unsigned axis = 0; axis < 3u; axis++) {
-    out[axis] = (float)((long double)box[3u + axis] - box[axis]);
+    out[axis] = (float)((x87_real)box[3u + axis] - box[axis]);
   }
 }
 
 /* One axis's base, min through the matrix plus its translation, and the
    extents' terms, each spilled where the guest spills it. */
 typedef struct AxisTerms {
-  long double base, t0, t1, t2;
+  x87_real base, t0, t1, t2;
 } AxisTerms;
 
 BOX_CULL_INLINE AxisTerms axis_terms(const float min[3], const float extent[3],
                                      const float matrix[16], unsigned axis,
                                      unsigned spills) {
   AxisTerms t;
-  t.base = spilled((((long double)min[0] * matrix[axis] +
-                     (long double)min[2] * matrix[8u + axis]) +
-                    (long double)min[1] * matrix[4u + axis]) +
+  t.base = spilled((((x87_real)min[0] * matrix[axis] +
+                     (x87_real)min[2] * matrix[8u + axis]) +
+                    (x87_real)min[1] * matrix[4u + axis]) +
                        matrix[12u + axis],
                    spills, kSpillBase);
-  t.t0 = spilled((long double)extent[0] * matrix[axis], spills, kSpillTerm0);
-  t.t1 =
-      spilled((long double)extent[1] * matrix[4u + axis], spills, kSpillTerm1);
-  t.t2 =
-      spilled((long double)extent[2] * matrix[8u + axis], spills, kSpillTerm2);
+  t.t0 = spilled((x87_real)extent[0] * matrix[axis], spills, kSpillTerm0);
+  t.t1 = spilled((x87_real)extent[1] * matrix[4u + axis], spills, kSpillTerm1);
+  t.t2 = spilled((x87_real)extent[2] * matrix[8u + axis], spills, kSpillTerm2);
   return t;
 }
 
@@ -75,8 +74,7 @@ BOX_CULL_INLINE AxisTerms axis_terms(const float min[3], const float extent[3],
    bit 2; the guest multiplies the extents a corner leaves out by `zero` and
    adds that first. */
 BOX_CULL_INLINE void guest_order_axis(float out[BOX_CULL_CORNER_FLOATS],
-                                      unsigned axis, AxisTerms t,
-                                      long double k) {
+                                      unsigned axis, AxisTerms t, x87_real k) {
   out[0u * 4u + axis] = (float)t.base;
   out[1u * 4u + axis] = (float)(((t.t1 + t.t0) * k + t.base) + t.t2);
   out[2u * 4u + axis] = (float)(((t.t2 + t.t0) * k + t.base) + t.t1);
@@ -91,13 +89,13 @@ BOX_CULL_INLINE void guest_order_axis(float out[BOX_CULL_CORNER_FLOATS],
    is the base exactly, whatever either zero's sign: each corner is then the
    guest's own chain of adds without its first, and the chains share their
    prefixes. */
-BOX_CULL_INLINE int zero_product_is_inert(AxisTerms t, long double k) {
+BOX_CULL_INLINE int zero_product_is_inert(AxisTerms t, x87_real k) {
   return k == 0.0L && t.base != 0.0L && isfinite(t.t0 + t.t1 + t.t2);
 }
 
 BOX_CULL_INLINE void inert_zero_axis(float out[BOX_CULL_CORNER_FLOATS],
                                      unsigned axis, AxisTerms t) {
-  const long double b2 = t.base + t.t2, b1 = t.base + t.t1, b21 = b2 + t.t1;
+  const x87_real b2 = t.base + t.t2, b1 = t.base + t.t1, b21 = b2 + t.t1;
   out[0u * 4u + axis] = (float)t.base;
   out[1u * 4u + axis] = (float)b2;
   out[2u * 4u + axis] = (float)b1;
@@ -110,7 +108,7 @@ BOX_CULL_INLINE void inert_zero_axis(float out[BOX_CULL_CORNER_FLOATS],
 
 BOX_CULL_INLINE void corners_axis(float out[BOX_CULL_CORNER_FLOATS],
                                   const float min[3], const float extent[3],
-                                  const float matrix[16], long double k,
+                                  const float matrix[16], x87_real k,
                                   unsigned axis, unsigned spills) {
   const AxisTerms t = axis_terms(min, extent, matrix, axis, spills);
   if (zero_product_is_inert(t, k)) {
@@ -123,7 +121,7 @@ BOX_CULL_INLINE void corners_axis(float out[BOX_CULL_CORNER_FLOATS],
 void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero) {
-  const long double k = zero;
+  const x87_real k = zero;
   corners_axis(out, min, extent, matrix, k, 0u, kSpillsX);
   corners_axis(out, min, extent, matrix, k, 1u, kSpillsY);
   corners_axis(out, min, extent, matrix, k, 2u, kSpillsZW);
@@ -133,7 +131,7 @@ void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
 void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
                                   const float min[3], const float extent[3],
                                   const float matrix[16], float zero) {
-  const long double k = zero;
+  const x87_real k = zero;
   guest_order_axis(out, 0u, axis_terms(min, extent, matrix, 0u, kSpillsX), k);
   guest_order_axis(out, 1u, axis_terms(min, extent, matrix, 1u, kSpillsY), k);
   guest_order_axis(out, 2u, axis_terms(min, extent, matrix, 2u, kSpillsZW), k);
@@ -141,7 +139,7 @@ void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
 }
 
 /* The sign bit of the guest's 32-bit spill of `value`. */
-static unsigned spilled_sign(long double value) {
+static unsigned spilled_sign(x87_real value) {
   const float narrowed = (float)value;
   uint32_t bits;
   memcpy(&bits, &narrowed, sizeof bits);
@@ -149,7 +147,7 @@ static unsigned spilled_sign(long double value) {
 }
 
 unsigned box_cull_corner_code_extended(const float corner[4]) {
-  const long double neg_w = -(long double)corner[3];
+  const x87_real neg_w = -(x87_real)corner[3];
   unsigned code = 0u;
   for (unsigned axis = 0; axis < 3u; axis++) {
     code |= spilled_sign(neg_w - corner[axis]) << (2u * axis);

@@ -12,7 +12,8 @@
  *   row 3  ((a15 b12 + a13 b4) + a14 b8) + a12 b0
  *
  * (b's indices shown for column 0; column j adds j.) The function below
- * repeats that in `long double`, which is exact where x87_exact_host() holds.
+ * repeats that in x87_real, which is exact where x87_exact_host() holds
+ * (x87_exact.h).
  */
 #ifndef X2_IG_MATRIX_H
 #define X2_IG_MATRIX_H

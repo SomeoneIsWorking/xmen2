@@ -6,11 +6,12 @@
  * x87 evaluation and checked against m * adj(m) = det(m) * I.
  */
 #include "ig_matrix_invert.h"
+#include "x87_exact.h"
 
 #include <float.h>
 #include <math.h>
 
-typedef long double X87;
+typedef x87_real X87;
 
 /* libIGMath 0x1001b5e0, igMatrix44f::adjoint(const igMatrix44f &m,
    igMatrix44f &adj): the transposed cofactors. */

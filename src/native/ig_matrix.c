@@ -1,7 +1,8 @@
 /* ig_matrix.c -- see ig_matrix.h. */
 #include "ig_matrix.h"
+#include "x87_exact.h"
 
-typedef long double X87;
+typedef x87_real X87;
 
 /* The four products of one element, in the order the guest adds them:
    ((p[0] + p[1]) + p[2]) + p[3]. */

@@ -2,17 +2,17 @@
 id: 165
 title: frustum culling is a fifth of every block the browser enters
 status: open
-symptom: the hot-block histogram attributes a fifth of block entries to the engine's frustum cull; no native override is written
+symptom: the hot-block histogram attributes a fifth of block entries to the engine's frustum cull
 state_items: S021
 tags: web,browser,wasm,jit,override,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-23
 ---
 
 # 0165 — frustum culling is a fifth of every block the browser enters
 
 - **State items:** S021
-- **Status:** located and measured; no override written yet
+- **Status:** the box test (`0x047470`/`0x047570`/`0x0478e0`) answers natively in the browser; `igFrustCullNode` and child dispatch remain
 - **Found by:** the hot-block histogram, once it printed from the heartbeat
   (see the report change that made it readable on a target with no shutdown)
 
@@ -170,3 +170,23 @@ What would make this file's work worth starting again: an attribution of x87 and
 dispatch time to the guest blocks that caused it, from the profile's call tree
 rather than from self time. If the culling subtree's inclusive cost turns out to
 be a fifth of the worker rather than a fifteenth, this ranking flips back.
+
+## The box test answers in the browser now
+
+The desktop overrides for the box test existed but were gated on an x87 host,
+so the browser never took them. They now compute in `x87_real`, a `double`
+there; `test_x87_real_double` builds the shipping sources in both
+configurations and holds the double corners within one float ulp of the
+exact ones with no cull verdict different over 50,000 random boxes.
+
+Same wasm (10,088,465 bytes, the served size checked), `#test-play`, 150 s,
+`tools/web_hotblocks.py --range 0x2e047470-0x2e04861e`:
+
+| run | presents per 5 s | share of block entries |
+|---|---|---|
+| overrides on | 105-111, repeat 109-121 | 9.2-9.3% |
+| `sg.box_cull=0` | 51-58 | 20.5% |
+
+About twice the browser frame rate. What remains of the 9.3% is
+`igFrustCullNode` (`0x0485b0`) and the child dispatch (`0x0484c0`), which
+call back into guest code and are not overridden.

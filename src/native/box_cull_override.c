@@ -10,11 +10,12 @@
  * three. A changed matrix pair, and classify's guard-band case, run the guest
  * body: neither writes anything the body would not write again.
  *
- * Each override answers natively only where that is exact: box_cull's host
- * test, the guest's own control word X86P_X87_CW_INIT, and enough empty x87
- * registers below TOP for every push the guest body would make, so that the
- * body could not have taken a stack fault. Otherwise, and for a guard-band
- * test over a value that is not finite, it runs the guest body.
+ * Each override answers natively where the guest body could not have taken a
+ * stack fault and runs at the game's own control word X86P_X87_CW_INIT
+ * (x87_guest_order_applies); its answer is the guest's bits on an exact host
+ * and the same operation order in doubles elsewhere (x87_exact.h). Otherwise,
+ * and for a guard-band test over a value that is not finite, it runs the
+ * guest body.
  *
  * THE CONTRACT is the functions' calling convention: the output buffer, EAX,
  * ESP, and the x87 TOP, tags, control and status words. Neither body leaves
@@ -22,8 +23,8 @@
  * nothing reads before the next push, and ECX/EDX are caller-saved scratch.
  *
  * `sg.box_cull_verify` re-runs the guest body after every native answer and
- * aborts on the first difference in that contract. `sg.box_cull=0` turns the
- * overrides off.
+ * aborts on the first difference in that contract; it needs an exact host.
+ * `sg.box_cull=0` turns the overrides off.
  *
  * A direct CALL to any of the three takes its native answer in place
  * (override_leaf.h); the cases that need the guest body, and every call while
@@ -83,13 +84,13 @@ static uint64_t s_undecided;
 static int enabled(void) {
   if (__builtin_expect(s_enabled < 0, 0)) {
     s_enabled = lucent_cvar_flag("sg.box_cull", 1) ? 1 : 0;
-    s_verify = lucent_cvar_flag("sg.box_cull_verify", 0) ? 1 : 0;
+    s_verify = x87_verify_requested("sg.box_cull_verify");
   }
   return s_enabled;
 }
 
 static int native_exact(const CPU *C, unsigned pushes) {
-  return enabled() && x87_exact_for_guest(&C->x87, pushes);
+  return enabled() && x87_guest_order_applies(&C->x87, pushes);
 }
 
 static void read_floats(uint32_t address, float *out, unsigned count) {

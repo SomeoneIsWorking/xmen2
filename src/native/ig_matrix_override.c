@@ -12,14 +12,16 @@
  * leaves, which differ between the two paths. The stack temporary is below
  * ESP on return and dead.
  *
- * It answers natively where that is exact: x87_exact_for_guest() with the
- * body's two pushes, and `this` either equal to an operand or clear of both.
+ * It answers natively where x87_guest_order_applies() with the body's two
+ * pushes -- the guest's bits on an exact host, the same order in doubles
+ * elsewhere (x87_exact.h) -- and `this` is either equal to an operand or
+ * clear of both.
  * A `this` that partly overlaps an operand reads its own stores in the guest;
  * that runs the guest body.
  *
  * `math.matrix_verify` re-runs the guest body after every native answer and
- * aborts on the first difference in that contract. `math.matrix=0` turns the
- * override off.
+ * aborts on the first difference in that contract; it needs an exact host.
+ * `math.matrix=0` turns the override off.
  */
 #include "ig_matrix.h"
 #include "x87_exact.h"
@@ -53,7 +55,7 @@ static uint64_t s_verified;
 static int enabled(void) {
   if (__builtin_expect(s_enabled < 0, 0)) {
     s_enabled = lucent_cvar_flag("math.matrix", 1) ? 1 : 0;
-    s_verify = lucent_cvar_flag("math.matrix_verify", 0) ? 1 : 0;
+    s_verify = x87_verify_requested("math.matrix_verify");
   }
   return s_enabled;
 }
@@ -108,7 +110,7 @@ static int multiply_native(CPU *C) {
   const uint32_t a = RD32(esp + 4u);
   const uint32_t b = RD32(esp + 8u);
   const int aliased = self == a || self == b;
-  if (!enabled() || !x87_exact_for_guest(&C->x87, MULTIPLY_PUSHES) ||
+  if (!enabled() || !x87_guest_order_applies(&C->x87, MULTIPLY_PUSHES) ||
       (!aliased && (overlaps(self, a) || overlaps(self, b)))) {
     return 0;
   }

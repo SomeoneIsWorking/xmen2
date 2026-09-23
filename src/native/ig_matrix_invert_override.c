@@ -20,8 +20,9 @@
  * The codes are libIGCore's, read through libIGMath's import slots.
  *
  * `math.invert_verify` re-runs the guest body after every native answer and
- * aborts on the first difference in that contract. `math.invert=0` turns the
- * override off.
+ * aborts on the first difference in that contract; it needs an exact host.
+ * `math.invert=0` turns the override off. Elsewhere the answer is the same
+ * order in doubles (x87_exact.h).
  */
 #include "ig_matrix_invert.h"
 #include "x87_exact.h"
@@ -58,7 +59,7 @@ static uint64_t s_verified;
 static int enabled(void) {
   if (__builtin_expect(s_enabled < 0, 0)) {
     s_enabled = lucent_cvar_flag("math.invert", 1) ? 1 : 0;
-    s_verify = lucent_cvar_flag("math.invert_verify", 0) ? 1 : 0;
+    s_verify = x87_verify_requested("math.invert_verify");
   }
   return s_enabled;
 }
@@ -116,10 +117,10 @@ static void verify_or_abort(const CPU *C, const CPU *native,
   }
 }
 
-/* The whole call, RET included, where the native answer is exact; 0, having
+/* The whole call, RET included, where the native answer applies; 0, having
    changed nothing, where the guest body must run. */
 static int invert_native(CPU *C) {
-  if (!enabled() || !x87_exact_for_guest(&C->x87, INVERT_PUSHES)) {
+  if (!enabled() || !x87_guest_order_applies(&C->x87, INVERT_PUSHES)) {
     return 0;
   }
   const uint32_t esp = C->reg[kX86pEsp];

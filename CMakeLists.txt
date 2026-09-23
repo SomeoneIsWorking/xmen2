@@ -1140,6 +1140,36 @@ target_include_directories(test_ig_matrix_invert PRIVATE src/native)
 target_link_libraries(test_ig_matrix_invert PRIVATE x86port_runtime)
 add_test(NAME ig_matrix_invert COMMAND test_ig_matrix_invert)
 
+# The same x87-order overrides in the configuration the browser, ARM64 and
+# Apple Silicon run, where x87_real is a double: on an x86 host a 64-bit long
+# double builds exactly that from the shipping sources, under `double_` names
+# so the test can hold it to the exact build beside it.
+include(CheckCCompilerFlag)
+check_c_compiler_flag(-mlong-double-64 X2_HAS_LONG_DOUBLE_64)
+if(X2_HAS_LONG_DOUBLE_64)
+    set(_x2_x87_math src/native/box_cull.c src/native/ig_matrix.c
+                     src/native/ig_matrix_invert.c)
+    add_library(x2_x87_double_math STATIC ${_x2_x87_math})
+    target_include_directories(x2_x87_double_math PRIVATE src/native)
+    target_compile_options(x2_x87_double_math PRIVATE -mlong-double-64)
+    set(_x2_x87_math_names
+        box_cull_extent box_cull_corners box_cull_corners_guest_order
+        box_cull_corner_code box_cull_corner_code_extended box_cull_classify
+        box_cull_guard_band box_cull_guard_band_status
+        box_cull_bounded_verdict ig_matrix44_multiply ig_matrix44_invert)
+    foreach(_x2_name IN LISTS _x2_x87_math_names)
+        target_compile_definitions(x2_x87_double_math
+                                   PRIVATE ${_x2_name}=double_${_x2_name})
+    endforeach()
+    target_link_libraries(x2_x87_double_math PRIVATE x86port_runtime)
+    add_executable(test_x87_real_double tests/test_x87_real_double.c
+                   ${_x2_x87_math})
+    target_include_directories(test_x87_real_double PRIVATE src/native)
+    target_link_libraries(test_x87_real_double PRIVATE x2_x87_double_math
+                                                       x86port_runtime m)
+    add_test(NAME x87_real_double COMMAND test_x87_real_double)
+endif()
+
 add_executable(test_skin tests/test_skin.c src/native/skin.c)
 target_include_directories(test_skin PRIVATE src/native)
 add_test(NAME skin COMMAND test_skin)

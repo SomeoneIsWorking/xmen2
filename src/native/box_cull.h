@@ -22,10 +22,11 @@
  * the game runs with (X86P_X87_CW_INIT), keeping some intermediates in
  * registers at 64-bit precision and spilling others through 32-bit stack
  * slots. The functions below repeat the guest's own operation order and its
- * own spills, in `long double`, so on a host whose `long double` IS the x87
- * format and whose FPU runs at that control word every result is the one the
- * guest instruction would produce. x87_exact_host() says whether this is such a
- * host; elsewhere the callers run the guest body instead.
+ * own spills, in x87_real, so on a host whose `long double` IS the x87 format
+ * and whose FPU runs at that control word every result is the one the guest
+ * instruction would produce (x87_exact_host()); elsewhere it is the same order
+ * in doubles (x87_exact.h). classify over finite corners, the guard band and
+ * the bounded verdict are exact on any host.
  */
 #ifndef X2_BOX_CULL_H
 #define X2_BOX_CULL_H

@@ -8,8 +8,8 @@
  * FLT_MIN it writes nothing and returns failure. Otherwise it scales each
  * adjoint element by the extended 1 / det and stores the product as a float.
  *
- * This repeats that in `long double`, which is exact where x87_exact_host()
- * holds. It declines (kIgInvertUndecided, `out` untouched) whenever a
+ * This repeats that in x87_real, which is exact where x87_exact_host() holds
+ * (x87_exact.h). It declines (kIgInvertUndecided, `out` untouched) whenever a
  * non-finite value could raise an x87 exception the native path does not
  * record: a non-finite input, adjoint element or result.
  */
