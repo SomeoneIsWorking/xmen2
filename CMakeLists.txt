@@ -1035,6 +1035,13 @@ target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
 
+add_executable(test_guest_heap tests/test_guest_heap.c src/native/guest_heap.c
+               src/native/guest_memory.c)
+target_include_directories(test_guest_heap PRIVATE src/runtime/x86_abi src/native)
+target_compile_definitions(test_guest_heap PRIVATE X86_NATIVE)
+target_link_libraries(test_guest_heap PRIVATE pthread)
+add_test(NAME guest_heap COMMAND test_guest_heap)
+
 add_executable(test_box_cull tests/test_box_cull.c src/native/box_cull.c)
 target_include_directories(test_box_cull PRIVATE src/native)
 target_link_libraries(test_box_cull PRIVATE x86port_runtime)

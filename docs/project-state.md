@@ -637,6 +637,11 @@ one value too early. Same binary, `sg.box_cull` on against off: unpaced
 presents/s 97.5 and 87.9 against 74.4 and 68.9 (+29%), p95 frame 11-13 ms
 against 16-17 ms; paced, the game thread fell from 82.5% to about 69% of a
 core.
+The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
+base on every malloc and a whole-arena coalescing walk on every free, was then
+3.5% of the process's samples on the same route: the game's operator new
+reaches it. It keeps segregated free lists with boundary tags now, so both are
+constant-time in the common case, and the same route shows it at 0.01%.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
