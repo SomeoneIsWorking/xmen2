@@ -32,6 +32,7 @@
 #include "gpu_frame_timing_report.h"
 #include "gpu_headless.h"
 #include "gpu_internal.h"
+#include "gpu_pass_attachments.h"
 #include "gpu_present.h"
 #include "gpu_prompt_glyphs.h"
 #include "gpu_shader_data.h"
@@ -60,11 +61,7 @@ static SDL_GPUTexture *g_offscreen;
 static SDL_Window *(*g_window_provider)(void);
 
 /* What the next render pass must clear with. */
-static struct {
-  unsigned mask;
-  float r, g, b, a, depth;
-  uint32_t stencil;
-} g_clear;
+static GpuPassClear g_clear;
 
 static struct {
   int x, y, w, h;
@@ -415,71 +412,16 @@ static void pass_begin(int reopen) {
 
   if (g_pass || !g_cmd || !g_swap)
     return;
-  memset(&ct, 0, sizeof ct);
-  ct.texture = g_swap;
-  ct.clear_color.r = g_clear.r;
-  ct.clear_color.g = g_clear.g;
-  ct.clear_color.b = g_clear.b;
-  ct.clear_color.a = g_clear.a;
-  /*
-   * A frame starts black when the engine does not clear colour itself.
-   *
-   * DONT_CARE is not black: tiled GPUs may expose recycled attachment
-   * memory in every pixel the game does not overwrite. That appeared as
-   * scene fragments in the unused edges and, on sparse loading frames, as
-   * noise over nearly the whole window. LOAD is no better at frame start:
-   * swapchain history is undefined and the logical presentation texture is
-   * persistent. An opaque-black CLEAR gives D3D's discarded back buffer a
-   * deterministic value without changing an explicit game clear.
-   *
-   * A MID-frame reopen is different. Pixels drawn before a late depth-only
-   * clear are real current-frame contents and must be loaded.
-   */
-  if (g_clear.mask & 1u) {
-    ct.load_op = SDL_GPU_LOADOP_CLEAR;
-  } else if (reopen) {
-    ct.load_op = SDL_GPU_LOADOP_LOAD;
-  } else {
-    ct.clear_color.r = 0.0f;
-    ct.clear_color.g = 0.0f;
-    ct.clear_color.b = 0.0f;
-    ct.clear_color.a = 1.0f;
-    ct.load_op = SDL_GPU_LOADOP_CLEAR;
-  }
-  ct.store_op = SDL_GPU_STOREOP_STORE;
-
+  gpu_pass_color_target(&ct, g_swap, &g_clear, reopen);
   depth = gpu_depth_target(g_swap_w, g_swap_h);
-  memset(&dt, 0, sizeof dt);
-  if (depth) {
-    dt.texture = depth;
-    /*
-     * CLEAR when the engine asked, and CLEAR when it did not.
-     *
-     * The contents from the previous frame are meaningless to this one and
-     * LOADing them would depth-test against the last frame's geometry.
-     * D3D8's own semantics are that a frame that draws depth-tested
-     * geometry clears Z first; a frame that forgets is drawing against
-     * garbage on real hardware too, and 1.0 is the value that lets
-     * everything through rather than a value chosen to hide the mistake.
-     */
-    dt.clear_depth = (g_clear.mask & 2u) ? g_clear.depth : 1.0f;
-    dt.clear_stencil = (Uint8)((g_clear.mask & 4u) ? g_clear.stencil : 0u);
-    /* Mid-frame, only what the engine ASKED to clear is cleared: a depth
-       clear before the HUD must not throw away the colour, and a colour
-       clear must not throw away the depth. */
-    dt.load_op = (!reopen || (g_clear.mask & 2u)) ? SDL_GPU_LOADOP_CLEAR
-                                                  : SDL_GPU_LOADOP_LOAD;
-    dt.store_op = SDL_GPU_STOREOP_STORE;
-    dt.stencil_load_op = (!reopen || (g_clear.mask & 4u)) ? SDL_GPU_LOADOP_CLEAR
-                                                          : SDL_GPU_LOADOP_LOAD;
-    dt.stencil_store_op = SDL_GPU_STOREOP_STORE;
-  }
+  gpu_pass_depth_target(&dt, depth, &g_clear, reopen);
 
   g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
   if (!g_pass) {
     x2_log_error("gpu: SDL_BeginGPURenderPass failed: %s\n", SDL_GetError());
     return;
   }
+  gpu_pass_binds_reset(gpu_pass_binds());
   apply_viewport();
 }
 

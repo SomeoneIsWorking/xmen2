@@ -28,7 +28,7 @@ LEGACY_LIMITS = {
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1514,           # vtable call -> d3d8_selftest_call.c
     "src/native/threads.c": 717,              # was 1070, then 842; the reports -> thread_report.c
-    "src/gpu/gpu_device.c": 818,              # was 841
+    "src/gpu/gpu_device.c": 760,              # pass attachments -> gpu_pass_attachments.c
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
     "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c
     "src/native/win32_sdl.c": 1025,           # was 930

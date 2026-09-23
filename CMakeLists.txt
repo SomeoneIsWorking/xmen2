@@ -350,6 +350,11 @@ target_include_directories(test_hud_layout PRIVATE src/presentation src/config)
 target_link_libraries(test_hud_layout PRIVATE m)
 add_test(NAME hud_layout COMMAND test_hud_layout)
 
+add_executable(test_gpu_pass_binds tests/test_gpu_pass_binds.c
+               src/gpu/gpu_pass_binds.c)
+target_include_directories(test_gpu_pass_binds PRIVATE src/gpu)
+add_test(NAME gpu_pass_binds COMMAND test_gpu_pass_binds)
+
 add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
                src/gpu/gpu_frame_timing.c)
 target_include_directories(test_gpu_frame_timing PRIVATE src/gpu)
@@ -1876,6 +1881,8 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_frame_init_selftest.c
     src/gpu/gpu_staging_ring.c
     src/gpu/gpu_upload_batch.c
+    src/gpu/gpu_pass_binds.c
+    src/gpu/gpu_pass_attachments.c
     src/gpu/gpu_upload_selftest.c
     src/gpu/gpu_headless.c
     src/gpu/gpu_device_selftest.c

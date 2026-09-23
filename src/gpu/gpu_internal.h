@@ -37,6 +37,8 @@ static inline unsigned long long gpu_perf_now_ns(void) {
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
+#include "gpu_pass_binds.h"
+
 extern SDL_GPUDevice *g_gpu;
 extern SDL_GPUCommandBuffer *g_cmd;
 extern SDL_GPURenderPass *g_pass;

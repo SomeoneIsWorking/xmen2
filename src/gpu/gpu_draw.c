@@ -123,7 +123,11 @@ typedef struct {
   int cube_refused; /* this cube's draw refusal was reported */
   int kind;         /* GpuBufferKind, or 0 for a texture */
   int live;
+  uint64_t serial; /* a buffer's contents, new at creation and every upload:
+                      see gpu_pass_binds.h */
 } Res;
+
+static uint64_t g_buffer_serial;
 
 static unsigned long g_vs_frame = (unsigned long)-1;
 static int g_diagnostic_disable_depth;
@@ -238,6 +242,7 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
   r->bytes = bytes;
   r->kind = kind;
   r->live = 1;
+  r->serial = ++g_buffer_serial;
   return h;
 }
 
@@ -305,6 +310,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
    * uploads the full resource or draws only the uploaded prefix.
    */
   SDL_UploadToGPUBuffer(cp, &src, &dr, true);
+  r->serial = ++g_buffer_serial;
   {
     unsigned long long now = gpu_perf_now_ns();
     g_upload_record_ns += now - t1;
@@ -925,7 +931,8 @@ int gpu_draw(const GpuDraw *d) {
   gpu_pass_begin();
   if (!g_pass)
     return refuse("the render pass could not be opened");
-  SDL_BindGPUGraphicsPipeline(g_pass, pipe);
+  if (gpu_pass_binds_pipeline_changed(gpu_pass_binds(), pipe))
+    SDL_BindGPUGraphicsPipeline(g_pass, pipe);
 
   memset(&vb, 0, sizeof vb);
   vb.buffer = vres->buf;
@@ -1067,12 +1074,16 @@ int gpu_draw(const GpuDraw *d) {
       g_refused_index_range++;
       return 0;
     }
-    memset(&ib, 0, sizeof ib);
-    ib.buffer = ires->buf;
-    ib.offset = 0;
-    SDL_BindGPUIndexBuffer(g_pass, &ib,
-                           d->index_is_32bit ? SDL_GPU_INDEXELEMENTSIZE_32BIT
-                                             : SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    if (gpu_pass_binds_index_changed(gpu_pass_binds(), ires->buf, ires->serial,
+                                     isz)) {
+      memset(&ib, 0, sizeof ib);
+      ib.buffer = ires->buf;
+      ib.offset = 0;
+      SDL_BindGPUIndexBuffer(g_pass, &ib,
+                             d->index_is_32bit
+                                 ? SDL_GPU_INDEXELEMENTSIZE_32BIT
+                                 : SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    }
     SDL_DrawGPUIndexedPrimitives(g_pass, n, 1, d->first_index,
                                  (Sint32)d->base_vertex, 0);
   } else {
@@ -1135,6 +1146,9 @@ void gpu_draw_report(void) {
       "(%d still cached; the device teardown empties the cache, so these "
       "differ whenever the engine released the device first)\n",
       g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
+  x2_log_info("        of those draws, %lu kept the pass's pipeline and %lu "
+              "its index buffer, so neither was bound again\n",
+              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->indices_kept);
   if (g_draws)
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
                 "total (%.3f alloc+copy, %.3f record) across %lu "

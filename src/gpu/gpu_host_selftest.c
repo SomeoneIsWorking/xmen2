@@ -32,6 +32,7 @@ static const GpuSelftestEntry kBattery[] = {
     {"device", gpu_device_selftest},
     {"upload reuse", gpu_upload_reuse_selftest},
     {"upload order", gpu_upload_order_selftest},
+    {"index upload order", gpu_index_upload_order_selftest},
     {"frame init", gpu_frame_init_selftest},
     {"mid-frame clear", gpu_midframe_clear_selftest},
     {"cube texgen", gpu_cube_texgen_selftest},
