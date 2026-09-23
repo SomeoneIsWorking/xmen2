@@ -10,7 +10,9 @@
  *   0x100478e0  classify(corners)
  *     2 when every corner is behind the eye or one frustum plane has every
  *     corner outside it, 1 when every corner is inside every plane, and
- *     otherwise a finer test against a guard band.
+ *     otherwise a finer test against a guard band: 3 when the guard-band
+ *     scale is 1 or some corner is outside the band, and 5 when every corner
+ *     is inside it.
  *
  * On the Dead Zone route the two were ~38% of the samples inside translated
  * code: ~250 x87 instructions and ~450 x87/integer instructions per call, each
@@ -37,13 +39,25 @@ extern "C" {
 #define BOX_CULL_CORNERS 8u
 #define BOX_CULL_CORNER_FLOATS (BOX_CULL_CORNERS * 4u)
 
-/* classify's answer. kBoxCullUndecided is the guard-band case this module
-   does not implement: the caller runs the guest body for it. */
+/* classify's answer. kBoxCullUndecided is not one: it says this module
+   cannot decide -- the box needs the guard-band test, or a value is one the
+   host arithmetic does not repeat -- and the caller runs the guest body. */
 typedef enum BoxCullVerdict {
   kBoxCullUndecided = 0,
   kBoxCullInside = 1,
   kBoxCullOutside = 2,
+  kBoxCullCrossesGuardBand = 3,
+  kBoxCullInsideGuardBand = 5,
 } BoxCullVerdict;
+
+/* The guard band classify tests a crossing box against: `scale` is the
+   guest's float at 0x1014f4ec (.data, so the title may change it) and `one`
+   its .rdata 1.0f at 0x1007bb0c, which scale is compared with. Both are
+   read, not assumed. */
+typedef struct BoxCullGuardBand {
+  float scale;
+  float one;
+} BoxCullGuardBand;
 
 /* The driver's extent, max - min per axis: the guest's fsub, spilled to a
    32-bit slot. `box` is its six floats from min.x. */
@@ -70,8 +84,23 @@ void box_cull_corners_guest_order(float out[BOX_CULL_CORNER_FLOATS],
 unsigned box_cull_corner_code(const float corner[4]);
 unsigned box_cull_corner_code_extended(const float corner[4]);
 
-/* 0x100478e0, up to its guard-band test. */
+/* 0x100478e0, up to its guard-band test: kBoxCullUndecided for a box that
+   crosses the frustum. */
 BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]);
+
+/*
+ * The guard-band test that 0x100478e0 takes for a box classify left
+ * undecided. The answer is 3 when the scale equals one. Otherwise every
+ * corner's x, y and z are scaled and coded as box_cull_corner_code codes
+ * them, and the answer is 5 when every scaled corner is inside every plane,
+ * else 3. The guest keeps the scaled x and y in registers, where the product
+ * of two floats is exact, and spills the scaled z to a float; this does the
+ * same in doubles. kBoxCullUndecided when the scale or any corner is not
+ * finite, or a spilled z overflows, where the guest's NaN and infinity
+ * arithmetic would decide.
+ */
+BoxCullVerdict box_cull_guard_band(const float corners[BOX_CULL_CORNER_FLOATS],
+                                   BoxCullGuardBand guard);
 
 /*
  * The driver's verdict -- classify over corners -- from double arithmetic

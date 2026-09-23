@@ -347,6 +347,110 @@ static void test_bounded_verdict_matches_exact(void) {
          ordinary_decided, ordinary, near_decided, near_plane, decided);
 }
 
+/* The guard-band test in the guest's own steps: scaled x and y kept in
+   extended registers, scaled z spilled to a float, each -w -/+ v rounded to
+   a float and its sign bit taken. */
+static BoxCullVerdict
+guest_guard_band(const float corners[BOX_CULL_CORNER_FLOATS], float scale) {
+  unsigned inside_all = 0x3fu;
+  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    const float *corner = &corners[c * 4u];
+    const long double neg_w = -(long double)corner[3];
+    const long double v[3] = {(long double)scale * corner[0],
+                              (long double)scale * corner[1],
+                              (float)((long double)scale * corner[2])};
+    unsigned code = 0u;
+    for (unsigned axis = 0; axis < 3u; axis++) {
+      code |= (signbit((float)(neg_w - v[axis])) ? 1u : 0u) << (2u * axis);
+      code |= (signbit((float)(neg_w + v[axis])) ? 1u : 0u) << (2u * axis + 1u);
+    }
+    inside_all &= code;
+  }
+  return inside_all == 0x3fu ? kBoxCullInsideGuardBand
+                             : kBoxCullCrossesGuardBand;
+}
+
+/* Crossing boxes against scales about one: the guest's steps and
+   box_cull_guard_band agree, and both answers come up. */
+static void test_guard_band_matches_guest(void) {
+  enum { BOXES = 200000 };
+  unsigned inside = 0, crosses = 0;
+  for (unsigned n = 0; n < BOXES; n++) {
+    float corners[BOX_CULL_CORNER_FLOATS];
+    const float w = edge_value(1.0f);
+    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+      corners[c * 4u + 3u] = (rng() % 8u) ? w : edge_value(w);
+      for (unsigned axis = 0; axis < 3u; axis++) {
+        corners[c * 4u + axis] = (rng() % 16u)
+                                     ? w * ((float)(rng() % 9u) - 4.0f) / 3.0f
+                                     : edge_value(w);
+      }
+    }
+    const float scale = (rng() % 4u) ? 0.75f : edge_value(0.5f);
+    const BoxCullGuardBand guard = {scale, 1.0f};
+    const BoxCullVerdict got = box_cull_guard_band(corners, guard);
+    if (got == kBoxCullUndecided) {
+      continue; /* a non-finite value: the guest body decides it */
+    }
+    const BoxCullVerdict want = scale == 1.0f
+                                    ? kBoxCullCrossesGuardBand
+                                    : guest_guard_band(corners, scale);
+    inside += want == kBoxCullInsideGuardBand;
+    crosses += want == kBoxCullCrossesGuardBand;
+    if (got != want) {
+      fprintf(stderr,
+              "FAIL guard band: box %u at scale %a is %d, the guest's steps "
+              "give %d\n",
+              n, (double)scale, (int)got, (int)want);
+      failures++;
+      return;
+    }
+  }
+  if (!inside || !crosses) {
+    fprintf(stderr,
+            "FAIL guard band: %u inside and %u crossing -- one never "
+            "came up\n",
+            inside, crosses);
+    failures++;
+  }
+}
+
+static void test_guard_band(void) {
+  float corners[BOX_CULL_CORNER_FLOATS];
+  const BoxCullGuardBand unit = {1.0f, 1.0f};
+  const BoxCullGuardBand half = {0.5f, 1.0f};
+  fill_corners(corners, 1.5f, 1.0f);
+  expect_verdict("a scale of one never tests the band",
+                 box_cull_guard_band(corners, unit), kBoxCullCrossesGuardBand);
+  expect_verdict("inside the band at half scale",
+                 box_cull_guard_band(corners, half), kBoxCullInsideGuardBand);
+  /* The guest compares the scale with one before it looks at a corner. */
+  fill_corners(corners, 0.0f, 1.0f);
+  expect_verdict("a scale of one answers 3 even for a box inside",
+                 box_cull_guard_band(corners, unit), kBoxCullCrossesGuardBand);
+  fill_corners(corners, 3.0f, 1.0f);
+  expect_verdict("outside the band at half scale",
+                 box_cull_guard_band(corners, half), kBoxCullCrossesGuardBand);
+  /* x is scaled in a register: (1 - 2^-23)(1 + 2^-23) = 1 - 2^-46 < w. */
+  const BoxCullGuardBand close = {1.0f - 0x1p-23f, 1.0f};
+  fill_corners(corners, 1.0f + 0x1p-23f, 1.0f);
+  expect_verdict("a scaled x is not rounded",
+                 box_cull_guard_band(corners, close), kBoxCullInsideGuardBand);
+  /* z is spilled: the same product rounds to 1.0f, which is not < w. */
+  fill_corners(corners, 0.0f, 1.0f);
+  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    corners[c * 4u + 2u] = 1.0f + 0x1p-23f;
+  }
+  expect_verdict("a scaled z is spilled to a float",
+                 box_cull_guard_band(corners, close), kBoxCullCrossesGuardBand);
+  const BoxCullGuardBand nan_scale = {NAN, 1.0f};
+  expect_verdict("a NaN scale is the guest body's",
+                 box_cull_guard_band(corners, nan_scale), kBoxCullUndecided);
+  corners[5] = INFINITY;
+  expect_verdict("an infinite corner is the guest body's",
+                 box_cull_guard_band(corners, half), kBoxCullUndecided);
+}
+
 static void test_classify(void) {
   float corners[BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
@@ -390,6 +494,8 @@ int main(void) {
   test_corner_code_matches_extended();
   test_corners_match_guest_order();
   test_classify_matches_guest();
+  test_guard_band();
+  test_guard_band_matches_guest();
   test_bounded_verdict_matches_exact();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */

@@ -245,6 +245,48 @@ BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]) {
   return inside_all == 0x3fu ? kBoxCullInside : kBoxCullUndecided;
 }
 
+/* A scaled corner's code: the sign of the guest's rounded -w - v and -w + v
+   is exactly whether -w < v and -w < -v, as box_cull_corner_code's order
+   says for floats; v here is a double holding the guest's value exactly. */
+static unsigned scaled_corner_code(double neg_w, const double v[3]) {
+  unsigned code = 0u;
+  for (unsigned axis = 0; axis < 3u; axis++) {
+    code |= (unsigned)(neg_w < v[axis]) << (2u * axis);
+    code |= (unsigned)(neg_w < -v[axis]) << (2u * axis + 1u);
+  }
+  return code;
+}
+
+BoxCullVerdict box_cull_guard_band(const float corners[BOX_CULL_CORNER_FLOATS],
+                                   BoxCullGuardBand guard) {
+  uint32_t bits[BOX_CULL_CORNER_FLOATS];
+  uint32_t scale_bits;
+  memcpy(bits, corners, sizeof bits);
+  memcpy(&scale_bits, &guard.scale, sizeof scale_bits);
+  if (!is_finite_bits(scale_bits) ||
+      !all_finite(bits, BOX_CULL_CORNER_FLOATS)) {
+    return kBoxCullUndecided;
+  }
+  if (guard.scale == guard.one) {
+    return kBoxCullCrossesGuardBand;
+  }
+  const double scale = guard.scale;
+  unsigned inside_all = 0x3fu;
+  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    const float *corner = &corners[c * 4u];
+    const float z = (float)(scale * corner[2]);
+    uint32_t z_bits;
+    memcpy(&z_bits, &z, sizeof z_bits);
+    if (!is_finite_bits(z_bits)) {
+      return kBoxCullUndecided;
+    }
+    const double v[3] = {scale * corner[0], scale * corner[1], z};
+    inside_all &= scaled_corner_code(-(double)corner[3], v);
+  }
+  return inside_all == 0x3fu ? kBoxCullInsideGuardBand
+                             : kBoxCullCrossesGuardBand;
+}
+
 /*
  * The bound. A guest corner is its axis's base plus up to three extent
  * terms, every product of two floats exact in either format. Its error

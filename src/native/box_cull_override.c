@@ -13,8 +13,8 @@
  * Each override answers natively only where that is exact: box_cull's host
  * test, the guest's own control word X86P_X87_CW_INIT, and enough empty x87
  * registers below TOP for every push the guest body would make, so that the
- * body could not have taken a stack fault. Otherwise, and for classify's
- * guard-band case, it runs the guest body.
+ * body could not have taken a stack fault. Otherwise, and for a guard-band
+ * test over a value that is not finite, it runs the guest body.
  *
  * THE CONTRACT is the functions' calling convention: the output buffer, EAX,
  * ESP, and the x87 TOP, tags, control and status words. Neither body leaves
@@ -51,6 +51,10 @@
 #define CLASSIFY_EP 0x100478e0u
 /* The .rdata 0.0f corners multiplies the extents it leaves out by. */
 #define CORNERS_ZERO_LINKED 0x10077ba8u
+/* classify's guard-band scale (.data) and the .rdata 1.0f it is compared
+   with. */
+#define GUARD_SCALE_LINKED 0x1014f4ecu
+#define GUARD_ONE_LINKED 0x1007bb0cu
 /* The import slots of the two attribute-stack indices the driver reads. */
 #define DRIVER_VIEW_INDEX_SLOT_LINKED 0x10070314u
 #define DRIVER_PROJECTION_INDEX_SLOT_LINKED 0x10070310u
@@ -183,6 +187,19 @@ static int verifying(void) {
   return s_verify;
 }
 
+/* classify's whole answer over `corners`, guard band included;
+   kBoxCullUndecided where only the guest body can say. */
+static BoxCullVerdict classify_corners(const float *corners) {
+  const BoxCullVerdict verdict = box_cull_classify(corners);
+  if (verdict != kBoxCullUndecided) {
+    return verdict;
+  }
+  const BoxCullGuardBand guard = {
+      x86_loadf32(libigsg_mapped(GUARD_SCALE_LINKED)),
+      x86_loadf32(libigsg_mapped(GUARD_ONE_LINKED))};
+  return box_cull_guard_band(corners, guard);
+}
+
 static int driver_native(CPU *C) {
   if (!native_exact(C, CORNERS_PUSHES)) {
     return 0;
@@ -207,11 +224,14 @@ static int driver_native(CPU *C) {
   box_cull_extent(extent, bounds);
   const float zero = x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED));
   /* The driver keeps its corners to itself, so only the verdict must be the
-     guest's: the bounded one where it is certain, the exact one otherwise. */
+     guest's: the bounded one where it is certain, the exact one otherwise. A
+     box the bound finds crossing still needs its exact corners for the
+     guard band. */
   BoxCullVerdict verdict;
-  if (!box_cull_bounded_verdict(bounds, extent, matrix, zero, &verdict)) {
+  if (!box_cull_bounded_verdict(bounds, extent, matrix, zero, &verdict) ||
+      verdict == kBoxCullUndecided) {
     box_cull_corners(corners, bounds, extent, matrix, zero);
-    verdict = box_cull_classify(corners);
+    verdict = classify_corners(corners);
   }
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
@@ -260,7 +280,7 @@ static int classify_native(CPU *C) {
   const uint32_t esp = C->reg[kX86pEsp];
   float corners[BOX_CULL_CORNER_FLOATS];
   read_floats(RD32(esp + 4u), corners, BOX_CULL_CORNER_FLOATS);
-  const BoxCullVerdict verdict = box_cull_classify(corners);
+  const BoxCullVerdict verdict = classify_corners(corners);
   if (verdict == kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;
