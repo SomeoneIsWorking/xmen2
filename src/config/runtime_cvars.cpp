@@ -133,6 +133,10 @@ lucent::cvar::Var<long> g_jit_chain{"jit.chain", 0};
  * how the run got there. */
 lucent::cvar::Var<long> g_jit_watch{"jit.watch", 0};
 lucent::cvar::Var<long> g_jit_watch_reports{"jit.watchn", 4};
+/* A path: every JIT translation's host range and guest address is written
+ * there in perf's map format, so a profile charges JIT samples to guest blocks
+ * exactly. Empty writes nothing. A diagnostic. */
+lucent::cvar::Var<std::string> g_jit_map{"jit.map", ""};
 /* One guest address a watch report should also dump, and how many words of it.
  * The report names the pointers it finds on the stack; this is the run after
  * that, following one of them. Zero asks for nothing.
@@ -281,6 +285,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_chain);
   lucent::cvar::register_var(g_jit_watch);
   lucent::cvar::register_var(g_jit_watch_reports);
+  lucent::cvar::register_var(g_jit_map);
   lucent::cvar::register_var(g_control_port);
   lucent::cvar::register_var(g_jit_peek);
   lucent::cvar::register_var(g_jit_peek_words);

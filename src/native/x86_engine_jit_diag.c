@@ -11,6 +11,8 @@
 #include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
 
+#include <stdio.h>
+
 /*
  * One report of an entry to the watched address.
  *
@@ -83,9 +85,62 @@ static void watch_report(void *user, uint32_t addr, uint32_t previous,
 
 static unsigned long g_watch_seen;
 
+/*
+ * jit.map=<path>: every translation's host range, in perf's map format
+ * ("START SIZE NAME", hex), one line per published block.
+ *
+ * A sample in JIT code is a host address in anonymous memory. This file is
+ * what charges it to its guest block exactly, where a guest-address marker
+ * found in a code dump also charges the stubs that follow a block. Blocks
+ * dropped by a flush can be followed by others at the same host bytes, so a
+ * reader keeps the LAST line for an address. Shared by every engine: all
+ * translation happens under the one guest lock.
+ */
+static FILE *g_map;
+
+static void map_translation(void *user, uint32_t guest_eip, const void *host,
+                            size_t host_bytes) {
+  char line[64];
+  (void)user;
+  const int n =
+      snprintf(line, sizeof line, "%llx %zx guest_%08x\n",
+               (unsigned long long)(uintptr_t)host, host_bytes, guest_eip);
+  if (n > 0 && fwrite(line, 1, (size_t)n, g_map) != (size_t)n) {
+    lucent_log_error("engine",
+                     "jit.map: a write failed; the map is "
+                     "incomplete from guest 0x%08x on",
+                     guest_eip);
+  }
+}
+
+static int map_configure(struct X86pJitEngine *jit, char *reason,
+                         unsigned reason_len) {
+  const char *path = lucent_cvar_text("jit.map");
+  if (!path || !*path) {
+    return 1;
+  }
+  if (!g_map) {
+    if (!(g_map = fopen(path, "w"))) {
+      snprintf(reason, reason_len, "jit.map=%s could not be opened for writing",
+               path);
+      return 0;
+    }
+    /* Line-buffered, so a run ended by a signal still leaves every line. */
+    setvbuf(g_map, NULL, _IOLBF, 0);
+  }
+  x86p_jit_engine_set_translate_watch(jit, map_translation, NULL);
+  lucent_log_info("engine",
+                  "jit.map=%s: every translation's host range is "
+                  "written there",
+                  path);
+  return 1;
+}
+
 int x86_engine_jit_diag_configure(struct X86pJitEngine *jit, char *reason,
                                   unsigned reason_len) {
   if (!jit)
+    return 0;
+  if (!map_configure(jit, reason, reason_len))
     return 0;
   if (!lucent_cvar_flag("jit.cache", 1)) {
     x86p_jit_engine_set_cache(jit, 0);

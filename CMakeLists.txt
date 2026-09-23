@@ -1375,6 +1375,10 @@ add_test(NAME clang_tidy
                  --build-dir ${CMAKE_BINARY_DIR} --jobs 2)
 set_tests_properties(clang_tidy PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME jit_map_profile
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/jit_map_profile.py --selftest)
+set_tests_properties(jit_map_profile PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME x2ctl COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
 set_tests_properties(x2ctl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
