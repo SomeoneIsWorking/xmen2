@@ -272,7 +272,9 @@ On an x86-64 host the x87 forms now translate to inline host x87 code
 (x86port `9e6de9f` onwards), so softfloat is no longer the desktop frame's
 bulk: on 2026-09-23 Dead Zone ran unpaced at about 180 presents/s (5.6 ms)
 with a flat profile, its hottest translated block (`igTraversal::dispatch`,
-2.9%) stalled on the scene-graph node load. ARM64 has no host x87, so this
+2.9%) stalled on the scene-graph node load. The native invert and x86port's
+inline FSQRT (`e216eee`, which took the function helpers from ~1.8% to ~1.0%
+of samples) then gave 203-217 presents/s on the same route. ARM64 has no host x87, so this
 Android frame has not been re-measured against that change.
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
