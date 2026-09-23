@@ -13,6 +13,7 @@ struct X2PromptQuad {
   float u0, v0, u1, v1;
   uint32_t color;
   uint16_t codepoint;
+  uint8_t sheet; /* X2_KEYCAP_SHEET_*: the atlas, or the key label sheet */
 };
 
 #define X2_PROMPT_QUADS_MAX 512u

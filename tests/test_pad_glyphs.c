@@ -310,11 +310,11 @@ int main(int argc, char **argv) {
       return 1;
     }
   }
-  /* The label presentation. Pad pictures lose brackets. Keyboard bindings
-     keep their live text but receive composable keycap pieces around it. */
+  /* The label presentation. Pad pictures lose brackets. A keyboard binding
+     becomes a keycap run: its live name between two layout-only edges. */
   {
     char want[64];
-    size_t at = 0, i;
+    size_t at = 0;
     char glyph[2];
     glyph[0] = (char)X2_PAD_GLYPH_FACE_A;
     glyph[1] = '\0';
@@ -326,28 +326,43 @@ int main(int argc, char **argv) {
       return 1;
     }
     want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
-    for (i = 0; i < 5; i++)
-      want[at++] = (char)X2_KEYCAP_GLYPH_MIDDLE;
-    for (i = 0; i < 5; i++)
-      want[at++] = (char)X2_KEYCAP_GLYPH_REWIND;
     memcpy(want + at, "ENTER", 5);
     at += 5;
     want[at++] = (char)X2_KEYCAP_GLYPH_RIGHT;
     want[at] = '\0';
     if (strcmp(label_after("ENTER"), want) != 0) {
-      fprintf(stderr, "prompt keycap: ENTER was not composed from the "
-                      "four scalable pieces\n");
+      fprintf(stderr, "prompt keycap: ENTER was not composed between the "
+                      "two layout edges\n");
       return 1;
     }
     at = 0;
     want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
-    want[at++] = (char)X2_KEYCAP_GLYPH_MIDDLE;
-    want[at++] = (char)X2_KEYCAP_GLYPH_REWIND;
     want[at++] = 'A';
     want[at++] = (char)X2_KEYCAP_GLYPH_RIGHT;
     want[at] = '\0';
     if (strcmp(label_after("A"), want) != 0) {
       fprintf(stderr, "prompt keycap: one-character A was not composed\n");
+      return 1;
+    }
+    /* Names are lettered at run time, so any printable word becomes a key,
+       including one no table lists. */
+    at = 0;
+    want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
+    memcpy(want + at, "NOSUCHKEY", 9);
+    at += 9;
+    want[at++] = (char)X2_KEYCAP_GLYPH_RIGHT;
+    want[at] = '\0';
+    if (strcmp(label_after("NOSUCHKEY"), want) != 0) {
+      fprintf(stderr, "prompt keycap: an unlisted name was not lettered\n");
+      return 1;
+    }
+    /* A name that is not one printable word of at most X2_KEYCAP_NAME_MAX
+       characters stays the game's own text rather than half a key. */
+    if (strcmp(label_after("Btn 3"), "[Btn 3]") != 0 ||
+        strcmp(label_after("ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF"),
+               "[ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF]") != 0) {
+      fprintf(stderr, "prompt keycap: a spaced or over-long name was "
+                      "composed into a key\n");
       return 1;
     }
     if (strcmp(label_after("???"), "[???]") != 0) {
@@ -378,10 +393,10 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    x2_prompt_glyph_mark_unavailable(X2_KEYCAP_GLYPH_MIDDLE);
+    x2_prompt_glyph_mark_unavailable(X2_KEYCAP_GLYPH_RIGHT);
     if (strcmp(label_after("ENTER"), "[ENTER]") != 0) {
       fprintf(stderr, "keycap availability: a keycap with an occupied "
-                      "piece did not retain the retail label\n");
+                      "edge did not retain the retail label\n");
       return 1;
     }
   }

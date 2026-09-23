@@ -78,7 +78,7 @@ def load() -> tuple[int, str, list[str], str, str, list[str], list[int]]:
         raise ValueError(f"the shared set {keyboard_set!r} has no glyph "
                          f"{keyboard_source!r}. It has: "
                          f"{', '.join(sorted(keyboard_available))}")
-    expected_parts = ["left", "middle", "rewind", "right"]
+    expected_parts = ["left", "right"]
     if keycap_parts != expected_parts:
         raise ValueError(f"keycap_parts must be {expected_parts!r}, found "
                          f"{keycap_parts!r}; their metrics are semantic")
@@ -122,8 +122,34 @@ def svg_paths() -> list[Path]:
 
 
 def keycap_svg_path() -> Path:
-    """Blank shared keycap geometry; this port slices it into atlas pieces."""
+    """Blank shared keycap; this port stretches its straight middle."""
     return port_assets.path(KEYBOARD_SET, KEYBOARD_SOURCE, start=ROOT)
+
+
+def key_font_path() -> Path:
+    """The shared keyboard set's typeface; the runtime letters keys in it."""
+    return port_assets.key_font(start=ROOT)
+
+
+def draw_keyboard():
+    """The shared set's authoring module: it owns the key typography."""
+    import importlib.util
+    path = keyboard_tool_path()
+    spec = importlib.util.spec_from_file_location("port_assets_draw_keyboard",
+                                                  path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"prompt atlas: cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    if not hasattr(module, "LABEL_SIZE"):
+        raise SystemExit(f"prompt atlas: {path} has no LABEL_SIZE; the pinned "
+                         "port-assets predates its shipped key typeface")
+    return module
+
+
+def keyboard_tool_path() -> Path:
+    return port_assets.set_dir(KEYBOARD_SET, start=ROOT).parent.parent / \
+        "tools" / "draw_keyboard.py"
 
 
 def shared_source_paths() -> list[Path]:
@@ -134,6 +160,7 @@ def shared_source_paths() -> list[Path]:
         port_assets.set_dir(KEYBOARD_SET, start=ROOT) / "set.json",
         *svg_paths(),
         keycap_svg_path(),
+        keyboard_tool_path(),
     ]
     missing = [path for path in paths if not path.is_file()]
     if missing:
@@ -197,6 +224,8 @@ def main() -> int:
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--emit-header", type=Path)
     parser.add_argument("--copy-svg-dir", type=Path)
+    parser.add_argument("--print-key-font", action="store_true",
+                        help="print the shared key typeface's path")
     args = parser.parse_args()
     if args.selftest:
         where = port_assets.set_dir(SET_NAME, start=ROOT)
@@ -215,13 +244,17 @@ def main() -> int:
         print(f"pad glyph manifest: all {len(ICONS)} pad SVG(s) and shared "
               f"keycap {cap.name} readable")
         return 0
+    if args.print_key_font:
+        print(key_font_path().resolve())
+        return 0
     if args.emit_header:
         emit_header(args.emit_header)
         return 0
     if args.copy_svg_dir:
         copy_svg_directory(args.copy_svg_dir)
         return 0
-    parser.error("choose --selftest, --emit-header, or --copy-svg-dir; generated NOTHING")
+    parser.error("choose --selftest, --emit-header, --copy-svg-dir or "
+                 "--print-key-font; generated NOTHING")
     return 0
 
 

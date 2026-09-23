@@ -362,9 +362,14 @@ Observed subset: native prompt SVGs now cross above D3D8. C271 and
 [`RE/text.md`](RE/text.md) establish that the port retains the executable's
 text layout, brackets `igDxVisualContext::drawNonIndexed`, snapshots Alchemy's
 finalized world/view/projection state from the nested context update, and
-submits a port-owned RGBA atlas before the stock label. The windowless, silent,
-unbounded keyboard evidence run submitted 1,188 quads in 99 prompt batches and
-shows the native keycap aligned around retail `ENTER`. A separate synthetic-pad
+submits a port-owned RGBA atlas before the stock label. A keyboard binding is
+drawn whole from the shared `port-assets` keyboard set: the blank cap as a
+stretched three-slice frame and the localized name lettered at run time in the
+set's typeface, with no game-font pixel in the key (the stock letters over an
+inverted cap vanished on dark panels). Prompt cells are sized from each font's
+own capitals. A headless Dead Zone run on 2026-09-23 drew 1,507 whole keys,
+lettered `Enter`, and its 1280x720 capture shows the key standing above the
+dialog capitals beside `CONTINUE...`. A separate synthetic-pad
 run submitted 1,073 pure one-codepoint A icons through 1,073 matching nested
 Alchemy finalizers, with zero desync, unavailable-byte, colour, capacity,
 transform, cross-context, GPU, or unfinalized-boundary refusals; its capture

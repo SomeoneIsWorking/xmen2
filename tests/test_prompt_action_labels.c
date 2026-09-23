@@ -28,20 +28,14 @@ static int g_failed;
     }                                                                          \
   } while (0)
 
-/* The composition prompt_labels.c makes: left, middle x n, rewind x n, the
-   name, right -- then whatever words follow it. */
+/* The composition prompt_labels.c makes: left, the name, right -- then
+   whatever words follow it. */
 static unsigned compose(uint16_t *out, unsigned at, const char *name,
                         const char *words) {
   const unsigned n = (unsigned)strlen(name);
   unsigned i;
 
   out[at++] = X2_KEYCAP_GLYPH_LEFT;
-  for (i = 0; i < n; i++) {
-    out[at++] = X2_KEYCAP_GLYPH_MIDDLE;
-  }
-  for (i = 0; i < n; i++) {
-    out[at++] = X2_KEYCAP_GLYPH_REWIND;
-  }
   for (i = 0; i < n; i++) {
     out[at++] = (uint16_t)name[i];
   }
@@ -65,7 +59,7 @@ int main(void) {
   CHECK("a cap that opens the string is claimed",
         x2_prompt_action_label_match(drawn, length, &cap));
   CHECK("with the key it named", cap.dik == 0x01u);
-  CHECK("and the cap's own extent", cap.start == 0u && cap.end == 11u);
+  CHECK("and the cap's own extent", cap.start == 0u && cap.end == 5u);
 
   /* The menu footer: the authored text's token marker precedes the cap. */
   drawn[0] = 0x3edu;
@@ -74,7 +68,7 @@ int main(void) {
         x2_prompt_action_label_match(drawn, length, &cap));
   CHECK("with its key", cap.dik == 0x39u);
   CHECK("and its extent measured from where it starts",
-        cap.start == 1u && cap.end == 18u);
+        cap.start == 1u && cap.end == 8u);
 
   length = compose(drawn, 0, "Esc", "");
   CHECK("a cap drawn alone IS the binding and is left alone",

@@ -30,6 +30,8 @@ import subprocess
 import tempfile
 
 
+from ui_resource_files import UI_FILES
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = ROOT / "scratch"
 BUILD = ROOT / "build"
@@ -43,8 +45,6 @@ BUNDLE_NAME = "X-Men Legends II"
 # reliable way to get two incompatible copies loaded at once.
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/Library/Apple/")
 
-UI_FILES = ("LatoLatin-Regular.ttf", "LatoLatin-Bold.ttf", "settings.rcss",
-            "touch_controls.rcss")
 UI_DIRECTORIES = ("touch", "icons")
 
 

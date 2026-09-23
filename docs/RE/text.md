@@ -91,9 +91,17 @@ engine has bound for this text -- the binding established by `FUN_005ee620`.
 The retail engine measures and positions the string; the port owns the new
 pixels and submits them before the stock ASCII in the same semantic text draw:
 
-1. `prompt_glyph_metrics.c` publishes width, height, advance, offset and the
-   font's modal scaled baseline for the port's private codepoints. It writes no
-   UVs, so the game font never becomes the pixel owner.
+1. `prompt_glyph_metrics.c` publishes width, height, advance, offset and
+   baseline for the port's private codepoints, sized from each font's own
+   capitals: one design pixel is 1/18 of the modal `A`..`Z` box height of
+   that (already text-scaled) record, and each cell is centred on the
+   capitals from the font's modal baseline. The four loaded records measure
+   capitals 12, 16 and 21 and a digits-only face with none, which gets no
+   cells. A single text scale for every record left prompts beside the
+   16-unit dialog capitals sized for the 12-unit face. Over the whole record
+   the modal height of the third face is 27 -- its accented capitals -- which
+   is why the mode is taken over `A`..`Z`. It writes no UVs, so the game font
+   never becomes the pixel owner.
 2. `prompt_glyph_draw.c` follows the stock wide-string loop and intercepts
    each private-codepoint call to **`FUN_005ee400`**. Before the loop begins it
    validates the batch colour, every codepoint and capacity for the whole
@@ -106,14 +114,25 @@ pixels and submits them before the stock ASCII in the same semantic text draw:
    `Gap::Gfx::igDxVisualContext::drawNonIndexed` at libIGGfx `0x100352d0`.
    Its nested `updateContextState` override at `0x10034e60` super-calls first,
    then submits the queued SVG quads with the engine's finalized transform.
-   Control returns to the stock draw, so ordinary text lands over the keycap
-   background in the intended order.
-4. `gpu_prompt_glyphs.c` owns the retained RGBA texture and vertex buffer and
-   submits a `GpuDraw` from the queued rectangles. The pixels come from the
-   shared `port-assets` SVG sets rasterised at build time into the generated,
-   port-owned atlas (`tools/render_prompt_glyphs.py` ->
-   `src/gen/prompt_glyph_atlas.h`). No shipped font contributes pixels
-   to it.
+   Control returns to the stock draw for the ordinary text around them.
+4. `gpu_prompt_glyphs.c` owns the retained RGBA textures and vertex buffer
+   and submits a `GpuDraw` per texture from the queued rectangles. The
+   pixels come from the shared `port-assets` sets: controller icons and the
+   blank key cap rasterised at build time into the generated, port-owned
+   atlas (`tools/render_prompt_glyphs.py` -> `src/gen/prompt_glyph_atlas.h`),
+   and key names lettered at run time (`keycap_labels.c`) in the set's own
+   typeface, because the game localizes them (`ENTER` arrives as `Enter`).
+   No shipped font contributes pixels to either.
+
+A keyboard binding composes as `KEYCAP_LEFT name KEYCAP_RIGHT` (0x9a, 0x9b;
+`keycap_run.c` owns that grammar for both the composer and the drawer). The
+two edges carry layout only: the margins either side of the name, at a cell
+height that makes the cap stand 1.25 times the capitals. At the right edge
+`prompt_glyph_draw.c` collapses every stock quad in the run and queues one key
+over the whole span: the cap as a three-slice frame whose straight middle
+stretches, and the lettered name centred on it, narrowed only if it would not
+fit. The stock letters were drawn over a darkened, luminance-inverted cap
+before this, which vanished on a dark panel.
 
 ## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
 
@@ -123,7 +142,7 @@ string. On a boot-direct tutorial run (`X2_BOOT_MAP=act0/tutorial/tutorial1`,
 
 * 4,581 strings reached `FUN_005ee780`
 * **1,142 of them carried 13,704 prompt codepoints**, in exactly the shape
-  `prompt_labels.c` composes:
+  `prompt_labels.c` composed at the time:
 
       0090 0091 0091 0091 0091 0091 0092 0092 0092 0092 0092 0045 006e 0074 0065 0072 0093
       KEYCAP_LEFT  MIDDLE x5            REWIND x5             "Enter"      KEYCAP_RIGHT

@@ -1,20 +1,20 @@
 /* Presentation for the action labels produced by XMen2.exe FUN_00619e30.
  *
  * The retail function returns "[NAME]". A pad name is already a complete
- * picture and loses the brackets. A keyboard name is composited over the
- * shared blank keycap without baking a codepoint per possible binding:
- *
- *   left, repeated middle strips, repeated negative-advance rewinds,
- *   the retail binding name, right
- *
- * The background glyphs draw first, the rewinds return the text pen, and the
- * unchanged stock letters draw over them. A rebind therefore changes the
- * prompt immediately and consumes four codepoints for the whole keyboard.
+ * picture and loses the brackets. A keyboard name becomes a keycap run
+ * (keycap_run.h): layout-only edges around the retail name, over which the
+ * drawer paints the whole key from shared art. A rebind changes the prompt
+ * immediately, and the keyboard costs two codepoints. A name that cannot be
+ * lettered (keycap_labels.h reports why) keeps the game's own "[NAME]": a key
+ * drawn half in shared art and half in the game's font is the defect this
+ * replaced.
  */
 #include "prompt_labels.h"
 #include "x2_log.h"
 
 #include "guest_heap.h"
+#include "keycap_labels.h"
+#include "keycap_run.h"
 #include "pad_glyph_codes.h"
 #include "pad_glyphs.h"
 #include "prompt_action_labels.h"
@@ -33,6 +33,7 @@
 
 static unsigned long g_unchanged, g_pad_labels, g_keycap_labels;
 static unsigned long g_buffer_failures;
+
 static uint32_t g_styled_label;
 
 uint32_t x2_prompt_label_buffer(void) { return g_styled_label; }
@@ -73,15 +74,13 @@ static int pad_glyph_byte(uint8_t value) {
 
 static int keycap_glyphs_available(void) {
   return x2_prompt_glyph_available(X2_KEYCAP_GLYPH_LEFT) &&
-         x2_prompt_glyph_available(X2_KEYCAP_GLYPH_MIDDLE) &&
-         x2_prompt_glyph_available(X2_KEYCAP_GLYPH_REWIND) &&
          x2_prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
 }
 
 enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
                                            uint8_t *output, size_t capacity) {
-  size_t length, name_length, i, at;
-  size_t units;
+  size_t length, name_length, i;
+  uint16_t run[X2_KEYCAP_NAME_MAX + 2u];
 
   if (!input || !output || !capacity)
     return PROMPT_LABEL_UNCHANGED;
@@ -99,28 +98,27 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
   if (!keycap_glyphs_available())
     return PROMPT_LABEL_UNCHANGED;
   name_length = length - 2u;
-  units = name_length;
-  if (name_length > 63u ||
+  if (name_length > X2_KEYCAP_NAME_MAX ||
       (name_length == 3u && memcmp(input + 1u, "???", 3u) == 0))
     return PROMPT_LABEL_UNCHANGED;
+  run[0] = X2_KEYCAP_GLYPH_LEFT;
   for (i = 0; i < name_length; i++) {
-    uint8_t value = input[i + 1u];
-    if (value < 0x20u || value > 0x7eu)
-      return PROMPT_LABEL_UNCHANGED;
+    run[i + 1u] = input[i + 1u];
   }
-  if (3u + units * 2u + name_length > capacity)
+  run[name_length + 1u] = X2_KEYCAP_GLYPH_RIGHT;
+  /* Composed only as a run the drawer will take, and lettered now, so a key
+     that cannot be drawn whole is never composed. */
+  if (x2_keycap_run_length(run, (unsigned)name_length + 2u, 0u) !=
+          name_length + 2u ||
+      !x2_keycap_label_art(run + 1u, (unsigned)name_length))
+    return PROMPT_LABEL_UNCHANGED;
+  if (name_length + 3u > capacity)
     return PROMPT_LABEL_UNCHANGED;
 
-  at = 0;
-  output[at++] = X2_KEYCAP_GLYPH_LEFT;
-  for (i = 0; i < units; i++)
-    output[at++] = X2_KEYCAP_GLYPH_MIDDLE;
-  for (i = 0; i < units; i++)
-    output[at++] = X2_KEYCAP_GLYPH_REWIND;
-  memcpy(output + at, input + 1u, name_length);
-  at += name_length;
-  output[at++] = X2_KEYCAP_GLYPH_RIGHT;
-  output[at] = 0;
+  output[0] = X2_KEYCAP_GLYPH_LEFT;
+  memcpy(output + 1u, input + 1u, name_length);
+  output[name_length + 1u] = X2_KEYCAP_GLYPH_RIGHT;
+  output[name_length + 2u] = 0;
   return PROMPT_LABEL_KEYCAP;
 }
 
@@ -192,6 +190,7 @@ void prompt_labels_report(void) {
   x2_log_info("  Prompt labels: %lu keycap, %lu pad, %lu unchanged; %lu guest "
               "buffer allocation failure(s)\n",
               g_keycap_labels, g_pad_labels, g_unchanged, g_buffer_failures);
+
   if (!g_n_sites) {
     x2_log_info("        asked for by NOBODY in this run -- 0 call(s) "
                 "reached FUN_00619e30, so nothing here is evidence about "

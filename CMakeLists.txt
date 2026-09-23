@@ -187,6 +187,8 @@ elseif(ANDROID)
             "x2native: shared android-port prefix omitted Freetype::Freetype")
     endif()
 else()
+    # The runtime letters keyboard prompts in the shared key typeface.
+    find_package(Freetype REQUIRED)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
                       libavformat libavcodec libavutil libswscale libswresample)
@@ -800,6 +802,23 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
              ${X2_PROMPT_GLYPH_INPUTS})
 
+# Keyboard prompts are lettered at runtime (the game localizes key names) in
+# the shared key typeface, which ships beside the other UI resources.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py" --print-key-font
+    RESULT_VARIABLE X2_KEY_FONT_RESULT
+    OUTPUT_VARIABLE X2_KEY_FONT
+    ERROR_VARIABLE X2_KEY_FONT_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT X2_KEY_FONT_RESULT EQUAL 0 OR NOT EXISTS "${X2_KEY_FONT}")
+    message(FATAL_ERROR
+        "Refusing configuration: the shared key typeface did not resolve:\n"
+        "${X2_KEY_FONT_ERROR}")
+endif()
+configure_file("${X2_KEY_FONT}" "${CMAKE_BINARY_DIR}/ui/NotoSans-Bold-keys.ttf"
+               COPYONLY)
+
 set(X2_PROMPT_GLYPH_ATLAS_HEADER
     "${CMAKE_SOURCE_DIR}/src/gen/prompt_glyph_atlas.h")
 add_custom_command(
@@ -849,26 +868,34 @@ add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/pad_glyphs.c
                src/native/prompt_action_labels.c src/native/prompt_glyphs.c
                src/native/prompt_labels.c src/native/input_binding_sets.c
+               src/native/keycap_run.c src/native/keycap_labels.c
+               src/native/prompt_glyph_atlas.c src/ui/ui_resources.cpp
                src/native/input_bindings.c
                src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
-add_dependencies(test_pad_glyphs x2_pad_glyph_header)
+add_dependencies(test_pad_glyphs x2_pad_glyph_header x2_prompt_glyph_atlas)
 target_include_directories(test_pad_glyphs PRIVATE src/runtime/x86_abi src/native
-                                                  src/input ${CMAKE_BINARY_DIR})
+                                                  src/input src/gen
+                                                  ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE X86_NATIVE)
-target_link_libraries(test_pad_glyphs PRIVATE pthread x2_runtime_config)
+target_link_libraries(test_pad_glyphs PRIVATE m pthread x2_runtime_config
+                                              Freetype::Freetype)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
+set_tests_properties(pad_glyphs pad_glyphs_disabled PROPERTIES
+                     ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
 # The glyph-loop detector, against both classes. On the real run it has only
 # ever answered zero; this is where it is made to answer one.
 add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
-               src/native/prompt_glyph_draw.c src/native/prompt_glyphs.c
+               src/native/prompt_glyph_draw.c src/native/prompt_string_census.c
+               src/native/prompt_glyphs.c
                src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
                src/native/text_put.c
                src/native/prompt_glyph_quads.c
-               src/native/prompt_action_labels.c
+               src/native/prompt_action_labels.c src/native/keycap_run.c
+               src/native/keycap_labels.c src/ui/ui_resources.cpp
                src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
@@ -877,17 +904,23 @@ target_include_directories(test_prompt_glyph_draw
                            PRIVATE src/runtime/x86_abi src/native src/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE X86_NATIVE)
-target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread x2_runtime_config)
+target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread x2_runtime_config
+                                                     Freetype::Freetype)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
+set_tests_properties(prompt_glyph_draw PROPERTIES
+                     ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
 # Which drawn strings carry one of the port's composed key caps, and which do
 # not. Both classes, because the matcher's two failures in the running game
 # were both false negatives.
 add_executable(test_prompt_action_labels tests/test_prompt_action_labels.c
-               src/native/prompt_action_labels.c)
-add_dependencies(test_prompt_action_labels x2_pad_glyph_header)
+               src/native/prompt_action_labels.c src/native/keycap_run.c
+               src/native/prompt_glyph_atlas.c)
+add_dependencies(test_prompt_action_labels x2_pad_glyph_header
+                 x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_action_labels
-                           PRIVATE src/native ${CMAKE_BINARY_DIR})
+                           PRIVATE src/native src/gen ${CMAKE_BINARY_DIR})
+target_link_libraries(test_prompt_action_labels PRIVATE m)
 add_test(NAME prompt_action_labels COMMAND test_prompt_action_labels)
 
 # The rewrite itself: the key's glyphs collapse, the words slide into their
@@ -895,8 +928,10 @@ add_test(NAME prompt_action_labels COMMAND test_prompt_action_labels)
 # rather than by the next one to finalize.
 add_executable(test_prompt_touch_buttons tests/test_prompt_touch_buttons.c
                src/native/prompt_touch_buttons.c
-               src/native/prompt_action_labels.c
-               src/native/prompt_glyph_draw.c src/native/prompt_glyphs.c
+               src/native/prompt_action_labels.c src/native/keycap_run.c
+               src/native/keycap_labels.c src/ui/ui_resources.cpp
+               src/native/prompt_glyph_draw.c src/native/prompt_string_census.c
+               src/native/prompt_glyphs.c
                src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
                src/native/text_put.c
@@ -912,8 +947,10 @@ target_include_directories(test_prompt_touch_buttons
 target_compile_definitions(test_prompt_touch_buttons
                            PRIVATE _GNU_SOURCE X86_NATIVE)
 target_link_libraries(test_prompt_touch_buttons
-                      PRIVATE m pthread x2_runtime_config)
+                      PRIVATE m pthread x2_runtime_config Freetype::Freetype)
 add_test(NAME prompt_touch_buttons COMMAND test_prompt_touch_buttons)
+set_tests_properties(prompt_touch_buttons PROPERTIES
+                     ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
                src/native/prompt_glyph_metrics.c
@@ -1675,11 +1712,14 @@ set(X2_NATIVE_SOURCES
     src/native/dialog_selection_scale_policy.c
     src/native/text_caller_probe.c
     src/native/prompt_glyph_draw.c
+    src/native/prompt_string_census.c
     src/native/prompt_glyph_atlas.c
     src/native/prompt_glyph_batch.c
     src/native/prompt_glyph_metrics.c
     src/native/prompt_glyph_quads.c
     src/native/prompt_action_labels.c
+    src/native/keycap_run.c
+    src/native/keycap_labels.c
     src/native/prompt_tokens.c
     src/native/prompt_touch_buttons.c
     src/native/ui_transform.c
@@ -2043,6 +2083,7 @@ target_include_directories(x2native PRIVATE src/runtime/x86_abi src/native src/v
                                             src/media src/gpu src/d3d8 src/gen
                                             ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
+target_link_libraries(x2native PRIVATE Freetype::Freetype)
 target_link_libraries(x2native PRIVATE x86port_runtime)
 target_link_libraries(x2native PRIVATE alchemy::input)
 

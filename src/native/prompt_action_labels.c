@@ -1,6 +1,6 @@
 #include "prompt_action_labels.h"
 
-#include "pad_glyph_codes.h"
+#include "keycap_run.h"
 
 #include <string.h>
 
@@ -78,27 +78,6 @@ static int has_words_after(const uint16_t *wide, unsigned length, unsigned at) {
   return 0;
 }
 
-/* The cap starting at `at`, or 0. */
-static unsigned cap_length(const uint16_t *wide, unsigned length, unsigned at) {
-  unsigned name_length = 0, i, cap;
-
-  while (at + 1u + name_length < length &&
-         wide[at + 1u + name_length] == X2_KEYCAP_GLYPH_MIDDLE) {
-    name_length++;
-  }
-  cap = 3u * name_length + 2u;
-  if (!name_length || at + cap > length ||
-      wide[at + cap - 1u] != X2_KEYCAP_GLYPH_RIGHT) {
-    return 0;
-  }
-  for (i = 0; i < name_length; i++) {
-    if (wide[at + 1u + name_length + i] != X2_KEYCAP_GLYPH_REWIND) {
-      return 0;
-    }
-  }
-  return cap;
-}
-
 int x2_prompt_action_label_match(const uint16_t *wide, unsigned length,
                                  X2PromptKeyCap *out) {
   unsigned at;
@@ -109,18 +88,15 @@ int x2_prompt_action_label_match(const uint16_t *wide, unsigned length,
   for (at = 0; at + 3u <= length; at++) {
     unsigned cap, name_length, key;
 
-    if (wide[at] != X2_KEYCAP_GLYPH_LEFT) {
-      continue;
-    }
-    cap = cap_length(wide, length, at);
+    cap = x2_keycap_run_length(wide, length, at);
     if (!cap) {
       continue;
     }
-    name_length = (cap - 2u) / 3u;
+    name_length = cap - 2u;
     if (!has_words_after(wide, length, at + cap)) {
       continue;
     }
-    key = dik_of(wide, at + 1u + 2u * name_length, name_length);
+    key = dik_of(wide, at + 1u, name_length);
     if (!key) {
       continue;
     }

@@ -9,7 +9,7 @@
  * submits to D3D. The outer override brackets the semantic non-indexed batch;
  * the nested override super-calls the engine finalizer, then draws the SVG
  * with the now-final world/view/projection matrices. Control returns to
- * drawNonIndexed, whose stock ASCII lands on top of the keycap background.
+ * drawNonIndexed, which draws the ordinary text around the prompts.
  */
 #include "prompt_glyph_batch.h"
 #include "guest_memory.h"

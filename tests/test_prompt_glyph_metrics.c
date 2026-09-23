@@ -1,6 +1,7 @@
 /* Runtime prompt metrics use the shipping font's baseline authority. */
 #include "guest_memory.h"
 #include "pad_glyph_codes.h"
+#include "prompt_glyph_atlas.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyphs.h"
 #include "x86rt.h"
@@ -35,10 +36,11 @@ static void check(int condition, const char *what) {
   }
 }
 
-static void stock_glyph(uint32_t font, unsigned code, int baseline) {
+static void stock_glyph(uint32_t font, unsigned code, unsigned height,
+                        int baseline) {
   uint32_t g = glyph(font, code);
   WR16(g + GL_WIDTH, 14u);
-  WR16(g + GL_HEIGHT, 13u);
+  WR16(g + GL_HEIGHT, (uint16_t)height);
   WR16(g + GL_ADVANCE, 15u);
   WR32(g + GL_BASELINE, (uint32_t)baseline);
 }
@@ -47,7 +49,8 @@ int main(void) {
   uint32_t font = GUEST_BASE;
   uint32_t empty_font = GUEST_BASE + 0x2000u;
   uint32_t later_font = GUEST_BASE + 0x4000u;
-  uint32_t face_b, rewind, occupied, empty_cell, retail;
+  uint32_t face_b, edge, occupied, empty_cell, retail;
+  int key_h;
   void *page;
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(GUEST_BASE, MAP_BYTES, PROT_READ | PROT_WRITE) !=
@@ -61,12 +64,17 @@ int main(void) {
   page = guest_memory_pointer(GUEST_BASE);
   memset(page, 0, MAP_BYTES);
 
-  /* Two retail glyphs establish 29 as the mode; one outlier proves this is
-     not merely the first drawing record. ui_text_scale has already run, so
-     29 is copied as-is even though the new design metrics use scale 2. */
-  stock_glyph(font, 'A', 29);
-  stock_glyph(font, 'B', 7);
-  stock_glyph(font, 'C', 29);
+  /* Two retail glyphs establish capitals 36 tall on baseline 29; one
+     outlier of each proves this is not merely the first drawing record.
+     ui_text_scale has already run, so 36 capitals ARE the design's 18: the
+     cells publish at scale 2 and 29 is not scaled again. */
+  stock_glyph(font, 'A', 36u, 29);
+  stock_glyph(font, 'B', 20u, 7);
+  stock_glyph(font, 'C', 36u, 29);
+  /* Taller accented capitals outnumbering A..Z do not set the size. */
+  stock_glyph(font, 0xc0u, 44u, 29);
+  stock_glyph(font, 0xc1u, 44u, 29);
+  stock_glyph(font, 0xc2u, 44u, 29);
   occupied = glyph(font, X2_PROMPT_GLYPH_FIRST);
   WR16(occupied + GL_WIDTH, 1u);
   WR16(occupied + GL_HEIGHT, 2u);
@@ -78,13 +86,13 @@ int main(void) {
      neither a collision nor overwritten -- #184. */
   retail = glyph(font, 0x99u);
   WR16(retail + GL_WIDTH, 6u);
-  x2_prompt_glyph_publish_metrics(font, 2.0f);
+  x2_prompt_glyph_publish_metrics(font);
   check(RD16(retail + GL_WIDTH) == 6u && RD16(retail + GL_ADVANCE) == 0u &&
             !x2_prompt_glyph_cell(0x99u) && !x2_prompt_glyph_cell(0x8Cu) &&
             !x2_prompt_glyph_cell(0x9Cu),
         "retail-font bytes inside the run carry no port cell");
-  check(X2_KEYCAP_GLYPH_LEFT != 0x99u && X2_KEYCAP_GLYPH_MIDDLE != 0x99u &&
-            X2_PAD_GLYPH_DPAD_UP != 0x8Cu && X2_KEYCAP_GLYPH_REWIND != 0x9Cu &&
+  check(X2_KEYCAP_GLYPH_LEFT != 0x99u && X2_KEYCAP_GLYPH_LEFT != 0x9Cu &&
+            X2_PAD_GLYPH_DPAD_UP != 0x8Cu && X2_KEYCAP_GLYPH_RIGHT != 0x99u &&
             X2_KEYCAP_GLYPH_RIGHT != 0x9Cu && x2_prompt_glyph_cell(0x8Du) &&
             x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT),
         "the codepoint assignment skips the retail bytes");
@@ -94,8 +102,8 @@ int main(void) {
             (int16_t)RD16(face_b + GL_HEIGHT) == 38 &&
             (int16_t)RD16(face_b + GL_ADVANCE) == 38,
         "pad art fills its reserved advance and scales once");
-  check((int32_t)RD32(face_b + GL_BASELINE) == 29,
-        "the modal retail baseline is copied without double scaling");
+  check((int32_t)RD32(face_b + GL_BASELINE) == 30,
+        "pad art is centred on the capitals' unscaled modal baseline");
   check((int16_t)RD16(face_b + GL_OFFSET) == 0,
         "the prompt glyph keeps a zero horizontal offset");
   check(RD16(occupied + GL_WIDTH) == 1u && RD16(occupied + GL_HEIGHT) == 2u &&
@@ -110,25 +118,29 @@ int main(void) {
   /* Discovery in one font governs all later fonts. Publishing metrics into
      a later blank record would make the same byte mean native art in one
      font and foreign retail art in another. */
-  stock_glyph(later_font, 'A', 17);
-  x2_prompt_glyph_publish_metrics(later_font, 1.0f);
+  stock_glyph(later_font, 'A', 18u, 17);
+  x2_prompt_glyph_publish_metrics(later_font);
   check(RD16(glyph(later_font, X2_PROMPT_GLYPH_FIRST) + GL_WIDTH) == 0u,
         "a globally unavailable codepoint is not published in later fonts");
-  check(RD16(glyph(later_font, X2_PROMPT_GLYPH_FIRST + 1u) + GL_WIDTH) != 0u,
-        "other private codepoints still publish in later fonts");
+  /* Each font sizes its prompts from its own capitals: half-height capitals
+     give half-size art, not the first font's. */
+  check(RD16(glyph(later_font, X2_PROMPT_GLYPH_FIRST + 1u) + GL_WIDTH) == 19u,
+        "a font with smaller capitals publishes proportionally smaller art");
 
-  rewind = glyph(font, X2_KEYCAP_GLYPH_REWIND);
-  check(RD16(rewind + GL_WIDTH) == 0u && RD16(rewind + GL_HEIGHT) == 0u &&
-            (int16_t)RD16(rewind + GL_ADVANCE) == -16 &&
-            (int32_t)RD32(rewind + GL_BASELINE) == 29,
-        "the invisible rewind retains its negative advance and baseline");
+  edge = glyph(font, X2_KEYCAP_GLYPH_LEFT);
+  key_h = 2 * x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT)->design_h;
+  check(key_h > 36 && RD16(edge + GL_WIDTH) == 10u &&
+            (int)RD16(edge + GL_HEIGHT) == key_h &&
+            (int16_t)RD16(edge + GL_ADVANCE) == 8 &&
+            (int32_t)RD32(edge + GL_BASELINE) == 29 + (key_h - 36) / 2,
+        "a keycap edge stands taller than the capitals, centred on them");
 
   WR16(glyph(empty_font, X2_PROMPT_GLYPH_LAST) + GL_WIDTH, 9u);
-  x2_prompt_glyph_publish_metrics(empty_font, 1.0f);
+  x2_prompt_glyph_publish_metrics(empty_font);
   empty_cell = glyph(empty_font, X2_PROMPT_GLYPH_FIRST + 1u);
   check(RD16(empty_cell + GL_WIDTH) == 0u &&
             RD32(empty_cell + GL_BASELINE) == 0u,
-        "a font without an evidenced baseline is left untouched");
+        "a font without evidenced capitals is left untouched");
   check(!x2_prompt_glyph_available(X2_PROMPT_GLYPH_LAST),
         "occupancy is authoritative even in a font without a baseline");
 

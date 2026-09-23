@@ -2,7 +2,8 @@
  * Native prompt glyph drawing, independent of the guest D3D8 objects.
  *
  * The text engine still owns layout. prompt_glyph_draw.c captures its local
- * rectangle and batch colour; this owner retains the port's RGBA SVG atlas,
+ * rectangle and batch colour; this owner retains the port's RGBA SVG atlas
+ * and the runtime key label sheet (keycap_labels.h),
  * turns each rectangle into two triangles in the stock (x, 0, y) text plane,
  * and submits them through the host GPU. The engine draw bridge supplies the
  * text batch's finalized matrix when it calls this module, so this owner
@@ -15,6 +16,7 @@
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "keycap_labels.h"
 #include "prompt_glyph_atlas.h"
 #include "prompt_glyph_quads.h"
 
@@ -28,11 +30,26 @@ struct PromptVertex {
 };
 
 static GpuTexture g_atlas;
+static GpuTexture g_labels;
+static uint64_t g_labels_uploaded; /* the sheet generation g_labels holds */
 static GpuBuffer g_vertices;
 static unsigned long g_frames_ready, g_render_calls, g_drawn, g_refused;
 
+static void release_resources(void) {
+  if (g_vertices)
+    gpu_buffer_destroy(g_vertices);
+  if (g_labels)
+    gpu_texture_destroy(g_labels);
+  if (g_atlas)
+    gpu_texture_destroy(g_atlas);
+  g_vertices = 0;
+  g_labels = 0;
+  g_atlas = 0;
+  g_labels_uploaded = 0;
+}
+
 static int ensure_resources(void) {
-  if (g_atlas && g_vertices)
+  if (g_atlas && g_labels && g_vertices)
     return 1;
   if (!gpu_device_ready())
     return 0;
@@ -43,21 +60,62 @@ static int ensure_resources(void) {
     gpu_texture_destroy(g_atlas);
     g_atlas = 0;
   }
+  g_labels = gpu_texture_create(X2_KEYCAP_LABEL_SHEET_W,
+                                X2_KEYCAP_LABEL_SHEET_H, GPU_FMT_RGBA8, 1);
   g_vertices = gpu_buffer_create(GPU_BUF_VERTEX,
                                  X2_PROMPT_QUADS_MAX * 6u *
                                      (uint32_t)sizeof(struct PromptVertex));
-  if (!g_atlas || !g_vertices) {
-    if (g_vertices)
-      gpu_buffer_destroy(g_vertices);
-    if (g_atlas)
-      gpu_texture_destroy(g_atlas);
-    g_vertices = 0;
-    g_atlas = 0;
-    x2_log_error("prompt GPU: atlas or vertex-buffer creation failed; "
-                 "native prompt batches will be refused.\n");
+  if (!g_atlas || !g_labels || !g_vertices) {
+    release_resources();
+    x2_log_error("prompt GPU: atlas, label sheet or vertex-buffer creation "
+                 "failed; native prompt batches will be refused.\n");
     return 0;
   }
   return 1;
+}
+
+/* Upload the key label sheet if a label was lettered since the last one. */
+static int labels_current(void) {
+  uint64_t generation;
+  const uint8_t *sheet = x2_keycap_label_sheet(&generation);
+  if (generation == g_labels_uploaded)
+    return 1;
+  if (!gpu_texture_upload(g_labels, 0, sheet,
+                          X2_KEYCAP_LABEL_SHEET_W * X2_KEYCAP_LABEL_SHEET_H *
+                              4u))
+    return 0;
+  g_labels_uploaded = generation;
+  return 1;
+}
+
+/* One draw of `count` quads from quad `first`, sampling `texture`. */
+static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
+                      const float mvp[16]) {
+  GpuDraw draw;
+  if (!count)
+    return 1;
+  memset(&draw, 0, sizeof draw);
+  draw.vertices = g_vertices;
+  draw.vertex_stride = sizeof(struct PromptVertex);
+  draw.prim = GPU_PRIM_TRIANGLELIST;
+  draw.pos_offset = 0;
+  draw.pretransformed = 0;
+  draw.color_offset = 12;
+  draw.uv_offset = 16;
+  draw.normal_offset = -1;
+  draw.texture = texture;
+  draw.texop = GPU_TEXOP_MODULATE;
+  draw.alpha_op = GPU_TEXOP_MODULATE;
+  draw.texture_clamp = 1;
+  draw.blend_enable = 1;
+  draw.src_blend = GPU_BLEND_SRCALPHA;
+  draw.dst_blend = GPU_BLEND_INVSRCALPHA;
+  draw.depth_func = GPU_CMP_ALWAYS;
+  draw.cull = GPU_CULL_NONE;
+  draw.first_vertex = first * 6u;
+  draw.prim_count = count * 2u;
+  memcpy(draw.mvp, mvp, sizeof draw.mvp);
+  return gpu_draw(&draw);
 }
 
 static void write_quad(struct PromptVertex *v, const struct X2PromptQuad *q) {
@@ -88,47 +146,31 @@ void gpu_prompt_glyphs_frame_begin(void) {
 int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
                              const float mvp[16]) {
   struct PromptVertex vertices[X2_PROMPT_QUADS_MAX * 6u];
-  GpuDraw draw;
-  unsigned i;
+  unsigned i, atlas = 0, labels = 0;
 
   g_render_calls++;
   if (!count)
     return 1;
-  if (!quads || count > X2_PROMPT_QUADS_MAX || !mvp || !g_atlas ||
+  if (!quads || count > X2_PROMPT_QUADS_MAX || !mvp || !g_atlas || !g_labels ||
       !g_vertices || !gpu_frame_in_progress()) {
     g_refused += count;
     return 0;
   }
+  /* Atlas quads first, label quads after them: a key's letters draw over
+     its frame whatever order the string produced them in. */
   for (i = 0; i < count; i++)
-    write_quad(&vertices[i * 6u], &quads[i]);
-  if (!gpu_buffer_upload(g_vertices, 0, vertices,
-                         count * 6u * (uint32_t)sizeof vertices[0])) {
-    g_refused += count;
-    return 0;
+    atlas += (unsigned)(quads[i].sheet == X2_KEYCAP_SHEET_ATLAS);
+  for (i = 0; i < count; i++) {
+    const int on_atlas = quads[i].sheet == X2_KEYCAP_SHEET_ATLAS;
+    write_quad(&vertices[(on_atlas ? i - labels : atlas + labels) * 6u],
+               &quads[i]);
+    labels += (unsigned)!on_atlas;
   }
-
-  memset(&draw, 0, sizeof draw);
-  draw.vertices = g_vertices;
-  draw.vertex_stride = sizeof vertices[0];
-  draw.prim = GPU_PRIM_TRIANGLELIST;
-  draw.pos_offset = 0;
-  draw.pretransformed = 0;
-  draw.color_offset = 12;
-  draw.uv_offset = 16;
-  draw.normal_offset = -1;
-  draw.texture = g_atlas;
-  draw.texop = GPU_TEXOP_MODULATE;
-  draw.alpha_op = GPU_TEXOP_MODULATE;
-  draw.texture_clamp = 1;
-  draw.blend_enable = 1;
-  draw.src_blend = GPU_BLEND_SRCALPHA;
-  draw.dst_blend = GPU_BLEND_INVSRCALPHA;
-  draw.depth_func = GPU_CMP_ALWAYS;
-  draw.cull = GPU_CULL_NONE;
-  draw.first_vertex = 0;
-  draw.prim_count = count * 2u;
-  memcpy(draw.mvp, mvp, sizeof draw.mvp);
-  if (!gpu_draw(&draw)) {
+  if ((labels && !labels_current()) ||
+      !gpu_buffer_upload(g_vertices, 0, vertices,
+                         count * 6u * (uint32_t)sizeof vertices[0]) ||
+      !draw_sheet(g_atlas, 0, atlas, mvp) ||
+      !draw_sheet(g_labels, atlas, labels, mvp)) {
     g_refused += count;
     return 0;
   }
@@ -136,14 +178,7 @@ int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
   return 1;
 }
 
-void gpu_prompt_glyphs_shutdown(void) {
-  if (g_vertices)
-    gpu_buffer_destroy(g_vertices);
-  if (g_atlas)
-    gpu_texture_destroy(g_atlas);
-  g_vertices = 0;
-  g_atlas = 0;
-}
+void gpu_prompt_glyphs_shutdown(void) { release_resources(); }
 
 void gpu_prompt_glyphs_report(void) {
   x2_log_info("  Prompt GPU: %lu text-boundary call(s), %lu glyph quad(s) "

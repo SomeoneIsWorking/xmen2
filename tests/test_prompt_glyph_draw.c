@@ -12,9 +12,13 @@
  * untested.
  */
 #include "guest_memory.h"
+#include "keycap_labels.h"
+#include "keycap_run.h"
 #include "pad_glyph_codes.h"
+#include "prompt_glyph_atlas.h"
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_quads.h"
+#include "prompt_string_census.h"
 #include "runtime_cvars.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -337,6 +341,79 @@ int main(void) {
       fail("the one-glyph native quad lost geometry or pre-read color");
     else
       ok("the one-glyph native quad keeps geometry and arg2+8 color");
+  }
+
+  {
+    /* The key the player sees: "ESC Back". Every stock rectangle inside the
+       key -- both edges and the name's letters -- collapses, the key is drawn
+       whole from shared art over the span the edges reserved, and the words
+       keep their stock rectangles. */
+    static const uint16_t esc_back[] = {X2_KEYCAP_GLYPH_LEFT,
+                                        'E',
+                                        'S',
+                                        'C',
+                                        X2_KEYCAP_GLYPH_RIGHT,
+                                        ' ',
+                                        'B',
+                                        'a',
+                                        'c',
+                                        'k'};
+    static const uint16_t esc[] = {'E', 'S', 'C'};
+    const struct x2_keycap_art *art = x2_keycap_label_art(esc, 3u);
+    struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+    CPU cpu;
+    unsigned i, count, collapsed = 0, stock = 0;
+    unsigned long emit_before = g_emitter_calls;
+
+    x2_prompt_quads_reset();
+    call_glyph_loop(&cpu, guest_wide(esc_back, 10));
+    count =
+        x2_prompt_quads_take_run(x2_prompt_draw_glyphs(6u * 9u - 2u), quads);
+    for (i = 0; i < 9u; i++) {
+      collapsed +=
+          (unsigned)(i < 5u && rect_collapsed((unsigned)emit_before + i));
+      stock += (unsigned)(i >= 5u && rect_has_area((unsigned)emit_before + i));
+    }
+    if (g_emitter_calls != emit_before + 9u || collapsed != 5u || stock != 4u)
+      fail("a keycap run left a stock pixel inside the key, or took one "
+           "from the words after it");
+    else
+      ok("every stock glyph inside the key collapses; the words stay stock");
+    /* Emitted glyph i sits at x 10+20i .. 28+20i: the left edge is glyph 0
+       and the right edge glyph 4. */
+    if (!art || count != X2_KEYCAP_QUADS || quads[0].x0 != 10.0f ||
+        quads[2].x1 != 108.0f || quads[1].x0 != quads[0].x1 ||
+        quads[1].x1 != quads[2].x0 || quads[3].u0 != art->u0 ||
+        quads[3].u1 != art->u1 || quads[3].x0 + quads[3].x1 != 118.0f ||
+        quads[3].x0 <= quads[0].x0 || quads[3].x1 >= quads[2].x1 ||
+        quads[0].color != 0x7f2468acu)
+      fail("the key was not drawn as a frame over its span with the "
+           "shared ESC label centred on it");
+    else
+      ok("the key is one shared-art frame over its span, ESC centred on it");
+  }
+
+  {
+    /* Negatives: a name that is not one printable word, and a right edge
+       that closes no key, keep the whole string stock rather than half a
+       key. */
+    static const uint16_t spaced[] = {X2_KEYCAP_GLYPH_LEFT, 'N', ' ', 'P',
+                                      X2_KEYCAP_GLYPH_RIGHT};
+    static const uint16_t stray[] = {'A', X2_KEYCAP_GLYPH_RIGHT};
+    CPU cpu;
+    unsigned count = 99u;
+    unsigned long emit_before = g_emitter_calls;
+
+    x2_prompt_quads_reset();
+    call_glyph_loop(&cpu, guest_wide(spaced, 5));
+    call_glyph_loop(&cpu, guest_wide(stray, 2));
+    x2_prompt_quads_pending(&count);
+    if (count || g_emitter_calls != emit_before + 6u ||
+        !rect_has_area((unsigned)emit_before + 1u) ||
+        !rect_has_area((unsigned)emit_before + 5u))
+      fail("a spaced name or an unopened keycap produced native art");
+    else
+      ok("a spaced name or a stray edge keeps its string stock");
   }
 
   {

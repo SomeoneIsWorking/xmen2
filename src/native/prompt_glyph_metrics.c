@@ -10,9 +10,9 @@
  * record -- the pen advances by `word[glyph*0x1c+4]`, and the quad's size
  * comes from the record's width and height -- so a codepoint whose record is
  * blank occupies no space. Measured (C269): drawing a composed keycap label
- * emits ELEVEN degenerate zero-size quads all at the same pen x, because
- * records 0x90..0x93 carry nothing. The keycap pieces pile up on one column
- * and the binding letters do not sit inside anything.
+ * emitted ELEVEN degenerate zero-size quads all at the same pen x, because
+ * the private records carried nothing. The key's edges piled up on one
+ * column and reserved no margin around the binding's name.
  *
  * Reproducing the engine's layout in the port instead was tried on paper and
  * rejected: the run is right-anchored, so its origin depends on the string's
@@ -60,7 +60,7 @@
 
 static unsigned long g_records, g_cells_published;
 static unsigned long g_records_occupied;
-static unsigned long g_records_without_baseline;
+static unsigned long g_records_without_caps;
 
 const struct x2_prompt_cell *x2_prompt_glyph_cell(uint16_t codepoint) {
   unsigned index;
@@ -78,28 +78,33 @@ static int16_t scaled(int design, float scale) {
   return (int16_t)lrintf((float)design * scale);
 }
 
-/* The baseline is owned by the font, not by an SVG. The retired font-pack
-   path found it by majority across the shipped glyphs (11 in the unscaled HD
-   font). Publishing zero here put the otherwise-correct keycap one full
-   ascent below its stock letters. This runs after ui_text_scale, so the modal
-   value copied from the retail records is already in the drawer's units. */
-static int font_baseline(uint32_t font_record, int32_t *result) {
+/* A font's modal value of one glyph field, over its drawing glyphs in
+   first..last. */
+enum FontField { FONT_BASELINE, FONT_HEIGHT };
+
+static int32_t glyph_field(uint32_t g, enum FontField field) {
+  return field == FONT_BASELINE ? (int32_t)RD32(g + GL_BASELINE)
+                                : (int32_t)RD16(g + GL_HEIGHT);
+}
+
+static int font_mode(uint32_t font_record, enum FontField field, unsigned first,
+                     unsigned last, int32_t *result) {
   unsigned i, best_count = 0;
   int32_t best = 0;
 
-  for (i = 0; i < GLYPH_COUNT; i++) {
+  for (i = first; i <= last; i++) {
     uint32_t g = font_record + GLYPH_FIRST + i * GLYPH_STRIDE;
     int32_t candidate;
     unsigned j, count = 0;
     if (!RD16(g + GL_WIDTH) && !RD16(g + GL_HEIGHT))
       continue;
-    candidate = (int32_t)RD32(g + GL_BASELINE);
+    candidate = glyph_field(g, field);
     if (!candidate)
       continue;
-    for (j = 0; j < GLYPH_COUNT; j++) {
+    for (j = first; j <= last; j++) {
       uint32_t other = font_record + GLYPH_FIRST + j * GLYPH_STRIDE;
       if ((!RD16(other + GL_WIDTH) && !RD16(other + GL_HEIGHT)) ||
-          (int32_t)RD32(other + GL_BASELINE) != candidate)
+          glyph_field(other, field) != candidate)
         continue;
       count++;
     }
@@ -114,12 +119,32 @@ static int font_baseline(uint32_t font_record, int32_t *result) {
   return 1;
 }
 
-void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
+/* Where a font's prompts sit and how big they are both come from the font,
+   not from an SVG or the text scale. Glyph boxes are tight, so the modal box
+   of A..Z is the capital height (measured: 12, 16 and 21 in the three loaded
+   fonts, with modal baselines 11, 15 and 20). Over the whole font the mode
+   can be the accented capitals instead: 27 in the third. One design pixel is
+   1/18 of that height, so the prompts beside dialog text are as large as that
+   text, not as the smallest font's. Publishing zero for the baseline once put
+   the keycap one full ascent below its stock letters. This runs after
+   ui_text_scale, so both values are already in the drawer's units. */
+typedef struct FontCaps {
+  int32_t height, baseline;
+} FontCaps;
+
+static int font_caps(uint32_t font_record, FontCaps *caps) {
+  return font_mode(font_record, FONT_HEIGHT, 'A', 'Z', &caps->height) &&
+         font_mode(font_record, FONT_BASELINE, 0u, GLYPH_COUNT - 1u,
+                   &caps->baseline);
+}
+
+void x2_prompt_glyph_publish_metrics(uint32_t font_record) {
   uint16_t code;
   unsigned published = 0, occupied = 0;
   char named[(X2_PROMPT_GLYPH_LAST - X2_PROMPT_GLYPH_FIRST + 1u) * 5u + 1u];
   size_t at = 0;
-  int32_t baseline;
+  FontCaps caps;
+  float scale;
 
   if (!font_record)
     return;
@@ -147,13 +172,14 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
                  "unavailable to native prompt labels.\n",
                  occupied, named);
   }
-  if (!font_baseline(font_record, &baseline)) {
-    g_records_without_baseline++;
-    x2_log_error("PROMPT METRICS: font has no non-zero baseline among "
-                 "its drawing glyphs -- publishing nothing rather "
-                 "than placing prompt art against a guessed line.\n");
+  if (!font_caps(font_record, &caps)) {
+    g_records_without_caps++;
+    x2_log_error("PROMPT METRICS: font has no non-zero capital height and "
+                 "baseline among its drawing glyphs -- publishing nothing "
+                 "rather than sizing prompt art against a guessed line.\n");
     return;
   }
+  scale = (float)caps.height / (float)X2_PROMPT_SOURCE_CELL_DESIGN;
   for (code = X2_PROMPT_GLYPH_FIRST; code <= X2_PROMPT_GLYPH_LAST; code++) {
     uint32_t g = font_record + GLYPH_FIRST + (uint32_t)code * GLYPH_STRIDE;
     /* The occupancy pass above already marked every retail-owned byte. */
@@ -162,27 +188,31 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
     const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(code);
     if (!cell)
       continue;
+    const int16_t height = scaled(cell->design_h, scale);
     WR16(g + GL_WIDTH, (uint16_t)scaled(cell->design_w, scale));
-    WR16(g + GL_HEIGHT, (uint16_t)scaled(cell->design_h, scale));
+    WR16(g + GL_HEIGHT, (uint16_t)height);
     WR16(g + GL_ADVANCE, (uint16_t)scaled(cell->advance, scale));
     WR16(g + GL_OFFSET, 0);
-    WR32(g + GL_BASELINE, (uint32_t)baseline);
+    /* Centred on the capitals: a cell taller than them stands out evenly
+       above and below. */
+    WR32(g + GL_BASELINE,
+         (uint32_t)(caps.baseline + (height - caps.height) / 2));
     published++;
   }
   g_cells_published += published;
-  if (g_records == 1)
-    x2_log_error("PROMPT METRICS: published %u cell(s) at scale %.3f "
-                 "and the font's modal baseline %d into the first font "
-                 "record (metrics only, no UVs).\n",
-                 published, (double)scale, baseline);
+  x2_log_error("PROMPT METRICS: published %u cell(s) into font record "
+               "0x%08x at its capital height %d (scale %.3f) and modal "
+               "baseline %d (metrics only, no UVs).\n",
+               published, font_record, caps.height, (double)scale,
+               caps.baseline);
 }
 
 void x2_prompt_glyph_metrics_report(void) {
-  x2_log_info("  Prompt metrics: %lu cell(s) published over %lu font record(s)"
-              "; %lu had no evidenced baseline, %lu had a codepoint of ours "
-              "already drawing\n",
-              g_cells_published, g_records, g_records_without_baseline,
-              g_records_occupied);
+  x2_log_info(
+      "  Prompt metrics: %lu cell(s) published over %lu font record(s)"
+      "; %lu had no evidenced capitals and baseline, %lu had a codepoint "
+      "of ours already drawing\n",
+      g_cells_published, g_records, g_records_without_caps, g_records_occupied);
   if (!g_records)
     x2_log_info("        no font record was ever offered, so the port's "
                 "codepoints have NO metrics and every label will pile up in "

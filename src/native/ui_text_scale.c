@@ -121,8 +121,8 @@ static float g_applied = -1.0f;
  * before it.
  */
 #define TRACKED_FONTS 64u
-#define HEADER_METRICS 4u  /* pointsize, height, ascender, descender */
-#define GLYPH_METRICS 4u   /* width, height, advance, offset */
+#define HEADER_METRICS 4u /* pointsize, height, ascender, descender */
+#define GLYPH_METRICS 4u  /* width, height, advance, offset */
 
 typedef struct {
   uint32_t at;
@@ -165,7 +165,8 @@ static const char *scale_source(void) {
 }
 
 /* Scale one metric, keeping 0 at 0: a zero width is a glyph the font does not
-   draw, and rounding it up would give every unused codepoint a one-pixel box. */
+   draw, and rounding it up would give every unused codepoint a one-pixel box.
+ */
 static int16_t scaled_i16(int16_t v, float k) {
   return v ? (int16_t)lrintf((float)v * k) : (int16_t)0;
 }
@@ -265,10 +266,10 @@ int x2_ui_text_scale_reapply(void) {
   for (i = 0; i < g_tracked_count; i++) {
     write_font_record(&g_tracked[i], k);
     /* The port's own codepoints are written into the same record and were
-       just overwritten from the origin, so they are republished here at the
-       same scale and in the same order as at load. */
+       just overwritten from the origin, so they are republished here from
+       the rescaled record, in the same order as at load. */
     if (x2_prompt_glyphs_enabled())
-      x2_prompt_glyph_publish_metrics(g_tracked[i].at, k);
+      x2_prompt_glyph_publish_metrics(g_tracked[i].at);
   }
   x2_log_error("UI TEXT: output is %ux%u now; %u loaded font(s) re-derived "
                "from %.3f to %.3f (%s).\n",
@@ -303,11 +304,11 @@ static void x2_override_font_loader(CPU *C) {
   if (k != 1.0f)
     scale_font_record(slot, k);
   /* The port's own codepoints get their metrics here too, at the same
-     scale and the same moment -- AFTER the scaler, so they are published
-     already-scaled rather than scaled twice. Unconditional on k, since the
-     port's glyphs need metrics even when the text scale is 1.0. */
+     moment -- AFTER the scaler, so they are sized from the scaled capitals
+     rather than scaled twice. Unconditional on k, since the port's glyphs
+     need metrics even when the text scale is 1.0. */
   if (x2_prompt_glyphs_enabled())
-    x2_prompt_glyph_publish_metrics(slot->at, k != 1.0f ? k : 1.0f);
+    x2_prompt_glyph_publish_metrics(slot->at);
 }
 
 /*

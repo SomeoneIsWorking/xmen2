@@ -103,19 +103,13 @@ static uint32_t guest_wide(const uint16_t *codes, unsigned n) {
   return at;
 }
 
-/* left, middle x n, rewind x n, name, right, then the action's words. */
+/* left, name, right, then the action's words. */
 static unsigned compose(uint16_t *out, unsigned at, const char *name,
                         const char *words) {
   const unsigned n = (unsigned)strlen(name);
   unsigned i;
 
   out[at++] = X2_KEYCAP_GLYPH_LEFT;
-  for (i = 0; i < n; i++) {
-    out[at++] = X2_KEYCAP_GLYPH_MIDDLE;
-  }
-  for (i = 0; i < n; i++) {
-    out[at++] = X2_KEYCAP_GLYPH_REWIND;
-  }
   for (i = 0; i < n; i++) {
     out[at++] = (uint16_t)name[i];
   }
@@ -206,12 +200,12 @@ int main(void) {
     emitting += (unsigned)x2_glyph_loop_emits_quad(drawn[i]);
   }
   CHECK("the key's glyphs are the ones taken off",
-        x2_prompt_touch_begin(guest_wide(drawn, length), length) == 11u);
+        x2_prompt_touch_begin(guest_wide(drawn, length), length) == 5u);
 
   walk(emitting, &words);
-  /* The key occupies emit indices 0..10; "Back" begins at 12 (the space at 11
-     emits a quad of its own) and would be drawn at x=110. It must arrive
-     where the key began instead. */
+  /* The key occupies emit indices 0..4 and "Back" follows it, where it
+     would be drawn past the key. It must arrive where the key began
+     instead. */
   CHECK("the words slide into the space the key left", words.left == 0.0f);
   CHECK("and keep their width", words.right - words.left == 40.0f);
 
@@ -223,9 +217,9 @@ int main(void) {
   CHECK("another element's draw publishes nothing", g_publications == 0u);
   CHECK("and is never asked for its transform", g_transform_asks == 0u);
 
-  /* The draw that submits it: 15 glyphs (the marker and the space draw
-     nothing), 90 vertices, declared as 88. */
-  x2_prompt_touch_publish(transform_of_draw, (void *)kMvp, 88u);
+  /* The draw that submits it: 9 glyphs (the marker and the space draw
+     nothing), 54 vertices, declared as 52. */
+  x2_prompt_touch_publish(transform_of_draw, (void *)kMvp, 52u);
   CHECK("the draw of this prompt publishes it", g_publications == 1u);
   CHECK("with the key the prompt named", g_published_dik == 0x01u);
   /* The 800x600 UI letterboxed into a 1280x720 window is a 960x720 box at
@@ -235,7 +229,7 @@ int main(void) {
   CHECK("inside the window it was published for",
         g_published_rect.right <= g_viewport.width);
   CHECK("and only once",
-        (x2_prompt_touch_publish(transform_of_draw, (void *)kMvp, 88u),
+        (x2_prompt_touch_publish(transform_of_draw, (void *)kMvp, 52u),
          g_publications) == 1u);
 
   /* The projection itself. */

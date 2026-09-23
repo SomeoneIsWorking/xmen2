@@ -21,6 +21,7 @@
 #include "gpu_prompt_glyphs.h"
 #include "heartbeat.h"
 #include "input_record.h"
+#include "keycap_labels.h"
 #include "live_session.h"
 #include "movie.h"
 #include "override_leaf.h"
@@ -52,6 +53,7 @@ void x2_interrupt_reports(int killed) {
   extern void x2_ui_text_scale_report(void);
   x2_texture_probe_report();
   x2_prompt_draw_report();
+  x2_keycap_labels_report();
   x2_prompt_glyph_metrics_report();
   x2_prompt_quads_report();
   x2_prompt_glyph_batch_report();

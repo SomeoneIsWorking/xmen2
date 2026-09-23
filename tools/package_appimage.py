@@ -17,6 +17,8 @@ import subprocess
 import tempfile
 
 
+from ui_resource_files import UI_FILES
+
 ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = ROOT / "scratch"
 BUILD = ROOT / "build"
@@ -116,8 +118,7 @@ def stage_appdir(appdir: Path, binary: Path, ui_directory: Path) -> None:
     copy_file(PACKAGING / "xmen2-port.svg",
               appdir / "usr/share/icons/hicolor/scalable/apps/xmen2-port.svg",
               "application icon")
-    for name in ("LatoLatin-Regular.ttf", "LatoLatin-Bold.ttf", "settings.rcss",
-                 "touch_controls.rcss"):
+    for name in UI_FILES:
         copy_file(ui_directory / name, appdir / "usr/share/xmen2" / name,
                   f"UI resource {name}")
     touch_directory = ui_directory / "touch"
@@ -193,8 +194,7 @@ def selftest() -> int:
         ui = temporary / "ui"
         ui.mkdir()
         binary.write_bytes(b"native fixture")
-        for name in ("LatoLatin-Regular.ttf", "LatoLatin-Bold.ttf", "settings.rcss",
-                     "touch_controls.rcss"):
+        for name in UI_FILES:
             (ui / name).write_bytes(name.encode())
         touch = ui / "touch"
         touch.mkdir()

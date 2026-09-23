@@ -40,13 +40,12 @@ typedef struct X2PromptKeyCap {
 /*
  * Does this drawn wide string carry a composed keycap whose key is known?
  *
- * The composition is `left, middle x n, rewind x n, the n-character name,
- * right` -- so its shape is self-describing and its length is 3n+2. It is
- * searched for at any offset rather than only at the front: a menu footer
- * reaches the glyph loop with the token marker its authored text carried
- * still in front of the cap, and requiring the cap to open the string left
- * every footer in the game -- the one place these prompts are drawn --
- * unclaimed while the difficulty dialog's bare "Esc Back" matched.
+ * The composition is keycap_run.h's `left, name, right`, so its shape is
+ * self-describing. It is searched for at any offset rather than only at the
+ * front: a menu footer reaches the glyph loop with the token marker its
+ * authored text carried still in front of the cap, and requiring the cap to
+ * open the string left every footer in the game -- the one place these prompts
+ * are drawn -- unclaimed while the difficulty dialog's bare "Esc Back" matched.
  *
  * Answers only for a cap that CONTINUES with a visible character: "Esc Back"
  * is an action a finger could press, a cap drawn by itself on the rebinding

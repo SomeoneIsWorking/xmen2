@@ -36,7 +36,7 @@ SHARED_REPOS = (
                "b04e6657cac3156318506f4145a85e66b1ebc8e6",
                "include/alchemy/input/controller.hpp"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
-               "b48abae76227a2f1fe17cc7d9abd60cc85d45e09", "sets"),
+               "9bb391e1ddfb3a878ac8350e3d28c484e9ecc4a6", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
                "ba3c758d5aaeef0c79f1f4a19a6ce113f02760cf", "tools/android_port.py"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
