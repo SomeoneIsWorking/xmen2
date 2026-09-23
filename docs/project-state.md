@@ -618,8 +618,7 @@ x86port `50d6829` caches a block's first three guest registers in host
 registers, write-through, so a register one instruction wrote reaches the
 next without a store-forwarded load: matched perf-stat runs executed 6.8% more
 guest blocks in the same cycles. What remains of translated code is spread over
-guest memory loads, x87 (the popped-register ten-byte stores FSAVE fidelity
-needs) and about 400M failed store-to-load forwards per 10 s whose sources a
+guest memory loads, x87 and about 400M failed store-to-load forwards per 10 s whose sources a
 cycle-skidding sample cannot place; locating them needs precise (IBS)
 sampling.
 
