@@ -1,6 +1,21 @@
 cmake_minimum_required(VERSION 3.16)
 project(xmen2_sdl LANGUAGES C CXX)
 
+# Every target is position-independent and every executable links as a PIE.
+# x2native (on Android a shared object) needs each static library it pulls
+# in to be PIC -- x86port, jitcommon and Zydis included, which is why this is
+# the consumer's setting and not x86port's. The tests need the same link
+# mode for a different reason: a non-PIE executable sits at 0x00400000 and
+# the kernel randomises its brk heap upward from there, into the guest
+# addresses the identity-mapped tests claim. Measured: the heap at
+# 0x3106c000 failed test_behaved_context's 0x31000000 arena 3 runs in 500.
+# x2native itself would otherwise sit at 0x00400000, exactly where XMen2.exe
+# wants to be, and force it to relocate. check_pie_supported() is what makes
+# POSITION_INDEPENDENT_CODE add the PIE link flag to executables.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+include(CheckPIESupported)
+check_pie_supported(LANGUAGES C CXX)
+
 # ONE build tree. `./run.sh` maintains build/native, and every live harness
 # executes that exact binary. A second same-named target once let a full live
 # PASS describe an hour-old executable (issue #118), so arbitrary in-tree
@@ -1909,13 +1924,6 @@ if(NOT TARGET alchemy::input)
 endif()
 set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
     "jit-common checkout x86port builds against" FORCE)
-# x2native links as a PIE (and on Android as a shared object), so every
-# static library it pulls in has to be position-independent. Set here
-# rather than in x86port, because it is this consumer's link mode that
-# requires it -- x86port's own build has no reason to care, and the
-# variable propagates into jitcommon and Zydis, which are added by
-# x86port's CMakeLists and would otherwise fail the same way.
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory("${X2_X86PORT_DIR}" "${CMAKE_BINARY_DIR}/x86port"
                  EXCLUDE_FROM_ALL)
 if(NOT TARGET x86port_runtime)
@@ -1972,13 +1980,6 @@ target_link_libraries(x2native PRIVATE alchemy::input)
 
 target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
 target_compile_definitions(x2native PRIVATE X86_NATIVE)
-# PIE, so this binary does not sit at 0x400000 -- which is exactly where
-# XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
-# and forces it to relocate for no reason.
-set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if(NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
-    target_link_options(x2native PRIVATE -pie)
-endif()
 # libm: the exe's x87 translations use atan2l/fmodl and friends.
 # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
 # so that a guest stuck anywhere still gets a liveness line.
