@@ -45,6 +45,35 @@ extern "C" {
 #define VS_MAX_INSTRUCTIONS 128
 #define VS_INPUTS 17
 
+/*
+ * The flat register file a decoded program addresses: temporaries, inputs,
+ * a0, outputs (oPos, oFog, oPts, oD0-1, oT0-7) and then the constants, which
+ * the executor reads from the caller's array rather than the file.
+ */
+enum {
+  VS_FILE_TEMP = 0,
+  VS_FILE_INPUT = VS_FILE_TEMP + 12,
+  VS_FILE_ADDR = VS_FILE_INPUT + VS_INPUTS,
+  VS_FILE_OUT = VS_FILE_ADDR + 1,
+  VS_FILE_CONST = VS_FILE_OUT + 13,
+};
+enum {
+  VS_OUT_POS = VS_FILE_OUT,
+  VS_OUT_D0 = VS_FILE_OUT + 3,
+  VS_OUT_T0 = VS_FILE_OUT + 5
+};
+
+/* The VS 1.1 opcodes the executor implements. */
+enum {
+  VS_OP_MOV = 1,
+  VS_OP_ADD = 2,
+  VS_OP_SUB = 3,
+  VS_OP_MAD = 4,
+  VS_OP_MUL = 5,
+  VS_OP_DP3 = 8,
+  VS_OP_DP4 = 9
+};
+
 typedef struct {
   uint16_t reg; /* flat register, or the constant number when relative */
   uint8_t swizzle[4];
@@ -86,6 +115,14 @@ struct D3D8VertexShader {
   uint16_t function_dwords;
   D3D8VSProgram program;
 };
+
+/* The decoded program, decoding it now if it has not been. A program that
+   cannot run is decoded again at every draw, so every refusal says why. */
+const D3D8VSProgram *d3d8_vs_program(D3D8VertexShader *shader);
+
+/* How many source operands a VS 1.1 opcode takes; 0 for one the executor
+   does not implement. */
+unsigned d3d8_vs_source_count(unsigned op);
 
 /* How much the executor did, for the store's run report. */
 void d3d8_vs_execution_counts(unsigned long *draws, unsigned long *vertices);

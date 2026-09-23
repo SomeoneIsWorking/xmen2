@@ -647,6 +647,12 @@ override table and walked the module list for a stack-check record nobody had
 armed: `x86_native_call_at` was 2.8% of samples. The owned-address hash set
 now maps an entry point to its override, the module lookup happens only when
 the stack check is armed, and the same route shows it at 0.7%.
+The VS 1.1 executor (`src/d3d8/d3d8_vs_execute.cpp`) ran the program a vertex
+at a time, re-reading every operand and swizzle per vertex: 4.9% of samples,
+all on the game thread. It runs each instruction over a batch of 64 vertices
+in a component-major register file now, with a0's rounding cached until a0
+is written, and shows at 1.6%. Old and new executors were compared on the same
+draws in-game (4.08M vertices, bit-identical; a swizzle mutant was caught).
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative

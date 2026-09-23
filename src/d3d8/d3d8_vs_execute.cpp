@@ -1,25 +1,21 @@
-#include "../native/x2_log.h"
 /*
  * The VS 1.1 executor: the guest's own shader program, run on the host CPU.
  *
- * Split from the handle store next door, which owns object lifetime only. This
- * is the part that has to be RIGHT about the instruction set -- register
- * encodings, relative addressing through a0, write masks, and the opcodes it
- * does not implement, which are REFUSED rather than treated as no-ops. The
- * selftest runs one positive program (relative-addressed DP4s, with the
- * expected output written out) and one negative (an unsupported opcode that
- * must be turned away by the shipping executor, not by a test-only copy).
+ * It runs what d3d8_vs_decode.cpp decoded; the handle store next door owns
+ * object lifetime only. The selftest runs a relative-addressed program on one
+ * vertex and across batches with the expected output written out, a lane
+ * indexing past the constant file, and an unsupported opcode -- all through
+ * the shipping executor, not a test-only copy.
  */
 #include "d3d8_vertex_shader_internal.h"
 
+#include "../native/x2_log.h"
 #include "d3d8_state.h"
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <lucent/log_c.h>
-
-#define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
 
 static unsigned long g_executions, g_vertices;
 
@@ -31,92 +27,6 @@ void d3d8_vs_execution_counts(unsigned long *draws, unsigned long *vertices) {
 typedef struct {
   float x[4];
 } Vec;
-
-/*
- * The flat register file a decoded program addresses: temporaries, inputs,
- * a0, outputs (oPos, oFog, oPts, oD0-1, oT0-7) and the constants.
- */
-enum {
-  FILE_TEMP = 0,
-  FILE_INPUT = FILE_TEMP + 12,
-  FILE_ADDR = FILE_INPUT + VS_INPUTS,
-  FILE_OUT = FILE_ADDR + 1,
-  FILE_CONST = FILE_OUT + 13,
-  FILE_SIZE = FILE_CONST + VS_CONSTANTS,
-};
-enum { OUT_POS = FILE_OUT, OUT_D0 = FILE_OUT + 3, OUT_T0 = FILE_OUT + 5 };
-
-enum {
-  OP_MOV = 1,
-  OP_ADD = 2,
-  OP_SUB = 3,
-  OP_MAD = 4,
-  OP_MUL = 5,
-  OP_DP3 = 8,
-  OP_DP4 = 9
-};
-
-static unsigned reg_type(uint32_t t) {
-  return ((t >> 28) & 7u) | ((t >> 8) & 0x18u);
-}
-
-/* Bytes per declaration input type: FLOAT1-4, D3DCOLOR, UBYTE4, SHORT2, SHORT4.
- */
-constexpr unsigned kInputTypeBytes[8] = {4, 8, 12, 16, 4, 4, 4, 8};
-
-static unsigned data_size(unsigned type) {
-  return type < 8 ? kInputTypeBytes[type] : 0;
-}
-
-static int decode_inputs(const D3D8VertexShader *s,
-                         D3D8VSInput input[VS_INPUTS], uint16_t *input_end) {
-  unsigned stream = 0, offset[16] = {0}, i;
-  memset(input, 0, VS_INPUTS * sizeof *input);
-  *input_end = 0;
-  for (i = 0; i < s->declaration_dwords; ++i) {
-    uint32_t t = s->declaration[i], kind = (t >> 29) & 7u;
-    if (t == 0xffffffffu)
-      return 1;
-    if (kind == 1) {
-      stream = t & 0xfu;
-      if (stream != 0) {
-        x2_log_error("d3d8: vertex declaration selects stream %u; "
-                     "the VS executor currently has only stream 0.\n",
-                     stream);
-        return 0;
-      }
-    } else if (kind == 2) {
-      if (t & 0x10000000u) {
-        offset[stream] += ((t >> 16) & 0xfu) * 4u;
-      } else {
-        unsigned reg = t & 0x1fu, type = (t >> 16) & 0xfu;
-        unsigned n = data_size(type);
-        if (reg >= VS_INPUTS || !n) {
-          x2_log_error("d3d8: vertex declaration REG %u type %u "
-                       "cannot be represented.\n",
-                       reg, type);
-          return 0;
-        }
-        input[reg].present = 1;
-        input[reg].offset = (uint16_t)offset[stream];
-        input[reg].type = (uint8_t)type;
-        input[reg].end = (uint16_t)(offset[stream] + n);
-        if (input[reg].end > *input_end)
-          *input_end = input[reg].end;
-        offset[stream] += n;
-      }
-    } else if (kind != 0) {
-      x2_log_error("d3d8: vertex declaration token 0x%08x has "
-                   "unsupported token type %u.\n",
-                   t, kind);
-      return 0;
-    }
-  }
-  x2_log_error("d3d8: scanned %u declaration token(s), but no END was "
-               "reachable in the copied stream.\n",
-               s->declaration_dwords);
-  return 0;
-}
 
 static Vec load_input(const uint8_t *p, unsigned type) {
   Vec v = {{0, 0, 0, 1}};
@@ -144,212 +54,228 @@ static Vec load_input(const uint8_t *p, unsigned type) {
   return v;
 }
 
-/* The flat register a writable register token names, or -1. */
-static int writable_register(unsigned type, unsigned n) {
-  if (type == 0 && n < 12)
-    return FILE_TEMP + (int)n;
-  if (type == 3 && n == 0)
-    return FILE_ADDR;
-  if (type == 4 && n < 3)
-    return FILE_OUT + (int)n;
-  if (type == 5 && n < 2)
-    return FILE_OUT + 3 + (int)n;
-  if (type == 6 && n < 8)
-    return FILE_OUT + 5 + (int)n;
-  return -1;
+/*
+ * Execution runs one instruction over a batch of vertices at a time, with the
+ * register file stored component-major: each register component is a row of
+ * VS_BATCH lanes, one per vertex. A swizzle then chooses a row rather than
+ * shuffling a vector, and each operation is a plain loop over lanes. Run a
+ * vertex at a time, re-reading every instruction's operands and swizzles per
+ * vertex, this executor was 4.9% of the Dead Zone route's samples.
+ *
+ * The arithmetic is the per-vertex executor's, expression for expression, so
+ * a lane computes exactly the value that vertex did on its own.
+ */
+enum { VS_BATCH = 64 };
+/* Past this magnitude an a0 value cannot name a constant from any base. */
+constexpr float kAddressLimit = 65536.0f;
+constexpr int kAddressRefused = 1 << 20;
+/* The selftest's batched draw: more than one batch, and not a multiple. */
+constexpr unsigned kBatchVertices = VS_BATCH + 6u;
+
+typedef float Row[VS_BATCH];
+
+/* The writable and input registers of one batch; the constants are read from
+   the caller's array, since every lane sees the same ones. */
+typedef struct {
+  Row reg[VS_FILE_CONST][4];
+  /* floor(a0.x + 0.5) per lane, the constant offset a relative source adds;
+     computed on the first relative read after a0 is written. */
+  int a0_index[VS_BATCH];
+  int a0_current;
+} Batch;
+
+/* One source operand resolved for the batch: a row per component. */
+typedef struct {
+  const float *row[4];
+} Operand;
+
+/* Scratch rows an operand is built in when it cannot point into the batch:
+   a negated register, a constant, or a relative constant. */
+typedef struct {
+  Row rows[4];
+} OperandRows;
+
+/*
+ * floor(a0.x + 0.5) for every lane, without a floorf call per read. Exact
+ * while |a0.x + 0.5| < 2^16, where every integer is a float; outside that,
+ * and for NaN, no base register can bring the index back into the file, so
+ * the lane gets an index every relative read refuses -- as floorf's did.
+ */
+static void round_addresses(Batch *b, unsigned n) {
+  for (unsigned lane = 0; lane < n; ++lane) {
+    const float y = b->reg[VS_FILE_ADDR][0][lane] + 0.5f;
+    if (!(y > -kAddressLimit && y < kAddressLimit)) {
+      b->a0_index[lane] =
+          y <= -kAddressLimit ? -kAddressRefused : kAddressRefused;
+      continue;
+    }
+    int t = (int)y;
+    if ((float)t > y)
+      t -= 1;
+    b->a0_index[lane] = t;
+  }
+  b->a0_current = 1;
 }
 
-static int decode_source(uint32_t t, D3D8VSSource *src) {
-  unsigned type = reg_type(t), n = t & 0x7ffu, i;
-  int reg = -1;
-  memset(src, 0, sizeof *src);
-  if (type == 1 && n < VS_INPUTS) {
-    reg = FILE_INPUT + (int)n;
-  } else if (type == 2) {
-    if (t & 0x00002000u) {
-      src->relative = 1;
-      reg = (int)n; /* the base; the constant is chosen per vertex */
-    } else if (n < VS_CONSTANTS) {
-      reg = FILE_CONST + (int)n;
-    } else {
-      lucent_log_warn(
-          "d3d8",
-          "VS 1.1 indexed constant c[%d] is outside the %d-register "
-          "file; draw refused",
-          (int)n, VS_CONSTANTS);
-      return 0;
-    }
-  } else if (type != 1) {
-    reg = writable_register(type, n);
-  }
-  if (reg < 0) {
-    x2_log_error("d3d8: VS 1.1 source register type %u number %u is "
-                 "unsupported.\n",
-                 type, n);
-    return 0;
-  }
-  src->reg = (uint16_t)reg;
-  for (i = 0; i < 4; ++i)
-    src->swizzle[i] = (uint8_t)((t >> (16 + i * 2)) & 3u);
-  if (((t >> 24) & 0xfu) == 1) {
-    src->negate = 1;
-  } else if ((t >> 24) & 0xfu) {
-    x2_log_error("d3d8: VS 1.1 source modifier %u is unsupported.\n",
-                 (t >> 24) & 0xfu);
-    return 0;
-  }
-  return 1;
-}
-
-static unsigned source_count(unsigned op) {
-  switch (op) {
-  case OP_MOV:
-    return 1;
-  case OP_ADD:
-  case OP_SUB:
-  case OP_MUL:
-  case OP_DP3:
-  case OP_DP4:
-    return 2;
-  case OP_MAD:
-    return 3;
-  default:
-    return 0;
-  }
-}
-
-/* Decode the declaration and the program, logging the first reason either
-   cannot run. */
-static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
-  unsigned pc = 1;
-  p->count = 0;
-  if (!decode_inputs(s, p->input, &p->input_end))
-    return 0;
-  while (pc < s->function_dwords) {
-    uint32_t op = s->function[pc++] & 0xffffu, d;
-    unsigned nsrc = source_count(op), i;
-    D3D8VSInstruction *insn;
-    int dst;
-    if (op == 0xffffu)
-      return 1;
-    if (!nsrc) {
-      x2_log_error("d3d8: VS 1.1 opcode %u at dword %u is not "
-                   "implemented; the draw is refused.\n",
-                   op, pc - 1);
-      return 0;
-    }
-    if (pc + nsrc >= s->function_dwords) {
-      x2_log_error("d3d8: VS 1.1 opcode %u at dword %u runs past the "
-                   "program's %u dword(s).\n",
-                   op, pc - 1, s->function_dwords);
-      return 0;
-    }
-    if (p->count == VS_MAX_INSTRUCTIONS) {
-      x2_log_error("d3d8: VS 1.1 program has more than the %u instruction "
-                   "slots the model allows.\n",
-                   VS_MAX_INSTRUCTIONS);
-      return 0;
-    }
-    insn = &p->insn[p->count];
-    d = s->function[pc++];
-    for (i = 0; i < nsrc; ++i)
-      if (!decode_source(s->function[pc++], &insn->src[i]))
-        return 0;
-    dst = writable_register(reg_type(d), d & 0x7ffu);
-    if (dst < 0) {
-      x2_log_error("d3d8: VS 1.1 destination register type %u number %u is "
-                   "unsupported.\n",
-                   reg_type(d), d & 0x7ffu);
-      return 0;
-    }
-    insn->op = (uint8_t)op;
-    insn->dst = (uint16_t)dst;
-    insn->mask = (uint8_t)((d >> 16) & 0xfu);
-    if (!insn->mask)
-      insn->mask = 0xf;
-    p->count++;
-  }
-  return 1;
-}
-
-/* The decoded program, decoding it now if it has not been. A program that
-   cannot run is decoded again at every draw, so every refusal says why. */
-static const D3D8VSProgram *program(D3D8VertexShader *s) {
-  if (s->program.state != 1)
-    s->program.state = decode_program(s, &s->program) ? 1 : -1;
-  return s->program.state == 1 ? &s->program : NULL;
-}
-
-static int read_source(const Vec *f, const D3D8VSSource *src, Vec *v) {
-  const Vec *raw = &f[src->reg];
-  unsigned i;
+static int resolve_operand(Batch *b, const float constants[VS_CONSTANTS][4],
+                           const D3D8VSSource *src, unsigned n,
+                           OperandRows *scratch, Operand *out) {
+  unsigned c, lane;
   if (src->relative) {
-    int idx = (int)src->reg + (int)floorf(f[FILE_ADDR].x[0] + 0.5f);
-    if (idx < 0 || idx >= VS_CONSTANTS) {
-      lucent_log_warn(
-          "d3d8",
-          "VS 1.1 indexed constant c[%d] is outside the %d-register "
-          "file; draw refused",
-          idx, VS_CONSTANTS);
-      return 0;
+    int idx[VS_BATCH];
+    if (!b->a0_current)
+      round_addresses(b, n);
+    for (lane = 0; lane < n; ++lane) {
+      idx[lane] = (int)src->reg + b->a0_index[lane];
+      if (idx[lane] < 0 || idx[lane] >= VS_CONSTANTS) {
+        lucent_log_warn(
+            "d3d8",
+            "VS 1.1 indexed constant c[%d] is outside the %d-register "
+            "file; draw refused",
+            idx[lane], VS_CONSTANTS);
+        return 0;
+      }
     }
-    raw = &f[FILE_CONST + idx];
+    for (c = 0; c < 4; ++c) {
+      const unsigned component = src->swizzle[c];
+      for (lane = 0; lane < n; ++lane)
+        scratch->rows[c][lane] = constants[idx[lane]][component];
+    }
+  } else if (src->reg >= VS_FILE_CONST) {
+    for (c = 0; c < 4; ++c) {
+      const float value = constants[src->reg - VS_FILE_CONST][src->swizzle[c]];
+      for (lane = 0; lane < n; ++lane)
+        scratch->rows[c][lane] = value;
+    }
+  } else if (!src->negate) {
+    for (c = 0; c < 4; ++c)
+      out->row[c] = b->reg[src->reg][src->swizzle[c]];
+    return 1;
+  } else {
+    for (c = 0; c < 4; ++c)
+      for (lane = 0; lane < n; ++lane)
+        scratch->rows[c][lane] = b->reg[src->reg][src->swizzle[c]][lane];
   }
-  for (i = 0; i < 4; ++i)
-    v->x[i] = raw->x[src->swizzle[i]];
-  if (src->negate)
-    for (i = 0; i < 4; ++i)
-      v->x[i] = -v->x[i];
+  for (c = 0; c < 4; ++c) {
+    if (src->negate)
+      for (lane = 0; lane < n; ++lane)
+        scratch->rows[c][lane] = -scratch->rows[c][lane];
+    out->row[c] = scratch->rows[c];
+  }
   return 1;
 }
 
-static int execute_one(const D3D8VSProgram *p, Vec f[FILE_SIZE]) {
-  unsigned k;
+/* Row c of the result: rows written after every operand has been read, so a
+   destination that is also a source reads its old value. */
+static void compute_component(unsigned op, const Operand src[3], unsigned c,
+                              unsigned n, float *result) {
+  const float *x = src[0].row[c];
+  const float *y = src[1].row[c];
+  const float *z = src[2].row[c];
+  unsigned lane;
+  switch (op) {
+  case VS_OP_MOV:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane];
+    break;
+  case VS_OP_ADD:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] + y[lane];
+    break;
+  case VS_OP_SUB:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] - y[lane];
+    break;
+  case VS_OP_MUL:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] * y[lane];
+    break;
+  default: /* VS_OP_MAD: DP3 and DP4 are computed once for every component */
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] * y[lane] + z[lane];
+    break;
+  }
+}
+
+static void compute_dot(const Operand src[3], unsigned components, unsigned n,
+                        float *result) {
+  unsigned c, lane;
+  for (lane = 0; lane < n; ++lane)
+    result[lane] = 0;
+  for (c = 0; c < components; ++c) {
+    const float *x = src[0].row[c];
+    const float *y = src[1].row[c];
+    for (lane = 0; lane < n; ++lane)
+      result[lane] += x[lane] * y[lane];
+  }
+}
+
+static int execute_batch(const D3D8VSProgram *p,
+                         const float constants[VS_CONSTANTS][4], Batch *b,
+                         unsigned n) {
+  OperandRows scratch[3];
+  Row result[4];
+  unsigned k, c, s;
   for (k = 0; k < p->count; ++k) {
     const D3D8VSInstruction *insn = &p->insn[k];
-    Vec x, y, z, v;
-    unsigned i;
-    if (!read_source(f, &insn->src[0], &x))
-      return 0;
-    switch (insn->op) {
-    case OP_MOV:
-      v = x;
-      break;
-    case OP_ADD:
-    case OP_SUB:
-    case OP_MUL:
-      if (!read_source(f, &insn->src[1], &y))
+    const unsigned nsrc = d3d8_vs_source_count(insn->op);
+    Operand src[3];
+    for (s = 0; s < nsrc; ++s)
+      if (!resolve_operand(b, constants, &insn->src[s], n, &scratch[s],
+                           &src[s]))
         return 0;
-      for (i = 0; i < 4; i++)
-        v.x[i] = insn->op == OP_ADD   ? x.x[i] + y.x[i]
-                 : insn->op == OP_SUB ? x.x[i] - y.x[i]
-                                      : x.x[i] * y.x[i];
-      break;
-    case OP_MAD:
-      if (!read_source(f, &insn->src[1], &y) ||
-          !read_source(f, &insn->src[2], &z))
-        return 0;
-      for (i = 0; i < 4; i++)
-        v.x[i] = x.x[i] * y.x[i] + z.x[i];
-      break;
-    default: /* DP3, DP4: decode_program admits nothing else */
-    {
-      float dot = 0;
-      unsigned n = insn->op == OP_DP3 ? 3 : 4;
-      if (!read_source(f, &insn->src[1], &y))
-        return 0;
-      for (i = 0; i < n; i++)
-        dot += x.x[i] * y.x[i];
-      for (i = 0; i < 4; i++)
-        v.x[i] = dot;
-      break;
+    for (; s < 3; ++s)
+      src[s] = src[0];
+    if (insn->op == VS_OP_DP3 || insn->op == VS_OP_DP4) {
+      compute_dot(src, insn->op == VS_OP_DP3 ? 3u : 4u, n, result[0]);
+      for (c = 0; c < 4; ++c)
+        if (insn->mask & (1u << c))
+          memcpy(b->reg[insn->dst][c], result[0], n * sizeof(float));
+      b->a0_current &= insn->dst != VS_FILE_ADDR;
+      continue;
     }
-    }
-    for (i = 0; i < 4; ++i)
-      if (insn->mask & (1u << i))
-        f[insn->dst].x[i] = v.x[i];
+    for (c = 0; c < 4; ++c)
+      if (insn->mask & (1u << c))
+        compute_component(insn->op, src, c, n, result[c]);
+    for (c = 0; c < 4; ++c)
+      if (insn->mask & (1u << c))
+        memcpy(b->reg[insn->dst][c], result[c], n * sizeof(float));
+    b->a0_current &= insn->dst != VS_FILE_ADDR;
   }
   return 1;
+}
+
+/* Every register but the constants starts a vertex at zero, and oD0 at one;
+   then the declaration's inputs are loaded into their lanes. */
+static void load_batch(const D3D8VSProgram *p, const uint8_t *first_vertex,
+                       uint32_t stride, unsigned n, Batch *b) {
+  unsigned lane, i, c;
+  memset(b, 0, sizeof *b);
+  for (c = 0; c < 4; ++c)
+    for (lane = 0; lane < n; ++lane)
+      b->reg[VS_OUT_D0][c][lane] = 1.0f;
+  for (i = 0; i < VS_INPUTS; ++i) {
+    if (!p->input[i].present)
+      continue;
+    for (lane = 0; lane < n; ++lane) {
+      const Vec v = load_input(
+          first_vertex + lane * stride + p->input[i].offset, p->input[i].type);
+      for (c = 0; c < 4; ++c)
+        b->reg[VS_FILE_INPUT + i][c][lane] = v.x[c];
+    }
+  }
+}
+
+static void store_batch(const Batch *b, unsigned n, D3D8VSOutput *output) {
+  unsigned lane, c;
+  for (lane = 0; lane < n; ++lane) {
+    for (c = 0; c < 4; ++c) {
+      output[lane].position[c] = b->reg[VS_OUT_POS][c][lane];
+      output[lane].diffuse[c] = b->reg[VS_OUT_D0][c][lane];
+    }
+    output[lane].texcoord[0] = b->reg[VS_OUT_T0][0][lane];
+    output[lane].texcoord[1] = b->reg[VS_OUT_T0][1][lane];
+  }
 }
 
 int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
@@ -358,10 +284,10 @@ int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
                     D3D8VSOutput *output) {
   D3D8VertexShader *s = d3d8_vs_get(handle, "draw");
   const D3D8VSProgram *p;
-  Vec f[FILE_SIZE];
+  Batch b;
   unsigned v, i;
   const auto *base = static_cast<const uint8_t *>(vertices);
-  if (!s || !vertices || !stride || !output || !(p = program(s)))
+  if (!s || !vertices || !stride || !output || !(p = d3d8_vs_program(s)))
     return 0;
   if (first > UINT32_MAX - count ||
       (uint64_t)(first + count) * stride > vertex_bytes) {
@@ -377,23 +303,12 @@ int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
                    i, p->input[i].end, stride);
       return 0;
     }
-  memcpy(&f[FILE_CONST], constants, VS_CONSTANTS * sizeof(Vec));
-  for (v = 0; v < count; ++v) {
-    const uint8_t *src = base + (first + v) * stride;
-    /* Every register but the constants starts a vertex at zero, and oD0 at
-       one. */
-    memset(f, 0, FILE_CONST * sizeof(Vec));
-    f[OUT_D0].x[0] = f[OUT_D0].x[1] = f[OUT_D0].x[2] = f[OUT_D0].x[3] = 1.0f;
-    for (i = 0; i < VS_INPUTS; ++i)
-      if (p->input[i].present)
-        f[FILE_INPUT + i] =
-            load_input(src + p->input[i].offset, p->input[i].type);
-    if (!execute_one(p, f))
+  for (v = 0; v < count; v += VS_BATCH) {
+    const unsigned n = count - v < VS_BATCH ? count - v : VS_BATCH;
+    load_batch(p, base + (size_t)(first + v) * stride, stride, n, &b);
+    if (!execute_batch(p, constants, &b, n))
       return 0;
-    memcpy(output[v].position, f[OUT_POS].x, sizeof output[v].position);
-    memcpy(output[v].diffuse, f[OUT_D0].x, sizeof output[v].diffuse);
-    output[v].texcoord[0] = f[OUT_T0].x[0];
-    output[v].texcoord[1] = f[OUT_T0].x[1];
+    store_batch(&b, n, output + v);
   }
   g_executions++;
   g_vertices += count;
@@ -418,6 +333,8 @@ int d3d8_vs_selftest(void) {
   } vertex = {{1, 2, 3, 1}, 1, {0.25f, 0.5f, 0.75f, 1.0f}};
   float c[VS_CONSTANTS][4] = {{0}};
   D3D8VSOutput out;
+  decltype(vertex) batch[kBatchVertices];
+  D3D8VSOutput batch_out[kBatchVertices];
   uint32_t h, bad;
   int fails = 0;
 
@@ -445,6 +362,58 @@ int d3d8_vs_selftest(void) {
   if (h)
     d3d8_vs_delete(h);
 
+  /* Across batches: 70 vertices, each selecting its own rows through a0.
+     With c[j] = (j, 2j, 3j, 4j) and v0 = (v, 1, 0, 0), a vertex with
+     selector s reads c[s+1..s+4] and gets oPos = (s+1, s+2, s+3, s+4) *
+     (v + 2): exact, and
+     different in every lane. */
+  h = d3d8_vs_create(decl, code, 0);
+  for (unsigned j = 0; j < 12; ++j)
+    for (unsigned k = 0; k < 4; ++k)
+      c[j][k] = (float)(j * (k + 1));
+  for (unsigned v = 0; v < kBatchVertices; ++v) {
+    batch[v] = vertex;
+    batch[v].p[0] = (float)v;
+    batch[v].p[1] = 1;
+    batch[v].p[2] = 0;
+    batch[v].p[3] = 0;
+    batch[v].selector = (float)(v % 4u);
+  }
+  if (!h || !d3d8_vs_execute(h, c, batch, sizeof batch, sizeof batch[0], 0,
+                             kBatchVertices, batch_out)) {
+    x2_log_info("d3d8 VS selftest: FAILED -- a %u-vertex draw was refused.\n",
+                kBatchVertices);
+    fails++;
+  } else {
+    for (unsigned v = 0; v < kBatchVertices; ++v) {
+      const float scale = (float)(v + 2u);
+      const float s = (float)(v % 4u);
+      if (batch_out[v].position[0] != (s + 1) * scale ||
+          batch_out[v].position[1] != (s + 2) * scale ||
+          batch_out[v].position[2] != (s + 3) * scale ||
+          batch_out[v].position[3] != (s + 4) * scale) {
+        x2_log_info("d3d8 VS selftest: FAILED -- vertex %u of a batched "
+                    "draw has [%g %g %g %g].\n",
+                    v, batch_out[v].position[0], batch_out[v].position[1],
+                    batch_out[v].position[2], batch_out[v].position[3]);
+        fails++;
+        break;
+      }
+    }
+  }
+  /* One lane past the constant file, in the second batch, refuses the
+     draw. */
+  batch[kBatchVertices - 1u].selector = (float)VS_CONSTANTS;
+  if (h && d3d8_vs_execute(h, c, batch, sizeof batch, sizeof batch[0], 0,
+                           kBatchVertices, batch_out)) {
+    x2_log_info("d3d8 VS selftest: FAILED -- a relative index past the "
+                "constant file in lane %u was not refused.\n",
+                kBatchVertices - 1u);
+    fails++;
+  }
+  if (h)
+    d3d8_vs_delete(h);
+
   bad = d3d8_vs_create(decl, bad_code, 0);
   if (!bad || d3d8_vs_execute(bad, c, &vertex, sizeof vertex, sizeof vertex, 0,
                               1, &out)) {
@@ -454,8 +423,9 @@ int d3d8_vs_selftest(void) {
   }
   if (bad)
     d3d8_vs_delete(bad);
-  x2_log_info("d3d8 VS selftest: %s -- positive relative-addressed program and "
-              "negative unsupported-opcode program both exercised\n",
+  x2_log_info("d3d8 VS selftest: %s -- relative-addressed program on one "
+              "vertex and across batches, an out-of-file lane, and an "
+              "unsupported opcode all exercised\n",
               fails ? "FAILED" : "PASSED");
   return fails;
 }
