@@ -62,6 +62,21 @@ SDL_GPUTextureFormat gpu_depth_format(void);
 unsigned long gpu_frames_presented(void);
 SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h);
 
+/*
+ * The frame command buffer and its EPOCH.
+ *
+ * Every frame command buffer -- a presented frame's, a headless frame's, an
+ * off-screen one's -- is acquired into g_cmd through gpu_frame_command_acquire,
+ * which numbers it. gpu_frame_epoch is the number of the one open now, or of
+ * the last one when none is. gpu_frame_epoch_closed is the last epoch whose
+ * command buffers have all been submitted or cancelled. Those include the
+ * frame's shadow command buffer, which is always submitted before g_cmd.
+ * gpu_index_arena.h says why it needs both.
+ */
+int gpu_frame_command_acquire(void);
+uint64_t gpu_frame_epoch(void);
+uint64_t gpu_frame_epoch_closed(void);
+
 /* Open the render pass if it is not open yet, clearing as the engine asked.
    Drawing needs the pass, and the pass has to be opened by whoever gets there
    first -- a draw or the end of the frame. */

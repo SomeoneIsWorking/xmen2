@@ -3,6 +3,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_draw_trace.h"
+#include "gpu_index_storage.h"
 #include "gpu_internal.h"
 #include "gpu_pipeline.h"
 #include "gpu_readback.h"
@@ -86,23 +87,6 @@ int gpu_draw(const GpuDraw *d) {
 }
 void gpu_draw_report(void) {}
 void gpu_draw_counts(unsigned long *s2, unsigned long *r) { *s2 = *r = 0; }
-int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
-                        float a) {
-  (void)w;
-  (void)h;
-  (void)r;
-  (void)g;
-  (void)b;
-  (void)a;
-  return no_sdl("offscreen begin");
-}
-int gpu_offscreen_next_no_clear(void) { return no_sdl("offscreen next frame"); }
-int gpu_offscreen_read(void *o, uint32_t n) {
-  (void)o;
-  (void)n;
-  return no_sdl("offscreen read");
-}
-void gpu_offscreen_end(void) {}
 
 #else /* X2_WITH_SDL */
 
@@ -127,8 +111,9 @@ typedef struct {
   int cube_refused; /* this cube's draw refusal was reported */
   int kind;         /* GpuBufferKind, or 0 for a texture */
   int live;
-  uint64_t serial; /* a buffer's contents, new at creation and every upload:
-                      see gpu_pass_binds.h */
+  uint64_t serial; /* a vertex buffer's contents, new at creation and every
+                      upload: see gpu_pass_binds.h */
+  GpuIndexStorage index; /* an index buffer's region; `buf` is its chunk */
 } Res;
 
 static uint64_t g_buffer_serial;
@@ -233,11 +218,16 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
     return 0;
   r = &g_res[h - 1];
 
-  memset(&ci, 0, sizeof ci);
-  ci.usage = (kind == GPU_BUF_INDEX) ? SDL_GPU_BUFFERUSAGE_INDEX
-                                     : SDL_GPU_BUFFERUSAGE_VERTEX;
-  ci.size = bytes;
-  r->buf = SDL_CreateGPUBuffer(g_gpu, &ci);
+  if (kind == GPU_BUF_INDEX) {
+    if (!gpu_index_storage_create(&r->index, bytes))
+      return 0;
+    r->buf = r->index.buffer;
+  } else {
+    memset(&ci, 0, sizeof ci);
+    ci.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    ci.size = bytes;
+    r->buf = SDL_CreateGPUBuffer(g_gpu, &ci);
+  }
   if (!r->buf) {
     x2_log_error("gpu: SDL_CreateGPUBuffer(%u) failed: %s\n", bytes,
                  SDL_GetError());
@@ -284,7 +274,14 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
   unsigned long long t0 = gpu_perf_now_ns(), t1;
+  uint32_t base = 0;
 
+  if (r->kind == GPU_BUF_INDEX) {
+    if (!gpu_index_storage_prepare_write(&r->index))
+      return 0;
+    r->buf = r->index.buffer;
+    base = r->index.region.offset;
+  }
   staged = gpu_staging_write(g_gpu, data, bytes);
   if (!staged.buffer)
     return 0;
@@ -299,7 +296,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   src.transfer_buffer = staged.buffer;
   src.offset = staged.offset;
   dr.buffer = r->buf;
-  dr.offset = offset;
+  dr.offset = base + offset;
   dr.size = bytes;
   /*
    * Preserve the bytes captured by draws already recorded against this
@@ -312,8 +309,13 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
    *
    * Bytes outside dr are undefined after a cycle. Every caller either
    * uploads the full resource or draws only the uploaded prefix.
+   *
+   * An index buffer is a region of a chunk other buffers share, and cycling
+   * the chunk would discard theirs. gpu_index_storage_prepare_write has
+   * already moved it to a region no open command buffer reads, which is the
+   * same guarantee, so its upload is written in place.
    */
-  SDL_UploadToGPUBuffer(cp, &src, &dr, true);
+  SDL_UploadToGPUBuffer(cp, &src, &dr, r->kind != GPU_BUF_INDEX);
   r->serial = ++g_buffer_serial;
   {
     unsigned long long now = gpu_perf_now_ns();
@@ -354,92 +356,11 @@ void gpu_buffer_destroy(GpuBuffer b) {
   Res *r = res_get(b, 0, "buffer destroy");
   if (!r)
     return;
-  SDL_ReleaseGPUBuffer(g_gpu, r->buf);
+  if (r->kind == GPU_BUF_INDEX)
+    gpu_index_storage_destroy(&r->index);
+  else
+    SDL_ReleaseGPUBuffer(g_gpu, r->buf);
   r->live = 0;
-}
-
-static SDL_GPUTextureFormat sdl_format(GpuFormat f) {
-  switch (f) {
-  case GPU_FMT_BGRA8:
-    return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
-  case GPU_FMT_RGBA8:
-    return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-  case GPU_FMT_BGR8:
-    return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
-  case GPU_FMT_BC1:
-    return SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM;
-  case GPU_FMT_BC2:
-    return SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM;
-  case GPU_FMT_BC3:
-    return SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
-  }
-  return SDL_GPU_TEXTUREFORMAT_INVALID;
-}
-
-static const char *gpu_format_name(GpuFormat f) {
-  switch (f) {
-  case GPU_FMT_BGRA8:
-    return "BGRA8";
-  case GPU_FMT_RGBA8:
-    return "RGBA8";
-  case GPU_FMT_BGR8:
-    return "BGR8";
-  case GPU_FMT_BC1:
-    return "BC1/DXT1";
-  case GPU_FMT_BC2:
-    return "BC2/DXT3";
-  case GPU_FMT_BC3:
-    return "BC3/DXT5";
-  }
-  return "unknown";
-}
-
-static int g_format_support_report_requested;
-
-void gpu_texture_request_format_support_report(void) {
-  static const GpuFormat formats[] = {GPU_FMT_BGRA8, GPU_FMT_RGBA8,
-                                      GPU_FMT_BGR8,  GPU_FMT_BC1,
-                                      GPU_FMT_BC2,   GPU_FMT_BC3};
-  unsigned int i;
-
-  g_format_support_report_requested = 1;
-  if (!g_gpu) {
-    return;
-  }
-  g_format_support_report_requested = 0;
-  for (i = 0; i < sizeof formats / sizeof formats[0]; ++i) {
-    SDL_GPUTextureFormat format = sdl_format(formats[i]);
-    int supported =
-        SDL_GPUTextureSupportsFormat(g_gpu, format, SDL_GPU_TEXTURETYPE_2D,
-                                     SDL_GPU_TEXTUREUSAGE_SAMPLER)
-            ? 1
-            : 0;
-    x2_log_error("gpu: texture format %s (%d) 2D sampler: %s\n",
-                 gpu_format_name(formats[i]), (int)format,
-                 supported ? "supported" : "UNSUPPORTED");
-  }
-}
-
-void gpu_texture_flush_format_support_report(void) {
-  if (g_format_support_report_requested)
-    gpu_texture_request_format_support_report();
-}
-
-static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h) {
-  uint32_t blocks = ((w + 3u) / 4u) * ((h + 3u) / 4u);
-  switch (fmt) {
-  case GPU_FMT_BGRA8:
-  case GPU_FMT_RGBA8:
-    return w * h * 4u;
-  case GPU_FMT_BGR8:
-    return w * h * 4u;
-  case GPU_FMT_BC1:
-    return blocks * 8u;
-  case GPU_FMT_BC2:
-  case GPU_FMT_BC3:
-    return blocks * 16u;
-  }
-  return 0;
 }
 
 /* The 2D and the cube path differ in exactly two fields, so they share this
@@ -447,7 +368,7 @@ static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h) {
 static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
                                  uint32_t levels, uint32_t faces) {
   SDL_GPUTextureCreateInfo ci;
-  SDL_GPUTextureFormat sf = sdl_format(fmt);
+  SDL_GPUTextureFormat sf = gpu_texture_sdl_format(fmt);
   uint32_t handle;
   Res *r;
 
@@ -492,7 +413,7 @@ static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
   }
   r->w = w;
   r->h = h;
-  r->bytes = texture_level_bytes(fmt, w, h);
+  r->bytes = gpu_texture_level_bytes(fmt, w, h);
   r->fmt = fmt;
   r->levels = ci.num_levels;
   r->faces = faces;
@@ -763,6 +684,10 @@ int gpu_draw(const GpuDraw *d) {
     g_refused++;
     return 0;
   }
+  /* Where the draw starts in the chunk its indices share. */
+  const uint32_t isz = d->index_is_32bit ? 4u : 2u;
+  const uint32_t chunk_first_index =
+      ires ? d->first_index + ires->index.region.offset / isz : 0u;
   /*
    * A combiner stage does NOT imply a bound texture.
    *
@@ -940,10 +865,11 @@ int gpu_draw(const GpuDraw *d) {
     return 0;
   }
 
-  if (!ires || (uint64_t)(d->first_index + n) * (d->index_is_32bit ? 4u : 2u) <=
-                   ires->bytes)
+  if (ires)
+    gpu_index_storage_note_draw(&ires->index);
+  if (!ires || (uint64_t)(d->first_index + n) * isz <= ires->bytes)
     gpu_shadow_record(d, vres->buf, vres->serial, ires ? ires->buf : NULL,
-                      ires ? ires->serial : 0u, tres->tex, smp, n);
+                      chunk_first_index, tres->tex, smp, n);
   gpu_shadow_sample(d, &shadow);
 
   gpu_pass_begin();
@@ -1082,7 +1008,6 @@ int gpu_draw(const GpuDraw *d) {
      * clamped. Clamping would draw a SHORTER version of whatever the
      * engine asked for -- a subtly wrong picture that leads nowhere.
      */
-    uint32_t isz = d->index_is_32bit ? 4u : 2u;
     uint64_t need = (uint64_t)(d->first_index + n) * isz;
     if (need > ires->bytes) {
       static unsigned long told;
@@ -1103,8 +1028,7 @@ int gpu_draw(const GpuDraw *d) {
       g_refused_index_range++;
       return 0;
     }
-    if (gpu_pass_binds_index_changed(gpu_pass_binds(), ires->buf, ires->serial,
-                                     isz)) {
+    if (gpu_pass_binds_index_changed(gpu_pass_binds(), ires->buf, isz)) {
       memset(&ib, 0, sizeof ib);
       ib.buffer = ires->buf;
       ib.offset = 0;
@@ -1113,7 +1037,7 @@ int gpu_draw(const GpuDraw *d) {
                                  ? SDL_GPU_INDEXELEMENTSIZE_32BIT
                                  : SDL_GPU_INDEXELEMENTSIZE_16BIT);
     }
-    SDL_DrawGPUIndexedPrimitives(g_pass, n, 1, d->first_index,
+    SDL_DrawGPUIndexedPrimitives(g_pass, n, 1, chunk_first_index,
                                  (Sint32)d->base_vertex, 0);
   } else {
     SDL_DrawGPUPrimitives(g_pass, n, 1, d->first_vertex, 0);
@@ -1202,134 +1126,7 @@ void gpu_draw_report(void) {
                 g_depth_ignored);
   gpu_draw_trace_report();
   gpu_shadow_report();
-}
-
-/* ---- off-screen, for proving the path ---------------------------------- */
-
-static SDL_GPUTexture *g_off_tex;
-static uint32_t g_off_w, g_off_h;
-
-int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
-                        float a) {
-  SDL_GPUTextureCreateInfo ci;
-
-  if (!g_gpu) {
-    x2_log_error("gpu: no device.\n");
-    return 0;
-  }
-  gpu_offscreen_end();
-
-  memset(&ci, 0, sizeof ci);
-  ci.type = SDL_GPU_TEXTURETYPE_2D;
-  ci.format = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
-  ci.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-  ci.width = w;
-  ci.height = h;
-  ci.layer_count_or_depth = 1;
-  ci.num_levels = 1;
-  g_off_tex = SDL_CreateGPUTexture(g_gpu, &ci);
-  if (!g_off_tex) {
-    x2_log_error("gpu: the off-screen target could not be made: %s\n",
-                 SDL_GetError());
-    return 0;
-  }
-  g_off_w = w;
-  g_off_h = h;
-  g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  if (!g_cmd) {
-    x2_log_error("gpu: no command buffer: %s\n", SDL_GetError());
-    return 0;
-  }
-  gpu_set_offscreen_target(g_off_tex, w, h);
-  gpu_shadow_frame_begin();
-  gpu_frame_clear(1u, r, g, b, a, 1.0f, 0);
-  return 1;
-}
-
-int gpu_offscreen_next_no_clear(void) {
-  if (!g_gpu || !g_off_tex) {
-    x2_log_error("gpu: no off-screen target to continue.\n");
-    return 0;
-  }
-  /* Execute even a clear-only first frame before replacing its command
-     buffer. Queue submission order then makes it the known previous image
-     for the frame that follows. */
-  gpu_pass_begin();
-  gpu_upload_batch_flush(g_gpu);
-  gpu_shadow_frame_submit();
-  if (g_pass) {
-    SDL_EndGPURenderPass(g_pass);
-    g_pass = NULL;
-  }
-  if (g_cmd) {
-    SDL_SubmitGPUCommandBuffer(g_cmd);
-    g_cmd = NULL;
-  }
-
-  g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  if (!g_cmd) {
-    x2_log_error("gpu: no command buffer for the next off-screen "
-                 "frame: %s\n",
-                 SDL_GetError());
-    return 0;
-  }
-  gpu_set_offscreen_target(g_off_tex, g_off_w, g_off_h);
-  gpu_shadow_frame_begin();
-  /* gpu_frame_begin resets this mask on the real path. This helper owns an
-     already-created target, so reproduce that boundary explicitly. */
-  gpu_frame_clear(0u, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0u);
-  return 1;
-}
-
-int gpu_offscreen_read(void *out, uint32_t bytes) {
-  uint32_t need = g_off_w * g_off_h * 4u;
-  SDL_GPUFence *fence;
-
-  if (!g_off_tex) {
-    x2_log_error("gpu: no off-screen target.\n");
-    return 0;
-  }
-  if (bytes < need) {
-    x2_log_error("gpu: the readback needs %u bytes, was given %u.\n", need,
-                 bytes);
-    return 0;
-  }
-  /* The draws have to have executed before they can be read back. */
-  gpu_upload_batch_flush(g_gpu);
-  gpu_shadow_frame_submit();
-  if (g_pass) {
-    SDL_EndGPURenderPass(g_pass);
-    g_pass = NULL;
-  }
-  if (g_cmd) {
-    fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g_cmd);
-    g_cmd = NULL;
-    if (fence) {
-      SDL_WaitForGPUFences(g_gpu, true, &fence, 1);
-      SDL_ReleaseGPUFence(g_gpu, fence);
-    }
-  }
-  return gpu_readback_texture_rgba(g_gpu, g_off_tex, g_off_w, g_off_h, out,
-                                   bytes);
-}
-
-void gpu_offscreen_end(void) {
-  gpu_upload_batch_flush(g_gpu);
-  gpu_shadow_frame_submit();
-  if (g_pass) {
-    SDL_EndGPURenderPass(g_pass);
-    g_pass = NULL;
-  }
-  if (g_cmd) {
-    SDL_SubmitGPUCommandBuffer(g_cmd);
-    g_cmd = NULL;
-  }
-  if (g_off_tex) {
-    SDL_ReleaseGPUTexture(g_gpu, g_off_tex);
-    g_off_tex = NULL;
-  }
-  gpu_set_offscreen_target(NULL, 0, 0);
-  g_swap = NULL;
+  gpu_index_storage_report();
 }
 
 void gpu_draw_shutdown(void) {
@@ -1345,13 +1142,14 @@ void gpu_draw_shutdown(void) {
   gpu_staging_ring_destroy(g_gpu);
   for (i = 0; i < g_nres; i++)
     if (g_res[i].live) {
-      if (g_res[i].buf)
+      if (g_res[i].buf && g_res[i].kind != GPU_BUF_INDEX)
         SDL_ReleaseGPUBuffer(g_gpu, g_res[i].buf);
       if (g_res[i].tex)
         SDL_ReleaseGPUTexture(g_gpu, g_res[i].tex);
       g_res[i].live = 0;
     }
   g_nres = 0;
+  gpu_index_storage_shutdown(g_gpu);
   /*
    * The placeholder texture's HANDLE is an index into the table just
    * emptied, so keeping it across a device teardown means the next device's

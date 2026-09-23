@@ -1,7 +1,8 @@
 /*
  * gpu_pass_binds.c: a repeat of what the pass has bound is skipped, and
  * everything that makes a bind necessary -- another pipeline, another vertex
- * or index buffer, the same buffer after an upload, another element size,
+ * or index buffer, the same vertex buffer after an upload, another element
+ * size,
  * another texture or sampler in any slot, another slot count, a new pass --
  * asks for it.
  */
@@ -37,16 +38,12 @@ int main(void) {
   expect("another vertex buffer", gpu_pass_binds_vertex_changed(&b, &v2, 4u),
          1);
 
-  expect("the first index buffer",
-         gpu_pass_binds_index_changed(&b, &i1, 7u, 2u), 1);
-  expect("the same index buffer", gpu_pass_binds_index_changed(&b, &i1, 7u, 2u),
-         0);
-  expect("the same buffer after an upload",
-         gpu_pass_binds_index_changed(&b, &i1, 8u, 2u), 1);
-  expect("the same buffer at another element size",
-         gpu_pass_binds_index_changed(&b, &i1, 8u, 4u), 1);
-  expect("another index buffer", gpu_pass_binds_index_changed(&b, &i2, 8u, 4u),
+  expect("the first index buffer", gpu_pass_binds_index_changed(&b, &i1, 2u),
          1);
+  expect("the same index buffer", gpu_pass_binds_index_changed(&b, &i1, 2u), 0);
+  expect("the same buffer at another element size",
+         gpu_pass_binds_index_changed(&b, &i1, 4u), 1);
+  expect("another index buffer", gpu_pass_binds_index_changed(&b, &i2, 4u), 1);
 
   int t1, t2, s1, s2;
   const void *const set[4] = {&t1, &s1, &t2, &s2};
@@ -77,8 +74,8 @@ int main(void) {
   expect("a new pass's pipeline", gpu_pass_binds_pipeline_changed(&b, &p1), 1);
   expect("a new pass's vertex buffer",
          gpu_pass_binds_vertex_changed(&b, &v2, 4u), 1);
-  expect("a new pass's index buffer",
-         gpu_pass_binds_index_changed(&b, &i2, 8u, 4u), 1);
+  expect("a new pass's index buffer", gpu_pass_binds_index_changed(&b, &i2, 4u),
+         1);
   expect("kept pipeline binds counted", (int)b.pipelines_kept, 1);
   expect("kept vertex binds counted", (int)b.vertices_kept, 1);
   expect("kept index binds counted", (int)b.indices_kept, 1);

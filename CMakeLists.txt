@@ -355,6 +355,11 @@ add_executable(test_gpu_pass_binds tests/test_gpu_pass_binds.c
 target_include_directories(test_gpu_pass_binds PRIVATE src/gpu)
 add_test(NAME gpu_pass_binds COMMAND test_gpu_pass_binds)
 
+add_executable(test_gpu_index_arena tests/test_gpu_index_arena.c
+               src/gpu/gpu_index_arena.c)
+target_include_directories(test_gpu_index_arena PRIVATE src/gpu)
+add_test(NAME gpu_index_arena COMMAND test_gpu_index_arena)
+
 add_executable(test_d3d8_index_max tests/test_d3d8_index_max.c
                src/d3d8/d3d8_draw_range.c)
 target_include_directories(test_d3d8_index_max PRIVATE src/d3d8 src/gpu
@@ -1881,6 +1886,10 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_present_luma.c
     src/gpu/gpu_readback.c
     src/gpu/gpu_draw.c
+    src/gpu/gpu_frame_epoch.c
+    src/gpu/gpu_index_arena.c
+    src/gpu/gpu_index_storage.c
+    src/gpu/gpu_offscreen.c
     src/gpu/gpu_pipeline.c
     src/gpu/gpu_texture_format.c
     src/gpu/gpu_draw_trace.c

@@ -103,7 +103,9 @@ static unsigned long g_textures, g_cubetextures, g_vbuffers, g_ibuffers;
  * NOOVERWRITE that was merely wasteful; under DISCARD it overwrote storage
  * that earlier draws in this frame were still going to read, and those draws
  * then rendered with whatever mesh was written last. gpu_buffer_upload now
- * cycles an already-bound buffer, which implements the rename D3D8 requires.
+ * gives an already-drawn buffer new storage -- it cycles a vertex buffer and
+ * moves an index buffer to a new region (gpu_index_storage.h) -- which
+ * implements the rename D3D8 requires.
  * Count the locks by flag, count what Unlock actually moves, and count
  * the case that discriminates -- a buffer unlocked MORE THAN ONCE between one
  * Present and the next, which is the only situation in which a rename can
@@ -930,7 +932,7 @@ static void buf_Unlock(D3D8Object *self, CPU *C) {
     if (!told++)
       x2_log_error("d3d8: a buffer this frame's draws ALREADY READ is "
                    "being rewritten (%u bytes) before the frame is submitted. "
-                   "gpu_buffer_upload is cycling its SDL_GPU backing storage, "
+                   "gpu_buffer_upload gives it new storage, "
                    "so earlier draws retain their bytes and later draws use "
                    "this generation. Reported once; the total is in the "
                    "heartbeat.\n",

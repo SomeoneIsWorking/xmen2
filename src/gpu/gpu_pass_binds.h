@@ -15,11 +15,14 @@
  * sets stale inside SDL but keeps the bound samplers, so a kept sampler set
  * survives a new pipeline.
  *
- * A vertex or index buffer is named by its handle AND a serial that changes
- * at every upload: an upload cycles the buffer to new backing storage while
- * the pass is open, and only a fresh bind picks that storage up. Serials are
- * unique across buffers, so a buffer recreated at a freed one's address is new
- * too.
+ * A vertex buffer is named by its handle AND a serial that changes at every
+ * upload: an upload cycles the buffer to new backing storage while the pass is
+ * open, and only a fresh bind picks that storage up. Serials are unique across
+ * buffers, so a buffer recreated at a freed one's address is new too.
+ *
+ * An index buffer is named by its handle alone. Index storage is a chunk that
+ * is never cycled (gpu_index_storage.h), so its bind stays valid for the pass;
+ * a draw selects its region by its first index, not by a new bind.
  *
  * Identities are opaque pointers so the decisions are testable without a
  * device; the caller does the binding a `*_changed` call asks for.
@@ -33,7 +36,6 @@ typedef struct GpuPassBinds {
   const void *vertex_buffer; /* slot 0, the only one bound */
   uint64_t vertex_serial;
   const void *index_buffer;
-  uint64_t index_serial;
   unsigned index_size;
   /* texture, sampler for each bound slot from 0; `samplers` slots bound */
   const void *sampler_pairs[2 * kGpuPassFragmentSamplers];
@@ -61,9 +63,9 @@ int gpu_pass_binds_samplers_changed(GpuPassBinds *binds,
 int gpu_pass_binds_vertex_changed(GpuPassBinds *binds, const void *buffer,
                                   uint64_t serial);
 
-/* 1, and remembered, when the index buffer, its serial or its element size
-   differs from what is bound. */
+/* 1, and remembered, when the index buffer or its element size differs from
+   what is bound. */
 int gpu_pass_binds_index_changed(GpuPassBinds *binds, const void *buffer,
-                                 uint64_t serial, unsigned element_size);
+                                 unsigned element_size);
 
 #endif /* GPU_PASS_BINDS_H */

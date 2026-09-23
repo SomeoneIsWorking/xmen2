@@ -447,8 +447,7 @@ int gpu_frame_begin(void) {
       return 0;
     if (g_cmd)
       gpu_frame_end();
-    g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-    if (!g_cmd) {
+    if (!gpu_frame_command_acquire()) {
       x2_log_error("gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
                    SDL_GetError());
       return 0;
@@ -477,8 +476,7 @@ int gpu_frame_begin(void) {
                  "previous one was never ended. Ending it.\n");
     gpu_frame_end();
   }
-  g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  if (!g_cmd) {
+  if (!gpu_frame_command_acquire()) {
     x2_log_error("gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
                  SDL_GetError());
     return 0;

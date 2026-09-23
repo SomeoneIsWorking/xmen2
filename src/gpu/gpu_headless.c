@@ -14,6 +14,7 @@
 
 #include "gpu_device.h"
 #include "gpu_internal.h"
+#include "gpu_shadow.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -162,8 +163,11 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
                  bytes);
     return 0;
   }
-  /* Whatever is in flight has to have executed before it can be read. */
+  /* Whatever is in flight has to have executed before it can be read. The
+     shadow pass goes first, as at gpu_frame_end: the frame samples it, and
+     gpu_frame_epoch_closed counts it closed with g_cmd. */
   gpu_upload_batch_flush(g_gpu);
+  gpu_shadow_frame_submit();
   if (g_pass) {
     SDL_EndGPURenderPass(g_pass);
     g_pass = NULL;

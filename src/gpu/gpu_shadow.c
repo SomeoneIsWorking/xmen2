@@ -18,13 +18,13 @@ void gpu_shadow_configure(int enabled, uint32_t resolution) {
 void gpu_shadow_frame_begin(void) {}
 void gpu_shadow_record(const GpuDraw *draw, struct SDL_GPUBuffer *vertices,
                        uint64_t vertex_serial, struct SDL_GPUBuffer *indices,
-                       uint64_t index_serial, struct SDL_GPUTexture *texture,
+                       uint32_t first_index, struct SDL_GPUTexture *texture,
                        struct SDL_GPUSampler *sampler, uint32_t index_count) {
   (void)draw;
   (void)vertices;
   (void)vertex_serial;
   (void)indices;
-  (void)index_serial;
+  (void)first_index;
   (void)texture;
   (void)sampler;
   (void)index_count;
@@ -286,7 +286,7 @@ static int begin_pass(void) {
 
 void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
                        uint64_t vertex_serial, SDL_GPUBuffer *indices,
-                       uint64_t index_serial, SDL_GPUTexture *texture,
+                       uint32_t first_index, SDL_GPUTexture *texture,
                        SDL_GPUSampler *sampler, uint32_t index_count) {
   SDL_GPUGraphicsPipeline *pipeline;
   SDL_GPUBufferBinding binding;
@@ -336,15 +336,14 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   SDL_PushGPUFragmentUniformData(g_shadow_command, 0, &alpha, sizeof alpha);
   if (indices) {
     binding.buffer = indices;
-    if (gpu_pass_binds_index_changed(&g_binds, indices, index_serial,
+    if (gpu_pass_binds_index_changed(&g_binds, indices,
                                      draw->index_is_32bit ? 4u : 2u))
       SDL_BindGPUIndexBuffer(g_shadow_pass, &binding,
                              draw->index_is_32bit
                                  ? SDL_GPU_INDEXELEMENTSIZE_32BIT
                                  : SDL_GPU_INDEXELEMENTSIZE_16BIT);
-    SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1,
-                                 draw->first_index, (int32_t)draw->base_vertex,
-                                 0);
+    SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1, first_index,
+                                 (int32_t)draw->base_vertex, 0);
   } else {
     SDL_DrawGPUPrimitives(g_shadow_pass, index_count, 1, draw->first_vertex, 0);
   }
