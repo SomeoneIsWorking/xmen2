@@ -59,6 +59,16 @@ lucent::cvar::Var<bool> g_sg_attr_stack{"sg.attr_stack", true};
  * off in normal play. */
 lucent::cvar::Var<bool> g_sg_attr_stack_verify{"sg.attr_stack_verify", false};
 
+/* on: native overrides for libIGSg.dll's bounding-box frustum test -- the
+ * clip-space box corners (0x10047570) and their classification (0x100478e0),
+ * box_cull.c. off restores full guest JIT execution of both. */
+lucent::cvar::Var<bool> g_sg_box_cull{"sg.box_cull", true};
+
+/* on: after each native box_cull answer, re-run the guest's own body from the
+ * same start state and abort on any difference in the output, EAX, ESP or x87
+ * control state. The differential proof for box_cull.c; off in normal play. */
+lucent::cvar::Var<bool> g_sg_box_cull_verify{"sg.box_cull_verify", false};
+
 /* on: native override for the per-frame audio channel poll (XMen2.exe
  * 0x00594500). off restores full guest JIT execution of the 24-channel
  * completion sweep. */
@@ -258,6 +268,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_gfx_vtx_builder_verify);
   lucent::cvar::register_var(g_sg_attr_stack);
   lucent::cvar::register_var(g_sg_attr_stack_verify);
+  lucent::cvar::register_var(g_sg_box_cull);
+  lucent::cvar::register_var(g_sg_box_cull_verify);
   lucent::cvar::register_var(g_audio_channel_poll);
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);

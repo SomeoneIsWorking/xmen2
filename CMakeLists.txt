@@ -1035,6 +1035,11 @@ target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
 
+add_executable(test_box_cull tests/test_box_cull.c src/native/box_cull.c)
+target_include_directories(test_box_cull PRIVATE src/native)
+target_link_libraries(test_box_cull PRIVATE x86port_runtime)
+add_test(NAME box_cull COMMAND test_box_cull)
+
 add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
                src/native/audio_channel_poll.c src/native/guest_memory.c
                tests/native_stubs.c)
@@ -1571,6 +1576,8 @@ set(X2_NATIVE_SOURCES
     src/native/x86_import_fastpath.c
     src/native/attr_stack.c
     src/native/attr_stack_verify.c
+    src/native/box_cull.c
+    src/native/box_cull_override.c
     src/native/x86_engine_jit_diag.c
     src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c

@@ -623,11 +623,25 @@ needs) and about 400M failed store-to-load forwards per 10 s whose sources a
 cycle-skidding sample cannot place; locating them needs precise (IBS)
 sampling.
 
+Attributing translated-code samples to guest addresses then named one
+function pair as ~38% of them: libIGSg.dll's bounding-box frustum test, the
+clip-space box corners (`0x10047570`, ~250 straight-line x87 instructions)
+and their clip-code classification (`0x100478e0`). Both are native overrides
+now (`src/native/box_cull.{c,h}`, `box_cull_override.c`), computed in `long
+double` in the guest's own operation order and 32-bit spills, and answered
+natively only on an x87 host at the guest's control word with room on the
+x87 stack; classify's guard-band case (13.6% of calls) runs the guest body.
+`sg.box_cull_verify` re-ran the guest body behind 16.8M native answers on
+Dead Zone with no difference, and aborted on a build whose spill map rounded
+one value too early. Same binary, `sg.box_cull` on against off: unpaced
+presents/s 97.5 and 87.9 against 74.4 and 68.9 (+29%), p95 frame 11-13 ms
+against 16-17 ms; paced, the game thread fell from 82.5% to about 69% of a
+core.
+
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
 product evidence; the roughly 500 ms load hitch remains visible, asset I/O has
-not been profiled, and the `QueryPerformanceCounter` pacing spin remains open
-(issue #141 option 2). Remaining CPU cost belongs to x86port JIT translation
+not been profiled. Remaining CPU cost belongs to x86port JIT translation
 quality rather than a title-local execution engine.
 
 ### S011 — oracle and differential RE workflow: partial

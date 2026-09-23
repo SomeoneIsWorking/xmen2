@@ -1,0 +1,65 @@
+/*
+ * box_cull.h -- libIGSg.dll's bounding-box frustum test, as host arithmetic.
+ *
+ * igFrustCullNode (0x100485b0) and its sibling at 0x10047470 decide whether a
+ * node's bounding box is visible with two leaf calls:
+ *
+ *   0x10047570  corners(out, min, extent, matrix)
+ *     the box's eight corners, min + {0|1}*extent per axis, through a 4x4
+ *     row-vector matrix into clip space: 32 floats, corner-major.
+ *   0x100478e0  classify(corners)
+ *     2 when every corner is behind the eye or one frustum plane has every
+ *     corner outside it, 1 when every corner is inside every plane, and
+ *     otherwise a finer test against a guard band.
+ *
+ * On the Dead Zone route the two were ~38% of the samples inside translated
+ * code: ~250 x87 instructions and ~450 x87/integer instructions per call, each
+ * paying the JIT's per-instruction x87 bookkeeping.
+ *
+ * EXACTNESS. The guest computes in x87 extended precision at the control word
+ * the game runs with (X86P_X87_CW_INIT), keeping some intermediates in
+ * registers at 64-bit precision and spilling others through 32-bit stack
+ * slots. The functions below repeat the guest's own operation order and its
+ * own spills, in `long double`, so on a host whose `long double` IS the x87
+ * format and whose FPU runs at that control word every result is the one the
+ * guest instruction would produce. box_cull_host_exact() says whether this is
+ * such a host; elsewhere the callers run the guest body instead.
+ */
+#ifndef X2_BOX_CULL_H
+#define X2_BOX_CULL_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define BOX_CULL_CORNERS 8u
+#define BOX_CULL_CORNER_FLOATS (BOX_CULL_CORNERS * 4u)
+
+/* classify's answer. kBoxCullUndecided is the guard-band case this module
+   does not implement: the caller runs the guest body for it. */
+typedef enum BoxCullVerdict {
+  kBoxCullUndecided = 0,
+  kBoxCullInside = 1,
+  kBoxCullOutside = 2,
+} BoxCullVerdict;
+
+/* 1 when this host's long double is the x87 ten-byte format and its FPU
+   control word is X86P_X87_CW_INIT, so the functions below are exact. */
+int box_cull_host_exact(void);
+
+/* 0x10047570. `zero` is the guest's constant at 0x10077ba8 (0.0f), which the
+   guest multiplies the unused extents by; it is read, not assumed. */
+void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
+                      const float extent[3], const float matrix[16],
+                      float zero);
+
+/* 0x100478e0, up to its guard-band test. */
+BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* X2_BOX_CULL_H */
