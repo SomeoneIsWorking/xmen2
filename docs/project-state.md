@@ -581,6 +581,10 @@ instead of reloading each operand from the guest register file (the per-form
 80-bit reload chain left the profile, about 5% of cycles), and `22c3dfb`
 translates FXCH, FCHS, FABS, FCOM/FUCOM, FLDZ/FLD1 and FNSTSW AX inline so
 they no longer break that run with a helper call.
+x86port `aeec060` translates SHL/SHR/SAR and packed ADDPS/SUBPS/MULPS/DIVPS
+inline; the helpers they called (`x86p_alu`, `x86p_flags_set`,
+`x86p_flag_cf`, `x86p_simd_mulps`, `x86p_simd_addps`) were 8.3% of the Dead
+Zone profile's samples and no longer appear in it.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
