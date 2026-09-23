@@ -566,6 +566,12 @@ third. Only the FSTENV/FSAVE tag word reads the zero/special class, so x86port
 `15fa144` keeps just empty/occupied per register and derives the class when
 that word is written, as the hardware does (best 99.9 -> 91.9 M cycles per
 frame, -8.0%; 190.6 -> 175.5 M instructions, three alternating pairs).
+x86port `37c5014` writes the lazy-flag kind and width with the one 16-bit
+store the condition guard loads (that guard fell from 7.4% to 1.1% of
+translated-code samples), and `55fae7b` replaces the per-operation FNSTCW
+host control-word read with a constant fixed at translation, which the x64
+ABI's callee-saved control word makes sound within a run and the engine
+re-checks at run entry (best 83.3 -> 78.9 M cycles per frame, -5.3%).
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
