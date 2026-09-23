@@ -1,6 +1,8 @@
 /* box_cull.c -- see box_cull.h. */
 #include "box_cull.h"
 
+#include "x87.h"
+
 #include <string.h>
 
 /* Which of an axis's values the guest spills through a 32-bit stack slot
@@ -81,9 +83,7 @@ static unsigned spilled_sign(long double value) {
   return bits >> 31;
 }
 
-/* Bits 2a and 2a+1 are the signs of -w - v and -w + v for the corner's
-   coordinate v on axis a: set on the inner side of that pair of planes. */
-static unsigned corner_code(const float corner[4]) {
+unsigned box_cull_corner_code_extended(const float corner[4]) {
   const long double neg_w = -(long double)corner[3];
   unsigned code = 0u;
   for (unsigned axis = 0; axis < 3u; axis++) {
@@ -91,6 +91,48 @@ static unsigned corner_code(const float corner[4]) {
     code |= spilled_sign(neg_w + corner[axis]) << (2u * axis + 1u);
   }
   return code;
+}
+
+/* box_cull_corner_code's order holds under round-to-nearest only: rounding
+   down makes x - x come out -0. */
+_Static_assert((X86P_X87_CW_INIT & 0x0c00u) == 0u,
+               "the guest's control word rounds to nearest");
+
+/* A float's bits as an integer ordered like the floats, with -0 just below
+   +0: the sign magnitude of a negative float becomes a two's-complement
+   value. */
+static int32_t order_key(uint32_t bits) {
+  return (int32_t)(bits ^ ((uint32_t)((int32_t)bits >> 31) >> 1));
+}
+
+static int is_finite_bits(uint32_t bits) {
+  return (bits & 0x7fffffffu) < 0x7f800000u;
+}
+
+/* For finite floats the sign of the guest's rounded a - b is key(a) <
+   key(b): rounding keeps a nonzero result's sign, floats' difference is zero
+   only when exact -- it cannot underflow the extended range -- and an exact
+   zero is +0 except -0 - +0, the one equal pair the order puts apart. a + b
+   is a - (-b), zeros included. */
+static inline unsigned corner_code(const float corner[4]) {
+  uint32_t bits[4];
+  memcpy(bits, corner, sizeof bits);
+  if (!(is_finite_bits(bits[0]) & is_finite_bits(bits[1]) &
+        is_finite_bits(bits[2]) & is_finite_bits(bits[3]))) {
+    return box_cull_corner_code_extended(corner);
+  }
+  const int32_t neg_w = order_key(bits[3] ^ 0x80000000u);
+  unsigned code = 0u;
+  for (unsigned axis = 0; axis < 3u; axis++) {
+    code |= (unsigned)(neg_w < order_key(bits[axis])) << (2u * axis);
+    code |= (unsigned)(neg_w < order_key(bits[axis] ^ 0x80000000u))
+            << (2u * axis + 1u);
+  }
+  return code;
+}
+
+unsigned box_cull_corner_code(const float corner[4]) {
+  return corner_code(corner);
 }
 
 BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]) {

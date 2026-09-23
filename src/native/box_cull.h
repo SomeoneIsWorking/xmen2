@@ -55,6 +55,15 @@ void box_cull_corners(float out[BOX_CULL_CORNER_FLOATS], const float min[3],
                       const float extent[3], const float matrix[16],
                       float zero);
 
+/* One corner's plane code: bits 2a and 2a+1 are the sign bits of the guest's
+   rounded -w - v and -w + v for the corner's coordinate v on axis a, set on
+   the inner side of that pair of planes. box_cull_corner_code decides finite
+   corners by comparison and hands the rest to box_cull_corner_code_extended,
+   which computes the guest's arithmetic; the two are exposed so a test can
+   hold one against the other. */
+unsigned box_cull_corner_code(const float corner[4]);
+unsigned box_cull_corner_code_extended(const float corner[4]);
+
 /* 0x100478e0, up to its guard-band test. */
 BoxCullVerdict box_cull_classify(const float corners[BOX_CULL_CORNER_FLOATS]);
 

@@ -10,9 +10,11 @@
 
 #include "x87.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static int failures;
 
@@ -99,6 +101,78 @@ static void fill_corners(float corners[BOX_CULL_CORNER_FLOATS], float x,
   }
 }
 
+static uint32_t g_rng = 0x9E3779B9u;
+
+static uint32_t rng(void) {
+  g_rng ^= g_rng << 13;
+  g_rng ^= g_rng >> 17;
+  g_rng ^= g_rng << 5;
+  return g_rng;
+}
+
+static float float_bits(uint32_t bits) {
+  float f;
+  memcpy(&f, &bits, sizeof f);
+  return f;
+}
+
+/* A value from the classes where a comparison and the guest's arithmetic
+   could part: signed zeros, subnormals, the ends of the range, one ulp either
+   side of `near`, `near` itself and its negation, and any bit pattern. */
+static float edge_value(float near) {
+  switch (rng() % 9u) {
+  case 0:
+    return (rng() & 1u) ? -0.0f : 0.0f;
+  case 1:
+    return float_bits((rng() & 0x807fffffu) | 1u);
+  case 2:
+    return (rng() & 1u) ? -FLT_MAX : FLT_MAX;
+  case 3:
+    return nextafterf(near, INFINITY);
+  case 4:
+    return nextafterf(near, -INFINITY);
+  case 5:
+    return near;
+  case 6:
+    return -near;
+  case 7:
+    return (float)((int)(rng() % 7u) - 3);
+  default:
+    return float_bits(rng());
+  }
+}
+
+/* The comparison path against the guest's arithmetic, corner by corner. */
+static void test_corner_code_matches_extended(void) {
+  enum { CORNERS = 2000000 };
+  unsigned compared = 0, finite = 0;
+  for (unsigned n = 0; n < CORNERS; n++) {
+    float corner[4];
+    corner[3] = edge_value(1.0f);
+    for (unsigned axis = 0; axis < 3u; axis++)
+      corner[axis] = edge_value(corner[3]);
+    const unsigned fast = box_cull_corner_code(corner);
+    const unsigned exact = box_cull_corner_code_extended(corner);
+    compared++;
+    finite += isfinite(corner[0]) && isfinite(corner[1]) &&
+              isfinite(corner[2]) && isfinite(corner[3]);
+    if (fast != exact) {
+      fprintf(stderr,
+              "FAIL corner code: [%a %a %a %a] compares to 0x%02x, the "
+              "guest's arithmetic gives 0x%02x\n",
+              (double)corner[0], (double)corner[1], (double)corner[2],
+              (double)corner[3], fast, exact);
+      failures++;
+      return;
+    }
+  }
+  if (finite < compared / 2u) {
+    fprintf(stderr, "FAIL corner code: only %u of %u corners were finite\n",
+            finite, compared);
+    failures++;
+  }
+}
+
 static void test_classify(void) {
   float corners[BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
@@ -139,6 +213,7 @@ int main(void) {
   test_base_spill();
   test_term_spill();
   test_classify();
+  test_corner_code_matches_extended();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */
   if (x87_exact_host()) {
