@@ -604,6 +604,10 @@ its declaration once instead of for every vertex: 7.2% of samples became 3.8%,
 bit-identical to the previous executor on the game's skinning shader over 1632
 randomized draws. What remains is the arithmetic itself; running the shader on
 the GPU is the next lever there.
+x86port `4c42121` moves guest XMM registers as whole host registers (MOVAPS,
+MOVSS, the half moves, SHUFPS and the bitwise forms had been lane stores whose
+next sixteen-byte read could not be store-forwarded). With the VS change, the
+fixed profiling route presented 7255 frames where it had presented 6594.
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
