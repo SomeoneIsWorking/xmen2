@@ -1,6 +1,8 @@
 /* gpu_pass_binds.c -- see gpu_pass_binds.h. */
 #include "gpu_pass_binds.h"
 
+#include <string.h>
+
 static GpuPassBinds g_binds;
 
 GpuPassBinds *gpu_pass_binds(void) { return &g_binds; }
@@ -10,6 +12,7 @@ void gpu_pass_binds_reset(GpuPassBinds *binds) {
   binds->index_buffer = 0;
   binds->index_serial = 0;
   binds->index_size = 0;
+  binds->samplers = 0;
 }
 
 int gpu_pass_binds_pipeline_changed(GpuPassBinds *binds, const void *pipeline) {
@@ -31,5 +34,22 @@ int gpu_pass_binds_index_changed(GpuPassBinds *binds, const void *buffer,
   binds->index_buffer = buffer;
   binds->index_serial = serial;
   binds->index_size = element_size;
+  return 1;
+}
+
+int gpu_pass_binds_samplers_changed(GpuPassBinds *binds,
+                                    const void *const pairs[], unsigned count) {
+  if (count > kGpuPassFragmentSamplers) {
+    binds->samplers = 0;
+    return 1;
+  }
+  const size_t bytes = 2u * count * sizeof pairs[0];
+  if (binds->samplers == count && count &&
+      memcmp(binds->sampler_pairs, pairs, bytes) == 0) {
+    binds->samplers_kept++;
+    return 0;
+  }
+  memcpy(binds->sampler_pairs, pairs, bytes);
+  binds->samplers = count;
   return 1;
 }

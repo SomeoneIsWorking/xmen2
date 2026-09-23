@@ -9,6 +9,12 @@
  * draw that rebinds what the previous draw left paid a descriptor-set fetch
  * and update and a tracked bind for nothing.
  *
+ * Fragment samplers are named by each binding's texture and sampler. No
+ * texture is uploaded with cycling, so a texture keeps its storage for its
+ * lifetime and the same pair is the same binding. A pipeline bind marks the
+ * sets stale inside SDL but keeps the bound samplers, so a kept sampler set
+ * survives a new pipeline.
+ *
  * An index buffer is named by its handle AND a serial that changes at every
  * upload: an upload cycles the buffer to new backing storage while the pass
  * is open, and only a fresh bind picks that storage up. Serials are unique
@@ -19,12 +25,17 @@
  */
 #include <stdint.h>
 
+enum { kGpuPassFragmentSamplers = 4 };
+
 typedef struct GpuPassBinds {
   const void *pipeline;
   const void *index_buffer;
   uint64_t index_serial;
   unsigned index_size;
-  unsigned long pipelines_kept, indices_kept;
+  /* texture, sampler for each bound slot from 0; `samplers` slots bound */
+  const void *sampler_pairs[2 * kGpuPassFragmentSamplers];
+  unsigned samplers;
+  unsigned long pipelines_kept, indices_kept, samplers_kept;
 } GpuPassBinds;
 
 /* The frame render pass's record. */
@@ -35,6 +46,12 @@ void gpu_pass_binds_reset(GpuPassBinds *binds);
 
 /* 1, and remembered, when `pipeline` is not the one bound. */
 int gpu_pass_binds_pipeline_changed(GpuPassBinds *binds, const void *pipeline);
+
+/* 1, and remembered, when the `count` fragment samplers from slot 0 --
+   `pairs` holds texture, sampler for each -- differ from what is bound.
+   A longer set is always bound and never remembered. */
+int gpu_pass_binds_samplers_changed(GpuPassBinds *binds,
+                                    const void *const pairs[], unsigned count);
 
 /* 1, and remembered, when the index buffer, its serial or its element size
    differs from what is bound. */

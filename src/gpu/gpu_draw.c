@@ -1036,7 +1036,12 @@ int gpu_draw(const GpuDraw *d) {
     tsb2[2].texture = tres1->tex;
     tsb2[2].sampler = smp1;
     tsb2[3] = gpu_shadow_binding(shadow.enabled);
-    SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 4);
+    const void *const pairs[2 * kGpuPassFragmentSamplers] = {
+        tsb2[0].texture, tsb2[0].sampler, tsb2[1].texture, tsb2[1].sampler,
+        tsb2[2].texture, tsb2[2].sampler, tsb2[3].texture, tsb2[3].sampler};
+    if (gpu_pass_binds_samplers_changed(gpu_pass_binds(), pairs,
+                                        kGpuPassFragmentSamplers))
+      SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, kGpuPassFragmentSamplers);
   }
   (void)tsb;
 
@@ -1147,9 +1152,10 @@ void gpu_draw_report(void) {
       "(%d still cached; the device teardown empties the cache, so these "
       "differ whenever the engine released the device first)\n",
       g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
-  x2_log_info("        of those draws, %lu kept the pass's pipeline and %lu "
-              "its index buffer, so neither was bound again\n",
-              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->indices_kept);
+  x2_log_info("        of those draws, %lu kept the pass's pipeline, %lu "
+              "its index buffer and %lu its samplers, none bound again\n",
+              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->indices_kept,
+              gpu_pass_binds()->samplers_kept);
   if (g_draws)
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
                 "total (%.3f alloc+copy, %.3f record) across %lu "
