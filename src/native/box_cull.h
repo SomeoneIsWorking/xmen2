@@ -22,8 +22,8 @@
  * slots. The functions below repeat the guest's own operation order and its
  * own spills, in `long double`, so on a host whose `long double` IS the x87
  * format and whose FPU runs at that control word every result is the one the
- * guest instruction would produce. box_cull_host_exact() says whether this is
- * such a host; elsewhere the callers run the guest body instead.
+ * guest instruction would produce. x87_exact_host() says whether this is such a
+ * host; elsewhere the callers run the guest body instead.
  */
 #ifndef X2_BOX_CULL_H
 #define X2_BOX_CULL_H
@@ -44,10 +44,6 @@ typedef enum BoxCullVerdict {
   kBoxCullInside = 1,
   kBoxCullOutside = 2,
 } BoxCullVerdict;
-
-/* 1 when this host's long double is the x87 ten-byte format and its FPU
-   control word is X86P_X87_CW_INIT, so the functions below are exact. */
-int box_cull_host_exact(void);
 
 /* The driver's extent, max - min per axis: the guest's fsub, spilled to a
    32-bit slot. `box` is its six floats from min.x. */

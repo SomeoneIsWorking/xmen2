@@ -1,8 +1,6 @@
 /* box_cull.c -- see box_cull.h. */
 #include "box_cull.h"
 
-#include "x87.h"
-
 #include <string.h>
 
 /* Which of an axis's values the guest spills through a 32-bit stack slot
@@ -19,16 +17,6 @@ enum {
    there, z and w are spilled whole. */
 static const unsigned kAxisSpills[4] = {
     0u, kSpillBase | kSpillTerm1 | kSpillTerm2, kSpillAll, kSpillAll};
-
-int box_cull_host_exact(void) {
-#if X86P_EXACT_LONG_DOUBLE && (defined(__x86_64__) || defined(__i386__))
-  uint16_t control;
-  __asm__ volatile("fnstcw %0" : "=m"(control));
-  return control == X86P_X87_CW_INIT;
-#else
-  return 0;
-#endif
-}
 
 static long double spilled(long double value, unsigned spills, unsigned which) {
   return (spills & which) ? (long double)(float)value : value;

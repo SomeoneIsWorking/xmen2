@@ -6,6 +6,7 @@
  * of two, or the reverse.
  */
 #include "box_cull.h"
+#include "x87_exact.h"
 
 #include "x87.h"
 
@@ -128,7 +129,7 @@ static void test_classify(void) {
 
 int main(void) {
 #if X86P_EXACT_LONG_DOUBLE && (defined(__x86_64__) || defined(__i386__))
-  if (!box_cull_host_exact()) {
+  if (!x87_exact_host()) {
     fprintf(stderr, "FAIL: an x87 host whose control word is not the "
                     "process default\n");
     return 1;
@@ -140,7 +141,7 @@ int main(void) {
   test_classify();
 #else
   /* No x87 here: the overrides must decline, and that is the whole test. */
-  if (box_cull_host_exact()) {
+  if (x87_exact_host()) {
     fprintf(stderr, "FAIL: box_cull claims exactness without an x87 unit\n");
     return 1;
   }

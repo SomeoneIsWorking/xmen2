@@ -648,6 +648,11 @@ route. They run natively in the guest's per-lane order with contraction off
 matched 65,536 calls against the guest body and aborted at the first vertex
 of a row-reordered build. Same binary, `math.skin` on against off: unpaced
 presents/s 98.0 and 99.6 against 91.4 to 94.8.
+igMatrix44f::multiply (libIGMath 0x10019520), ~5.7% of JIT samples, runs
+natively in its per-row x87 summation order (`src/native/ig_matrix.{c,h}`)
+at 0.4%. `math.matrix_verify` matched 4.2M products against the guest body,
+including the in-place path's registers, which it had caught modelled wrong;
+a float-precision build aborted it.
 The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
 base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new

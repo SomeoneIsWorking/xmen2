@@ -81,6 +81,16 @@ lucent::cvar::Var<bool> g_math_skin{"math.skin", true};
  * skin.c; off in normal play. */
 lucent::cvar::Var<bool> g_math_skin_verify{"math.skin_verify", false};
 
+/* on: native override for libIGMath.dll's igMatrix44f::multiply
+ * (0x10019520), ig_matrix.c. off restores full guest JIT execution. */
+lucent::cvar::Var<bool> g_math_matrix{"math.matrix", true};
+
+/* on: after each native multiply, re-run the guest's own body from the same
+ * start state and abort on any difference in the product, ESP, EAX, ECX, EDX
+ * or x87 control state. The differential proof for ig_matrix.c; off in
+ * normal play. */
+lucent::cvar::Var<bool> g_math_matrix_verify{"math.matrix_verify", false};
+
 /* on: native override for the per-frame audio channel poll (XMen2.exe
  * 0x00594500). off restores full guest JIT execution of the 24-channel
  * completion sweep. */
@@ -284,6 +294,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_sg_box_cull_verify);
   lucent::cvar::register_var(g_math_skin);
   lucent::cvar::register_var(g_math_skin_verify);
+  lucent::cvar::register_var(g_math_matrix);
+  lucent::cvar::register_var(g_math_matrix_verify);
   lucent::cvar::register_var(g_audio_channel_poll);
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);

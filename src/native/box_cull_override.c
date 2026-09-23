@@ -26,6 +26,7 @@
  * overrides off.
  */
 #include "box_cull.h"
+#include "x87_exact.h"
 
 #include "guest_body.h"
 #include "x2_log.h"
@@ -78,18 +79,8 @@ static int enabled(void) {
   return s_enabled;
 }
 
-static int x87_pushes_fit(const X86pX87 *f, unsigned pushes) {
-  for (unsigned i = 1; i <= pushes; i++) {
-    if (f->tag[(f->top - i) & 7u] != (uint8_t)kX86pX87TagEmpty) {
-      return 0;
-    }
-  }
-  return 1;
-}
-
 static int native_exact(const CPU *C, unsigned pushes) {
-  return enabled() && C->x87.control == X86P_X87_CW_INIT &&
-         x87_pushes_fit(&C->x87, pushes) && box_cull_host_exact();
+  return enabled() && x87_exact_for_guest(&C->x87, pushes);
 }
 
 static void read_floats(uint32_t address, float *out, unsigned count) {

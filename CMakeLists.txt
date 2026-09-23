@@ -1057,10 +1057,17 @@ target_compile_definitions(test_guest_heap PRIVATE X86_NATIVE)
 target_link_libraries(test_guest_heap PRIVATE pthread)
 add_test(NAME guest_heap COMMAND test_guest_heap)
 
-add_executable(test_box_cull tests/test_box_cull.c src/native/box_cull.c)
+add_executable(test_box_cull tests/test_box_cull.c src/native/box_cull.c
+               src/native/x87_exact.c)
 target_include_directories(test_box_cull PRIVATE src/native)
 target_link_libraries(test_box_cull PRIVATE x86port_runtime)
 add_test(NAME box_cull COMMAND test_box_cull)
+
+add_executable(test_ig_matrix tests/test_ig_matrix.c src/native/ig_matrix.c
+               src/native/x87_exact.c)
+target_include_directories(test_ig_matrix PRIVATE src/native)
+target_link_libraries(test_ig_matrix PRIVATE x86port_runtime)
+add_test(NAME ig_matrix COMMAND test_ig_matrix)
 
 add_executable(test_skin tests/test_skin.c src/native/skin.c)
 target_include_directories(test_skin PRIVATE src/native)
@@ -1604,8 +1611,11 @@ set(X2_NATIVE_SOURCES
     src/native/attr_stack_verify.c
     src/native/box_cull.c
     src/native/box_cull_override.c
+    src/native/x87_exact.c
     src/native/skin.c
     src/native/skin_override.c
+    src/native/ig_matrix.c
+    src/native/ig_matrix_override.c
     src/native/x86_engine_jit_diag.c
     src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c
