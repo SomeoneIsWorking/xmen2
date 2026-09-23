@@ -1270,6 +1270,16 @@ reuses the last precise reading any thread took (`guest_clock.c`), and on
 the same route `_emscripten_get_now` fell from 5.84% to 1.59% of the guest
 worker, with JS glue from 15.9% to 10.5%.
 
+**Browser blocks chain to their successors** (x86port `c808952`). The wasm
+backend returned every block exit to `x86p_jit_engine_run`, 17.6% of the
+guest worker on `#test-play`. A block end now checks its chain slot and calls
+the linked block through `x86p_wasm_chain_call`, up to 256 transfers per
+dispatch. On the same route the dispatcher fell to 5.5%, plus 4.6% in the
+transfer helper. The first attempt imported the host's function table into
+every block module instead, and Chrome's renderer ran out of memory in
+`WasmDispatchTable::Grow` seconds into the title: V8 regrows each importing
+instance's dispatch table whenever the table grows.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
