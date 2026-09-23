@@ -528,10 +528,14 @@ static int fails;
  * The resolver is what stands between a registered override and one that never
  * runs. Every override in the tree resolves, so the accepting path is
  * exercised constantly and the REJECTING paths never are -- which is exactly
- * the shape of a check nobody has seen work. This feeds it one case that must
- * be accepted and three that must be rejected, and reports the count either
+ * the shape of a check nobody has seen work. This feeds it two cases that must
+ * be rejected and two that must be accepted, and reports the count either
  * way. It runs after the modules are mapped, because the resolver's whole job
  * is to consult them.
+ *
+ * A mid-function address is ACCEPTED and mapped byte for byte: whether it is
+ * an instruction boundary is the runtime decoder's to judge, not a guess made
+ * at registration.
  */
 static int override_selftest(void) {
   struct {
@@ -543,8 +547,9 @@ static int override_selftest(void) {
       {"XMen2.exe", 0x00617480u, 1, "a real override entry point"},
       {"NoSuchModule.dll", 0x00401000u, 0, "a module that is not mapped"},
       {"XMen2.exe", 0xf0000000u, 0, "an address outside the image"},
-      {"XMen2.exe", 0x00617481u, 0, "a mid-function address"},
+      {"XMen2.exe", 0x00617481u, 1, "a mid-function address"},
   };
+  uint32_t mapped_of[sizeof cases / sizeof cases[0]] = {0};
   int i, fails = 0;
   int n = (int)(sizeof cases / sizeof cases[0]);
 
@@ -554,6 +559,7 @@ static int override_selftest(void) {
     int rc = x86_override_resolve_check(cases[i].module, cases[i].ep, &mapped,
                                         why, sizeof why);
     int ok = (rc == 0);
+    mapped_of[i] = mapped;
     if (ok != cases[i].want_ok) {
       x2_log_info("  FAIL  %-28s %s 0x%08x: expected %s, got %s%s%s\n",
                   cases[i].what, cases[i].module, cases[i].ep,
@@ -566,6 +572,12 @@ static int override_selftest(void) {
     } else {
       x2_log_info("  ok    %-28s rejected: %s\n", cases[i].what, why);
     }
+  }
+  if (mapped_of[3] != mapped_of[0] + 1u) {
+    x2_log_info("  FAIL  the mid-function address mapped to 0x%08x, not one "
+                "byte past its entry point's 0x%08x\n",
+                mapped_of[3], mapped_of[0]);
+    fails++;
   }
   x2_log_info("x2native --override-selftest: %s (%d of %d case(s) failed). "
               "%d registered override(s) are live in this build.\n",

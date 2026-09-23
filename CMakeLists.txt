@@ -986,6 +986,11 @@ target_compile_definitions(test_kernel32_wait PRIVATE X86_NATIVE)
 target_link_libraries(test_kernel32_wait PRIVATE lucent::lucent)
 add_test(NAME kernel32_wait COMMAND test_kernel32_wait)
 
+add_executable(test_module_name_memo tests/test_module_name_memo.c
+               src/native/module_name_memo.c)
+target_include_directories(test_module_name_memo PRIVATE src/native)
+add_test(NAME module_name_memo COMMAND test_module_name_memo)
+
 add_executable(test_guest_clock tests/test_guest_clock.c src/native/guest_clock.c)
 target_include_directories(test_guest_clock PRIVATE src/native)
 target_link_libraries(test_guest_clock PRIVATE lucent::lucent)
@@ -1599,6 +1604,7 @@ set(X2_NATIVE_SOURCES
     src/native/host_imports_ws2_32.c
     src/native/host_imports.c
     src/native/guest_body.c
+    src/native/module_name_memo.c
     src/native/x86_engine_selftest.c
     src/native/x86_engine_jump_selftest.c
     src/native/x86_dispatch.c
