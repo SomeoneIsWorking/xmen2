@@ -440,3 +440,25 @@ slot holds. The leaf re-reads the stub and the slot on every call. In the
 next run `_ftol` completed 6.2M calls in place and `_stricmp` 1.3M, 23.8M
 thunk calls in all. The hand-back symbols fell to 0.59%. The rest of `x86p_jit_engine_run`'s self time is
 block-table lookups.
+
+## Progress (2026-09-23) -- the hot path is front-end bound; fault EIPs moved off it
+
+In-game the process is front-end bound on Zen 3. About half of instruction
+fetches miss the instruction cache, and two thirds of those misses land in
+translated code (~13.4 MB, ~29 host bytes per guest instruction). Shrinking
+hot translated code is therefore a lever in its own right.
+
+x86port `d5e4704` removes a 6-byte `mov r10d, eip` from every guest memory
+access. The access's fault branch now goes to a per-instruction trampoline in
+the block's cold tail. For zero-based arenas, which is this title's plan, the
+bounds check also drops its address copy. In 30 s `perf stat` windows over
+exactly six heartbeats (`scratch/jitdump/stat_live.py`):
+
+- host instructions per frame fell from ~55.0M to ~53.3M (-3.1%) on every run;
+- instruction-cache misses per frame fell from 2850-2986k to 2749-2890k;
+- cycles per frame are noisy (±20% between runs of one binary) and averaged
+  ~33.4M against ~35.5M.
+
+Next candidate: the 10-byte `mov r11, imm64` host base per access. No free
+callee-saved register can hold it; r12, r13 and rbp are the GPR cache, and
+r14 and r15 are x87.
