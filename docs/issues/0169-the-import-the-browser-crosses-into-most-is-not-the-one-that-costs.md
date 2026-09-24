@@ -12,9 +12,10 @@ updated: 2026-09-24
 # 0169 — the import the browser crosses into most is not the one that costs
 
 - **State items:** S021
-- **Status:** the flat `DrawIndexedPrimitive` time is explained (below) and
-  a larger cost the time table never showed, `GetCursorPos`, is fixed. What
-  is left in the draw is per-draw work; its largest part is the uniform push.
+- **Status:** the flat `DrawIndexedPrimitive` time is explained (below), a
+  larger cost the time table never showed (`GetCursorPos`) is fixed, and
+  unchanged uniform pushes no longer re-set their bind group. What is left in
+  the draw is ordinary per-draw work, with no single owner.
   This also exists to stop the next optimization being aimed by call count.
 - **Found by:** arming the heartbeat's time probe (`--set hotep=64`) on the Dead
   Zone route while looking for the next thing to inline after #167 and #168.
@@ -110,10 +111,14 @@ more draws have cheaper ones. Beneath it the samples are spread:
 `d3d8_build_draw_impl` 16%, `gpu_draw` 11%, and the bind-group sets with their
 JavaScript crossing (`setBindGroup`, its wrapper, `getJsObject`,
 `wasm-to-js`) about 25%. SDL `a42df22` already sets only the groups a draw
-changed. What changes them on every draw is the port pushing its vertex and
-fragment uniforms on every draw, 2 KiB of program and 4 KiB of constants for a
-VS 1.1 draw, whether or not they changed. Pushing only what changed is the
-next lever, about 2% of that worker.
+changed. What changed them on every draw was the port pushing its vertex and
+fragment uniforms on every draw, whether or not they had changed. SDL
+`fc0f3c0` (pinned through web-port `42f898f`) now drops a push whose bytes
+equal the slot's current data. A temporary counter on this route found
+**91.5% of fragment-uniform pushes and 21.4% of vertex slot 0's unchanged**,
+so most draws no longer set the fragment uniform group. The canvas reads the
+same before and after (mean 32.3-32.4, 91.0% non-black) with no uncaptured
+errors.
 
 **The worker's largest wait was the cursor.** The same profile had
 `emscripten_futex_wait` at 10.03% of the worker. Half of it (50.5%) was
