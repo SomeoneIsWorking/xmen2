@@ -1,4 +1,5 @@
 #include "threads_ready.h"
+#include "threads.h"
 
 #include <math.h>
 
@@ -54,9 +55,10 @@ void guest_thread_mark_cond_ready(GuestThread *table, int count) {
   }
 }
 
-void guest_thread_enter_cond_wait(GuestThread *t, uint32_t ms, double now) {
+void guest_thread_enter_cond_wait(GuestThread *t, uint64_t us, double now) {
   t->cond_ready = 0;
-  t->cond_deadline = (ms == 0xFFFFFFFFu) ? HUGE_VAL : now + (double)ms / 1000.0;
+  t->cond_deadline =
+      (us == GUEST_WAIT_FOREVER) ? HUGE_VAL : now + (double)us / 1e6;
 }
 
 void guest_thread_leave_cond_wait(GuestThread *t) {
@@ -64,10 +66,10 @@ void guest_thread_leave_cond_wait(GuestThread *t) {
   t->cond_deadline = 0.0;
 }
 
-void guest_thread_wait_deadline(const struct timespec *base, uint32_t ms,
+void guest_thread_wait_deadline(const struct timespec *base, uint64_t us,
                                 struct timespec *out) {
-  out->tv_sec = base->tv_sec + (time_t)(ms / 1000u);
-  out->tv_nsec = base->tv_nsec + (long)(ms % 1000u) * 1000000L;
+  out->tv_sec = base->tv_sec + (time_t)(us / 1000000u);
+  out->tv_nsec = base->tv_nsec + (long)(us % 1000000u) * 1000L;
   if (out->tv_nsec >= 1000000000L) {
     out->tv_sec++;
     out->tv_nsec -= 1000000000L;

@@ -214,7 +214,7 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
     {
       uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
-      guest_cond_wait_ms(asked);
+      guest_cond_wait_us(guest_wait_us_from_ms(asked));
       wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
     }
     /*
@@ -357,7 +357,7 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
     {
       uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
-      guest_cond_wait_ms(asked);
+      guest_cond_wait_us(guest_wait_us_from_ms(asked));
       wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
     }
     winmm_timers_pump();

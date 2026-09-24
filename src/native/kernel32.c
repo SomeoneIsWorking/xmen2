@@ -462,7 +462,7 @@ void imp_KERNEL32_EnterCriticalSection(CPU *C) {
       /* A timed wait, not INFINITE. The wake comes from Leave's
          broadcast; the timeout exists so that a section whose owner will
          never leave reports itself instead of hanging silently. */
-      guest_cond_wait_ms(1000);
+      guest_cond_wait_us(1000000u);
       if (!warned && k32_now_s() - t0 > 30.0) {
         warned = 1;
         x2_log_error("kernel32: guest thread %u has waited 30s to enter the "

@@ -428,7 +428,7 @@ void x2_override_10002520(CPU *C) {
   guest_thread_resume(handle); /* one spin iteration */
 
   for (waits = 0; waits < LCR_MAX_WAITS && RD32(base + LCR_FLAG) == 1u; waits++)
-    guest_cond_wait_ms(1); /* give the decoder CPU */
+    guest_cond_wait_us(1000u); /* give the decoder CPU */
 
   deferred = (RD32(base + LCR_FLAG) == 1u);
   if (deferred) {

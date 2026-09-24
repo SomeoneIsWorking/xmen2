@@ -264,24 +264,24 @@ void guest_blocking_end(void) {
  * spurious wake costs a re-check, while a queue per handle would have to be
  * created and destroyed with the handle.
  */
-void guest_cond_wait_ms(uint32_t ms) {
+void guest_cond_wait_us(uint64_t us) {
   GuestThread *t = g_self;
   if (!t) {
     sched_attach_main();
     t = g_self;
   }
   x86_override_leaf_forbid("waited, releasing the guest lock");
-  guest_thread_enter_cond_wait(t, ms, now_s());
+  guest_thread_enter_cond_wait(t, us, now_s());
   state_set(TS_COND);
   g_switches++;
   g_cond_waiters++;
-  if (ms == 0xFFFFFFFFu) {
+  if (us == GUEST_WAIT_FOREVER) {
     pthread_cond_wait(&g_cond, &g_lock);
   } else {
     struct timespec now, ts;
     int rc;
     clock_gettime(CLOCK_REALTIME, &now);
-    guest_thread_wait_deadline(&now, ms, &ts);
+    guest_thread_wait_deadline(&now, us, &ts);
     rc = pthread_cond_timedwait(&g_cond, &g_lock, &ts);
     guest_yield_note_park(rc == ETIMEDOUT);
   }
@@ -323,7 +323,7 @@ void guest_sleep_ms(uint32_t ms) {
     guest_yield_turn();
     return;
   }
-  guest_cond_wait_ms(ms);
+  guest_cond_wait_us((uint64_t)ms * 1000u);
   guest_suspend_point();
 }
 
@@ -520,7 +520,7 @@ int guest_thread_join(uint32_t handle, uint32_t ms) {
   while (!t->finished) {
     if (ms == 0)
       return 0;
-    guest_cond_wait_ms(ms);
+    guest_cond_wait_us(guest_wait_us_from_ms(ms));
     if (ms != 0xFFFFFFFFu)
       break; /* one timed wait, then re-check */
   }

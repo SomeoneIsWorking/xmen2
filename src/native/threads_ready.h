@@ -45,12 +45,12 @@ int guest_thread_others_live(int live, const GuestThread *self);
  * clock. The pair keeps the deadline and the broadcast flag in one place
  * rather than spread through the scheduler.
  */
-void guest_thread_enter_cond_wait(GuestThread *t, uint32_t ms, double now);
+void guest_thread_enter_cond_wait(GuestThread *t, uint64_t us, double now);
 void guest_thread_leave_cond_wait(GuestThread *t);
 
-/* The CLOCK_REALTIME deadline `ms` from `base` names, normalised. Split out
+/* The CLOCK_REALTIME deadline `us` from `base` names, normalised. Split out
    so the nanosecond carry is exercised rather than trusted. */
-void guest_thread_wait_deadline(const struct timespec *base, uint32_t ms,
+void guest_thread_wait_deadline(const struct timespec *base, uint64_t us,
                                 struct timespec *out);
 
 /*

@@ -144,15 +144,19 @@ int main(void) {
     struct timespec base, out;
     base.tv_sec = 10;
     base.tv_nsec = 900000000L;
-    guest_thread_wait_deadline(&base, 250u, &out);
+    guest_thread_wait_deadline(&base, 250000u, &out);
     expect(out.tv_sec == 11 && out.tv_nsec == 150000000L,
            "a deadline that crosses a second carries into tv_sec");
-    guest_thread_wait_deadline(&base, 2100u, &out);
+    guest_thread_wait_deadline(&base, 2100000u, &out);
     expect(out.tv_sec == 13 && out.tv_nsec == 0L,
            "whole seconds and the remainder are both applied");
     guest_thread_wait_deadline(&base, 0u, &out);
     expect(out.tv_sec == 10 && out.tv_nsec == 900000000L,
            "a zero deadline is the base instant");
+    base.tv_nsec = 999900000L;
+    guest_thread_wait_deadline(&base, 150u, &out);
+    expect(out.tv_sec == 11 && out.tv_nsec == 50000L,
+           "a sub-millisecond deadline keeps its microseconds and carries");
   }
 
   printf("%u readiness checks, %u failures\n", checks, failures);

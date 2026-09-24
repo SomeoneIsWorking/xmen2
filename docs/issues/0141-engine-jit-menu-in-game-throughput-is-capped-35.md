@@ -499,3 +499,20 @@ still waits for its own completion.
 
 This also removes the caveat that headless runs understate what a
 windowed run does, since windowed presentation already pipelined.
+
+## Progress (2026-09-24) -- the limiter's last millisecond no longer spins
+
+The paced limiter slept whole milliseconds less a 1 ms margin, so each frame
+with spare time spun 1-2 ms in the guest loop. A temporary caller histogram on
+the QueryPerformanceCounter fast path put ~160k calls a second in Dead Zone
+on one site, libIGCore+0x68fde (the timer read `[timer+0x28]`), called from
+the limiter loop: about 2,700 clock reads a frame. The scheduler's timed wait
+is now in microseconds (`guest_cond_wait_us`; Win32 millisecond timeouts
+convert through `guest_wait_us_from_ms`), and the limiter sleeps to within
+250 us of the frame's end. The same run afterwards made fewer than 5k calls a
+second in the level, and presents per 5 s were unchanged (219-294 against
+199-240; this scene is CPU-bound at ~22 ms a frame).
+
+A separate one-off burst of ~10M reads in the 1.5 s before the first frame
+comes from libIGCore+0xcf4e through the same timer read. It is boot-only and
+not yet attributed further.

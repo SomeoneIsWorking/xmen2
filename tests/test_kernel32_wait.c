@@ -25,8 +25,8 @@ void k32_set_last_error(uint32_t error) { last_error = error; }
 uint32_t guest_current_tid(void) { return 999; }
 double guest_clock_now_s(void) { return elapsed; }
 uint32_t winmm_next_due_ms(uint32_t cap) { return cap > 1 ? 1 : cap; }
-void guest_cond_wait_ms(unsigned ms) {
-  elapsed += (double)ms / 1000.0;
+void guest_cond_wait_us(uint64_t us) {
+  elapsed += (double)us / 1e6;
   if (++wakes > 2000)
     abort();
 }
@@ -34,7 +34,7 @@ void winmm_timers_pump(void) {
   if (signal_at > 0 && elapsed >= signal_at)
     handles[0].count = handles[1].count = 1;
 }
-void guest_sleep_ms(uint32_t ms) { guest_cond_wait_ms(ms); }
+void guest_sleep_ms(uint32_t ms) { guest_cond_wait_us((uint64_t)ms * 1000u); }
 void guest_thread_state_report(void) { abort(); }
 void x86_diag_dump(void) { abort(); }
 

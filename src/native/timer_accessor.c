@@ -61,12 +61,12 @@ static uint32_t s_app_object;
    of the frame, instead of spinning through it. */
 static void frame_limiter_wait(const CPU *C) {
   const uint32_t frame_esp = C->reg[kX86pEsp] + 4u;
-  const uint32_t ms =
-      frame_limiter_sleep_ms((float)RDF32(s_app_object + APP_FRAME_CAP),
+  const uint32_t us =
+      frame_limiter_sleep_us((float)RDF32(s_app_object + APP_FRAME_CAP),
                              (float)RDF32(s_app_object + APP_FRAME_START),
                              (float)RDF32(frame_esp + LIMITER_LAST_READ));
-  if (ms)
-    guest_sleep_ms(ms);
+  if (us)
+    guest_cond_wait_us(us);
 }
 
 /* The accessor's pacing state, found on its first call: -1 until then, then

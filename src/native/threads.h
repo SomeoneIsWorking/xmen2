@@ -72,9 +72,17 @@ int scheduler_has_waiter(void);
 
 /*
  * Wait: park this guest thread and let the scheduler run another. Returns when
- * something broadcasts or the deadline passes. ms of 0xFFFFFFFF is INFINITE.
+ * something broadcasts or `us` microseconds pass; GUEST_WAIT_FOREVER has no
+ * deadline. Microseconds because the frame limiter sleeps to within a fraction
+ * of a millisecond; Win32 timeouts convert through guest_wait_us_from_ms.
  */
-void guest_cond_wait_ms(uint32_t ms);
+#define GUEST_WAIT_FOREVER UINT64_MAX
+void guest_cond_wait_us(uint64_t us);
+
+/* A Win32 millisecond timeout as a wait length; INFINITE stays infinite. */
+static inline uint64_t guest_wait_us_from_ms(uint32_t ms) {
+  return ms == 0xFFFFFFFFu ? GUEST_WAIT_FOREVER : (uint64_t)ms * 1000u;
+}
 
 /*
  * Sleep. Sleep(0) gives up the rest of this thread's turn, which is what Win32
