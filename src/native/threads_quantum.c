@@ -1,6 +1,8 @@
 /*
- * threads_quantum.c -- how many boundary crossings the running guest thread
- * keeps its turn for before guest_quantum() (threads.c) offers it up.
+ * threads_quantum.c -- how many JIT steps (block entries, x86port's run
+ * budget) a stretch of guest code that crosses no host boundary keeps its
+ * turn for before guest_quantum() (threads.c) offers it up. A crossing offers
+ * the turn anyway; this bounds only the code between crossings.
  */
 #include "threads.h"
 #include "x2_log.h"
@@ -10,7 +12,7 @@
 static unsigned long g_quantum = 20000;
 
 /*
- * X2_QUANTUM: boundary crossings between preemptions. 0 disables it, which is
+ * X2_QUANTUM: JIT steps between preemptions. 0 disables it, which is
  * the CONTROL -- a scheduling change has to be measured against a build where
  * the mechanism is off, or "it stopped happening" is not evidence.
  */
@@ -24,7 +26,7 @@ void guest_quantum_from_env(void) {
     return;
   }
   g_quantum = v;
-  x2_log_info("threads: preemption quantum set to %lu boundary crossing(s).\n",
+  x2_log_info("threads: preemption quantum set to %lu JIT step(s).\n",
               g_quantum);
 }
 

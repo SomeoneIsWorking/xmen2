@@ -221,7 +221,7 @@ void guest_unlock(void) {
  * that BLOCKS and useless for one that SPINS -- and libCriMovie's movie
  * rendezvous has BOTH sides spinning (issue #57 has the guest addresses and
  * the two failed hand-off designs). So the running thread gives up its turn
- * every `quantum` boundary crossings whether it cooperates or not.
+ * at every host crossing, and every `quantum` JIT steps between crossings.
  *
  * Not from a nested hold, and not when nobody else could run: the first would
  * surprise a caller, the second is pure cost.

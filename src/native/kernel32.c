@@ -350,7 +350,8 @@ void imp_KERNEL32_ExitProcess(CPU *C) {
  * These were a depth counter and a comment saying "nothing here creates a
  * guest thread, so a critical section has nothing to serialise". Both halves
  * of that stopped being true: the game creates nine guest threads in a run,
- * and guest_quantum() preempts a running thread every N boundary crossings --
+ * and guest_quantum() preempts a running thread at host crossings and between
+ * JIT slices --
  * so a thread could be preempted INSIDE a section and another thread walk
  * straight into it. A counter that only notices unbalanced pairs would not
  * even have seen that happen.

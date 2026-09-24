@@ -145,8 +145,8 @@ static void *heartbeat_thread(void *arg) {
     {
       static unsigned long p_q;
       unsigned long q = guest_quantum_count();
-      x2_log_error("[HB]           %lu preemption(s) (+%lu) at a "
-                   "quantum of %lu crossing(s)\n",
+      x2_log_error("[HB]           %lu preemption(s) (+%lu); a stretch "
+                   "that crosses nothing is cut at %lu JIT step(s)\n",
                    q, q - p_q, guest_quantum_size());
       p_q = q;
     }

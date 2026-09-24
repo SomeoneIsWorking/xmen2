@@ -122,8 +122,8 @@ void guest_thread_report(void) {
    * threads not take turns".
    */
   x2_log_info(
-      "         %lu condition/mutex hand-off(s), %lu of them preemptions at a "
-      "quantum of %lu boundary crossing(s)%s\n",
+      "         %lu condition/mutex hand-off(s), %lu of them preemptions (at "
+      "a host crossing, or after %lu JIT step(s) without one)%s\n",
       n.switches, n.quanta, n.quantum,
       n.quanta ? ""
                : " -- NO preemption happened: either no second guest "
