@@ -1665,6 +1665,7 @@ set(X2_NATIVE_SOURCES
     src/native/guest_memory.c src/native/guest_memory_arena.c
     src/native/guest_memory_probe.c
     src/native/x2native_options.c
+    src/native/sdl_host_setup.c
     src/native/install_picker.cpp
     src/native/install_archive.cpp
     src/native/install_validation.cpp

@@ -1320,6 +1320,19 @@ none of them from `gpu_draw`, and JS glue from 9.3% to 7.3%. The heartbeat,
 slow-frame and shutdown reports say the host share was not timed, and the flag
 brings the timing back.
 
+**The browser canvas went black again, and is fixed again** (issue #186).
+Keeping fragment samplers across a pipeline change (`c804823`) is correct on
+every SDL_GPU backend except WebGPU. There, a pipeline bind cleared the pass's
+bindings, and the bind-group cache ignored the layout, so every frame's command
+buffer was rejected. Fixed in `SomeoneIsWorking/SDL` `a42df2278`, pinned
+through `shared/web-port` `f9202b0`. The same range sets only the bind groups a
+draw changed. SDL's log now goes through the port's logger, which is why the
+error can now be seen at all.
+On `#test-play` (10,114,411-byte wasm) the canvas reads mean 32.5, 91%
+non-black, with 0 uncaptured errors, against 0 and 121 at the previous pin.
+`HashBindGroupKey` and the stderr path leave the profile's top 30, and JS glue
+falls from 7.3% to 4.6% of the guest worker.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm

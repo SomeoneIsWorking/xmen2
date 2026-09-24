@@ -58,6 +58,7 @@
 
 #include "platform_posix.h"
 #include "platform_strings.h"
+#include "sdl_host_setup.h"
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -1654,18 +1655,8 @@ int main(int argc, char **argv) {
   if (x2native_options_uses_project_env(&options) &&
       x2_load_project_env(argv[0]) < 0)
     return 2;
-#ifdef X2_WITH_SDL
-  /* SDL can synthesize mouse events for every finger contact. TouchControls
-     owns those contacts (including the one deliberate portrait-pointer path),
-     so forwarding SDL's duplicate mouse stream makes an action-pad tap also
-     reach the retail world-click handler. Disable that translation before SDL
-     creates its event sources; real mouse events remain unchanged. */
-  if (!SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")) {
-    x2_log_error("x2native: could not disable SDL touch-to-mouse events: %s\n",
-                 SDL_GetError());
+  if (!sdl_host_setup())
     return 1;
-  }
-#endif
   /* Runtime CVars (engine selection, JIT knobs): compiled default < the
      x2native-runtime.conf file < environment X2_* < --set. Must precede the
      engine setup below, which reads the resolved `engine` value. */
