@@ -21,7 +21,7 @@ DEFAULT_LIMIT = 500
 LEGACY_LIMITS = {
     "src/native/kernel32.c": 3087,            # was 3624; virtual memory -> kernel32_virtual.c
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
-    "src/native/x2native.c": 2174,            # was 2329
+    "src/native/x2native.c": 2152,            # was 2329
     "src/d3d8/d3d8_drawcall.c": 1650,         # was 1695; VS source -> d3d8_vs_draw.c
     "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c

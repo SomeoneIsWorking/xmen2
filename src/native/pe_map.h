@@ -49,4 +49,17 @@ int pe_imports_module(uint32_t base, const char *modname);
 /* IMAGE_FILE_DLL: an EXE's entry point is the program, not DllMain. */
 int pe_is_dll(uint32_t base);
 
+/* IMAGE_TLS_DIRECTORY32 of a mapped image: the implicit (__declspec(thread))
+   data template [raw_start, raw_end) plus zero_fill bytes, where the loader
+   writes the image's TLS index, and the null-terminated callback list. Every
+   field is a VA, already relocated. Returns 0 when the image has none. */
+typedef struct PeTlsDirectory {
+  uint32_t raw_start;
+  uint32_t raw_end;
+  uint32_t index_address;
+  uint32_t callbacks;
+  uint32_t zero_fill;
+} PeTlsDirectory;
+int pe_tls_directory(uint32_t base, PeTlsDirectory *out);
+
 #endif /* PE_MAP_H */

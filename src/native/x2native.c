@@ -36,6 +36,7 @@
 #include "guest_layout.h"
 #include "guest_memory.h"
 #include "guest_modules.h"
+#include "guest_teb.h"
 #include "heartbeat.h"
 #include "host_imports.h"
 #include "input_record.h"
@@ -348,32 +349,6 @@ static uint8_t gr8(uint32_t a) {
 }
 static void gw8(uint32_t a, uint8_t v) {
   *(volatile uint8_t *)guest_memory_pointer(a) = v;
-}
-
-/* ---- the thread block (FS) --------------------------------------------
- *
- * libIGCore's code touches FS:[0] twelve times and nothing else -- the head of
- * the SEH exception-registration chain, from MSVC's try/except prologue
- * (`mov eax, fs:[0]` / `mov fs:[0], esp`). So FS needs one real word of guest
- * memory, not a stub: the chain is a linked list living in the guest's own
- * stack frames, and maintaining it correctly costs nothing.
- *
- * What this does NOT provide is exception DELIVERY. If guest code ever raises
- * an exception expecting the chain to be walked, nothing here walks it. That
- * is a real gap and it is recorded rather than papered over -- the chain being
- * well-formed is necessary for the prologues to run, not sufficient for SEH.
- */
-#define TIB_BASE 0x000A0000u
-#define TIB_SIZE 0x1000u
-
-static int tib_init(void) {
-  if (pe_map_anon_low(TIB_BASE, TIB_SIZE) != 0)
-    return -1;
-  g_fsbase = TIB_BASE;
-  /* Win32's end-of-chain sentinel. A zero here would look like a valid
-     record at address 0 to anything that did walk the chain. */
-  *(volatile uint32_t *)guest_memory_pointer(TIB_BASE) = 0xFFFFFFFFu;
-  return 0;
 }
 
 /* ---- the guest stack ---------------------------------------------------
@@ -1927,6 +1902,8 @@ int main(int argc, char **argv) {
   for (m = x86_modules(); m; m = m->next) {
     int bound = 0, poisoned = 0;
     pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
+    if (!guest_teb_register_image(*m->base))
+      return 1;
   }
   x2_log_info("imports: %d bound (to another guest module or to this host), %d "
               "unresolved and poisoned (using one faults by name)\n",
@@ -1939,7 +1916,8 @@ int main(int argc, char **argv) {
     x2_log_error("x2native: could not place the guest stack\n");
     return 1;
   }
-  if (tib_init() != 0)
+  g_fsbase = guest_teb_main_init();
+  if (!g_fsbase)
     return 1;
 
   /* --selftest proves the mapped-image/JIT/import boundaries without running

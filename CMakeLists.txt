@@ -267,6 +267,10 @@ add_executable(test_web_request tests/test_web_request.cpp src/web/web_request.c
 target_include_directories(test_web_request PRIVATE src/web)
 add_test(NAME web_request COMMAND test_web_request)
 
+add_executable(test_winsock_posix tests/test_winsock_posix.c
+               src/native/winsock_posix.c)
+add_test(NAME winsock_posix COMMAND test_winsock_posix)
+
 add_executable(test_touch_controls tests/test_touch_controls.cpp
                src/input/touch_controls.cpp
                src/input/thumb_stick.cpp
@@ -1891,6 +1895,7 @@ set(X2_NATIVE_SOURCES
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
     src/native/power_slots_runtime.c
+    src/native/guest_teb.c
     src/native/hud_portrait_position.c
     src/native/hud_portrait_position_runtime.c
     src/presentation/hud_layout.c
@@ -1921,6 +1926,8 @@ set(X2_NATIVE_SOURCES
     src/native/json_string.c
     src/native/live_session.c
     src/native/ws2_32.c
+    src/native/ws2_32_names.c
+    src/native/winsock_posix.c
     src/native/shell32.c
     src/native/winmm.c
     src/native/thread_report.c
@@ -2120,6 +2127,16 @@ target_compile_definitions(test_guest_memory_window PRIVATE
     X2_GUEST_ARENA_WINDOW=1 X86_NATIVE=1)
 target_link_libraries(test_guest_memory_window PRIVATE x86port_runtime)
 add_test(NAME guest_memory_window COMMAND test_guest_memory_window)
+
+# guest_teb over the real guest arena; the heap and the PE TLS directory are
+# the test's injected boundaries.
+add_executable(test_guest_teb tests/test_guest_teb.c src/native/guest_teb.c
+    src/native/guest_memory.c src/native/guest_memory_arena.c src/native/guest_memory_probe.c)
+target_include_directories(test_guest_teb PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_guest_teb PRIVATE
+    X2_GUEST_ARENA_WINDOW=1 X86_NATIVE=1)
+target_link_libraries(test_guest_teb PRIVATE x86port_runtime)
+add_test(NAME guest_teb COMMAND test_guest_teb)
 
 # Tests compile title-native call adapters directly. Any target that includes
 # the title x86 ABI also consumes the canonical x86port CPU type and must link

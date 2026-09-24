@@ -456,3 +456,15 @@ void guest_memory_outside_window(uint32_t address) {
   abort();
 }
 #endif
+
+void *guest_memory_span(uint32_t address, size_t bytes) {
+  if (!address || bytes > UINT32_MAX ||
+      (uint64_t)address + bytes > (UINT64_C(1) << 32)) {
+    errno = EFAULT;
+    return NULL;
+  }
+  if (bytes) {
+    (void)guest_memory_pointer(address + (uint32_t)(bytes - 1u));
+  }
+  return guest_memory_pointer(address);
+}

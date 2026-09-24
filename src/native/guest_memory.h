@@ -151,6 +151,12 @@ static inline void guest_memory_write(uint32_t address, const void *source,
 
 int guest_memory_host_address(const void *pointer, uint32_t *address);
 
+/* The host pointer for a guest range a host call will transfer through, or
+   NULL with errno EFAULT when the range is null or runs past 4 GB. The last
+   byte goes through the same window check as the first, so in the browser a
+   range past the window is reported by name. */
+void *guest_memory_span(uint32_t address, size_t bytes);
+
 /*
  * Reads that refuse instead of faulting: the page table is asked first, so a
  * pointer the guest has just proved is wrong comes back as 0. This is the

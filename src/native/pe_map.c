@@ -30,6 +30,7 @@
 #define DIR_EXPORT 0
 #define DIR_IMPORT 1
 #define DIR_BASERELOC 5
+#define DIR_TLS 9
 
 static uint32_t data_dir_at(const unsigned char *p, int which, uint32_t *size);
 static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
@@ -387,4 +388,19 @@ int pe_is_dll(uint32_t base) {
   const unsigned char *p = guest_memory_const_pointer(base);
   uint32_t pe = RD32_(p, 0x3C);
   return (RD16(p, pe + 22) & 0x2000) != 0; /* IMAGE_FILE_DLL */
+}
+
+int pe_tls_directory(uint32_t base, PeTlsDirectory *out) {
+  uint32_t size = 0;
+  const uint32_t rva = data_dir(base, DIR_TLS, &size);
+  const unsigned char *d;
+  if (!rva || size < 24u)
+    return 0;
+  d = guest_memory_const_pointer(base + rva);
+  out->raw_start = RD32_(d, 0);
+  out->raw_end = RD32_(d, 4);
+  out->index_address = RD32_(d, 8);
+  out->callbacks = RD32_(d, 12);
+  out->zero_fill = RD32_(d, 16);
+  return 1;
 }

@@ -84,7 +84,7 @@ deterministic gates and measured invariants.
 substitute for behavior that can be recovered from the shipped program and
 assets.
 
-**Contributing state items.** S002, S003, S004, S005, S006, S007, S015.
+**Contributing state items.** S002, S003, S004, S005, S006, S007, S015, S023.
 
 ## G003 — Responsive gameplay and loading
 

@@ -47,6 +47,7 @@ boundaries before adding a real Windows build and release artifact.
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
 | S021 | Web (WASM + PWA) product with browser-side install | partial | S001, S020, W1, W2, W3 | G005 |
 | S022 | Native Windows host package and CI release | missing | S001, S002 | G005 |
+| S023 | Seamless LAN multiplayer without GameSpy's servers | missing | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -333,8 +334,9 @@ CPU/memory/timing/device comparison, and the declared frame-time budget.
 Apple Silicon now uses the real ARM64 JIT. Android still needs independent
 host integration, packaging and runtime qualification; the Mac result does
 not establish Android support.
-Unreached imports remain fail-loud poison thunks; guest exception delivery,
-LAN networking, and optional COM/system facilities are absent.
+Unreached imports remain fail-loud poison thunks; guest exception delivery
+and optional COM/system facilities are absent. Guest sockets are host sockets
+through the WS2_32 layer; multiplayer itself is S023.
 
 ### S003 — reached-path rendering: partial
 
@@ -1912,6 +1914,26 @@ performance evidence. The acceptance contracts and current build entry point are
 in [web-release.md](web-release.md). A deployed artifact, explicit fallback denominators, representative interaction,
 and offline save/relaunch evidence remain required before this capability is
 verified.
+
+### S023 — seamless LAN multiplayer without GameSpy's servers: missing
+
+Missing capability: a normally started game hosts a LAN session, and the main menu finds
+other hosts on the network and joins one, with no GameSpy account or server.
+The retail PC release's only multiplayer route was *Play Online*, which logs in
+to GameSpy's Peer chat service before offering a lobby; those servers are gone,
+so the baseline has no working multiplayer at all.
+
+Present: WS2_32 is real host sockets (`winsock_posix`, `ws2_32.c`,
+`ws2_32_names.c`, with `test_winsock_posix`), and the executable's static TLS,
+which GameSpy's code reads on the Play Online path, is modelled per thread
+(`guest_teb`, with `test_guest_teb`). With the row enabled, Play Online reaches
+WSAStartup and GameSpy's availability check, then fails at the Peer login with
+the game's own "Online play is temporarily unavailable" message.
+
+No session exists yet. The Continue feature disables the Play Online row
+(`continue_policy.c`) because it leads nowhere, and no LAN discovery, host, or
+join path exists. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+records the retail flow and the two viable designs.
 
 ### S022 — native Windows host package and CI release: missing
 
