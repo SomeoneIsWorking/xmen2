@@ -1,32 +1,24 @@
 ---
 id: 162
 title: x87 emulation is half the browser's guest worker
-status: investigating
-symptom: the guest runs at PC=extended on 100% of operations and f64 changes 14.57% of results, so the 80-bit path must stay and must get cheaper
+status: resolved
+symptom: x87 emulation was half the browser's guest worker; its helpers are now 1.7% of it
 state_items: S021
 tags: web,browser,wasm,x87,x86port,performance
 created: 2026-09-19
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # 0162 — x87 emulation is half the browser's guest worker
 
 - **State items:** S021
-- **Status:** measured and attributed, and both escapes are now closed by
-  count. The guest runs at PC=extended on 100% of operations, and computing in
-  f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
-  answers. What remains is making the 80-bit path cheaper. Five changes have
-  landed: the storage change (x86port `ab29b41`), which cut `x86p_x87_arith`
-  from 15.16% of the browser's guest worker to 8.6%; the inline operand load
-  (x86port `98cc6ab`), which removed `x86p_x87_read_value_raw` and
-  `x86p_mem_read_bytes` from the profile entirely; the exact widening (x86port
-  `70e6536`), which took `x86p_x87_reg_from_operand_bits` from 4.95% to 2.90%;
-  the pop fusion (x86port `30ad283`), which removed `x86p_x87_pop`'s 1.89%
-  by ending the second import crossing per popping instruction; and the inline
-  widening (x86port `0ddf304`), which took the load path from 5.35% of the
-  guest worker to 2.52% by stopping a float load leaving its module at all.
-  What remains is `x86p_x87_arith_raw` at 14.90% and the operand plumbing
-  beneath it, of which the store side is now the larger half.
+- **Status:** resolved. The 80-bit requirement this issue argued from was
+  given up deliberately: on a host with no x87 unit the arithmetic runs in
+  binary64 (`x87.double`, xmen2 `23ebe8a`, x86port `a79c395`), the precision
+  Apple Silicon already had, and the wasm blocks compute FADD/FSUB/FMUL/FDIV
+  in place. Measured 2026-09-24 below: every x87 helper together is 1.74% of
+  the browser's busiest worker. The history below is kept because each step
+  is still in the shipping path.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -1058,3 +1050,15 @@ came out 439.5 and 415.5 on two runs of the SAME binary, and those runs had
 the census armed, which puts four `fstpt`/`fldt` pairs into the hot function
 and inflates the figure besides. A change worth less than about 7% on this
 route needs a deterministic workload, not this one.
+
+## Resolved: what x87 costs the browser now (2026-09-24)
+
+`#test-play`, 10,069,591-byte wasm, a 20 s V8 profile after 90 s of play.
+The busiest worker has 65,313 working samples of 70,632. Every function with
+x87 in its name, plus the softfloat conversions, comes to **1.74%** of them.
+The largest are `x86p_wasm_x87_copy` 0.30%, `x86p_x87_exchange` 0.29%,
+`x86p_x87_status` 0.27% and `x86p_x87_get` 0.23%. Translated guest blocks,
+which now hold the in-place arithmetic, are 65.2% of the worker. The x87 work
+inside them cannot be separated from the rest of the guest's code, and no
+single helper is left to remove. `x87.double=0` restores the exact path for
+a comparison.
