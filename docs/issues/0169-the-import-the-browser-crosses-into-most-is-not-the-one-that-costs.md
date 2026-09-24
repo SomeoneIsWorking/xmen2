@@ -6,14 +6,16 @@ symptom: ranking imports by call count aims optimization at the wrong one; the m
 state_items: S021
 tags: web,browser,wasm,imports,measurement,instrument
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-24
 ---
 
 # 0169 — the import the browser crosses into most is not the one that costs
 
 - **State items:** S021
-- **Status:** measured; no fix attempted. This exists to stop the next
-  optimization being aimed by call count.
+- **Status:** the flat `DrawIndexedPrimitive` time is explained (below) and
+  a larger cost the time table never showed, `GetCursorPos`, is fixed. What
+  is left in the draw is per-draw work; its largest part is the uniform push.
+  This also exists to stop the next optimization being aimed by call count.
 - **Found by:** arming the heartbeat's time probe (`--set hotep=64`) on the Dead
   Zone route while looking for the next thing to inline after #167 and #168.
 
@@ -91,3 +93,45 @@ An interval where `_ftol`'s time approaches `DrawIndexedPrimitive`'s, or where
 happened in five consecutive intervals on this route; a different route with
 fewer draws per frame is the honest next check, because every number here is
 from one scene.
+
+## Measured again: the flat time is a saturated thread, and the wait was the cursor
+
+2026-09-24, the same `#test-play` route, 10,069,733-byte wasm.
+`tools/web_profile_callers.py` reads a saved profile's call tree: who calls
+a function, or with `--below`, where the samples beneath one landed.
+
+**The flat time is not a per-frame wait.** Armed again, `DrawIndexedPrimitive`
+held 320-401 ms per 5 s while its calls moved 6,168 -> 11,536 *and* the
+presents moved 25 -> 44, so it tracks neither calls nor frames. Unarmed, the
+V8 profile puts **8.11% of the busiest worker's samples beneath
+`dev_DrawIndexedPrimitive`**; that thread is 86-93% busy, and 8% of 5 s is
+~400 ms. The import's time is its share of a saturated thread. Scenes with
+more draws have cheaper ones. Beneath it the samples are spread:
+`d3d8_build_draw_impl` 16%, `gpu_draw` 11%, and the bind-group sets with their
+JavaScript crossing (`setBindGroup`, its wrapper, `getJsObject`,
+`wasm-to-js`) about 25%. SDL `a42df22` already sets only the groups a draw
+changed. What changes them on every draw is the port pushing its vertex and
+fragment uniforms on every draw, 2 KiB of program and 4 KiB of constants for a
+VS 1.1 draw, whether or not they changed. Pushing only what changed is the
+next lever, about 2% of that worker.
+
+**The worker's largest wait was the cursor.** The same profile had
+`emscripten_futex_wait` at 10.03% of the worker. Half of it (50.5%) was
+`GetCursorPos` -> `SDL_GetGlobalMouseState` -> `Emscripten_GetGlobalMouseState`,
+a synchronous proxy to the browser's main thread on every call. SDL documents
+the function as main-thread-only, and the guest thread was calling it.
+`win32_pointer.c` now answers from `SDL_GetMouseState`: the state the guest
+thread's own message pump keeps, mapped exactly as `WM_MOUSEMOVE` maps it.
+`test_win32_pointer` holds the two equal through a dummy-driver window. It
+failed against the old code by hundreds of pixels, (448,216) against (832,504),
+because a host with no global cursor position answered a different point than
+the message stream. After the change the futex share is **0.66%**, and every
+remaining sample of it is OPFS `fread`. The worker went from 85.7% to 93.3%
+busy, with translated guest blocks at 59.3% of its samples, up from 51.8%.
+The route still presents ~59 a second (293 per 5 s), which is the 60 Hz vsync
+cap in this scene, so the gain here is headroom, not frames.
+
+**Also seen, not acted on:** `fread` from OPFS is a synchronous proxy too,
+158-339 ms per 5 s over 13-14 calls. That is streaming I/O the guest issues
+and waits for, so the fix belongs in how the install is read, not in this
+issue.

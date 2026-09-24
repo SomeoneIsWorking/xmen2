@@ -1474,8 +1474,11 @@ inside `x86p_jit_engine_run` are in neither span, and are most of the rest. Of
 the import half, **`DrawIndexedPrimitive` is 46%** — 362 ms per interval, 6.8 ms
 of a 94 ms frame, agreeing with the renderer's own "host draw 6.59 ms/frame".
 The import the run crosses into most, `_ftol` at 73.6% of all crossings, is
-6.5% of import time: #169 records why the count ranking is not the time ranking
-and what is unexplained about the draw path.
+6.5% of import time: #169 records why the count ranking is not the time ranking.
+The draw's flat time is its share of a saturated worker: 8.1% of that worker's
+samples, spread across per-draw work. The worker's largest wait, `GetCursorPos`
+proxied to the browser's main thread, now answers from the pump's own cursor
+state, taking the worker's futex share from 10.0% to 0.7%.
 
 The guest worker's own census, 25.6 s and 86,765 working samples of that
 worker's 89,154, is what the remaining work inside that worker is ranked on:

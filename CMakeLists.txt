@@ -567,6 +567,27 @@ add_executable(test_win32_mouse tests/test_win32_mouse.c
 target_include_directories(test_win32_mouse PRIVATE src/native src/presentation)
 add_test(NAME win32_mouse COMMAND test_win32_mouse)
 
+# GetCursorPos against the WM_MOUSEMOVE the same cursor produced, through the
+# shipping pointer translation and a dummy-driver SDL window.
+add_executable(test_win32_pointer tests/test_win32_pointer.c
+               src/native/win32_pointer.c
+               src/native/win32_mouse.c
+               src/presentation/aspect_fit.c
+               src/config/settings.c
+               src/config/settings_store.c
+               src/config/hud_settings.c
+               src/config/input_assignments.c
+               src/config/boot_mode.c
+               src/native/x2_log.c)
+target_include_directories(test_win32_pointer PRIVATE
+                           src/native src/config src/presentation src/input)
+target_compile_definitions(test_win32_pointer PRIVATE X2_WITH_SDL
+    X2_TEST_WIN32_POINTER_ROOT="${CMAKE_BINARY_DIR}/test-win32-pointer")
+target_link_libraries(test_win32_pointer PRIVATE lucent::lucent ${X2_SDL})
+add_test(NAME win32_pointer COMMAND test_win32_pointer)
+set_tests_properties(win32_pointer PROPERTIES SKIP_RETURN_CODE 77
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+
 add_executable(test_d3d8_live_resolution
                tests/test_d3d8_live_resolution.c
                src/d3d8/d3d8_live_resolution.c)

@@ -105,28 +105,23 @@ static void map_point(float host_x, float host_y, int32_t *client_x,
   *screen_y = coordinate_add(*client_y, geometry.window_y, "vertical");
 }
 
+/*
+ * The position SDL last reported for the cursor in the guest window, mapped
+ * exactly as WM_MOUSEMOVE maps it, so the two never disagree. SDL keeps it
+ * from the events the guest thread's own message pump polls; no host query
+ * is made. SDL_GetGlobalMouseState was one: a synchronous round trip to the
+ * browser's main thread per call (5% of the guest worker, issue #169), an
+ * X server request on X11, and on a host with no global position (the dummy
+ * driver) a point that disagreed with the message stream outright.
+ */
 int x2_win32_pointer_get_cursor_pos(int32_t *x, int32_t *y) {
-  MouseGeometry geometry;
-  float global_x, global_y;
+  float host_x, host_y;
   int32_t client_x, client_y;
 
   if (!x || !y)
     return 0;
-  mouse_geometry(&geometry);
-  SDL_GetGlobalMouseState(&global_x, &global_y);
-  if (!x2_win32_mouse_map_point(
-          coordinate_add((int32_t)global_x, -(int64_t)geometry.window_x,
-                         "horizontal"),
-          coordinate_add((int32_t)global_y, -(int64_t)geometry.window_y,
-                         "vertical"),
-          geometry.window_width, geometry.window_height, geometry.game_width,
-          geometry.game_height, &client_x, &client_y)) {
-    x2_log_error(
-        "win32 pointer: cannot map physical cursor to game coordinates\n");
-    abort();
-  }
-  *x = coordinate_add(client_x, geometry.window_x, "horizontal");
-  *y = coordinate_add(client_y, geometry.window_y, "vertical");
+  SDL_GetMouseState(&host_x, &host_y);
+  map_point(host_x, host_y, &client_x, &client_y, x, y);
   return 1;
 }
 
