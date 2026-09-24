@@ -76,10 +76,30 @@ game's "Player(s) have been dropped from the game" on A, which continues.
 
 ## Still open
 
-- **Drop-in.** Once the host starts the game, `FUN_006097f0` (from 0x006135b4)
-  runs `FUN_006074b0`, which unregisters the lobby handlers, so a new client's
-  browser shows "No Games Found". Joining a running game needs the host to keep
-  answering 0x19 and the engine to accept a mid-game join; neither is known yet.
+- **Drop-in.** The engine has no join-in-progress. Start Game
+  (`FUN_005bacd0`, the host menu's `text_startgame`) sends message 0x26 and runs
+  `FUN_00609400`, which unregisters every lobby handler (0x14/0x19/0x1a/0x1e,
+  0x2c, 0x18), so a new client's browser shows "No Games Found". 0x26 carries
+  only the start mode: each peer builds its own world in `FUN_005f3c20`
+  (`startFirstMission()`, the Danger Room, or `startloadedonlinegame`).
+
+  What the engine *does* have is a hosted saved campaign, and it works on the
+  port. Observed: A picks Game Type → Load Saved Campaign in Game Options, posts;
+  B's browser lists "Saved Campaign [1/4]", joins, readies; A starts and both
+  load the save's scene. The pieces:
+  - `FUN_00608260(save, flag)` copies a 0x2fc00-byte save into the net manager
+    (+0x2250) and marks the session loaded (+0x3e1). The load-game menu calls it
+    when the online manager is active (0x004aed57).
+  - The host streams it with message 0x47 (header) and 0x48 (200-byte chunks);
+    the client's `FUN_00608630` reassembles it and acknowledges with 0x4a.
+  - `startloadedonlinegame` → `FUN_00606fb0` loads +0x2250 on every peer.
+  - The port's autosave already produces that exact buffer mid-game: game
+    vtable 0x208 serializes the running campaign (`autosave_runtime.c`).
+
+  So drop-in is a re-formed session: on a join request the host serializes the
+  running campaign, hosts it as a saved campaign, the joiner receives it, and
+  every peer reloads at that state. A join therefore costs everyone one load;
+  no route adds a player to a level already loaded.
 - **Seamless entry.** Auto-hosting on a normal start and a main-menu list of
   LAN hosts are not built; today the player goes Play Online → Host or Join.
 - **With a save,** Continue still replaces the Play Online row.
