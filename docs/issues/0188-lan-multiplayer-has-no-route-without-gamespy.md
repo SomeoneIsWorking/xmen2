@@ -62,6 +62,28 @@ state lives in GameSpy objects.
 
 Both are multi-session efforts. Neither has started.
 
+## What is known of the layer design B would drive
+
+- **Transport** (`CNetModuleWin32`, vtable 0x006a4a88). One UDP socket,
+  opened by slot 5 (`FUN_00616480`): bound to the module's port, retrying on
+  another port when that one is in use (WSAEADDRINUSE), with SO_BROADCAST set
+  by slot 1 and FIONBIO non-blocking. Slot 3 (`FUN_00616620`) is `sendto`.
+  Slot 7 (`FUN_00616340`) drains `recvfrom` into 0x514-byte frames. A hook at
+  +0x14708 lets GameSpy's QR2/NAT-negotiation claim packets on the same
+  socket first. An unknown sender becomes a `CNetNode` (`FUN_0060eec0`), and
+  the node lookup is `FUN_0060db70(address, port)`. All game sockets are in
+  0x616xxx; everything at 0x63a000 and above is the GameSpy SDK.
+- **Join by address.** `FUN_00609b80(address, port)` finds or creates the
+  host's node, sends message 0x10010, and arms a timeout task. The NAT
+  negotiation completion callback (`FUN_006050a0`) calls it with the peer
+  address GameSpy brokered, and `FUN_0060a0a0` calls it when the manager's
+  "client" flag (+0x3b3) is set. Otherwise `FUN_0060a0a0` starts serving
+  (`FUN_006159f0`, `FUN_00615c60(1)`).
+- **Unknown:** how much of the staging room (player list, ready state, the
+  host's start that runs `startloadedonlinegame`) lives in GameSpy Peer
+  objects rather than in `CNetPlayManager` / `CNetPlayer` messages. That
+  decides whether B needs a Peer stand-in at all.
+
 ## Falsifier
 
 Two isolated instances on one LAN (separate profiles and control ports).
