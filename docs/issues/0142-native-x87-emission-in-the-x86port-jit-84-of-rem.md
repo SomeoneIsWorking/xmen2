@@ -1,11 +1,11 @@
 ---
 id: 142
 title: Native x87 emission in the x86port JIT (84% of remaining helper routing)
-status: open
+status: resolved
 symptom: in-game jit routes ~20,700 x87 instructions/boot through the interpreter helper, one insn per helper call; x87 is the sole remaining bulk after MOVZX/MOVSX landed
 tags: x86port,jit,codegen,x87,perf,issue-141
 created: 2026-09-04
-updated: 2026-09-04
+updated: 2026-09-24
 ---
 
 ## Context
@@ -138,3 +138,23 @@ divergence (act0/tutorial, 600 frames, engine=jit). x86port 19/19
 FST ST(i), FSUBR ST(i),ST(0) differential cases). Helper x87 routing
 14,930 -> 8,499 translations/boot; the remainder is compares, FILD/FISTP,
 FST/FSTP-to-memory, FLDCW/FNSTSW.
+
+## Closed (2026-09-24): native emission covers the x87 the game runs
+
+The x64 backend's `emit_x87` (x86port `jit_x64_x87.c`) now emits these
+natively:
+- arithmetic, and loads and stores to registers and memory;
+- register operations (FXCH, FCHS, FABS, the register compares);
+- memory compares, constants, `FNSTSW AX`, FSQRT, and FLDCW/FNSTCW.
+
+Only the remaining x87 functions (FSIN, FCOS, FPTAN, FPATAN, F2XM1, FYL2X,
+FSCALE, FPREM, FRNDINT…) and FNCLEX still call a helper.
+
+Measured on the current native build: Dead Zone map, paced, `perf record` at
+999 Hz for 15 s after 70 s of play. All x87 symbols together are **1.99%** of
+the process. `x86p_x87_fn` is 0.88% of that, and its annotation puts 82% of
+its samples on the `fnstsw` straight after the host's own `fsin` and `fcos`:
+the cost is the host instruction's latency, not the routing to it. The
+profile is flat overall; the top symbol, `x86p_jit_engine_run`, is 3.33%. The
+"84% of remaining helper routing" this issue was opened on no longer exists.
+Broad x86port cost stays with #141.
