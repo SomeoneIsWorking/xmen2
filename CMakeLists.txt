@@ -82,6 +82,13 @@ find_package(Threads REQUIRED)
 # accepting it creates a build that configures successfully and cannot link or
 # run on a phone.
 if(EMSCRIPTEN)
+    # WebAssembly SIMD, for every target this tree compiles, x86port included.
+    # Every browser with WebGPU -- which the product requires -- executes it,
+    # and without it the compiler cannot vectorise a single host loop: the VS
+    # 1.1 executor's 64-lane rows ran one float at a time. It changes no
+    # result: the vectoriser keeps IEEE semantics without -ffast-math.
+    add_compile_options(-msimd128)
+    add_link_options(-msimd128)
     include(cmake/WebDependencies.cmake)
 elseif(ANDROID)
     # Android ships the whole port as one shared object, so every cross-module

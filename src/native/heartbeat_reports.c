@@ -2,6 +2,7 @@
 
 #include "../input/touch_runtime.h"
 #include "control.h"
+#include "d3d8_vertex_shader.h"
 #include "dinput_pad.h"
 #include "dinput_pad_report.h"
 #include "dsound.h"
@@ -43,6 +44,7 @@ void heartbeat_subsystem_reports(void) {
      report itself finished waits without a timeout, so which side stopped --
      the guest asking or this port answering -- has to be on the line. */
   x2_movie_beat_report();
+  d3d8_vs_beat_report();
 }
 
 void heartbeat_winmm_report(void) {

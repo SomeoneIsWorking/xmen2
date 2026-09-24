@@ -23,6 +23,14 @@ Each programmable draw runs the guest's VS 1.1 program (#64) on the host CPU,
 into a `malloc`'d array. That array goes into a GPU vertex buffer created,
 uploaded and destroyed for that one draw.
 
+## Measured since: the executor is vectorised
+
+The web build now compiles with WebAssembly SIMD. That halves the executor's
+cost per vertex: 958 samples at about 96K vertices a second became 602 at
+about 108K (`[HB] VS 1.1 executor` gives the vertex rate). The per-draw
+buffer, its upload, and `d3d8_build_draw_impl`'s own 1.6% are unchanged, and
+the GPU program below still removes all of them.
+
 ## Ruled out: shading only the vertices a draw reaches
 
 A draw shades every vertex its bound buffer holds, not the range its indices

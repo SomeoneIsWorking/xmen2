@@ -173,6 +173,18 @@ const uint32_t *d3d8_vs_function(const D3D8VertexShader *s, size_t *bytes) {
   return s->function_dwords ? s->function : NULL;
 }
 
+void d3d8_vs_beat_report(void) {
+  static unsigned long p_executions, p_vertices;
+  unsigned long executions, vertices;
+  d3d8_vs_execution_counts(&executions, &vertices);
+  x2_log_error("[HB]           VS 1.1 executor %lu draw(s) (+%lu), %lu "
+               "vertex invocation(s) (+%lu)\n",
+               executions, executions - p_executions, vertices,
+               vertices - p_vertices);
+  p_executions = executions;
+  p_vertices = vertices;
+}
+
 void d3d8_vs_report(void) {
   unsigned i, live = 0;
   unsigned long executions, vertices;

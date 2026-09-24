@@ -39,6 +39,10 @@ int d3d8_vs_execute(uint32_t handle,
                     D3D8VSOutput *output);
 
 void d3d8_vs_report(void);
+/* The executor's draws and vertex invocations on the heartbeat, with their
+   deltas, zeros included: the per-vertex denominator for the executor's
+   profile samples, which a scene with more skinned characters inflates. */
+void d3d8_vs_beat_report(void);
 int d3d8_vs_selftest(void);
 
 /* Every distinct value SetVertexShader received, with counts -- defined in

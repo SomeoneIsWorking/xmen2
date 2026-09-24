@@ -1373,6 +1373,22 @@ of that memory when they are recorded, so neither step protected anything. On
 `#test-play` (10,119,389-byte wasm) `WEBGPU_MapTransferBuffer` falls from 727
 samples to 4. The canvas still reads 98% non-black with no uncaptured errors.
 
+**The browser build uses WebAssembly SIMD and drops Emscripten assertions.**
+Nothing in the web build passed `-msimd128`, so no host loop could be
+vectorised. The VS 1.1 executor's 64-lane rows, for one, ran a float at a time.
+The link also carried `-sASSERTIONS=1`, which puts checks into the JS glue
+that every WebGPU call crosses. On `#test-play`, one run each on otherwise
+identical builds (10,134,612 against 10,007,758 bytes):
+
+- `d3d8_vs_execute` cost falls from 958 samples at about 96K shaded vertices
+  per second to 602 samples at about 108K, 45% less per vertex.
+- JS glue falls from 2,700 samples to 1,967.
+- Presents rise from about 40 to about 45 a second.
+
+The canvas reads 98.2% non-black with no uncaptured errors. The heartbeat now
+carries the executor's draws and vertices (`d3d8_vs_beat_report`), which is
+the denominator for these per-vertex figures.
+
 **A loop back to its own block stays chained** (x86port `0a6a83c`). The
 engine refused to link an exit to the block that took it, so every guest loop
 of one block went through the dispatcher on each iteration: about 1.7% of

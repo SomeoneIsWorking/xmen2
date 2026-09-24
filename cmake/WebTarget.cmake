@@ -18,7 +18,7 @@ target_link_options(x2native PRIVATE
     -sINITIAL_MEMORY=64MB -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB
     -sSTACK_SIZE=2MB -sDEFAULT_PTHREAD_STACK_SIZE=2MB
     -sALLOW_TABLE_GROWTH=1 -sEXIT_RUNTIME=1
-    -sENVIRONMENT=web,worker -sASSERTIONS=1
+    -sENVIRONMENT=web,worker
     -sEXPORTED_RUNTIME_METHODS=callMain
     --emit-symbol-map
     "--preload-file=${CMAKE_BINARY_DIR}/ui@/ui")
