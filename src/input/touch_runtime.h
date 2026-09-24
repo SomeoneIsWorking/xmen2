@@ -72,6 +72,9 @@ typedef struct X2TouchVisual {
      player nothing about what the game is being sent. */
   float deflect_x;
   float deflect_y;
+  /* A power button's cell in x2_power_slots_atlas(); -1 for every other
+     kind. */
+  int power_icon;
 } X2TouchVisual;
 
 /* The viewport the touch layout is currently built from -- the window's pixel
@@ -124,6 +127,12 @@ int x2_touch_runtime_overlay_visible(void);
    is drawn on the screens where that is deliberately false, so a document
    shown only on the first answer would draw no prompt anywhere. */
 int x2_touch_runtime_has_visuals(void);
+
+/* The atlas cell of each of the player's four RT powers, in the game's slot
+   order (A, B, X, Y), or -1 where the hero has none; that slot gets no button.
+   Changing the set releases a held control, as a layout change does. */
+#define X2_POWER_SLOTS 4
+void x2_touch_runtime_power_slots(const int icons[X2_POWER_SLOTS]);
 
 #ifdef __cplusplus
 }

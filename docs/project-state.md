@@ -838,12 +838,15 @@ Evidence: `touch_source`, `touch_controls`, `touch_layout` and
 `touch_hud_layout` run in the ordinary host suite on every platform, with no
 device and no window. The CMake sources list builds all four touch owners
 unconditionally into `x2native`, outside the `if(ANDROID)` branches.
-The revised two-thumb layout and shared action SVGs were also inspected in
-the actual 1280x720 RmlUi/Vulkan game presentation;
-`docs/screenshots/touch-controls.png` records that rendering. Jump uses the
-right action group, the held Powers modifier uses the left, and Pause leaves
-the retail center notification icons unobscured. This verifies presentation,
-not physical touchscreen ergonomics or Android performance.
+The two-thumb layout was inspected in the actual 1280x720 RmlUi/Vulkan game
+presentation; `docs/screenshots/touch-controls.png` records the 2026-09-08
+rendering, before the actions took the game's prompt glyphs and the held
+Powers modifier gave way to per-power buttons. The 2026-09-24 observation in
+`docs/touch-play.md#power-buttons` covers the current one: A/B/X/Y and Start
+glyphs in their own circles, and a power button drawn with the game's icon for
+each power the hero has, whose hold raised the retail RT ring. Pause leaves the
+retail center notification icons unobscured. This verifies presentation, not
+physical touchscreen ergonomics or Android performance.
 
 SDL touch-to-mouse synthesis is disabled before event sources are created, so
 an overlay action cannot also enter the retail world-click handler; the

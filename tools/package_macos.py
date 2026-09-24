@@ -45,7 +45,7 @@ BUNDLE_NAME = "X-Men Legends II"
 # reliable way to get two incompatible copies loaded at once.
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/Library/Apple/")
 
-UI_DIRECTORIES = ("touch", "icons")
+UI_DIRECTORIES = ("touch",)
 
 
 def refuse(message: str) -> None:
@@ -361,8 +361,6 @@ def selftest() -> int:
             (ui / name).write_bytes(name.encode())
         (ui / "touch").mkdir()
         (ui / "touch/face_a.svg").write_text("<svg/>", encoding="ascii")
-        (ui / "icons").mkdir()
-        (ui / "icons/attack.svg").write_text("<svg/>", encoding="ascii")
         app = temporary / "X-Men Legends II.app"
         stage_bundle(app, binary, ui, with_libraries=False)
         required = [
@@ -370,7 +368,6 @@ def selftest() -> int:
             app / "Contents/MacOS/x2native",
             app / "Contents/Resources/ui/settings.rcss",
             app / "Contents/Resources/ui/touch/face_a.svg",
-            app / "Contents/Resources/ui/icons/attack.svg",
         ]
         complete = all(path.is_file() for path in required)
         no_game = not any(path.name.lower() == "xmen2.exe"

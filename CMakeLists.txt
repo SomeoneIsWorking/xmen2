@@ -1641,27 +1641,6 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
-execute_process(
-    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/touch_icons.py"
-    RESULT_VARIABLE X2_TOUCH_ACTION_RESULT
-    OUTPUT_VARIABLE X2_TOUCH_ACTION_SOURCES
-    ERROR_VARIABLE X2_TOUCH_ACTION_ERROR
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(NOT X2_TOUCH_ACTION_RESULT EQUAL 0 OR X2_TOUCH_ACTION_SOURCES STREQUAL "")
-  message(FATAL_ERROR "Cannot resolve shared touch icons: ${X2_TOUCH_ACTION_ERROR}")
-endif()
-string(REPLACE "\r\n" "\n" X2_TOUCH_ACTION_SOURCES "${X2_TOUCH_ACTION_SOURCES}")
-string(REPLACE "\n" ";" X2_TOUCH_ACTION_ICONS "${X2_TOUCH_ACTION_SOURCES}")
-list(GET X2_TOUCH_ACTION_ICONS 0 X2_TOUCH_ACTION_FIRST)
-get_filename_component(X2_TOUCH_ACTION_DIR "${X2_TOUCH_ACTION_FIRST}" DIRECTORY)
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-             "${CMAKE_SOURCE_DIR}/tools/touch_icons.py"
-             "${X2_TOUCH_ACTION_DIR}/set.json")
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui/icons")
-foreach(icon ${X2_TOUCH_ACTION_ICONS})
-  get_filename_component(icon_name ${icon} NAME)
-  configure_file(${icon} "${CMAKE_BINARY_DIR}/ui/icons/${icon_name}" COPYONLY)
-endforeach()
 set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
 add_custom_command(
     OUTPUT "${X2_TOUCH_ICON_STAMP}"
@@ -1684,6 +1663,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/hud_settings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
+    src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.c)
 add_dependencies(x2_rmlui_ui x2_touch_icons)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
@@ -1696,7 +1676,7 @@ target_compile_definitions(x2_rmlui_ui PRIVATE
     X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
 set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
-                                        PRIVATE lucent::lucent)
+                                        PRIVATE lucent::lucent alchemy)
 
 include(cmake/Shaders.cmake)
 
@@ -1910,6 +1890,7 @@ set(X2_NATIVE_SOURCES
     src/input/gameplay_control.c
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
+    src/native/power_slots_runtime.c
     src/native/hud_portrait_position.c
     src/native/hud_portrait_position_runtime.c
     src/presentation/hud_layout.c

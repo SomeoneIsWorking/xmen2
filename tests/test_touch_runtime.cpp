@@ -464,36 +464,59 @@ int main() {
         "DIJOYSTATE2 lX " +
             std::to_string(guest_axis(slot, DINPUT_PAD_AXIS_X)));
 
-  /* THE CHORD. The documented layout reaches the four ability actions by
-   * holding Powers with the left thumb and pressing an action button with the
-   * right: the same zones, a different meaning in the guest. That only works
-   * if both reach the pad AT ONCE. Publishing the second contact must not
-   * release the first, which is the failure a single-contact implementation
-   * produces and which no single-button check can see. */
-  const X2TouchVisual *powers = find_action(drawn, TouchAction::Powers);
-  if (!powers) {
-    std::printf("  FAIL the layout has no Powers control to hold\n");
+  /* THE POWERS. The hero's RT powers are drawn only where the game has one,
+   * and each is the chord the retail ring teaches -- RT with its slot's face
+   * button -- arriving whole. A button shared with another held control stays
+   * down until the last holder lets go, and a power that vanishes under a
+   * finger is released rather than left held. */
+  const auto centre = [](const X2TouchVisual &zone) {
+    return std::pair{(zone.left + zone.right) * 0.5F,
+                     (zone.top + zone.bottom) * 0.5F};
+  };
+  check(!find_action(visuals(), TouchAction::Power1),
+        "no power is drawn before the game has published any", "fresh run");
+  const int powers[X2_POWER_SLOTS] = {4, -1, 7, -1};
+  x2_touch_runtime_power_slots(powers);
+  const auto with_powers = visuals();
+  const X2TouchVisual *power1 = find_action(with_powers, TouchAction::Power1);
+  const X2TouchVisual *power3 = find_action(with_powers, TouchAction::Power3);
+  check(power1 && power3 && power1->power_icon == 4 && power3->power_icon == 7,
+        "each published power is drawn with its own atlas cell",
+        power1 && power3 ? std::to_string(power1->power_icon) + ", " +
+                               std::to_string(power3->power_icon)
+                         : "missing");
+  check(!find_action(with_powers, TouchAction::Power2) &&
+            !find_action(with_powers, TouchAction::Power4),
+        "a slot with no power has no button", "slots 2 and 4 empty");
+  if (!power1 || !power3) {
     return 1;
   }
-  const float powers_x = (powers->left + powers->right) * 0.5F;
-  const float powers_y = (powers->top + powers->bottom) * 0.5F;
-  send_finger(SDL_EVENT_FINGER_DOWN, 4, powers_x, powers_y, width, height);
-  check(axis_value(pad, "righttrigger") > 0.5F,
-        "holding Powers reaches the pad",
-        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")));
+  const auto [p1_x, p1_y] = centre(*power1);
+  const auto [p3_x, p3_y] = centre(*power3);
   send_finger(SDL_EVENT_FINGER_DOWN, 5, jump_x, jump_y, width, height);
-  check(
-      axis_value(pad, "righttrigger") > 0.5F && button_down(pad, "y"),
-      "a second thumb on an action keeps Powers held: the chord arrives whole",
-      "righttrigger " + std::to_string(axis_value(pad, "righttrigger")) +
-          ", y " + (button_down(pad, "y") ? "down" : "UP"));
+  send_finger(SDL_EVENT_FINGER_DOWN, 4, p3_x, p3_y, width, height);
+  check(axis_value(pad, "righttrigger") > 0.5F && button_down(pad, "x") &&
+            button_down(pad, "y"),
+        "the third power is RT with X, beside a held Jump",
+        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")) +
+            ", x " + (button_down(pad, "x") ? "down" : "UP"));
+  send_finger(SDL_EVENT_FINGER_DOWN, 6, p1_x, p1_y, width, height);
+  check(button_down(pad, "a"), "the first power adds A to the held RT",
+        "a " + std::string(button_down(pad, "a") ? "down" : "UP"));
+  send_finger(SDL_EVENT_FINGER_UP, 4, p3_x, p3_y, width, height);
+  check(axis_value(pad, "righttrigger") > 0.5F && !button_down(pad, "x"),
+        "lifting one power leaves RT down for the other still held",
+        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")));
+  const int none[X2_POWER_SLOTS] = {-1, -1, -1, -1};
+  x2_touch_runtime_power_slots(none);
+  check(axis_value(pad, "righttrigger") < 0.5F && !button_down(pad, "a"),
+        "a power that vanishes under a finger is released",
+        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")) +
+            ", a " + (button_down(pad, "a") ? "down" : "UP"));
+  check(!find_action(visuals(), TouchAction::Power1), "and is no longer drawn",
+        "slots cleared");
+  send_finger(SDL_EVENT_FINGER_UP, 6, p1_x, p1_y, width, height);
   send_finger(SDL_EVENT_FINGER_UP, 5, jump_x, jump_y, width, height);
-  check(axis_value(pad, "righttrigger") > 0.5F && !button_down(pad, "y"),
-        "lifting the action thumb leaves Powers held",
-        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")));
-  send_finger(SDL_EVENT_FINGER_UP, 4, powers_x, powers_y, width, height);
-  check(axis_value(pad, "righttrigger") < 0.5F, "lifting Powers releases it",
-        "righttrigger " + std::to_string(axis_value(pad, "righttrigger")));
 
   /* Losing the window while a control is held must not leave it held. A stuck
      button after an alt-tab or an incoming call is the failure this covers. */

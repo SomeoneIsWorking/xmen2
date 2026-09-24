@@ -16,6 +16,7 @@
 
 #include "aspect_fit.h"
 #include "environment.h"
+#include "igb_textures.hpp"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
 #include "touch_document.hpp"
@@ -26,7 +27,7 @@
 namespace {
 
 std::unique_ptr<SystemInterface_SDL> system_interface;
-std::unique_ptr<RenderInterface_SDL_GPU> render_interface;
+std::unique_ptr<x2::ui::IgbTextureRenderInterface> render_interface;
 Rml::Context *context;
 SDL_Window *host_window;
 bool initialized;
@@ -128,7 +129,8 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
     return true;
   host_window = window;
   system_interface = std::make_unique<SystemInterface_SDL>(window);
-  render_interface = std::make_unique<RenderInterface_SDL_GPU>(device, window);
+  render_interface =
+      std::make_unique<x2::ui::IgbTextureRenderInterface>(device, window);
   Rml::SetSystemInterface(system_interface.get());
   Rml::SetRenderInterface(render_interface.get());
   if (!Rml::Initialise()) {
@@ -265,4 +267,8 @@ extern "C" void x2_ui_gpu_shutdown(void) {
   system_interface.reset();
   host_window = nullptr;
   initialized = false;
+}
+
+x2::ui::IgbTextureRenderInterface *x2::ui::igb_texture_interface() {
+  return render_interface.get();
 }

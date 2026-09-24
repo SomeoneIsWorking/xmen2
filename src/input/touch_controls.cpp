@@ -159,6 +159,16 @@ TouchControls::set_portraits(std::span<const X2Rect> portraits,
   return released;
 }
 
+std::vector<ActionEvent>
+TouchControls::set_power_icons(const std::array<int, 4> &icons) {
+  if (icons == power_icons_)
+    return {};
+  auto released = translate(router_.cancel());
+  power_icons_ = icons;
+  rebuild_zones();
+  return released;
+}
+
 void TouchControls::rebuild_zones() {
   zones_.clear();
   X2LayoutViewport layout_viewport{
@@ -191,8 +201,15 @@ void TouchControls::rebuild_zones() {
   add(10, slots[kX2SlotLightAttack], 20, TouchAction::LightAttack, false);
   add(11, slots[kX2SlotHeavyAttack], 20, TouchAction::HeavyAttack, false);
   add(12, slots[kX2SlotUse], 20, TouchAction::Use, false);
-  add(20, slots[kX2SlotPowers], 20, TouchAction::Powers, false);
   add(13, slots[kX2SlotJump], 20, TouchAction::Jump, false);
+  for (std::uint32_t i = 0; i < power_icons_.size(); ++i) {
+    if (power_icons_[i] < 0)
+      continue;
+    add(20 + i, slots[kX2SlotPower1 + i], 20,
+        static_cast<TouchAction>(static_cast<int>(TouchAction::Power1) + i),
+        false);
+    zones_.back().power_icon = power_icons_[i];
+  }
   add(40, slots[kX2SlotPause], 20, TouchAction::Pause, false);
 
   // Camera is an invisible relative swipe over the playfield -- everything

@@ -31,12 +31,13 @@ std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
           zone.zone.bottom, static_cast<int>(zone.action),
           active.contains(zone.zone.id) ? 1 : 0,
           zone.stick ? X2_TOUCH_VISUAL_STICK : X2_TOUCH_VISUAL_BUTTON,
-          zone.stick ? stick.x : 0.0F, zone.stick ? stick.y : 0.0F});
+          zone.stick ? stick.x : 0.0F, zone.stick ? stick.y : 0.0F,
+          zone.power_icon});
   }
   for (const auto &prompt : prompts) {
     emit({kPromptVisualId + prompt.dik, prompt.target.left, prompt.target.top,
           prompt.target.right, prompt.target.bottom, 0, 0,
-          X2_TOUCH_VISUAL_PROMPT, 0.0F, 0.0F});
+          X2_TOUCH_VISUAL_PROMPT, 0.0F, 0.0F, -1});
   }
   return count;
 }

@@ -79,6 +79,7 @@ public:
 
   void cancel(X2TouchCancelCause cause);
   void set_hud_regions(const X2Rect portraits[4], unsigned visible_mask);
+  void set_power_slots(const int icons[X2_POWER_SLOTS]);
   bool take_pointer(X2TouchPointer &out);
   std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
 
@@ -386,6 +387,12 @@ void TouchRuntime::set_hud_regions(const X2Rect portraits[4],
   }
 }
 
+void TouchRuntime::set_power_slots(const int icons[X2_POWER_SLOTS]) {
+  std::array<int, X2_POWER_SLOTS> next{};
+  std::copy(icons, icons + X2_POWER_SLOTS, next.begin());
+  publish(controls_.set_power_icons(next));
+}
+
 bool TouchRuntime::take_pointer(X2TouchPointer &out) {
   if (!overlay_visible() && !contacts_.empty()) {
     cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
@@ -457,6 +464,10 @@ void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
 void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
                                   unsigned visible_mask) {
   x2::input::runtime.set_hud_regions(portraits, visible_mask);
+}
+
+void x2_touch_runtime_power_slots(const int icons[X2_POWER_SLOTS]) {
+  x2::input::runtime.set_power_slots(icons);
 }
 
 int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {

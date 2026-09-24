@@ -23,7 +23,12 @@ enum class TouchAction : std::uint8_t {
   HeavyAttack,
   Jump,
   Use,
-  Powers,
+  // The hero's RT powers in the game's slot order: each is RT with A, B, X
+  // or Y, exactly the chord the retail ring teaches.
+  Power1,
+  Power2,
+  Power3,
+  Power4,
   EnergyPack,
   HealthPack,
   NextHero,
@@ -107,6 +112,8 @@ public:
     TouchAction action = TouchAction::Pause;
     bool stick = false;
     bool visible = true;
+    // The power's atlas cell for a power zone, -1 for every other zone.
+    int power_icon = -1;
   };
 
   // Returns cancellation events for contacts captured under the old layout. The
@@ -117,6 +124,11 @@ public:
   // regions remove portrait captures; changing them leaves other controls held.
   std::vector<ActionEvent> set_portraits(std::span<const X2Rect> portraits,
                                          unsigned visible_mask);
+  // The atlas cell of each power slot, or -1 when the hero has no power
+  // there; only slots with a power get a zone. A change releases captured
+  // contacts, as a layout change does, so a power that vanishes under a
+  // finger cannot stay held.
+  std::vector<ActionEvent> set_power_icons(const std::array<int, 4> &icons);
   std::vector<ActionEvent>
   route(std::span<const lucent::touch::Contact> contacts);
   std::vector<ActionEvent> cancel();
@@ -134,6 +146,7 @@ private:
   ThumbStick stick_;
   Viewport viewport_;
   std::array<X2Rect, 4> portraits_{};
+  std::array<int, 4> power_icons_{-1, -1, -1, -1};
   unsigned portraits_visible_ = 0;
   std::vector<ZoneVisual> zones_;
   lucent::touch::Router router_;

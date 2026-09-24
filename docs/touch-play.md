@@ -112,8 +112,8 @@ document uses the action meanings proven by `binding_rows.c` and
 | Zone | Action mapping |
 |---|---|
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin |
-| Bottom-right action diamond | Attack below, Smash outside, Use above, Jump inside; while Powers is held these are the four retained ability actions |
-| Above the left stick | Hold Powers with the left thumb and choose an ability with the right |
+| Bottom-right action diamond | Attack (A) below, Smash (B) outside, Use (X) above, Jump (Y) inside |
+| Arc inboard of the diamond | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
 | Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Top button beside vitals | `Pause` |
@@ -134,9 +134,7 @@ rather than a state shows its value.
 
 The movement stick is smaller than the original overlay to leave more of the
 playfield visible. Jump is on the opposite hand from movement, so a player can
-move and jump with two thumbs. The Powers modifier is on the left for the same
-reason: all four ability choices remain accessible to the right thumb while it
-is held. Controls remain anchored to safe edges on wide screens; one shared fit
+move and jump with two thumbs. Controls remain anchored to safe edges on wide screens; one shared fit
 factor keeps the groups separate on narrow and portrait screens. The compact
 pause button stays between the vitals reservation and the centerline, leaving
 the retail center status/notification icons visible.
@@ -146,15 +144,48 @@ left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen. The
-shipped feedback document mirrors authored touch controls with short action labels
-and bold outlined SVG silhouettes from `shared/port-assets/sets/touch-controls`.
-`tools/touch_icons.py` resolves that manifest for build-time staging; the port
-does not carry another SVG copy. Ability icons and labels change while Powers is
-held; redundant tiny corner badges are absent. Button accent colors supplement
-the distinct silhouettes, and active controls get a bright border and filled
-background. Gesture and portrait hit regions remain invisible, captured zones
+action buttons draw the game's own prompt glyphs -- the
+`shared/port-assets/sets/gamepad-xbox360` A/B/X/Y and Start art the retail
+prompts are lettered in, staged by `pad_glyph_manifest.py` -- inside a circle
+ringed in that glyph's colour, with a short label under the four actions.
+Active controls get a bright border and filled background. Gesture and portrait hit regions remain invisible, captured zones
 highlight, and the persistent Input setting can hide the controls. Held contacts
 persist until finger-up/cancel rather than expiring on a test-channel timeout.
+
+### Power buttons
+
+The retail HUD shows a hero's powers only while RT is held: CHudInputMap's
+update (`FUN_005a6c60`) draws four circles, slot *i* showing the power named at
+`stats + 0xc4 + i*0x15` of `FUN_0041d5a0(actor)`, resolved to a move through the
+actor's power styles, and empty when it does not resolve. The cast side
+(`FUN_004fc970`, table `0x006dc37c`) pairs slots 0..3 with action bits 4, 5, 8,
+6 -- LowAttack, HighAttack, Guard, Jump, which the Xbox preset binds to A, B,
+X, Y. The touch layout drops the separate held Powers modifier and offers each
+slot as its own button instead.
+
+`src/native/power_slots_runtime.c` overrides that update, runs the game's body,
+and then -- only while touch is the input, and only when the actor or its four
+slot names changed -- asks the same functions the ring asks. A move's `icon`
+is the byte at `+0x13c`; its style (`move->vfunc 0xe0`) keeps the `iconfile`
+name as a string-pool handle at `+0x68`. The runtime hands the four atlas
+cells to `x2_touch_runtime_power_slots`, which builds a zone only for a slot
+with a power, so a locked or unassigned power has no button. A press routes to
+`TouchAction::PowerN`, which the pad publisher turns into RT plus that face
+button; a button shared by several held controls stays down until the last
+one lets go.
+
+`src/ui/igb_textures.{hpp,cpp}` loads the atlas from the player's install
+(`Textures/ui/<hero>_icons1.IGB`, a 4x4 grid of 32x32 icons in 128x128) through
+`shared/alchemy`'s reader. Its rows are stored bottom first: the ring draws
+Magneto's innate power (`icon="4"`) from the third stored row, upside down
+unless reversed. The corners are opaque black under the game's ring frame, so
+each cell is cut to its inscribed circle.
+
+Observed 2026-09-24 in the tutorial with Magneto (`input.touch_controls=2`,
+Xvfb): the runtime resolved `textures/ui/magneto_icons1.png` and icons
+`4 -1 -1 -1`, the overlay drew one power button with the game's icon, and
+holding it raised the retail RT ring -- the chord reached the game. That the
+chord casts is C224's evidence (RT+A with the same pad codes).
 
 ## Reaching the guest at all
 
@@ -173,7 +204,7 @@ already chose keeps player one.
 | `ctest -R thumb_stick` | The stick's own policy: an off-centre landing steering nothing, equal travel in every direction, the circular clamp, the dead zone and its rescale, release, and a ring with no size |
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
 | `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, cancellation on layout change |
-| `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, the Powers chord staying whole under a second thumb, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |
+| `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, power buttons drawn only for published slots and chording RT with their own face button, a button shared by two held controls staying down until both lift, a vanished power releasing, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |
 | `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD/control bounds, and at least 48 output-pixel action targets in those cases |
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |

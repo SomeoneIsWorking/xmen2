@@ -26,12 +26,21 @@ static const float kHudPotionsHeight = 0.10F;
 static const float kHudPortraitsWidth = 0.24F;
 static const float kHudPortraitsHeight = 0.22F;
 static const float kHudGap = 0.02F;
+/* The powers ring the action diamond on its open side, inboard and up, where
+   the right thumb reaches from the attacks without crossing them. Degrees
+   from the cluster's right, counter-clockwise, in slot order. The angles are
+   not evenly spread: each neighbouring pair -- and each power beside Jump or
+   Use -- differs by a full diameter on one axis, so no two touch squares
+   overlap, and the highest stays clear of the party portraits. */
+static const float kPowerDiameter = 0.78F; /* of an action button */
+static const float kPowerAngles[4] = {215.0F, 180.0F, 153.0F, 120.0F};
 static const float kTouchTargetMinimum = 0.075F; /* of the short edge */
 static const float kTouchTargetPadding = 0.012F;
 
 static const char *const kSlotNames[] = {
-    "vitals",       "potions", "portraits", "stick",  "light-attack",
-    "heavy-attack", "use",     "jump",      "powers", "pause"};
+    "vitals",       "potions", "portraits", "stick",   "light-attack",
+    "heavy-attack", "use",     "jump",      "power-1", "power-2",
+    "power-3",      "power-4", "pause"};
 
 _Static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                    (int)kX2SlotCount,
@@ -150,7 +159,11 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     const float reach = button + gap * 0.5F;
     const float extent = reach + button * 0.5F;
     const float separation = button * 0.5F;
-    const float needed = inset * 2.0F + stick + separation + extent * 2.0F;
+    /* The powers' arc reaches further inboard than the diamond does. */
+    const float power = button * kPowerDiameter;
+    const float arc = reach + button * 0.5F + power * 0.5F + gap;
+    const float inboard = arc + power * 0.5F;
+    const float needed = inset * 2.0F + stick + separation + extent + inboard;
     const float fit = needed > width ? width / needed : 1.0F;
     const float s_stick = stick * fit;
     const float s_button = button * fit;
@@ -179,13 +192,19 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     out[kX2SlotUse] = centred(cluster_x, cluster_y - s_reach, s_button);
     out[kX2SlotJump] = centred(cluster_x - s_reach, cluster_y, s_button);
 
-    /* The held Powers modifier sits above the movement stick. Ability
-     * selection then uses the opposite thumb's four face actions; placing
-     * the modifier in that same diamond made two-thumb chords unreachable.
-     * Jump remains usable while moving because it is now on the right. */
-    out[kX2SlotPowers] =
-        centred(out[kX2SlotStick].left + s_stick * 0.5F,
-                out[kX2SlotStick].top - gap * fit - s_button * 0.5F, s_button);
+    /* Four power slots on an arc outside the diamond, centred as far out as
+     * the diamond's reach plus both radii and a gap, so no power touches an
+     * action button whatever the fit. */
+    {
+      const float s_power = power * fit;
+      const float radius = arc * fit;
+      for (int i = 0; i < 4; ++i) {
+        const float angle = kPowerAngles[i] * 3.14159265F / 180.0F;
+        out[kX2SlotPower1 + i] =
+            centred(cluster_x + cosf(angle) * radius,
+                    cluster_y - sinf(angle) * radius, s_power);
+      }
+    }
 
     /* Pause uses the top gap between the vitals reservation and the
      * centerline. The retail HUD publishes status/notification icons on the

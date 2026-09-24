@@ -68,7 +68,13 @@ typedef enum X2LayoutSlot {
   kX2SlotHeavyAttack,
   kX2SlotUse,
   kX2SlotJump,
-  kX2SlotPowers,
+  /* The hero's four RT powers, in the game's slot order (A, B, X, Y). A slot
+     is always placed; whether it is DRAWN is the controls' decision, because
+     it depends on which powers the hero has, not on the viewport. */
+  kX2SlotPower1,
+  kX2SlotPower2,
+  kX2SlotPower3,
+  kX2SlotPower4,
   kX2SlotPause,
   kX2SlotCount /* MUST stay last */
 } X2LayoutSlot;

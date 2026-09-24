@@ -46,66 +46,65 @@ body {
     opacity: 1;
 }
 
-/* Ability accent colors */
+/* Each action's ring takes its prompt glyph's colour -- the Xbox face
+   colours the game's own prompts are drawn in -- so the circle and the glyph
+   inside it read as one control. */
 .touch-zone.zone-light {
-    border-color: rgba(56, 189, 248, 85%);
+    border-color: rgba(95, 177, 58, 85%);
 }
-.touch-zone.zone-light.active,
-.powers-active .touch-zone.zone-light {
-    border-color: #38BDF8;
-    background-color: rgba(2, 132, 199, 55%);
-    opacity: 1;
+.touch-zone.zone-light.active {
+    border-color: #5FB13A;
+    background-color: rgba(95, 177, 58, 45%);
 }
 
 .touch-zone.zone-heavy {
-    border-color: rgba(245, 158, 11, 85%);
+    border-color: rgba(209, 59, 51, 85%);
 }
-.touch-zone.zone-heavy.active,
-.powers-active .touch-zone.zone-heavy {
-    border-color: #F59E0B;
-    background-color: rgba(180, 83, 9, 55%);
-    opacity: 1;
+.touch-zone.zone-heavy.active {
+    border-color: #D13B33;
+    background-color: rgba(209, 59, 51, 45%);
 }
 
 .touch-zone.zone-use {
-    border-color: rgba(34, 197, 94, 85%);
+    border-color: rgba(46, 109, 180, 85%);
 }
-.touch-zone.zone-use.active,
-.powers-active .touch-zone.zone-use {
-    border-color: #22C55E;
-    background-color: rgba(21, 128, 61, 55%);
-    opacity: 1;
+.touch-zone.zone-use.active {
+    border-color: #2E6DB4;
+    background-color: rgba(46, 109, 180, 45%);
 }
 
 .touch-zone.zone-jump {
-    border-color: rgba(168, 85, 247, 85%);
+    border-color: rgba(232, 178, 31, 85%);
 }
-.touch-zone.zone-jump.active,
-.powers-active .touch-zone.zone-jump {
-    border-color: #A855F7;
-    background-color: rgba(126, 34, 206, 55%);
-    opacity: 1;
+.touch-zone.zone-jump.active {
+    border-color: #E8B21F;
+    background-color: rgba(232, 178, 31, 45%);
 }
 
-.touch-zone.zone-powers {
-    border-color: rgba(244, 63, 94, 85%);
-    background-color: rgba(74, 16, 34, 72%);
+/* A power: the game's own round icon, filling the circle it is outlined by. */
+.touch-zone.zone-power {
+    border-color: rgba(220, 238, 255, 80%);
+    background-color: rgba(10, 18, 29, 45%);
 }
-.touch-zone.zone-powers.active,
-.powers-active .touch-zone.zone-powers {
-    border-color: #F43F5E;
-    background-color: rgba(225, 29, 72, 70%);
-    opacity: 1;
+.touch-zone.zone-power.active {
+    border-color: #FFFFFF;
+    background-color: rgba(255, 255, 255, 30%);
+}
+
+.touch-power-icon {
+    width: 92%;
+    height: 92%;
+    display: block;
+    pointer-events: none;
 }
 
 .touch-zone.zone-pause {
-    border-radius: 14dp;
-    border-color: rgba(148, 163, 184, 45%);
+    border-color: rgba(220, 220, 220, 60%);
 }
 
 .touch-icon {
-    width: 55%;
-    height: 55%;
+    width: 50%;
+    height: 50%;
     display: block;
     margin: 0 auto;
     pointer-events: none;

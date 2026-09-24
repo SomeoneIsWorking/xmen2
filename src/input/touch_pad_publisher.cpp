@@ -8,46 +8,54 @@
 #include "touch_pad.h"
 
 #include <algorithm>
+#include <array>
 
 namespace x2::input {
 namespace {
 
-/* The one place an action becomes a pad button. Derived from the Xbox release
-   bindings in src/native/xbox_defaults.c, never invented per screen. */
-const char *button_name(TouchAction action) {
-  switch (action) {
-  case TouchAction::LightAttack:
-    return "a";
-  case TouchAction::HeavyAttack:
-    return "b";
-  case TouchAction::Jump:
-    return "y";
-  case TouchAction::Use:
-    return "x";
-  case TouchAction::Powers:
-    return "righttrigger";
-  case TouchAction::EnergyPack:
-    return "lefttrigger";
-  case TouchAction::HealthPack:
-    return "rightshoulder";
-  case TouchAction::NextHero:
-    return "up";
-  case TouchAction::PreviousHero:
-    return "down";
-  case TouchAction::DecreaseAggr:
-    return "left";
-  case TouchAction::IncreaseAggr:
-    return "right";
-  case TouchAction::MapToggle:
-    return "rightstick";
-  case TouchAction::Pause:
-    return "start";
-  case TouchAction::Stats:
-    return "back";
-  default:
-    return nullptr;
+/* The one place an action becomes pad buttons. Derived from the Xbox release
+   bindings in src/native/xbox_defaults.c, never invented per screen. A power
+   is RT with the face button its slot pairs with (FUN_004fc970's table at
+   0x006dc37c: slots 0..3 are LowAttack, HighAttack, Guard, Jump -- A, B, X,
+   Y), pressed together as the retail ring teaches. */
+struct ActionButtons {
+  TouchAction action;
+  std::array<const char *, 2> names;
+  std::size_t count;
+};
+
+constexpr std::array<ActionButtons, 17> kActionButtons = {{
+    {TouchAction::LightAttack, {"a"}, 1},
+    {TouchAction::HeavyAttack, {"b"}, 1},
+    {TouchAction::Jump, {"y"}, 1},
+    {TouchAction::Use, {"x"}, 1},
+    {TouchAction::Power1, {"righttrigger", "a"}, 2},
+    {TouchAction::Power2, {"righttrigger", "b"}, 2},
+    {TouchAction::Power3, {"righttrigger", "x"}, 2},
+    {TouchAction::Power4, {"righttrigger", "y"}, 2},
+    {TouchAction::EnergyPack, {"lefttrigger"}, 1},
+    {TouchAction::HealthPack, {"rightshoulder"}, 1},
+    {TouchAction::NextHero, {"up"}, 1},
+    {TouchAction::PreviousHero, {"down"}, 1},
+    {TouchAction::DecreaseAggr, {"left"}, 1},
+    {TouchAction::IncreaseAggr, {"right"}, 1},
+    {TouchAction::MapToggle, {"rightstick"}, 1},
+    {TouchAction::Pause, {"start"}, 1},
+    {TouchAction::Stats, {"back"}, 1},
+}};
+
+} // namespace
+
+std::span<const char *const> touch_action_buttons(TouchAction action) {
+  for (const auto &entry : kActionButtons) {
+    if (entry.action == action) {
+      return {entry.names.data(), entry.count};
+    }
   }
+  return {};
 }
+
+namespace {
 
 bool is_release(lucent::touch::Phase phase) {
   return phase == lucent::touch::Phase::ended ||
@@ -57,45 +65,71 @@ bool is_release(lucent::touch::Phase phase) {
 } // namespace
 
 void PadPublisher::publish_button(const ActionEvent &event) {
-  const bool withdrawn = event.phase == lucent::touch::Phase::canceled;
-  const char *button = button_name(event.action);
-  X2TouchCensus &census = *x2_touch_census();
-  char reason[256];
-  if (!button) {
+  const auto buttons = touch_action_buttons(event.action);
+  if (buttons.empty()) {
     return;
   }
+  /* A button is down while ANY control holding it is: a power holds RT and a
+     face button that Attack or another power may hold too, and letting go of
+     one must not lift the other's. */
+  const std::pair<std::int64_t, std::uint32_t> holder{event.contact_id,
+                                                      event.zone_id};
   if (is_release(event.phase)) {
-    /* A cancelled press is taken back, not completed, so it does not wait for
-       the game to read it. */
-    if (withdrawn ? dinput_pad_virtual_release_now(button)
-                  : dinput_pad_virtual_release(button)) {
-      census.buttons_published++;
-      /*
-       * How many times did the game ASK while that press was held?
-       *
-       * "Published and never seen" has two causes that look identical in a
-       * total: the state was not visible to the reader, or the reader never
-       * ran while it was set. Only a count taken across the press itself
-       * tells them apart.
-       */
-      if (first_press_reads_ && !told_first_release_) {
-        X2PadPollCounts counts;
-        told_first_release_ = true;
-        dinput_pad_poll_counts(&counts);
-        x2_log_error("touch: first press of \"%s\" released -- the game read "
-                     "a button %lu time(s) while it was held, %lu of them "
-                     "DOWN\n",
-                     button, counts.button_reads - (first_press_reads_ - 1),
-                     counts.buttons_down);
+    if (!held_.erase(holder)) {
+      return;
+    }
+    for (const char *button : buttons) {
+      if (--holders_[button] == 0) {
+        release(button, event.phase == lucent::touch::Phase::canceled);
       }
-    } else {
-      census.buttons_refused++;
-      x2_log_error("touch: could not release virtual button %s\n", button);
     }
     return;
   }
-  if (dinput_pad_virtual_set(button, event.value, -1.0, reason,
-                             sizeof reason)) {
+  if (!held_.insert(holder).second) {
+    return;
+  }
+  for (const char *button : buttons) {
+    if (holders_[button]++ == 0) {
+      press(button, event.value);
+    }
+  }
+}
+
+void PadPublisher::release(const char *button, bool withdrawn) {
+  X2TouchCensus &census = *x2_touch_census();
+  /* A cancelled press is taken back, not completed, so it does not wait for
+     the game to read it. */
+  if (withdrawn ? dinput_pad_virtual_release_now(button)
+                : dinput_pad_virtual_release(button)) {
+    census.buttons_published++;
+    /*
+     * How many times did the game ASK while that press was held?
+     *
+     * "Published and never seen" has two causes that look identical in a
+     * total: the state was not visible to the reader, or the reader never
+     * ran while it was set. Only a count taken across the press itself
+     * tells them apart.
+     */
+    if (first_press_reads_ && !told_first_release_) {
+      X2PadPollCounts counts;
+      told_first_release_ = true;
+      dinput_pad_poll_counts(&counts);
+      x2_log_error("touch: first press of \"%s\" released -- the game read "
+                   "a button %lu time(s) while it was held, %lu of them "
+                   "DOWN\n",
+                   button, counts.button_reads - (first_press_reads_ - 1),
+                   counts.buttons_down);
+    }
+  } else {
+    census.buttons_refused++;
+    x2_log_error("touch: could not release virtual button %s\n", button);
+  }
+}
+
+void PadPublisher::press(const char *button, float value) {
+  X2TouchCensus &census = *x2_touch_census();
+  char reason[256];
+  if (dinput_pad_virtual_set(button, value, -1.0, reason, sizeof reason)) {
     census.buttons_published++;
     /*
      * The FIRST press says what reading it back found, once.

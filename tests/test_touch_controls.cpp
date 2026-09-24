@@ -5,69 +5,62 @@ extern "C" {
 }
 
 #include <algorithm>
+#include <array>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <vector>
 
 namespace {
 
-bool power_chords() {
+bool power_slots() {
   using lucent::touch::Contact;
   using lucent::touch::Phase;
   using x2::input::TouchAction;
   x2::input::TouchControls controls;
   controls.set_viewport({844, 390, {32, 0, 20, 12}});
-  const auto point = [&controls](TouchAction action) {
+  const auto zone_of = [&controls](TouchAction action) {
     const auto zones = controls.zones();
     const auto found =
         std::find_if(zones.begin(), zones.end(), [action](const auto &zone) {
           return zone.action == action;
         });
-    if (found == zones.end())
-      return std::optional<lucent::touch::Point>{};
-    return std::optional{
-        lucent::touch::Point{(found->zone.left + found->zone.right) / 2,
-                             (found->zone.top + found->zone.bottom) / 2}};
+    return found == zones.end()
+               ? std::optional<x2::input::TouchControls::ZoneVisual>{}
+               : std::optional{*found};
   };
-  const auto modifier = point(TouchAction::Powers);
-  if (!modifier) {
-    std::cerr << "ability modifier has no touch zone\n";
+  if (zone_of(TouchAction::Power1)) {
+    std::cerr << "a power was drawn before the game published one\n";
     return false;
   }
-  controls.route(std::array{Contact{1, *modifier, Phase::began}});
-  for (const auto action : {TouchAction::LightAttack, TouchAction::HeavyAttack,
-                            TouchAction::Use, TouchAction::Jump}) {
-    const auto button = point(action);
-    if (!button) {
-      std::cerr << "ability action has no touch zone\n";
-      return false;
-    }
-    const auto events =
-        controls.route(std::array{Contact{1, *modifier, Phase::moved},
-                                  Contact{2, *button, Phase::began}});
-    const auto active = [&events](TouchAction expected) {
-      return std::any_of(
-          events.begin(), events.end(), [expected](const auto &event) {
-            return event.action == expected && event.value == 1.0F;
-          });
-    };
-    if (!active(TouchAction::Powers) || !active(action) || events.size() != 2) {
-      std::cerr << "opposite-thumb ability chord lost its held modifier\n";
-      return false;
-    }
-    const auto released =
-        controls.route(std::array{Contact{2, *button, Phase::ended}});
-    if (released.size() != 1 || released.front().action != action ||
-        released.front().value != 0) {
-      std::cerr << "ability release also released the held modifier\n";
-      return false;
-    }
+  if (!controls.set_power_icons({-1, 9, -1, 2}).empty()) {
+    std::cerr << "publishing powers with nothing held released something\n";
+    return false;
   }
-  const auto canceled = controls.cancel();
-  if (canceled.size() != 1 || canceled.front().action != TouchAction::Powers ||
-      canceled.front().value != 0) {
-    std::cerr
-        << "modifier did not remain held through four ability selections\n";
+  const auto second = zone_of(TouchAction::Power2);
+  const auto fourth = zone_of(TouchAction::Power4);
+  if (!second || !fourth || second->power_icon != 9 ||
+      fourth->power_icon != 2 || zone_of(TouchAction::Power1) ||
+      zone_of(TouchAction::Power3)) {
+    std::cerr << "power zones do not follow the published slots\n";
+    return false;
+  }
+  const lucent::touch::Point at{(second->zone.left + second->zone.right) / 2,
+                                (second->zone.top + second->zone.bottom) / 2};
+  const auto pressed = controls.route(std::array{Contact{1, at, Phase::began}});
+  if (pressed.size() != 1 || pressed.front().action != TouchAction::Power2 ||
+      pressed.front().value != 1.0F) {
+    std::cerr << "a drawn power does not route to its own action\n";
+    return false;
+  }
+  if (!controls.set_power_icons({-1, 9, -1, 2}).empty()) {
+    std::cerr << "republishing the same powers released a held one\n";
+    return false;
+  }
+  const auto vanished = controls.set_power_icons({-1, -1, -1, 2});
+  if (vanished.size() != 1 || vanished.front().action != TouchAction::Power2 ||
+      vanished.front().value != 0.0F || zone_of(TouchAction::Power2)) {
+    std::cerr << "a power that vanished under a finger stayed held\n";
     return false;
   }
   return true;
@@ -368,7 +361,7 @@ int main() {
     std::cerr << "viewport change did not release the old layout\n";
     return 1;
   }
-  if (!portrait_regions() || !power_chords())
+  if (!portrait_regions() || !power_slots())
     return 1;
   std::cout
       << "touch controls: layout, action mapping, and cancellation passed\n";

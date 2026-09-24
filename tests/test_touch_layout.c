@@ -111,9 +111,15 @@ int main(void) {
               slots[slot].bottom > viewport.height * 0.5f);
       }
     }
-    /* The held modifier uses the opposite thumb from the four abilities. */
-    CHECK(name, slots[kX2SlotPowers].left < viewport.width * 0.5f);
-    CHECK(name, slots[kX2SlotPowers].bottom <= slots[kX2SlotStick].top);
+    /* The powers belong to the right thumb with the abilities they chord:
+       inboard of the diamond, never under the left thumb's stick. */
+    for (i = (int)kX2SlotPower1; i <= (int)kX2SlotPower4; ++i) {
+      CHECK(x2_layout_slot_name(i), slots[i].left > slots[kX2SlotStick].right);
+      CHECK(x2_layout_slot_name(i),
+            slots[i].right <= slots[kX2SlotHeavyAttack].left);
+      CHECK(x2_layout_slot_name(i),
+            slots[i].top > slots[kX2SlotPortraits].bottom);
+    }
     /* Pause leaves the retail status/notification centerline clear. */
     CHECK(name, slots[kX2SlotPause].top < viewport.height * 0.5f);
     CHECK(name,
@@ -125,12 +131,10 @@ int main(void) {
     /* The stick and the action cluster must not be reachable by one hand
        only because they are close: they belong to opposite thumbs. */
     CHECK(name, slots[kX2SlotStick].right < slots[kX2SlotJump].left);
-    /* A resting left thumb can move while the right thumb jumps. Powers
-       uses the left hand, leaving all four ability choices on the right. */
-    CHECK(name, slots[kX2SlotPowers].right < slots[kX2SlotJump].left);
+    /* A resting left thumb can move while the right thumb jumps. */
     CHECK(name, slots[kX2SlotJump].right <= slots[kX2SlotLightAttack].left);
-    for (i = (int)kX2SlotLightAttack; i <= (int)kX2SlotPowers; ++i)
-      CHECK("face/modifier target at least 48 output pixels on tested devices",
+    for (i = (int)kX2SlotLightAttack; i <= (int)kX2SlotPower4; ++i)
+      CHECK("face/power target at least 48 output pixels on tested devices",
             slots[i].right - slots[i].left >= 48.0f);
   }
 
