@@ -1373,6 +1373,17 @@ of that memory when they are recorded, so neither step protected anything. On
 `#test-play` (10,119,389-byte wasm) `WEBGPU_MapTransferBuffer` falls from 727
 samples to 4. The canvas still reads 98% non-black with no uncaptured errors.
 
+**A loop back to its own block stays chained** (x86port `0a6a83c`). The
+engine refused to link an exit to the block that took it, so every guest loop
+of one block went through the dispatcher on each iteration: about 1.7% of
+block entries in the browser, roughly 5,000 per frame. Nothing needed the
+refusal; a self-link has the same stop, budget and invalidation as any other.
+On `#test-play` (10,134,398-byte wasm, 90 s) dispatcher re-entries fall to
+0.1% of block entries and chained exits carry 97.9%. `run_guest` falls from
+3.96% to 3.56% of the busiest worker's samples and presents rise from about
+40-44 a second to 44-51. The canvas reads 98.2% non-black with no uncaptured
+errors.
+
 **Browser blocks call overrides and thunks in place** (x86port `614cd72`,
 `9aaa4bd`). The wasm backend had no leaves, so every CALL to a leaf override
 or leaf-safe thunk left the block for the dispatcher: about 24,000 hand-backs
