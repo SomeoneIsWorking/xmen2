@@ -1351,6 +1351,20 @@ at or beyond 2^63, an empty operand, or a push onto a full stack. On
 appears, and `sin`, `cos`, `atan2` and `__rem_pio2` together are 0.08% of the
 non-idle samples. The canvas reads 98% non-black with no uncaptured errors.
 
+**Browser blocks compute their own flag work** (x86port `c410e64`,
+`6ba57c8`, `282d478`). There were three changes:
+
+- The wasm backend no longer derives the dead `carry_in` before ADD, SUB,
+  CMP and the logic ops, a rule the x64 and arm64 backends already applied.
+- NEG, INC, DEC and SHL/SHR/SAR by an immediate count now run in the block.
+- CF after an unknown predecessor is dispatched on the recorded kind instead
+  of calling `x86p_flag_cf`.
+
+On `#test-play` (10,119,323-byte wasm, 15 s profile of the guest worker),
+`x86p_flag_cf` falls from 1,517 samples to 43, `x86p_alu_unary` from about
+509 to 0, and `x86p_alu` from 363 to 111. Translated blocks rise from 50.3% to
+52.8% of the worker. The canvas reads 98% non-black with no uncaptured errors.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
