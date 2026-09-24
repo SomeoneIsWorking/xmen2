@@ -6,8 +6,8 @@
 #include <stdio.h>
 #include <sys/types.h>
 
-/* Transfer file bytes through the guest memory owner. A guest range can cross
- * distinct host allocations even when its 32-bit addresses are contiguous. */
+/* Transfer file bytes directly into or out of the guest window. A range that
+ * is null or runs past 4 GB is refused with EFAULT before any transfer. */
 size_t x2_guest_fread(uint32_t destination, size_t size, size_t count,
                       FILE *stream);
 size_t x2_guest_fwrite(uint32_t source, size_t size, size_t count,

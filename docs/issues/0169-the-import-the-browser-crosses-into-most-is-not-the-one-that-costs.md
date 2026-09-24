@@ -140,3 +140,17 @@ cap in this scene, so the gain here is headroom, not frames.
 158-339 ms per 5 s over 13-14 calls. That is streaming I/O the guest issues
 and waits for, so the fix belongs in how the install is read, not in this
 issue.
+
+**The file layer no longer splits guest reads.** `guest_file_io.c` copied every
+guest `fread`/`fwrite`/`read`/`write` through a 16 KB stack buffer. That was
+left over from when guest pages were separate host allocations. The guest is
+now one linear window, so the transfer goes straight through
+`guest_memory_pointer`: one host call per guest call. In the browser each host
+read is one synchronous OPFS proxy, so a 256 KB guest read was 16 proxies and
+is now one. Null ranges and ranges past 4 GB are refused with `EFAULT` before
+any transfer; `test_guest_memory_window` covers both, and it fails when the
+null refusal is removed. The Dead Zone worker profile afterwards has
+`emscripten_futex_wait` at 0.89%, 95.5% of it OPFS reads. That sits inside the
+spread of earlier runs on this route (0.66% to 2.45%), which depends on what
+the scene streams. No wall-clock gain is claimed from it; the proxy count per
+guest read is what changed.

@@ -199,6 +199,13 @@ int main(void) {
                 fread(restored, 1, payload_size, output) == payload_size &&
                 memcmp(restored, payload, payload_size) == 0,
             "file-descriptor write gathers a later guest page");
+      errno = 0;
+      check(x2_guest_fread(0, 1, 16, input) == 0 && errno == EFAULT,
+            "a read into the null guest address is refused");
+      errno = 0;
+      check(x2_guest_write_fd(fileno(output), UINT32_MAX, 2) == -1 &&
+                errno == EFAULT,
+            "a write that runs past 4 GB is refused");
     }
     if (input) {
       fclose(input);
