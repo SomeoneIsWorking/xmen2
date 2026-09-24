@@ -1400,6 +1400,15 @@ On `#test-play` (10,134,398-byte wasm, 90 s) dispatcher re-entries fall to
 40-44 a second to 44-51. The canvas reads 98.2% non-black with no uncaptured
 errors.
 
+**A block calls a block of its own shared module directly** (x86port
+`1b9acfd`). Every chained transfer went through the trampoline module, a call
+into another instance and an indirect call out of it. An exit to a block
+compacted into the same module now tail-calls it there when its slot names
+that block's entry. On `#test-play` (10,069,642-byte wasm) 41,320 exits are
+direct (`JIT modules` heartbeat line), and the trampoline falls from 4.3% to
+3.2% of the busiest worker's samples. The canvas reads 98.2% non-black with no
+uncaptured errors.
+
 **VS 1.1 runs on the GPU** (issue #187). A programmable draw used to run the
 guest's program on the CPU into a buffer made, uploaded and destroyed for that
 draw. The device now packs each decoded program once (`d3d8_vs_gpu.cpp`); the

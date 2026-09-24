@@ -75,12 +75,14 @@ static void report_compaction(const X86pJitEngineStats *js, const char *why,
                     "%sJIT modules: %llu translated block(s) were gathered "
                     "into %llu shared module(s), %llu gathering(s) refused; "
                     "%llu block(s) waiting for a batch and %llu engine(s) "
-                    "have stopped gathering for good",
+                    "have stopped gathering for good; %llu exit(s) call a "
+                    "block of their own module directly",
                     prefix, (unsigned long long)js->blocks_translated,
                     (unsigned long long)js->compactions,
                     (unsigned long long)js->compaction_refusals,
                     (unsigned long long)js->compaction_pending,
-                    (unsigned long long)js->compaction_stopped);
+                    (unsigned long long)js->compaction_stopped,
+                    (unsigned long long)js->chain_exits_direct);
   }
   /* What a refusal SAID, not only that there was one. The gathering that a
      browser run refused is also the one that taught the arena a ceiling that
