@@ -11,6 +11,7 @@
 #include "x86_engine_private.h"
 #include "x86_engine_report.h"
 #include "x86_engine_x87_census.h"
+#include "x86_engine_x87_precision.h"
 #include "x86_guest_call_stack.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -193,12 +194,14 @@ int x2_engine_call(uint32_t addr, CPU *C) {
 
   /*
    * Every CPU that runs guest code passes through here, and one that does not
-   * performs no x87 arithmetic to count, so this is where an optional x87
-   * instrument is attached. Putting it in cpu_reset would have been one line
+   * performs no x87 arithmetic, so this is where the x87 unit's policy is
+   * attached: the optional census and the arithmetic's precision. Putting them
+   * in cpu_reset would have been one line
    * fewer and would have given a header included almost everywhere a link
    * dependency on the engine.
    */
   x86_engine_x87_census_attach(cpu);
+  x86_engine_x87_precision_attach(cpu);
 
   /*
    * A thread with no TEB cannot run guest code correctly, and the

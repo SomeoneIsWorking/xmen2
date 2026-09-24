@@ -1728,6 +1728,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_jit_diag.c
     src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c
+    src/native/x86_engine_x87_precision.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c
     src/presentation/boot_blackout.c

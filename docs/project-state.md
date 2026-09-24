@@ -1292,6 +1292,16 @@ module: Binaryen's asyncify refuses any function that holds a tail call. On
 guest worker, down from 5.5%, and the transfer helper no longer appears.
 Gameplay presents about 173 times per 5 s.
 
+**Browser x87 arithmetic runs in binary64, inside the block** (x86port
+`a79c395`, `x87.double`). On hosts with no x87 unit (the browser, ARM64 Linux
+and Android), `x86_engine_x87_precision_attach` selects binary64 x87
+arithmetic, the precision Apple Silicon already runs at. `x87.double=0` turns
+it off. The wasm backend computes FADD/FSUB/FMUL/FDIV in the block itself, and
+the exact helper answers everything the arm refuses. On `#test-play`
+(10,118,517-byte wasm, 25 s profile), the four x87 arithmetic helpers leave the
+guest worker's top 30; together they were about 6.9%. Translated blocks rise
+from 35% to 41% of the worker and port native code falls from 25% to 18%.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm

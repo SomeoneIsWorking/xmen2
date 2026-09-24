@@ -165,6 +165,10 @@ lucent::cvar::Var<long> g_control_port{"control.port", 0};
 lucent::cvar::Var<long> g_jit_peek{"jit.peek", 0};
 lucent::cvar::Var<long> g_jit_peek_words{"jit.peekn", 16};
 lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
+/* x87 arithmetic in binary64 where the host has no x87 unit
+ * (x86_engine_x87_precision.h). ON by default: Apple Silicon has always run at
+ * this precision. */
+lucent::cvar::Var<bool> g_x87_double{"x87.double", true};
 
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
  * Either can be the one that binds, and which one it is decides what to fix,
@@ -300,6 +304,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_peek);
   lucent::cvar::register_var(g_jit_peek_words);
   lucent::cvar::register_var(g_x87_census);
+  lucent::cvar::register_var(g_x87_double);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);
