@@ -1341,6 +1341,16 @@ buffer. On `#test-play` (10,115,182-byte wasm) `writeBuffer` falls from 1,825
 samples to 679, and `malloc` leaves the guest worker's top 30. The canvas
 still reads 91% non-black, with no uncaptured errors.
 
+**Binary64 x87 units answer FSQRT and the trig functions in binary64**
+(x86port `c509120`). They still went through the 128-bit softfloat, where
+FSINCOS alone put `f128_mulAdd` at about 0.5% of the guest worker. They now use
+the host's libm, under the arithmetic's control-word rules. Anything the libm
+path refuses is left to the exact form: a negative square root, a trig argument
+at or beyond 2^63, an empty operand, or a push onto a full stack. On
+`#test-play` (10,116,562-byte wasm, 15 s profile), `f128_mulAdd` no longer
+appears, and `sin`, `cos`, `atan2` and `__rem_pio2` together are 0.08% of the
+non-idle samples. The canvas reads 98% non-black with no uncaptured errors.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
