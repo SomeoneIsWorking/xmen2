@@ -1425,6 +1425,20 @@ Presents stay at about 43 a second, a scene-dependent figure. The canvas reads
 98.2% non-black, skinned characters draw correctly, and there are no
 uncaptured errors.
 
+**About a tenth of what is left belongs to V8's tiering, which a page cannot
+set.** Same 10,069,732-byte wasm, `#test-play`, 240 s each, and the busiest
+worker is fully busy in both runs. Default Chrome holds a steady 53.1 presents
+a second. Chrome with `--js-flags=--no-liftoff` (WebLua `-js-flags`) holds
+59.0, with a longer load. Per presented frame the worker spends about 8% fewer
+samples, spread evenly over the translated blocks and the port's own code,
+so no single function holds it. The 1,911 shared modules are stable after
+load, so no module restarts in V8's baseline tier. V8 tiers a function up after
+about 13 MB of its code has executed (`--wasm-tiering-budget`), and code that
+runs often but not that often stays in the baseline tier. The only settings
+are engine flags (`--wasm-tiering-budget`,
+`--experimental-wasm-compilation-hints`), and a player's browser runs with
+the defaults.
+
 **Browser blocks call overrides and thunks in place** (x86port `614cd72`,
 `9aaa4bd`). The wasm backend had no leaves, so every CALL to a leaf override
 or leaf-safe thunk left the block for the dispatcher: about 24,000 hand-backs
