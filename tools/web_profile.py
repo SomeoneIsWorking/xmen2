@@ -30,6 +30,7 @@ import sys
 import time
 
 from cdp_client import Cdp, CdpError, CdpTimeout, browser_endpoint, devtools_port
+from cdp_console import attached_sessions
 
 # THE URL DECIDES WHOSE CODE IT IS; THE SYMBOL SAYS WHICH PART.
 #
@@ -112,36 +113,6 @@ def categorize(name: str, url: str) -> str:
     return "other"
 
 
-def _attached_sessions(client: Cdp) -> list[tuple[str, dict]]:
-    """Every (sessionId, targetInfo) the browser auto-attached us to.
-
-    Dedicated workers are NOT listed by `Target.getTargets`: they are children
-    of their page. The only way to reach one is to attach to the page and turn
-    auto-attach on, which replays an `attachedToTarget` event for each worker
-    that already exists.
-    """
-    sessions: list[tuple[str, dict]] = []
-    for page in client.call("Target.getTargets")["targetInfos"]:
-        if page["type"] != "page":
-            continue
-        page_session = client.call(
-            "Target.attachToTarget", {"targetId": page["targetId"], "flatten": True}
-        )["sessionId"]
-        sessions.append((page_session, page))
-        client.call(
-            "Target.setAutoAttach",
-            {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True},
-            session=page_session,
-        )
-        client.drain(1.5)
-    for event in client.events:
-        if event.get("method") != "Target.attachedToTarget":
-            continue
-        params = event["params"]
-        sessions.append((params["sessionId"], params["targetInfo"]))
-    return sessions
-
-
 def pick_sessions(client: Cdp, want: str | None) -> list[tuple[str, dict]]:
     """Every session to profile.
 
@@ -154,7 +125,7 @@ def pick_sessions(client: Cdp, want: str | None) -> list[tuple[str, dict]]:
     identifies it is samples that are not idle or parked, which is how
     summarize() ranks them.
     """
-    sessions = _attached_sessions(client)
+    sessions = attached_sessions(client)
     seen: set[str] = set()
     unique = []
     for session, target in sessions:
@@ -182,7 +153,7 @@ def pick_sessions(client: Cdp, want: str | None) -> list[tuple[str, dict]]:
 
 
 def list_targets(client: Cdp) -> int:
-    sessions = _attached_sessions(client)
+    sessions = attached_sessions(client)
     if not sessions:
         print("the browser attached NO targets at all")
         return 1

@@ -1422,6 +1422,12 @@ set_tests_properties(web_touch_play PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ENVIRONMENT "X2_TEST_TOUCH_RUNTIME_BINARY=$<TARGET_FILE:test_touch_runtime>")
 
+# Every browser recorder reads the console through cdp_console; a worker that
+# starts after it attaches, and the stack a trap carries, must both reach it.
+add_test(NAME cdp_console
+         COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_cdp_console)
+set_tests_properties(cdp_console PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 
 # The 42 binding-row storage keys and display labels in
 # src/input/binding_rows.c are read out of XMen2.exe and igct.bnx; this diffs

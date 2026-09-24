@@ -30,7 +30,7 @@ import sys
 import time
 
 from cdp_client import Cdp, CdpError, browser_endpoint, devtools_port
-from cdp_console import CONSOLE_EVENTS, attach_all_targets, console_line
+from cdp_console import CONSOLE_EVENTS, adopt_late_target, attach_all_targets, console_line
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -86,7 +86,11 @@ def main() -> int:
                     # usually the ones worth having.
                     closed = f"; recording ended early: {failure}"
                     deadline = 0.0
+                # Live iteration: enabling a late worker's console runs a call
+                # whose replies and events land on this same list.
                 for event in cdp.events:
+                    if adopt_late_target(cdp, event, sessions):
+                        continue
                     if event.get("method") not in CONSOLE_EVENTS:
                         continue
                     line = console_line(event)

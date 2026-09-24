@@ -1073,6 +1073,11 @@ per-cause counts will say.
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
+A browser without a WebGPU adapter is refused at setup by name ("does not
+provide a WebGPU adapter"), and a failure the game reports through a message
+box reaches the page as a real dialog instead of trapping the guest worker
+(#160, SDL fork eaab1e2).
+
 Every browser measurement this port had made was headless Chrome, and the first
 Firefox-family report was a black screen: Zen 1.22.2b (Firefox 156) with WebGPU
 enabled never opened the setup page at all. Reproduced headless over Marionette

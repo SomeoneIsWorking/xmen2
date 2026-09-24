@@ -1,7 +1,7 @@
 #include "browser_log.hpp"
 
-#include <SDL3/SDL_timer.h>
 #include <emscripten/em_asm.h>
+#include <emscripten/eventloop.h>
 #include <lucent/log.h>
 
 #include <cstdint>
@@ -144,14 +144,14 @@ void install_browser_log_sink() {
      the reason a boot stalled) withheld from the console indefinitely,
      indistinguishable from silence. Diagnosing issue #152 spent real time
      on exactly that confusion. A bounded periodic flush, independent of
-     main()'s own progress, caps how stale the console can ever be. */
-  SDL_AddTimer(
-      250,
-      [](void *, SDL_TimerID, Uint32 interval) -> Uint32 {
-        flush_browser_log();
-        return interval;
-      },
-      nullptr);
+     main()'s own progress, caps how stale the console can ever be.
+
+     The interval is the browser's, not an SDL timer: the sink outlives SDL,
+     which the product quits and re-initialises (its startup window probe
+     ends in SDL_Quit). SDL_Quit freed an SDL timer's entry while its
+     browser timeout stayed pending, and the next firing ran on freed memory
+     -- a trap in a no-GPU browser, issue #160. */
+  emscripten_set_interval([](void *) { flush_browser_log(); }, 250.0, nullptr);
 }
 
 void flush_browser_log() { console_sink().flush(); }

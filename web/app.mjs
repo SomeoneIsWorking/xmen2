@@ -137,16 +137,20 @@ archive.addEventListener("change", async () => {
 });
 
 /* The capability gate is the only thing a player on an unsupported browser ever
- * sees, so it must name the capability that is actually missing. */
-function missingBrowserFeatures() {
+ * sees, so it must name the capability that is actually missing. A browser can
+ * expose `navigator.gpu` and still have no adapter to give -- acceleration off,
+ * a blocklisted GPU, a VM -- and that is asked here, before the guest boots,
+ * rather than discovered when the game's CreateDevice fails (#160). */
+async function missingBrowserFeatures() {
   const missing = [];
   if (!navigator.gpu) missing.push("WebGPU");
+  else if (!await navigator.gpu.requestAdapter()) missing.push("a WebGPU adapter");
   if (!globalThis.OffscreenCanvas) missing.push("OffscreenCanvas");
   return missing;
 }
 
 async function prepare() {
-    const missing = missingBrowserFeatures();
+    const missing = await missingBrowserFeatures();
     if (missing.length > 0) {
       throw new Error(
         `This browser does not provide ${missing.join(" or ")}. The port renders ` +
