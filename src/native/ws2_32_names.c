@@ -12,10 +12,10 @@
 #include "stdcall_import.h"
 #include "threads.h"
 #include "winsock_posix.h"
+#include "winsock_resolve.h"
 #include "x86rt_native.h"
 
 #include <arpa/inet.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -25,8 +25,8 @@
    MAX_ADDRESSES address pointers plus the terminator, the addresses, and the
    inet_ntoa text. */
 enum {
-  MAX_ADDRESSES = 8,
-  NAME_BYTES = 256,
+  MAX_ADDRESSES = WINSOCK_HOST_ADDRESSES,
+  NAME_BYTES = WINSOCK_HOST_NAME_BYTES,
   HOSTENT = 0,
   HOST_NAME = HOSTENT + 16,
   ALIASES = HOST_NAME + NAME_BYTES,
@@ -121,38 +121,33 @@ void imp_WS2_32__57(CPU *C) {
   ret_std(C, 0, 2);
 }
 
-/* struct hostent *gethostbyname(const char *name) -- IPv4 answers only. */
+/* struct hostent *gethostbyname(const char *name) -- IPv4 answers only,
+   with Windows' answers for the machine's own names (winsock_resolve.h). */
 void imp_WS2_32__52(CPU *C) {
   char name[NAME_BYTES];
-  struct addrinfo hints, *found = NULL;
+  WinsockHost host;
+  uint32_t error = 0;
   if (!A(0) || !guest_text(A(0), name, sizeof name)) {
     winsock_set_last_error(WSAEFAULT);
     ret_std(C, 0, 1);
     return;
   }
-  memset(&hints, 0, sizeof hints);
-  hints.ai_family = AF_INET;
   guest_blocking_begin();
-  const int rc = getaddrinfo(name, NULL, &hints, &found);
+  const int found = winsock_resolve(name, &host, &error);
   guest_blocking_end();
-  if (rc != 0 || !found) {
-    winsock_set_last_error(WSAHOST_NOT_FOUND);
+  if (!found) {
+    winsock_set_last_error(error);
     ret_std(C, 0, 1);
     return;
   }
   const uint32_t block = answer_block();
-  uint32_t count = 0;
-  for (const struct addrinfo *at = found; at && count < MAX_ADDRESSES;
-       at = at->ai_next) {
-    const struct sockaddr_in *in = (const struct sockaddr_in *)at->ai_addr;
-    guest_memory_write(block + ADDRESSES + count * 4u, &in->sin_addr, 4);
-    WR32(block + ADDRESS_LIST + count * 4u, block + ADDRESSES + count * 4u);
-    ++count;
+  for (uint32_t i = 0; i < host.count; ++i) {
+    guest_memory_write(block + ADDRESSES + i * 4u, &host.addresses[i], 4);
+    WR32(block + ADDRESS_LIST + i * 4u, block + ADDRESSES + i * 4u);
   }
-  freeaddrinfo(found);
-  WR32(block + ADDRESS_LIST + count * 4u, 0);
+  WR32(block + ADDRESS_LIST + host.count * 4u, 0);
   WR32(block + ALIASES, 0);
-  guest_memory_write(block + HOST_NAME, name, strlen(name) + 1);
+  guest_memory_write(block + HOST_NAME, host.name, strlen(host.name) + 1);
   WR32(block + HOSTENT + 0u, block + HOST_NAME);
   WR32(block + HOSTENT + 4u, block + ALIASES);
   WR16(block + HOSTENT + 8u, 2);  /* h_addrtype AF_INET */

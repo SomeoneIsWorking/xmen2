@@ -42,27 +42,51 @@ The Play Online path also needed two host fixes, both landed with this issue:
 real WS2_32 sockets, and per-thread static TLS. The first GameSpy thread read
 `fs:[0x2c]` at 0x63efb0 and faulted on the zero pointer.
 
-## Designs
+## The retail LAN path needs no GameSpy server
 
-**A. A local GameSpy-compatible lobby service in the host instance.** A
-normally started port serves the minimum of Peer chat (IRC with GameSpy's
-peerchat cipher), master/Server Browser, and QR2 on the LAN. Every instance
-finds hosts by UDP broadcast of our own, and our `gethostbyname` answers the
-`*.gamespy.com` names with the chosen host. The game's unmodified lobby,
-join, and session code then runs as shipped. Cost: three GameSpy protocols
-and their ciphers, and a policy for which instance serves.
+The game's own Server Browser (`games_list`, CMenuGamesList vtable 0x0069f8b4,
+show `FUN_005b9de0`) does not ask a master server. Its periodic task
+(`LAB_00609080` → `FUN_00608f10`) broadcasts CNetPlayManager query 0x19 on the
+game socket (port 5165) while its address list `DAT_00a3bc1c` is empty. A host
+answers through the handlers `FUN_00609c80` registers (0x19 → `FUN_00608240`
+→ `FUN_00607cd0`) with reply 0x18, which the client's `FUN_006090d0` adds to
+the list at manager +0x2208 (count +0x2214). Selecting a row joins through
+`FUN_0060a0a0`. Only the Peer login stood in front of it.
 
-**B. Drive the game's session layer below GameSpy.** Recover the calls that
-the lobby's Host and Join end in: the game's own transport, which carries
-gameplay peer to peer. Then call them directly. Auto-host on boot, and the
-main-menu scan, become our own LAN discovery feeding a native list that joins
-by address. Cost: RE of the session and transport layer and of what the lobby
-state machine sets up before it hands over. It is unknown how much of that
-state lives in GameSpy objects.
+Landed, and observed with two isolated instances on one machine: A hosts from
+Play Online → Host; B's Server Browser lists A, joins, both ready, A starts, and
+the two heroes are controlled from their own instances. B quitting shows the
+game's "Player(s) have been dropped from the game" on A, which continues.
 
-Both are multi-session efforts. Neither has started.
+- `lan_login.c` answers `peerConnect` (0x0062f070) through the game's own
+  callback 0x00605d90 with the success branch, so no GameSpy name is resolved
+  and the "temporarily unavailable" race is gone. Later Peer SDK calls decline
+  on the Peer's clear connected flag.
+- `winsock_resolve` gives Windows' `gethostbyname` answers: "localhost" is named
+  after the machine, and the machine's own name lists its adapters with the
+  default-route address first. `FUN_00615d30` learns the address it advertises
+  that way; a POSIX resolver answered 127.0.1.1.
+- A datagram socket bound to an adapter address is bound to INADDR_ANY on the
+  host (Linux delivers no broadcast to a unicast-bound socket, Windows does),
+  and `getsockname` reports the requested address.
+- Continue no longer hides Play Online when there is no save.
+- The host's co-op participation policy works in seats and translates them
+  through the player→controller map, so it never evicts a network player
+  ([co-op participation](../RE/co_op_participation.md)).
 
-## What is known of the layer design B would drive
+## Still open
+
+- **Drop-in.** Once the host starts the game, `FUN_006097f0` (from 0x006135b4)
+  runs `FUN_006074b0`, which unregisters the lobby handlers, so a new client's
+  browser shows "No Games Found". Joining a running game needs the host to keep
+  answering 0x19 and the engine to accept a mid-game join; neither is known yet.
+- **Seamless entry.** Auto-hosting on a normal start and a main-menu list of
+  LAN hosts are not built; today the player goes Play Online → Host or Join.
+- **With a save,** Continue still replaces the Play Online row.
+- **Network pause.** It waits for every player's Ready; the keyboard key that
+  readies has not been identified.
+
+## The transport
 
 - **Transport** (`CNetModuleWin32`, vtable 0x006a4a88). One UDP socket,
   opened by slot 5 (`FUN_00616480`): bound to the module's port, retrying on

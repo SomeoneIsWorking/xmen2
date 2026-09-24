@@ -1,5 +1,7 @@
 #include "winsock_posix.h"
 
+#include "winsock_resolve.h"
+
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -13,9 +15,17 @@
 /* A Winsock SOCKET is the host descriptor itself, recorded here when socket()
    made it; the table is what makes "not a socket" an answer rather than a
    write to whatever descriptor the number happens to name. */
-enum { SOCKET_TABLE = 1024, SOCKET_OPEN = 1, SOCKET_NONBLOCKING = 2 };
+enum {
+  SOCKET_TABLE = 1024,
+  SOCKET_OPEN = 1,
+  SOCKET_NONBLOCKING = 2,
+  SOCKET_DATAGRAM = 4
+};
 
 static uint8_t g_sockets[SOCKET_TABLE];
+/* The adapter address a datagram socket asked to bind, which it is bound to
+   in Winsock's eyes but not the host's (winsock_bind); 0 for none. */
+static uint32_t g_bound_address[SOCKET_TABLE];
 static unsigned g_open;
 static _Thread_local uint32_t g_last_error;
 
@@ -192,7 +202,9 @@ int winsock_socket_open(int32_t family, int32_t type, int32_t protocol,
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
   }
 #endif
-  g_sockets[fd] = SOCKET_OPEN;
+  g_sockets[fd] =
+      (uint8_t)(type == 2 ? SOCKET_OPEN | SOCKET_DATAGRAM : SOCKET_OPEN);
+  g_bound_address[fd] = 0;
   ++g_open;
   return fd;
 }
@@ -217,8 +229,8 @@ int winsock_set_blocking(uint32_t handle, int blocking, uint32_t *error) {
     *error = winsock_error_from_errno(errno);
     return 0;
   }
-  g_sockets[fd] =
-      (uint8_t)(blocking ? SOCKET_OPEN : SOCKET_OPEN | SOCKET_NONBLOCKING);
+  g_sockets[fd] = (uint8_t)(blocking ? g_sockets[fd] & ~SOCKET_NONBLOCKING
+                                     : g_sockets[fd] | SOCKET_NONBLOCKING);
   return 1;
 }
 
@@ -238,6 +250,60 @@ int winsock_close(uint32_t handle, uint32_t *error) {
 }
 
 unsigned winsock_open_count(void) { return g_open; }
+
+static int is_adapter_address(uint32_t network_order) {
+  uint32_t local[WINSOCK_HOST_ADDRESSES];
+  const unsigned count = winsock_local_addresses(local, WINSOCK_HOST_ADDRESSES);
+  for (unsigned i = 0; i < count; ++i) {
+    if (local[i] == network_order) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int winsock_bind(uint32_t handle, const void *host_sockaddr_in,
+                 uint32_t *error) {
+  const int fd = table_index(handle);
+  if (fd < 0) {
+    *error = WSAENOTSOCK;
+    return 0;
+  }
+  struct sockaddr_in at;
+  memcpy(&at, host_sockaddr_in, sizeof at);
+  const uint32_t requested = at.sin_addr.s_addr;
+  const int widen =
+      (g_sockets[fd] & SOCKET_DATAGRAM) && is_adapter_address(requested);
+  if (widen) {
+    at.sin_addr.s_addr = htonl(INADDR_ANY);
+  }
+  if (bind(fd, (const struct sockaddr *)&at, sizeof at) < 0) {
+    *error = winsock_error_from_errno(errno);
+    return 0;
+  }
+  g_bound_address[fd] = widen ? requested : 0;
+  return 1;
+}
+
+int winsock_getsockname(uint32_t handle, void *host_sockaddr_in,
+                        uint32_t *error) {
+  const int fd = table_index(handle);
+  struct sockaddr_in at;
+  socklen_t size = sizeof at;
+  if (fd < 0) {
+    *error = WSAENOTSOCK;
+    return 0;
+  }
+  if (getsockname(fd, (struct sockaddr *)&at, &size) < 0) {
+    *error = winsock_error_from_errno(errno);
+    return 0;
+  }
+  if (g_bound_address[fd]) {
+    at.sin_addr.s_addr = g_bound_address[fd];
+  }
+  memcpy(host_sockaddr_in, &at, sizeof at);
+  return 1;
+}
 
 static int gather(const WinsockFdSet *set, short events, struct pollfd *polls,
                   int count, uint32_t *error) {

@@ -57,3 +57,22 @@ x2_player_participation_policy_consume(X2PlayerParticipationPolicy *policy) {
   policy->pending_leave = 0;
   return out;
 }
+
+uint8_t x2_player_seats_to_players(const X2PlayerSeatMap *map, uint8_t seats) {
+  uint8_t players = 0;
+  unsigned player;
+
+  if (!map)
+    return 0;
+  for (player = 0; player < X2_PARTICIPATION_PLAYERS; player++) {
+    const int32_t controller = map->controller_of_player[player];
+    if (controller >= 0 && controller < (int32_t)X2_PARTICIPATION_PLAYERS &&
+        (map->local_controllers & seats & (1u << controller)))
+      players |= (uint8_t)(1u << player);
+  }
+  return players;
+}
+
+uint8_t x2_player_seats_governed(const X2PlayerSeatMap *map) {
+  return x2_player_seats_to_players(map, PLAYER_MASK);
+}

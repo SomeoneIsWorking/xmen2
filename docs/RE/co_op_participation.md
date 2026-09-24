@@ -45,6 +45,21 @@ when opened because it reads the same owner.
   keyboard or controller. A process-lifetime transient controller temporarily
   suppresses their persisted source without destroying it.
 
+### Seats are not game players in a network session
+
+The host's grid assigns devices to local **seats**; the retail participation
+singleton indexes **game players**. They coincide in single-machine play. In a
+LAN session the player manager (`FUN_00551ed0`, vtable `0x0069a134`) maps each
+game player to a controller at `+4 + 4*player`, flags remote controllers at
+`+0x14 + controller`, and counts local controllers at `+0x30`. Observed: the
+host maps `0 1 2 3` and flags controller 1 remote for the joined client; the
+client maps `1 0 2 3`, so its seat 0 drives game player 1.
+
+`x2_player_seats_to_players` translates seats through that map before any join
+or leave request, and a player whose controller is remote or out of range is
+never governed by the host's policy. Without the translation the eligibility
+pass evicted every network player on every frame.
+
 The pause Players page is also a writer, so transition-on-assignment-change is
 not sufficient: it could join a slot whose assignment remains None. Every safe
 input pump queries the retail active state and requests leave for

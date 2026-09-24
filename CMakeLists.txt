@@ -268,7 +268,7 @@ target_include_directories(test_web_request PRIVATE src/web)
 add_test(NAME web_request COMMAND test_web_request)
 
 add_executable(test_winsock_posix tests/test_winsock_posix.c
-               src/native/winsock_posix.c)
+               src/native/winsock_posix.c src/native/winsock_resolve.c)
 add_test(NAME winsock_posix COMMAND test_winsock_posix)
 
 add_executable(test_touch_controls tests/test_touch_controls.cpp
@@ -1928,6 +1928,8 @@ set(X2_NATIVE_SOURCES
     src/native/ws2_32.c
     src/native/ws2_32_names.c
     src/native/winsock_posix.c
+    src/native/winsock_resolve.c
+    src/native/lan_login.c
     src/native/shell32.c
     src/native/winmm.c
     src/native/thread_report.c

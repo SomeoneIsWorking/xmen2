@@ -53,6 +53,32 @@ int main(void) {
   x2_player_participation_policy_note_start(&policy, 0u, 1);
   CHECK(x2_player_participation_policy_consume(&policy).join == 0u);
 
+  /* Seats map to game players through the game's own table. The three maps
+     are the ones observed live: local play, a LAN host whose client plays
+     game player 1 on a controller flagged remote, and that LAN client, whose
+     keyboard (seat 0) drives game player 1 behind the host's player 0. */
+  {
+    const X2PlayerSeatMap local = {{0, 1, 2, 3}, 0x0fu};
+    const X2PlayerSeatMap host = {{0, 1, 2, 3}, 0x0du};
+    const X2PlayerSeatMap client = {{1, 0, 2, 3}, 0x0fu};
+    const X2PlayerSeatMap unmapped = {{-1, 7, 2, 3}, 0x0fu};
+
+    CHECK(x2_player_seats_to_players(&local, 0x05u) == 0x05u);
+    CHECK(x2_player_seats_governed(&local) == 0x0fu);
+
+    /* The host never governs the network player, eligible seat or not. */
+    CHECK(x2_player_seats_governed(&host) == 0x0du);
+    CHECK(x2_player_seats_to_players(&host, 0x0fu) == 0x0du);
+
+    /* The client's seat 0 is game player 1, not game player 0. */
+    CHECK(x2_player_seats_to_players(&client, 0x01u) == 0x02u);
+    CHECK(x2_player_seats_to_players(&client, 0x02u) == 0x01u);
+
+    /* A player with no controller, or one out of range, is nobody's seat. */
+    CHECK(x2_player_seats_governed(&unmapped) == 0x0cu);
+    CHECK(x2_player_seats_to_players(NULL, 0x0fu) == 0u);
+  }
+
   printf("player_participation_policy: %d checks passed\n", checks);
   return 0;
 }

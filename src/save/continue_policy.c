@@ -7,7 +7,7 @@ void x2_continue_menu_plan(int has_save, X2ContinueMenuPlan *out) {
       {X2_MENU_TEXT_NEW_GAME, X2_MENU_TEXT_LOAD_GAME, X2_MENU_TEXT_DANGER_ROOM,
        X2_MENU_TEXT_REVIEW, X2_MENU_TEXT_OPTIONS, X2_MENU_TEXT_PLAY_ONLINE},
       {0u, 1u, 2u, 3u, 4u, 5u},
-      0,
+      1,
       2u,
       0};
   static const X2ContinueMenuPlan WITH_SAVE = {

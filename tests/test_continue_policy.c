@@ -22,7 +22,7 @@ int main(void) {
   x2_continue_menu_plan(0, &plan);
   CHECK(plan.text[0] == X2_MENU_TEXT_NEW_GAME);
   CHECK(plan.text[4] == X2_MENU_TEXT_OPTIONS);
-  CHECK(!plan.show_last_row);
+  CHECK(plan.show_last_row); /* Play Online leads to LAN play */
   CHECK(plan.danger_row == 2u);
   CHECK(!plan.disable_online_special);
   for (i = 0; i < X2_MAIN_MENU_ROWS; i++)

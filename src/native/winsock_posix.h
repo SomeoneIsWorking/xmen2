@@ -87,6 +87,16 @@ int winsock_blocking(uint32_t handle);
 int winsock_set_blocking(uint32_t handle, int blocking, uint32_t *error);
 int winsock_close(uint32_t handle, uint32_t *error);
 
+/* bind and getsockname as Winsock answers them. A datagram socket bound to
+   one of the machine's adapter addresses receives that network's broadcasts
+   on Windows but not on a POSIX host, where only a wildcard bind does; such a
+   socket is bound to the wildcard and still reports the address it asked
+   for. Anything else binds as given. */
+int winsock_bind(uint32_t handle, const void *host_sockaddr_in,
+                 uint32_t *error);
+int winsock_getsockname(uint32_t handle, void *host_sockaddr_in,
+                        uint32_t *error);
+
 /* select over a Windows fd_set triple (u32 count, u32 handles[64]) given as
    host-addressable arrays; each set is rewritten to hold only its ready
    handles. timeout_us < 0 waits forever. Returns the ready total or -1 with

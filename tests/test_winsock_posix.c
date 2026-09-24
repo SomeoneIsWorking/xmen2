@@ -7,6 +7,7 @@
  * refused rather than passed through under a wrong number.
  */
 #include "../src/native/winsock_posix.h"
+#include "../src/native/winsock_resolve.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -112,11 +113,112 @@ static void datagrams(void) {
   CHECK(winsock_close((uint32_t)receiver, &error));
 }
 
+static int all_loopback(const WinsockHost *host) {
+  for (unsigned i = 0; i < host->count; ++i) {
+    if ((ntohl(host->addresses[i]) >> 24) != 127u) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+/* The game learns its LAN address by resolving "localhost" and then the h_name
+   that came back; both steps must answer as Windows does. */
+static void names(void) {
+  char machine[WINSOCK_HOST_NAME_BYTES];
+  WinsockHost host;
+  uint32_t error = 0;
+  CHECK(gethostname(machine, sizeof machine) == 0);
+
+  CHECK(winsock_resolve("localhost", &host, &error));
+  CHECK(strcmp(host.name, machine) == 0);
+  CHECK(host.count == 1 && host.addresses[0] == htonl(0x7f000001u));
+
+  uint32_t local[WINSOCK_HOST_ADDRESSES];
+  const unsigned adapters = winsock_local_addresses(local, 8);
+  CHECK(winsock_resolve(machine, &host, &error));
+  CHECK(strcmp(host.name, machine) == 0 && host.count >= 1);
+  if (adapters) {
+    /* An adapter address exists, so loopback must not be what comes back,
+       and the primary one leads. */
+    CHECK(!all_loopback(&host) && host.addresses[0] == local[0]);
+  } else {
+    CHECK(host.count == 1 && all_loopback(&host));
+  }
+  printf("  own name answers %u address(es), %u adapter(s)\n", host.count,
+         adapters);
+
+  CHECK(winsock_resolve("127.0.0.1", &host, &error) && host.count == 1 &&
+        host.addresses[0] == htonl(0x7f000001u));
+  error = 0;
+  CHECK(!winsock_resolve("no-such-host.invalid", &host, &error) &&
+        error == WSAHOST_NOT_FOUND);
+}
+
+static int broadcast_reaches(int receiver, uint16_t port) {
+  const int sender = socket(AF_INET, SOCK_DGRAM, 0);
+  const int on = 1;
+  struct sockaddr_in to;
+  char buffer[8] = {0};
+  memset(&to, 0, sizeof to);
+  to.sin_family = AF_INET;
+  to.sin_port = port;
+  to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+  setsockopt(sender, SOL_SOCKET, SO_BROADCAST, &on, sizeof on);
+  const int sent =
+      sendto(sender, "bcast", 5, 0, (struct sockaddr *)&to, sizeof to) == 5;
+  close(sender);
+  WinsockFdSet read = {1, {(uint32_t)receiver}};
+  uint32_t error = 0;
+  return sent && winsock_select(&read, NULL, NULL, 500000, &error) == 1 &&
+         recv(receiver, buffer, sizeof buffer, 0) == 5;
+}
+
+/* A socket bound to the machine's LAN address hears that LAN's broadcasts on
+   Windows; the game's transport binds exactly that way and finds hosts by
+   broadcast. The raw POSIX bind beside it is the instrument's negative. */
+static void adapter_bind(void) {
+  uint32_t local[WINSOCK_HOST_ADDRESSES], error = 0;
+  if (!winsock_local_addresses(local, 1)) {
+    printf("  adapter bind: NOT RUN, this host has no adapter address\n");
+    return;
+  }
+  const int game = winsock_socket_open(2, 2, 0, &error);
+  const int raw = socket(AF_INET, SOCK_DGRAM, 0);
+  struct sockaddr_in at, seen;
+  memset(&at, 0, sizeof at);
+  at.sin_family = AF_INET;
+  at.sin_addr.s_addr = local[0];
+  CHECK(winsock_bind((uint32_t)game, &at, &error));
+  CHECK(winsock_getsockname((uint32_t)game, &seen, &error) &&
+        seen.sin_addr.s_addr == local[0] && seen.sin_port != 0);
+  CHECK(broadcast_reaches(game, seen.sin_port));
+
+  CHECK(bind(raw, (struct sockaddr *)&at, sizeof at) == 0);
+  socklen_t size = sizeof at;
+  CHECK(getsockname(raw, (struct sockaddr *)&at, &size) == 0);
+  CHECK(!broadcast_reaches(raw, at.sin_port));
+  close(raw);
+
+  CHECK(winsock_close((uint32_t)game, &error));
+
+  /* An address that is not this machine's binds as given, and fails. */
+  const int stranger = winsock_socket_open(2, 2, 0, &error);
+  at.sin_port = 0;
+  at.sin_addr.s_addr = htonl(0xc0000201u);
+  error = 0;
+  CHECK(!winsock_bind((uint32_t)stranger, &at, &error) &&
+        error == WSAEADDRNOTAVAIL);
+  CHECK(winsock_close((uint32_t)stranger, &error));
+}
+
 int main(void) {
   errors();
   addresses();
   options();
   datagrams();
+  names();
+  adapter_bind();
   CHECK(!winsock_is_socket(0) && !winsock_is_socket(0xffffffffu));
   printf("winsock posix: %d check(s), %d failure(s)\n", g_checks, g_failed);
   return g_failed ? 1 : 0;

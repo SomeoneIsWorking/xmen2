@@ -23,6 +23,7 @@
 #include "x2_log.h"
 #include "x86rt_native.h"
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <lucent/log_c.h>
 #include <netinet/in.h>
@@ -148,10 +149,15 @@ static void address_call(CPU *C, int connecting) {
     ret_result(C, 0, 0, error, 3);
     return;
   }
-  const int waited = connecting ? wait_begin(s) : 0;
-  const int rc = connecting
-                     ? connect((int)s, (struct sockaddr *)&host, sizeof host)
-                     : bind((int)s, (struct sockaddr *)&host, sizeof host);
+  if (!connecting) {
+    const int bound = winsock_bind(s, &host, &error);
+    x2_log_info("ws2_32: bind(%u, port %u) -> %s", s, ntohs(host.sin_port),
+                bound ? "bound" : "refused");
+    ret_result(C, bound, 0, error, 3);
+    return;
+  }
+  const int waited = wait_begin(s);
+  const int rc = connect((int)s, (struct sockaddr *)&host, sizeof host);
   const int err = errno;
   wait_end(waited);
   ret_result(C, rc == 0, 0, winsock_error_from_errno(err), 3);
@@ -165,8 +171,7 @@ void imp_WS2_32__4(CPU *C) { address_call(C, 1); }
 void imp_WS2_32__6(CPU *C) {
   const uint32_t s = A(0), name = A(1), length = A(2);
   struct sockaddr_in host;
-  socklen_t size = sizeof host;
-  uint32_t available = 0;
+  uint32_t available = 0, error = 0;
   if (not_socket(C, s, 3)) {
     return;
   }
@@ -176,8 +181,8 @@ void imp_WS2_32__6(CPU *C) {
     ret_result(C, 0, 0, WSAEFAULT, 3);
     return;
   }
-  if (getsockname((int)s, (struct sockaddr *)&host, &size) < 0) {
-    ret_result(C, 0, 0, winsock_error_from_errno(errno), 3);
+  if (!winsock_getsockname(s, &host, &error)) {
+    ret_result(C, 0, 0, error, 3);
     return;
   }
   winsock_sockaddr_from_host(&host, guest_memory_pointer(name));
