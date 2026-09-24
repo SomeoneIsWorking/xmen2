@@ -1,11 +1,11 @@
 ---
 id: 152
 title: Browser composites to exactly black though the logical scene has content; --vk-selftest hangs at the first fence on WebGPU
-status: investigating
+status: resolved
 symptom: browser run presents pure black (composed max 0) while the logical D3D scene it composites has content (max 191); --vk-selftest never prints a result in the browser though it passes on native
 tags: web,browser,wasm,gpu,present,webgpu,sdl,readback
 created: 2026-09-15
-updated: 2026-09-18
+updated: 2026-09-24
 ---
 
 Affected state: S021 (web WASM product), contract W2.
