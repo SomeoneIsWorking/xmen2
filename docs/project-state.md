@@ -986,27 +986,13 @@ deliberately not pinned, because no browser available here can emulate a
 non-zero inset and a run of all zeroes cannot tell a correct reader from a
 broken one (issue #170).
 
-An Android emulator run of the same revision cannot yet exercise any of this,
-and the reason is upstream of touch. On the API 35 x86_64 emulator the run
-reaches D3D8 device creation and then the guest spins inside one compiled
-block — 570,985,925 block entries, 98.4% of them re-entering the block just
-left, while host-boundary crossings stay frozen at 25,154. SDL is pumped only
-from the guest's `PeekMessageA`/`GetMessageA`, so 25 dispatched taps reached
-nothing: the census reports "no contact reached the port this run ... Nothing
-was dropped; nothing arrived" (issue #172). This is a boot defect, not a touch
-one; touch activation has no platform conditional in `src/input/` and the same
-code publishes to the pad in a browser.
-
-That block is now named: **cg.dll + 0xe2d5**, a string-hash loop whose exit
-condition subtracts a per-step bit count from 32. On the emulator that count is
-zero, so it cannot terminate. The string it is hashing is `"texture unit 0"`,
-so this is a Cg parameter lookup against a table sized for two entries. The
-difference is in guest DATA — a heap descriptor — not in generated code; which
-call built it is open, and both known constructors were watched without being
-entered. The engine now
-publishes its last block entry and the frozen-crossing beat prints it, because
-the block-entry histogram could not: on that run it dropped 1,761,478,604 of
-1,761,605,419 entries and ranked a block with 11,630 hits first.
+On the API 35 x86_64 emulator a tap now reaches the game: one `input tap` on
+the tutorial's CONTINUE advanced its dialogue as the retail GUI pointer. The run
+used to wedge before any touch could be pumped (issue #172): the emulator's
+Bionic `long double` is binary128, and x86port's x64 x87 slow paths read their
+host-widened ext80 memory operands as that format, so a Cg table constructor
+computed a hash step of zero. x86port `80e454a` fixed it and gates that layout
+in CI.
 
 Reading any of that on Android required fixing the heartbeat first. Its
 subsystem roll-call — touch census, pad, control channel, guest clock — sat
@@ -1079,8 +1065,9 @@ diagnostic probe's reads counted as the game's, a deferred release that landed
 was never latched into SDL, and a press waiting for its reader was released on
 the read of a different button.
 
-Gap: no run on a real desktop touchscreen or an Android device (issue #172
-blocks Android). A press on "start" is still reported as taken back; opening
+Gap: no run on a real desktop touchscreen or an Android device; the API 35
+emulator's tap reached the GUI pointer, and the touch overlay was not
+exercised there. A press on "start" is still reported as taken back; opening
 the pause menu hides the overlay, so that may be correct, and the new
 per-cause counts will say.
 

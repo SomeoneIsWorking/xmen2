@@ -1,18 +1,18 @@
 ---
 id: 172
 title: the Android run wedges in guest code before any touch can be pumped
-status: open
+status: resolved
 symptom: on the API 35 emulator the run reaches D3D8 device creation and then spins in one compiled block, 98.4% re-entry; SDL is pumped only from PeekMessageA/GetMessageA so no touch can arrive
 state_items: S020
 tags: android,emulator,wedge,threads,touch,jit
 created: 2026-09-19
-updated: 2026-09-22
+updated: 2026-09-24
 ---
 
 # 0172 — the Android run wedges in guest code before any touch can be pumped
 
 State items: S020 (platform-neutral touch play)
-Status: open. The touch chain itself is not implicated; nothing can reach it.
+Status: resolved by x86port `80e454a` (see "The cause" below). The touch chain was never implicated.
 
 ## Symptom
 
@@ -226,19 +226,35 @@ emitted store code, with translations flushed when it is armed so an unarmed
 run emits no compare at all. That belongs in x86port beside the block cache,
 and it is the tool this issue has now been blocked on twice.
 
-## Next
+## The cause: x87 memory operands read as the wrong format (2026-09-24)
 
+The emulator is x86_64, and Bionic's x86_64 `long double` is IEEE binary128
+-- the only x86-64 host where it is not the ext80 object. The x64 backend's
+x87 slow paths widen a memory operand with the host's own `fld` and then
+`fstp tbyte` into a stack scratch, and handed that scratch to adapters typed
+`const long double *`. On binary128 that reads ten ext80 bytes (plus six of
+stack garbage) as a binary128 value, so every JIT-translated FLD m32/m64,
+FILD, memory FADD/FSUB/FMUL/FDIV and FCOM m32/m64 took a wrong operand on
+this host and on no other. The constructor at `cg.dll + 0xdc20` is exactly
+that code -- `fild`, `fld qword`, `fyl2x`, `fdivp` -- so its bits-per-step
+can come out as anything, including the zero the hash loop cannot survive.
+Why `jit.watch` on its entry never fired is not yet explained.
 
-1. ~~Resolve `0x000c1060`~~ — it is `memmove`'s own import thunk, not a caller.
-2. ~~Name the spinning block~~ — cg.dll + 0xe2d5, a string-hash loop that
-   subtracts a step count of zero from 32. See above.
-3. Find what writes `[0x40000340 + 4]` and `+8`, given that
-   `cg.dll + 0xdc20` never runs and its output cannot produce the observed
-   pair. Both known writers are accounted for; a third path sets these
-   fields, or the object is not what this reading assumes. This needs the
-   guest-store watch described above -- the existing write watch is blind to
-   guest stores, which is the whole question.
-4. The thread question from before stands but is now secondary: the spin is
-   not waiting for another thread, it is arithmetic that cannot terminate.
-   `0 preemption(s)` on the frozen beat is consistent with that -- no other
-   guest thread was waiting for the lock.
+x86port `80e454a` decodes the scratch through `x86p_x87_from_f80`. Its new
+`tools/verify.py --binary128-model` builds the whole framework with
+`-mlong-double-128` on Linux and is a CI step; reverting the fix there fails
+seven suites. The same model found and fixed MMX being refused, register
+padding left nondeterministic, and software FXTRACT missing on every non-x87
+host.
+
+## Verified on the emulator (2026-09-24)
+
+The x86_64 debug APK at the new pin, private-install route, booted straight
+into `act0/tutorial/tutorial1` on `codex_shared_api35`. At 60 s host-boundary
+crossings were still climbing (+84,248 per beat), 135,387 GPU draws had been
+made, and `jit.watch=0x2000dc20` now fires: the constructor runs. The screen
+showed the tutorial's opening dialogue, and one `adb shell input tap` on
+CONTINUE advanced it ("2 contact(s) became the retail GUI pointer"), so touch
+reaches the game on Android.
+
+The guest-store watch this issue planned for was not needed and was not built.
