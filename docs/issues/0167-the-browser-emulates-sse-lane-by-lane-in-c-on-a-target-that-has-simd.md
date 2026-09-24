@@ -1,12 +1,12 @@
 ---
 id: 167
 title: the browser emulates SSE lane by lane in C, on a target that has SIMD
-status: investigating
+status: resolved
 symptom: 317,883,827 SSE arithmetic operations all run at round-to-nearest with FTZ and DAZ clear and four opcodes cover every one; the WASM SIMD lowering is not written
 state_items: S021
 tags: web,browser,wasm,simd,sse,x86port,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-24
 ---
 
 # 0167 — the browser emulates SSE lane by lane in C, on a target that has SIMD
@@ -227,3 +227,15 @@ No frame-rate result is claimed for this change on its own. The run that
 carried it read 12.707 +/- 0.010 presents/s at load average 5.0, which is not
 comparable with the 11.552 and 11.840 readings this issue's neighbours record
 at other host loads.
+
+## Closed (2026-09-24): the helper is gone from the profile
+
+The measure this issue opened with was the helper's self time: 3.23% of the
+guest worker. Re-profiled on the current build (x86port cc33050, 10,074,450
+bytes served, Dead Zone route, 20 s, the guest worker's 49,755 samples):
+**no sample in `x86p_wasm_simd_arithmetic`**. The symbol is in the map at
+index 4311, and the same resolver names the worker's other frames
+(`d3d8_build_draw_impl` at 1.83%). So this negative is the function not
+running, not a name that failed to resolve. The census reads `45 of 65 SIMD
+instruction(s) emitted as host SIMD`. The sites still on the helper, MINPS and
+MAXPS among them, execute too rarely to register in 49,755 samples.
