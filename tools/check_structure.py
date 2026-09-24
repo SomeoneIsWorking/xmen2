@@ -30,7 +30,7 @@ LEGACY_LIMITS = {
     "src/native/threads.c": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.c
     "src/gpu/gpu_device.c": 758,              # pass attachments -> gpu_pass_attachments.c
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
-    "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c
+    "src/native/dinput_pad.c": 378,           # sampler split into dinput_pad_sample.c
     "src/native/win32_sdl.c": 1025,           # was 930
     "src/native/conversation.c": 968,         # was 958
     "src/native/dsound.c": 745,               # was 1097 before the mixer split

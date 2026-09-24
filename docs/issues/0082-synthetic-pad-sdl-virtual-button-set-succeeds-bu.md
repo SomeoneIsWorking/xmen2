@@ -79,7 +79,7 @@ Expiry is NOT the cause: the release tick fires 0.001s past its 0.3s deadline, i
 ALSO FIXED here: this hunt was slowed by the reason buffer being reused, so an axis request answered with the previous BUTTON call's text ("joystick button 0 set ... gamepad a") and I read it as an axis result. Every exit now stamps the buffer up front. That is the second time an instrument in this area invented an observation it never made; the first was an axis counter declared and never incremented.
 
 ### Resolution (2026-08-18)
-SDL discards joystick BUTTON state when no window holds keyboard focus, while writing axis state through regardless -- which is why the pad enumerated, its axes moved, and every button read released forever. The port now sets SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS before the gamepad subsystem starts (src/native/dinput_pad.c). Before: 71,700 button polls, 0 down. After: 91,900 polls, 57 down from three presses.
+SDL discards joystick BUTTON state when no window holds keyboard focus, while writing axis state through regardless -- which is why the pad enumerated, its axes moved, and every button read released forever. The port now sets SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS before the gamepad subsystem starts (src/native/dinput_pad_subsystem.c). Before: 71,700 button polls, 0 down. After: 91,900 polls, 57 down from three presses.
 
 tests/test_virtual_pad.c was a false negative: it passed throughout because it created no window, and a process with no windows is not subject to the focus policy. It now creates a hidden window -- the game's condition -- and is verified to fail without the policy (all ten buttons) and pass with it.
 

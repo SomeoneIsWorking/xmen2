@@ -1980,14 +1980,16 @@ int main(int argc, char **argv) {
     w = SDL_CreateWindow("x2native", 800, 600, 0);
     if (!w) {
       x2_log_error("x2native: SDL_CreateWindow failed: %s\n", SDL_GetError());
-      SDL_Quit();
+      SDL_QuitSubSystem(SDL_INIT_VIDEO);
       return 1;
     }
     x2_log_info(
         "SDL: a real window exists; this is where the USER32/DINPUT/D3D8"
         " surface lands.\n");
     SDL_DestroyWindow(w);
-    SDL_Quit();
+    /* Only the reference this probe took: SDL_Quit would also stop what
+       sdl_host_setup started for the whole run (#148). */
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
 #endif
   } else {
     x2_log_info("SDL: window skipped (--no-window); the guest's own window "

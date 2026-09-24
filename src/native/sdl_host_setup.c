@@ -1,5 +1,6 @@
 #include "sdl_host_setup.h"
 
+#include "dinput_pad.h"
 #include "x2_log.h"
 
 #ifdef X2_WITH_SDL
@@ -35,6 +36,15 @@ int sdl_host_setup(void) {
                  SDL_GetError());
     return 0;
   }
+#ifdef __EMSCRIPTEN__
+  if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_SENSOR) ||
+      !dinput_pad_subsystem_start()) {
+    x2_log_error("x2native: SDL would not start its browser event sources on "
+                 "the main thread: %s\n",
+                 SDL_GetError());
+    return 0;
+  }
+#endif
   return 1;
 }
 #else

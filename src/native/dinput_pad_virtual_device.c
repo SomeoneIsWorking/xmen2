@@ -21,8 +21,7 @@ void virtual_attach(void) {
   SDL_GUID g;
   char gs[64], map[600];
 
-  SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1"); /* see above */
-  if (!SDL_WasInit(SDL_INIT_GAMEPAD) && !SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+  if (!dinput_pad_subsystem_start()) {
     x2_log_error("DINPUT-PAD: X2_VIRTUAL_PAD is set but SDL's gamepad "
                  "subsystem would not start (%s). NO pad is attached.\n",
                  SDL_GetError());

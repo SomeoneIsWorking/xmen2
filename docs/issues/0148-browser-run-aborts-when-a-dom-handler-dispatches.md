@@ -1,11 +1,11 @@
 ---
 id: 148
 title: Browser run aborts when a DOM handler dispatches to a thread whose mailbox closed
-status: investigating
+status: resolved
 symptom: browser run stops with Assertion failed: false && emscripten_proxy_async failed at html5/callback.c:40 _emscripten_run_callback_on_thread
 tags: web,browser,wasm,sdl,threads
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-24
 ---
 
 ## Symptom
@@ -80,13 +80,38 @@ thread's mailbox was closed in the failing run is not yet identified.
 2. So the browser run is not merely being killed by the assert: it also ends in
    a native abort with the guest stalled after a single presented frame.
 
-## Current correction
+## Correction
 
-None yet. The fix has to make DOM callbacks that SDL registers survive their
-registering thread: either register them against the runtime main thread
-(`emscripten_main_runtime_thread_id()`, an explicit pthread pointer, in the
-maintained SDL fork) or initialize every callback-registering SDL subsystem
-once on the main runtime thread before guest code runs. The same probe
-(listener recording + `Module.onAbort` wrapping) is the falsifier: after the
-change every recorded target must be the main runtime thread, and the browser
-run must survive a synthetic `gamepadconnected`/`resize`/`keydown` sweep.
+The missing piece was which thread owns a registration. In the browser every
+guest thread has a pthread of its own (`src/native/threads.c`), and SDL's
+video, joystick and sensor backends bind their DOM listeners to whichever
+thread first starts the subsystem. Those starts were lazy:
+- pads from the thread that first enumerates devices, and sensors when a pad
+  with sensors opens;
+- video from the renderer's `CreateDevice` caller, after the startup window
+  probe had torn the first start down with `SDL_Quit`.
+
+Any guest thread that started one and later exited left every matching DOM
+event addressed to a closed mailbox. The same class also explains the second
+symptom here: a plain `abort()` on a worker, a stalled guest.
+
+`sdl_host_setup` now starts video, sensor and gamepad in the browser, before
+any guest code runs, on the thread that runs `x2native_main`. That thread
+outlives every guest thread, and the runtime removes its listeners when it
+exits. The gamepad start goes through the pad layer's one
+`dinput_pad_subsystem_start()`, so the background-events policy is set first,
+as it is for the inventory and the synthetic pad. The window probe now
+releases only its own video reference. Every later start is a reference count
+and registers nothing.
+
+Measured on the Dead Zone route with the new build (served wasm 10,069,043
+bytes): the device was created and the route presented about 274 frames per
+5 s. A synthetic sweep at 70 s (keydown, keyup and mousemove on window,
+document and canvas, plus resize, visibilitychange and a fake
+`gamepadconnected`) aborted nothing. The same sweep after the runtime exited
+(the no-GPU route, after its dialog's OK) aborted nothing either.
+
+Not reproduced: the failing run's exact thread. The deployed build from
+`f1cf2a3` is long gone, and this route's guest has one thread. The fix
+removes the class rather than the one instance: no DOM-listening subsystem
+can now be started by a thread that can exit before the page.

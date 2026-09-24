@@ -302,6 +302,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/controller_instance.c
                src/presentation/touch_layout.c
                src/native/dinput_pad.c
+               src/native/dinput_pad_subsystem.c
                src/native/dinput_pad_identity.c
                src/native/dinput_pad_sample.c
                src/native/dinput_pad_virtual.c
@@ -869,6 +870,7 @@ add_custom_target(x2_prompt_glyph_atlas
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
 # other -- so it links straight into a test binary.
 add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
+               src/native/dinput_pad_subsystem.c
                src/native/dinput_pad_identity.c
                src/native/dinput_pad_sample.c
                src/native/dinput_pad_report.c
@@ -1864,6 +1866,7 @@ set(X2_NATIVE_SOURCES
     src/native/dinput_script.c
     src/native/dinput_joystick.c
     src/native/dinput_pad.c
+    src/native/dinput_pad_subsystem.c
     src/native/dinput_pad_identity.c
     src/native/dinput_pad_sample.c
     src/native/dinput_pad_virtual.c

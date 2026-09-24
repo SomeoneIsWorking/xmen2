@@ -41,6 +41,13 @@ enum {
   DINPUT_PAD_AXIS_COUNT
 };
 
+/* Start SDL's gamepad subsystem under this layer's input policy (background
+   button events allowed, set before init reads it). 1 when it runs, already
+   or now; 0 when SDL refused or this build has no SDL. Every path that needs
+   pads starts them through here, and the browser host calls it early, on the
+   one thread that outlives every DOM event (sdl_host_setup.h). */
+int dinput_pad_subsystem_start(void);
+
 /* Rescan, opening pads that appeared and closing pads that went away. Safe to
    call every frame; it only does work when SDL reports a change. */
 void dinput_pad_refresh(void);
