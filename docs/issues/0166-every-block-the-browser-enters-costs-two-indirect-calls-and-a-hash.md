@@ -1,18 +1,18 @@
 ---
 id: 166
 title: every block the browser enters costs two indirect calls and a hash
-status: open
+status: closed
 symptom: dispatch is second only to x87 in the guest worker: two indirect calls and a hash table lookup per block entry
 state_items: S021
 tags: web,browser,wasm,jit,dispatch,performance
 created: 2026-09-19
-updated: 2026-09-23
+updated: 2026-09-24
 ---
 
 # 0166 — every block the browser enters costs two indirect calls and a hash
 
 - **State items:** S021
-- **Status:** measured, not started
+- **Status:** closed: block exits chain, and dispatch is under 1% of the worker
 - **Found by:** categorising the guest worker's samples by owner after the #162
   widening work, which put dispatch second behind x87
 
@@ -266,4 +266,16 @@ cached as guarded, and at that address. Host thunks, which never get a block,
 are remembered in the front cache as "ask first" so a hand-back costs no table
 probe. On the desktop Dead Zone route the intercept is now asked for 4.3% of
 block entries (78.6M of 1,817M), and cycles per frame fell 5.5%; the browser
-route has not been re-measured. Chaining is still not started.
+route has not been re-measured.
+
+## Resolution: exits chain
+
+x86port chains block exits on the WebAssembly backend: an exit tail-calls
+its linked successor, a computed target probes the block cache's front array,
+a loop links to its own entry (`0a6a83c`), and a block calls a block of its
+own shared module directly (`1b9acfd`). On `#test-play` (10,069,642-byte
+wasm), 97.6% of block entries come from a chained exit and 0.1% re-enter
+through the dispatcher. On the busiest guest worker, `JIT dispatch /
+execution` is 0.43% of samples against the 12.4% measured here. The
+chaining trampoline is 3.2%, and all translated guest code is 58%.
+
