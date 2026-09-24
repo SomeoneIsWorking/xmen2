@@ -1978,6 +1978,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_draw_trace.c
     src/gpu/gpu_frame_timing.c
     src/gpu/gpu_frame_timing_report.c
+    src/gpu/gpu_host_timer.c
     src/gpu/gpu_shadow.c
     src/gpu/gpu_depth_binding.c
     src/gpu/gpu_shadow_selftest.c

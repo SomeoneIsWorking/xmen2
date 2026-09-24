@@ -31,6 +31,7 @@
 #include "gpu_frame_timing.h"
 #include "gpu_frame_timing_report.h"
 #include "gpu_headless.h"
+#include "gpu_host_timer.h"
 #include "gpu_internal.h"
 #include "gpu_pass_attachments.h"
 #include "gpu_present.h"
@@ -40,7 +41,6 @@
 #include "gpu_upload_batch.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef X2_WITH_SDL
@@ -455,7 +455,7 @@ int gpu_frame_begin(void) {
     gpu_set_offscreen_target(t, gpu_headless_width(), gpu_headless_height());
     gpu_shadow_frame_begin();
     g_clear.mask = 0;
-    gpu_frame_host_reset();
+    gpu_host_timer_frame_reset();
     gpu_headless_note_frame();
     return 1;
   }
@@ -518,7 +518,7 @@ int gpu_frame_begin(void) {
     g_swap = gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
   gpu_shadow_frame_begin();
   g_clear.mask = 0;
-  gpu_frame_host_reset();
+  gpu_host_timer_frame_reset();
   return 1;
 #endif
 }

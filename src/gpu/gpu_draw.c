@@ -3,6 +3,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_draw_trace.h"
+#include "gpu_host_timer.h"
 #include "gpu_index_storage.h"
 #include "gpu_internal.h"
 #include "gpu_pipeline.h"
@@ -135,25 +136,6 @@ unsigned long gpu_frame_draws_so_far(void) {
   return gpu_draw_trace_draws_so_far();
 }
 
-/*
- * Per-frame host share, for attributing a SLOW frame at the moment it ends.
- *
- * gpu_frame_end knows the frame's wall time; these know this frame's host
- * draw/upload time so far. The two, printed together on a frame that took long
- * enough to matter, say whether the stall was guest logic (the frame crossed
- * a lot of guest code while the host share was small) or this renderer.
- * Reset once per frame by gpu_frame_begin, read by gpu_frame_end.
- */
-static unsigned long long g_frame_draw_ns, g_frame_upload_ns;
-
-/* The slow-frame attribution hooks, called by the frame owner. */
-void gpu_frame_host_reset(void) { g_frame_draw_ns = g_frame_upload_ns = 0; }
-
-void gpu_frame_host_share(unsigned long long *draw_ns,
-                          unsigned long long *upload_ns) {
-  *draw_ns = g_frame_draw_ns;
-  *upload_ns = g_frame_upload_ns;
-}
 int gpu_frame_had_programmable(void) {
   /* gpu_frame_end increments the presented count before the capture hook. */
   return g_vs_frame + 1u == gpu_frames_presented();
@@ -240,21 +222,7 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
   return h;
 }
 
-/*
- * Frame-phase profiler: accumulated wall time inside the two host hot paths
- * (draw submission, transfer-buffer upload), and how many uploads ran.
- *
- * Deliberately wall time of the HOST's share of the frame only. The guest is
- * guest execution running on the same thread, so a frame's wall time is guest
- * crossings plus these paths plus the submit at gpu_frame_end, and the guest
- * share is what is LEFT over -- which is how these three numbers can say where
- * a slow frame actually went instead of asserting it. The reader (heartbeat)
- * takes the same torn-read trade every other counter here does.
- */
-static unsigned long long g_draw_ns, g_upload_ns;
-static unsigned long long g_upload_alloc_ns; /* reserve+Map+memcpy+Unmap */
-static unsigned long long
-    g_upload_record_ns; /* recording the copy into the frame's batch */
+/* How many uploads ran; their time is gpu_host_timer's. */
 static unsigned long g_uploads;
 /* Copy command buffers, owned by gpu_upload_batch and read back here so the
    report can say whether the frame's uploads actually shared one. */
@@ -273,7 +241,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   SDL_GPUCopyPass *cp;
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
-  unsigned long long t0 = gpu_perf_now_ns(), t1;
+  unsigned long long t0 = gpu_host_timer_ns(), t1;
   uint32_t base = 0;
 
   if (r->kind == GPU_BUF_INDEX) {
@@ -285,8 +253,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   staged = gpu_staging_write(g_gpu, data, bytes);
   if (!staged.buffer)
     return 0;
-  t1 = gpu_perf_now_ns();
-  g_upload_alloc_ns += t1 - t0;
+  t1 = gpu_host_timer_ns();
 
   cp = gpu_upload_batch_pass(g_gpu);
   if (!cp)
@@ -317,12 +284,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
    */
   SDL_UploadToGPUBuffer(cp, &src, &dr, r->kind != GPU_BUF_INDEX);
   r->serial = ++g_buffer_serial;
-  {
-    unsigned long long now = gpu_perf_now_ns();
-    g_upload_record_ns += now - t1;
-    g_frame_upload_ns += now - t0;
-    g_upload_ns += now - t0;
-  }
+  gpu_host_timer_upload(t0, t1);
   g_uploads++;
   return 1;
 }
@@ -483,14 +445,13 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     gpu_bgr8_to_bgra8(data, expanded, lw * lh);
     upload_data = expanded;
   }
-  t0 = gpu_perf_now_ns();
+  t0 = gpu_host_timer_ns();
 
   staged = gpu_staging_write(g_gpu, upload_data, upload_bytes);
   free(expanded);
   if (!staged.buffer)
     return 0;
-  t1 = gpu_perf_now_ns();
-  g_upload_alloc_ns += t1 - t0;
+  t1 = gpu_host_timer_ns();
 
   cp = gpu_upload_batch_pass(g_gpu);
   if (!cp)
@@ -506,12 +467,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   dr.h = lh;
   dr.d = 1;
   SDL_UploadToGPUTexture(cp, &src, &dr, false);
-  {
-    unsigned long long now = gpu_perf_now_ns();
-    g_upload_record_ns += now - t1;
-    g_frame_upload_ns += now - t0;
-    g_upload_ns += now - t0;
-  }
+  gpu_host_timer_upload(t0, t1);
   g_uploads++;
   return 1;
 }
@@ -664,7 +620,7 @@ int gpu_draw(const GpuDraw *d) {
   GpuShadowSample shadow;
   Res *vres, *ires = NULL, *tres = NULL, *tres1 = NULL, *cres = NULL;
   SDL_GPUSampler *smp, *smp1;
-  unsigned long long t0 = gpu_perf_now_ns();
+  unsigned long long t0 = gpu_host_timer_ns();
   uint32_t n;
   int depth_test;
 
@@ -1048,11 +1004,7 @@ int gpu_draw(const GpuDraw *d) {
      through every early-return refusal would add an instrument to the very
      paths the run tells us never fire. State scores the accepted cost of a
      frame, which is the number a hotspot story has to rest on. */
-  {
-    unsigned long long dt = gpu_perf_now_ns() - t0;
-    g_frame_draw_ns += dt;
-    g_draw_ns += dt;
-  }
+  gpu_host_timer_draw(t0);
   return 1;
 }
 
@@ -1074,10 +1026,11 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
                    unsigned long long *upload_record_ns,
                    unsigned long long *transfer_creates, unsigned long *uploads,
                    unsigned long *submits) {
-  *draw_ns = g_draw_ns;
-  *upload_ns = g_upload_ns;
-  *upload_alloc_ns = g_upload_alloc_ns;
-  *upload_record_ns = g_upload_record_ns;
+  GpuHostTimes times = gpu_host_timer_totals();
+  *draw_ns = times.draw_ns;
+  *upload_ns = times.upload_ns;
+  *upload_alloc_ns = times.upload_alloc_ns;
+  *upload_record_ns = times.upload_record_ns;
   /* The ring owns the allocation count, so the report cannot drift from what
      the driver was actually asked for. */
   gpu_staging_ring_stats(NULL, transfer_creates, NULL);
@@ -1094,6 +1047,7 @@ static unsigned long staging_allocs(void) {
 
 void gpu_draw_report(void) {
   const unsigned long batches = gpu_upload_batch_submits();
+  GpuHostTimes times = gpu_host_timer_totals();
   x2_log_info(
       "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
       "(%d still cached; the device teardown empties the cache, so these "
@@ -1105,14 +1059,18 @@ void gpu_draw_report(void) {
               gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->vertices_kept,
               gpu_pass_binds()->indices_kept, gpu_pass_binds()->samplers_kept);
   if (g_draws)
+    x2_log_info("        %lu upload(s) using %lu transfer-buffer alloc(s), "
+                "batched into %lu command buffer(s)\n",
+                g_uploads, staging_allocs(), batches);
+  if (g_draws && gpu_host_timer_armed())
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
-                "total (%.3f alloc+copy, %.3f record) across %lu "
-                "uploads using %lu transfer-buffer alloc(s), batched into "
-                "%lu command buffer(s)\n",
-                (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
-                (double)g_upload_alloc_ns * 1e-9,
-                (double)g_upload_record_ns * 1e-9, g_uploads, staging_allocs(),
-                batches);
+                "total (%.3f alloc+copy, %.3f record)\n",
+                (double)times.draw_ns * 1e-9, (double)times.upload_ns * 1e-9,
+                (double)times.upload_alloc_ns * 1e-9,
+                (double)times.upload_record_ns * 1e-9);
+  if (g_draws && !gpu_host_timer_armed())
+    x2_log_info("        draw and upload host time not timed "
+                "(gpu.host_timing=1 times it)\n");
   if (!g_draws)
     x2_log_info("        NOTHING was drawn. Either no draw call reached this "
                 "backend, or every one was refused above.\n");

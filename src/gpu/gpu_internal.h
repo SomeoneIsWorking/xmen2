@@ -19,14 +19,11 @@
 /*
  * Wall clock, nanoseconds, monotonic.
  *
- * The only profiler primitive this subsystem needs. clock_gettime through the
- * vDSO is ~20-30 ns, which is why it can be called twice per draw and twice
- * per upload without perturbing the thing being measured to the point of
- * lying -- the repo's own reproof of the Vulkan validation layer is the other
- * side of the same trade: THAT instrument inspects every draw and changed the
- * timing, so it had to be off by default, and the ~40 ns of this one does not.
- * Said here so a slow frame is not chased through an instrument that caused
- * the slowness.
+ * The only profiler primitive this subsystem needs. Natively it is a vDSO
+ * read of about 30 ns; in the browser it is a call into JavaScript's
+ * performance.now(), which is why the per-draw and per-upload reads go through
+ * gpu_host_timer and are off by default. Said here so a slow frame is not
+ * chased through an instrument that caused the slowness.
  */
 static inline unsigned long long gpu_perf_now_ns(void) {
   struct timespec ts;
@@ -92,15 +89,6 @@ void gpu_draw_shutdown(void);
 /* Flushes the opt-in texture-format capability diagnostic after gpu_device.c
    has established the SDL device. */
 void gpu_texture_flush_format_support_report(void);
-
-/*
- * The frame's HOST share so far (draw submission + uploads), for attributing a
- * slow frame at the moment it ends. gpu_frame_begin resets, gpu_frame_end
- * reads. Not in the public header on purpose: only the frame owner needs it.
- */
-void gpu_frame_host_reset(void);
-void gpu_frame_host_share(unsigned long long *draw_ns,
-                          unsigned long long *upload_ns);
 
 #endif
 

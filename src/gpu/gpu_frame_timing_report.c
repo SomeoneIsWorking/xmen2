@@ -4,17 +4,23 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing.h"
+#include "gpu_host_timer.h"
 #include "gpu_internal.h"
 
 #include <stdio.h>
 
 static void slow_frame_report(unsigned long frame, unsigned long long dt_ns) {
-  unsigned long long draw_ns, upload_ns;
-  gpu_frame_host_share(&draw_ns, &upload_ns);
+  GpuHostTimes host = gpu_host_timer_frame();
+  if (!gpu_host_timer_armed()) {
+    x2_log_error("gpu: frame %lu took %.0f ms; its host draw and upload share "
+                 "was not timed (gpu.host_timing=1 times it)\n",
+                 frame, (double)dt_ns * 1e-6);
+    return;
+  }
   x2_log_error("gpu: frame %lu took %.0f ms; host draw %.1f ms + "
                "upload %.1f ms, the rest is guest logic and the submit\n",
-               frame, (double)dt_ns * 1e-6, (double)draw_ns * 1e-6,
-               (double)upload_ns * 1e-6);
+               frame, (double)dt_ns * 1e-6, (double)host.draw_ns * 1e-6,
+               (double)host.upload_ns * 1e-6);
 }
 
 void gpu_frame_timing_report_install(void) {
@@ -38,24 +44,32 @@ void gpu_frame_timing_report_interval(void) {
   unsigned long long dns, uns, una, unsb, tc, swns;
   unsigned long up, sb, intervals, swn, swprompt;
   unsigned long long swworst;
+  char host[160];
   gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
   gpu_frame_timing_swapchain_wait(&swns, &swn, &swprompt, &swworst);
   gpu_draw_perf(&dns, &uns, &una, &unsb, &tc, &up, &sb);
+  if (!gpu_host_timer_armed()) {
+    snprintf(host, sizeof host,
+             "host draw and upload not timed "
+             "(gpu.host_timing=1 times them)");
+  } else {
+    snprintf(host, sizeof host,
+             "host draw %.2f ms/frame, host upload %.2f "
+             "ms/frame (alloc %.2f + record %.2f)",
+             intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0);
+  }
   x2_log_error("[HB]           perf: frame wall avg %.1f ms "
-               "min %.1f max %.1f (of %lu intervals) -- host "
-               "draw %.2f ms/frame, host upload %.2f "
-               "ms/frame (alloc %.2f + record %.2f), %lu "
+               "min %.1f max %.1f (of %lu intervals) -- %s, %lu "
                "uploads and %lu transfer-buffer alloc(s) batched into %lu copy "
                "command buffer(s), swapchain wait %.2f ms/frame over %lu "
                "acquisition(s), %lu of which returned in under 1 ms and the "
                "longest took %.1f ms\n",
                fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
                fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6, intervals,
-               intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
-               intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
-               intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
-               intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0,
-               (unsigned long)up, (unsigned long)tc, sb,
+               host, (unsigned long)up, (unsigned long)tc, sb,
                swn ? (double)swns * 1e-6 / (double)swn : 0.0, swn, swprompt,
                (double)swworst * 1e-6);
   (void)esub;

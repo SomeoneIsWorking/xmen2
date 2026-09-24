@@ -1312,6 +1312,14 @@ guest reaches `_setjmp3`. On `#test-play` (10,114,051-byte wasm, 25 s profile)
 comes from a guest call. `wasm-to-js` falls from 1,413 to 618, and JS glue from
 12.8% to 9.3% of the guest worker.
 
+**The renderer's per-draw clock is opt-in** (`gpu.host_timing`, off). Every
+draw and upload read the clock two or three times, which in the browser is a
+call into JavaScript's `performance.now()`. The same `#test-play` profile
+(10,116,652-byte wasm) takes `_emscripten_get_now` from 1,683 samples to 301,
+none of them from `gpu_draw`, and JS glue from 9.3% to 7.3%. The heartbeat,
+slow-frame and shutdown reports say the host share was not timed, and the flag
+brings the timing back.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm

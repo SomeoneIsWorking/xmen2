@@ -169,6 +169,10 @@ lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
  * (x86_engine_x87_precision.h). ON by default: Apple Silicon has always run at
  * this precision. */
 lucent::cvar::Var<bool> g_x87_double{"x87.double", true};
+/* The renderer's per-draw and per-upload host timing (gpu_host_timer.h). OFF
+ * by default: in the browser each of its clock reads is a call into
+ * JavaScript. */
+lucent::cvar::Var<bool> g_gpu_host_timing{"gpu.host_timing", false};
 
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
  * Either can be the one that binds, and which one it is decides what to fix,
@@ -305,6 +309,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_peek_words);
   lucent::cvar::register_var(g_x87_census);
   lucent::cvar::register_var(g_x87_double);
+  lucent::cvar::register_var(g_gpu_host_timing);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);
