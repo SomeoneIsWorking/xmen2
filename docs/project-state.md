@@ -1280,6 +1280,18 @@ every block module instead, and Chrome's renderer ran out of memory in
 `WasmDispatchTable::Grow` seconds into the title: V8 regrows each importing
 instance's dispatch table whenever the table grows.
 
+**Chained transfers are tail calls, and RETs chain** (x86port `cb5a537`). A
+computed exit (RET, indirect JMP/CALL) that misses its slot now probes the block
+cache's front array. With ordinary calls, each transfer held two frames, and the
+guest worker overflowed its stack ("Maximum call stack size exceeded") once RETs
+chained. Blocks now `return_call` a one-function trampoline module, which
+`return_call_indirect`s the target, so a chain of any length runs in constant
+stack and the per-dispatch cap is gone. The trampoline cannot live in the main
+module: Binaryen's asyncify refuses any function that holds a tail call. On
+`#test-play` (10,101,790-byte wasm, 25 s profile), the dispatcher is 3.5% of the
+guest worker, down from 5.5%, and the transfer helper no longer appears.
+Gameplay presents about 173 times per 5 s.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
