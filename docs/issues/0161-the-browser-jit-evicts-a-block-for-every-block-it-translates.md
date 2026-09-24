@@ -1,18 +1,20 @@
 ---
 id: 161
 title: the browser JIT evicts a block for almost every block it translates
-status: open
+status: resolved
 symptom: the code arena is too small for the working set, so translation and eviction run at nearly the same rate
 state_items: S021
 tags: web,browser,wasm,jit,x86port,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-24
 ---
 
 # 0161 — the browser JIT evicts a block for almost every block it translates
 
 - **State items:** S021
-- **Status:** measured and attributed; the arena has not yet been resized
+- **Status:** resolved. The arena was resized to 65,536 blocks and 128 MB
+  (`src/native/x86_engine_jit_pool.c`), and a second route was measured
+  (below): neither evicts.
 - **Follows:** #157, which removed the cost that was hiding this one
 
 ## The measurement
@@ -168,3 +170,18 @@ If a run with the cap raised far above the working set still evicts at the same
 rate, the cap is not what binds and the victim loop is being entered for
 another reason — the byte budget, or a storage that reports no room while
 holding some.
+
+## Resolved: a second route fits too (2026-09-24)
+
+Both routes, run in the browser at the shipped size (65,536 blocks, 128 MB),
+each to its plateau, reading the heartbeat's eviction line:
+
+| route | blocks at plateau | module bytes | evictions |
+|---|---|---|---|
+| Dead Zone (`act1/deadzone/deadzone1`), 280 s | 61,511 | 67,097 KiB | 0 |
+| Genosha (`--test-map=act1/genosha/genosha1`), 230 s | 59,984 | 65,083 KiB | 0 |
+
+The two working sets are close because most translated code is the engine's,
+not the map's. Both are within the block cap by 6-9% and use half of the
+byte budget. A map that needs more will show evictions in the same heartbeat
+line, by name.
