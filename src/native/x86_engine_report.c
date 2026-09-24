@@ -401,6 +401,24 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         (unsigned long long)js.x87_stores_translated,
         100.0 * (double)js.x87_stores_inline / (double)js.x87_stores_translated,
         (unsigned long long)(js.x87_stores_translated - js.x87_stores_inline));
+  /* And the memory comparisons: the inline arm orders two normals or zeros
+     and declines the integer forms, so the share is again a property of the
+     values as well as of the code. */
+  if (js.x87_compares_translated == 0u)
+    lucent_log_info("engine",
+                    "JIT x87 compares: none translated, so this run says "
+                    "nothing about the inline ordering");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT x87 compares: %llu of %llu ordered in the block (%.1f%%), %llu "
+        "call out of the module",
+        (unsigned long long)js.x87_compares_inline,
+        (unsigned long long)js.x87_compares_translated,
+        100.0 * (double)js.x87_compares_inline /
+            (double)js.x87_compares_translated,
+        (unsigned long long)(js.x87_compares_translated -
+                             js.x87_compares_inline));
   /* The packed SSE forms, and how much of it the emitted code performs with
      the host's own 128-bit SIMD instead of a lane-at-a-time C helper across
      the module boundary. Same negative as the rows above. */

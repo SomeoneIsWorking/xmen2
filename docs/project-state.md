@@ -1373,6 +1373,17 @@ of that memory when they are recorded, so neither step protected anything. On
 `#test-play` (10,119,389-byte wasm) `WEBGPU_MapTransferBuffer` falls from 727
 samples to 4. The canvas still reads 98% non-black with no uncaptured errors.
 
+**Zeros and float comparisons stay in the browser's blocks** (x86port
+`2a93160`, `0457417`). A census of the x87 helpers over 90 s of the Dead Zone
+found that the inline FLD and FST forms refused signed zeros: 45.4M loads and
+24.6M stores of ±0.0 still crossed to C. FCOM of a float operand had no inline
+form at all, so 28.5M comparisons crossed too. The emitted load and store now
+answer zeros, and FCOM/FCOMP m32/m64 now order two normals or zeros in the
+block. On `#test-play` (10,129,302-byte wasm) the seven x87 helper leaves fall
+from about 1,450 samples to 205 on the busiest worker. The canvas still reads
+98.2% non-black with no uncaptured errors. `JIT x87 compares:` in the engine
+report gives the inline share.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
