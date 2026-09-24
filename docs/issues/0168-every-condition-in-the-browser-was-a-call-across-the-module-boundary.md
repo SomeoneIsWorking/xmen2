@@ -1,12 +1,12 @@
 ---
 id: 168
 title: every condition in the browser was a call across the module boundary
-status: investigating
-symptom: every Jcc and SETcc called x86p_cond through the import table; inlined for most kinds, Add/Inc/Dec still on the helper
+status: resolved
+symptom: every Jcc and SETcc called x86p_cond through the import table; now 99.6% are inline
 state_items: S021
 tags: web,browser,wasm,jit,codegen,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-24
 ---
 
 # 0168 — every condition in the browser was a call across the module boundary
@@ -117,3 +117,26 @@ flipped; Inc and Dec differ from them only in preserving CF, which the
 conditions that read CF must then still ask for. The module is shaped to take
 one kind at a time, and the census is what ranks whether it is worth it: 2.4% of
 conditions, against the 96.9% already taken.
+
+## Closed (2026-09-24)
+
+x86port cc33050 derives ADD, INC and DEC inline:
+- After ADD, the unsigned conditions read the carry (`r < a`) and the signed
+  ones the sign of the untruncated sum.
+- INC and DEC read the carry they preserved, and compare the operand with a
+  constant.
+
+The lowering also had not been recording the operand width for INC and DEC.
+The differential's new 8- and 16-bit cases, behind both STC and CLC, found
+that at once.
+
+Browser census on the Dead Zone route, same corpus as before (serving
+10,074,450 bytes, the build on disk): **35,839 of 35,996 conditions lowered
+inline (99.6%)**. The remaining 157 are:
+- 138 conditions that open a block, where the predecessor is unknown at
+  translation time;
+- 19 after the explicit EFLAGS that ADC, SBB and POPFD record, which is a word
+  and not a derivation.
+
+Neither kind has an inline form to add. The route kept presenting about 260
+frames per 5 s.
