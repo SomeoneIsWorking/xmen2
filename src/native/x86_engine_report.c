@@ -239,7 +239,8 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
   lucent_log_info(
       "engine",
       "[HB] JIT: %llu blocks entered (%llu re-entered the block just left, "
-      "%.1f%%), %llu translated (%llu instructions); "
+      "%.1f%%; %llu by a chained exit, %.1f%%, over %llu link(s)), "
+      "%llu translated (%llu instructions); "
       "%lu native hand-backs; %llu refusals of %llu translation attempts; "
       "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
       "lowered inline (%llu unrecorded predecessor, %llu underivable kind); "
@@ -253,6 +254,11 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       js.blocks_entered
           ? 100.0 * (double)js.blocks_reentered / (double)js.blocks_entered
           : 0.0,
+      (unsigned long long)js.blocks_chained,
+      js.blocks_entered
+          ? 100.0 * (double)js.blocks_chained / (double)js.blocks_entered
+          : 0.0,
+      (unsigned long long)js.chain_links,
       (unsigned long long)js.blocks_translated,
       (unsigned long long)js.guest_insns_translated, callouts,
       (unsigned long long)js.translate_refusals,
