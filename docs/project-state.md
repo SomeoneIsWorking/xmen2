@@ -1373,6 +1373,18 @@ of that memory when they are recorded, so neither step protected anything. On
 `#test-play` (10,119,389-byte wasm) `WEBGPU_MapTransferBuffer` falls from 727
 samples to 4. The canvas still reads 98% non-black with no uncaptured errors.
 
+**Browser blocks call overrides and thunks in place** (x86port `614cd72`,
+`9aaa4bd`). The wasm backend had no leaves, so every CALL to a leaf override
+or leaf-safe thunk left the block for the dispatcher: about 24,000 hand-backs
+per frame against the native product's 1,700. Blocks now call the leaf
+through one import and return through a chained exit. A CALL through a
+register or memory uses its leaf site. On `#test-play` (10,134,896-byte
+wasm, 90 s) hand-backs fall from 5.1% of block entries to 1.0%, about 1,800
+per frame. On the busiest worker, translated blocks rise from 57.4% to 58.4%
+of samples and `run_guest` falls from 6.07% to 3.96%. The engine run,
+dispatch and fast-path samples fall from 970 to 344. The canvas reads 98.2%
+non-black with no uncaptured errors.
+
 **Zeros and float comparisons stay in the browser's blocks** (x86port
 `2a93160`, `0457417`). A census of the x87 helpers over 90 s of the Dead Zone
 found that the inline FLD and FST forms refused signed zeros: 45.4M loads and
