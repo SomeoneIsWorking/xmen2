@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 namespace {
@@ -31,6 +32,26 @@ void check(bool ok, const std::string &what) {
   }
 }
 
+/* The test's own config directory, removed however main returns: one per run
+   under scratch/ otherwise accumulates without bound. */
+class ScratchDirectory {
+public:
+  explicit ScratchDirectory(const char *path) : path_(path) {}
+  ScratchDirectory(const ScratchDirectory &) = delete;
+  ScratchDirectory &operator=(const ScratchDirectory &) = delete;
+  ~ScratchDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(path_, error);
+    if (error) {
+      std::fprintf(stderr, "could not remove %s: %s\n", path_.c_str(),
+                   error.message().c_str());
+    }
+  }
+
+private:
+  std::string path_;
+};
+
 } // namespace
 
 int main() {
@@ -41,6 +62,7 @@ int main() {
     std::perror("mkdtemp");
     return 1;
   }
+  const ScratchDirectory owned(config);
   setenv("XDG_CONFIG_HOME", config, 1);
 
   char program[] = "test_runtime_cvars";
