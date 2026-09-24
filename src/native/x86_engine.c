@@ -177,21 +177,157 @@ void x2_engine_program_entry(uint32_t addr) { g_engine.program_entry = addr; }
 
 void x2_engine_note_callout(void) { g_engine.callouts++; }
 
+/* One guest call, as the loop that runs it needs it. */
+typedef struct EngineRun {
+  X86pCpu *cpu;
+  uint32_t entry;
+  uint32_t entry_esp;
+  uint32_t return_to;
+  unsigned long long steps;
+  X86GuestCallFrame *frame;
+} EngineRun;
+
+typedef enum EngineRunOutcome {
+  kEngineRunReturned, /* control reached the caller's return address */
+  kEngineRunSetjmp    /* the guest reached _setjmp3 */
+} EngineRunOutcome;
+
+/*
+ * Run the call until it returns or the guest reaches _setjmp3, whose host
+ * setjmp only run_call's frame may take.
+ *
+ * THIS FUNCTION HOLDS NO setjmp, and that is why it is separate. Emscripten's
+ * setjmp support routes every call out of a function that holds one through a
+ * JavaScript invoke wrapper, and with the loop inside x2_engine_call that was
+ * the JIT run, the host bodies and every check below, several crossings into
+ * JavaScript per slice of every guest call. run_call keeps even the one
+ * crossing per call out of the common case: only a call whose guest reaches
+ * _setjmp3 enters the frame that holds one.
+ */
+static EngineRunOutcome run_guest(volatile EngineRun *run) {
+  X86pCpu *cpu = run->cpu;
+  const uint32_t entry = run->entry;
+  X86GuestCallFrame *call_frame = run->frame;
+  X86pJitEngine *jit;
+  for (;;) {
+    x86_engine_report_live_if_requested(g_engine.jit, g_engine.callouts);
+    if (cpu->eip != entry && x86_setjmp3_thunk(cpu->eip))
+      return kEngineRunSetjmp;
+    /*
+     * Left when control reaches the caller's return address with the stack
+     * unwound past it. Both halves are needed: the address alone would
+     * also match a CALL to it from deeper inside (where ESP is lower), and
+     * the stack alone says nothing about where control went.
+     *
+     * The trampoline page is still mapped and still full of INT3, for the
+     * case x86_guest_call_args creates: its 0xDEADBEEF is not a mapped
+     * address, so a function that returns somewhere unexpected must land
+     * on something that reports rather than on whatever is there.
+     */
+    if (cpu->eip == run->return_to && cpu->reg[kX86pEsp] >= run->entry_esp + 4u)
+      return kEngineRunReturned;
+    if (cpu->eip == ENGINE_RETURN_ADDR)
+      return kEngineRunReturned;
+    /*
+     * A target this dispatcher owns is HOST code -- an import thunk, a
+     * native override, or another native callout -- and walking into it would
+     * execute host memory as x86-32. Hand it back, then resume
+     * where its RET would have gone.
+     *
+     * Checked at every instruction rather than only after a CALL: a guest
+     * function is reached by a tail JMP as readily as by a CALL, and an
+     * engine that only looked after calls would walk into the body reached
+     * the other way. The lookup is x86_native_body_at, which is
+     * x86_native_call_at's own lookup with none of its side effects.
+     *
+     * Not at the ENTRY point, though. Arriving here normally means there
+     * was no body -- but the selftest below enters one deliberately, to
+     * run the same function both ways and compare, and an entry that
+     * handed itself straight back would make that measurement impossible
+     * while looking like it worked.
+     */
+    if (x86_engine_host_body_at(cpu->eip, entry)) {
+      x86_engine_run_host_at(cpu, call_frame);
+      continue;
+    }
+    /* The runtime's refusals carry their denominators -- how many modules were
+       live, of how many, published and released. At 192 that sentence was cut
+       off exactly where the numbers start. */
+    char why[512];
+    why[0] = '\0';
+    jit = x86_engine_jit_pool_current(g_engine.jit, why, sizeof why);
+    if (!jit)
+      refuse(entry, cpu, why);
+    /* Slice the JIT and offer the guest lock up between slices, so a thread
+       stuck in a libCriMovie playback loop cannot hold the one guest lock
+       forever and starve the decoder's feeders (issue #57). No-op with no lock
+       waiter. */
+    uint64_t slice = guest_quantum_size();
+    if (slice > 200000ULL)
+      slice = 200000ULL;
+    X86pJitRunStatus st =
+        x86p_jit_engine_run(jit, cpu, call_frame, slice, why, sizeof why);
+    x86_engine_jit_pool_publish_stats(g_engine.jit, jit);
+    if (st != kX86pRunIntercept && st != kX86pRunBudget)
+      refuse(entry, cpu, why[0] ? why : x86p_jit_run_status_name(st));
+    guest_quantum();
+    if (++run->steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
+      refuse(entry, cpu,
+             "the call has not returned within the step cap -- it is "
+             "not finishing");
+  }
+}
+
+/*
+ * The call's run, with the GUEST setjmp taken in this frame.
+ *
+ * The import stub cannot do this: it records the guest state and RETURNS, so
+ * the host frame longjmp would resume into is gone before it is needed, and it
+ * honestly marks the buffer unresumable. That is what killed the whole-module
+ * take -- the exe reaches _setjmp3 through its IAT, so every setjmp inside
+ * guest code was unresumable and the first longjmp had nothing to jump to.
+ *
+ * This frame is live for as long as the guest function runs, exactly the
+ * lifetime the guest's jmp_buf is supposed to have, and run_guest continues the
+ * call beneath it. Same table, same x86_setjmp_buf / x86_setjmp_done pair,
+ * same reclaim rules -- a second mechanism here would be a second answer to
+ * "which buffers are still live".
+ */
+__attribute__((noinline)) static void run_setjmps(volatile EngineRun *run) {
+  X86pCpu *cpu = run->cpu;
+  do {
+    /* The jump-buffer owner restores its saved continuation. */
+    int rc;
+    g_engine.setjmps++;
+    rc = setjmp(*x86_setjmp_buf(cpu));
+    x86_setjmp_done(cpu, rc);
+    if (rc) {
+      /* Arrived by longjmp. Every engine frame between the jump and this
+         one is gone with the host frames they lived in, so the nesting count
+         has to come back with them; leaving it would make the
+         deepest-nesting figure a record of a stack that no longer existed. */
+      x86_guest_call_restore(run->frame);
+      if (!g_engine.longjmps++)
+        lucent_log_info("engine",
+                        "a longjmp resumed into guest code (guest esp "
+                        "0x%08x); reported once, total in shutdown report",
+                        cpu->reg[kX86pEsp]);
+    }
+  } while (run_guest(run) == kEngineRunSetjmp);
+}
+
+/* noinline above keeps the setjmp out of this frame and x2_engine_call's. */
+static void run_call(volatile EngineRun *run) {
+  if (run_guest(run) == kEngineRunSetjmp)
+    run_setjmps(run);
+}
+
 int x2_engine_call(uint32_t addr, CPU *C) {
   X86pCpu *cpu = C;
   x86_override_leaf_forbid("called guest code");
-  /*
-   * volatile because this frame takes a host setjmp below, and a longjmp
-   * back into it leaves every non-volatile local indeterminate. `cpu` points
-   * to the caller-owned canonical machine state and is not rebuilt.
-   */
-  volatile uint32_t entry_esp, return_to;
-  volatile uint32_t entry = addr;
-  volatile unsigned long long steps = 0;
 
   if (!g_engine.ready)
     return 0;
-
   /*
    * Every CPU that runs guest code passes through here, and one that does not
    * performs no x87 arithmetic, so this is where the x87 unit's policy is
@@ -230,118 +366,16 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     x86_probe_span_push();
   cpu->fs_base = g_fsbase;
   cpu->gs_base = g_gsbase;
-  entry_esp = cpu->reg[kX86pEsp];
-  return_to = RD32(entry_esp);
+  const uint32_t entry = addr;
+  const uint32_t entry_esp = cpu->reg[kX86pEsp];
+  const uint32_t return_to = RD32(entry_esp);
   cpu->eip = addr;
   X86GuestCallFrame call_frame;
-  X86pJitEngine *jit;
   x86_guest_call_push(&call_frame, cpu, addr, return_to, entry_esp);
-
-  for (;;) {
-    x86_engine_report_live_if_requested(g_engine.jit, g_engine.callouts);
-    /*
-     * GUEST setjmp, taken in the engine's own frame.
-     *
-     * The import stub cannot do this: it records the guest state and
-     * RETURNS, so the host frame longjmp would resume into is gone before
-     * it is needed, and it honestly marks the buffer unresumable. That is
-     * what killed the whole-module take -- the exe reaches _setjmp3
-     * through its IAT, so every setjmp inside guest code was
-     * unresumable and the first longjmp had nothing to jump to.
-     *
-     * The runtime loop solves it by taking the host setjmp inline: it remains
-     * a live host frame for as long as the guest function is running, exactly
-     * matching the lifetime the guest's jmp_buf is supposed to have. Same
-     * table, same
-     * x86_setjmp_buf / x86_setjmp_done pair, same reclaim rules -- a
-     * second mechanism here would be a second answer to "which buffers are
-     * still live".
-     */
-    if (cpu->eip != entry && x86_setjmp3_thunk(cpu->eip)) {
-      /* The jump-buffer owner restores its saved continuation. A local
-       * in this loop is reused by later setjmps, even when volatile. */
-      int rc;
-      g_engine.setjmps++;
-      rc = setjmp(*x86_setjmp_buf(C));
-      x86_setjmp_done(C, rc);
-      if (rc) {
-        /* Arrived by longjmp. Every engine frame between the jump and
-           this one is gone with the host frames they lived in, so the
-           nesting count has to come back with them; leaving it would
-           make the deepest-nesting figure a record of a stack that no
-           longer existed. */
-        x86_guest_call_restore(&call_frame);
-        if (!g_engine.longjmps++)
-          lucent_log_info("engine",
-                          "a longjmp resumed into guest code (guest esp "
-                          "0x%08x); reported once, total in shutdown report",
-                          C->reg[kX86pEsp]);
-      }
-      continue;
-    }
-    /*
-     * Left when control reaches the caller's return address with the stack
-     * unwound past it. Both halves are needed: the address alone would
-     * also match a CALL to it from deeper inside (where ESP is lower), and
-     * the stack alone says nothing about where control went.
-     *
-     * The trampoline page is still mapped and still full of INT3, for the
-     * case x86_guest_call_args creates: its 0xDEADBEEF is not a mapped
-     * address, so a function that returns somewhere unexpected must land
-     * on something that reports rather than on whatever is there.
-     */
-    if (cpu->eip == return_to && cpu->reg[kX86pEsp] >= entry_esp + 4u)
-      break;
-    if (cpu->eip == ENGINE_RETURN_ADDR)
-      break;
-    /*
-     * A target this dispatcher owns is HOST code -- an import thunk, a
-     * native override, or another native callout -- and walking into it would
-     * execute host memory as x86-32. Hand it back, then resume
-     * where its RET would have gone.
-     *
-     * Checked at every instruction rather than only after a CALL: a guest
-     * function is reached by a tail JMP as readily as by a CALL, and an
-     * engine that only looked after calls would walk into the body reached
-     * the other way. The lookup is x86_native_body_at, which is
-     * x86_native_call_at's own lookup with none of its side effects.
-     *
-     * Not at the ENTRY point, though. Arriving here normally means there
-     * was no body -- but the selftest below enters one deliberately, to
-     * run the same function both ways and compare, and an entry that
-     * handed itself straight back would make that measurement impossible
-     * while looking like it worked.
-     */
-    if (x86_engine_host_body_at(cpu->eip, entry)) {
-      x86_engine_run_host_at(cpu, &call_frame);
-      continue;
-    }
-    /* The runtime's refusals carry their denominators -- how many modules were
-       live, of how many, published and released. At 192 that sentence was cut
-       off exactly where the numbers start. */
-    char why[512];
-    why[0] = '\0';
-    jit = x86_engine_jit_pool_current(g_engine.jit, why, sizeof why);
-    if (!jit)
-      refuse(entry, cpu, why);
-    /* Slice the JIT and offer the guest lock up between slices, so a thread
-       stuck in a libCriMovie playback loop cannot hold the one guest lock
-       forever and starve the decoder's feeders (issue #57). No-op with no lock
-       waiter. */
-    uint64_t slice = guest_quantum_size();
-    if (slice > 200000ULL)
-      slice = 200000ULL;
-    X86pJitRunStatus st =
-        x86p_jit_engine_run(jit, cpu, &call_frame, slice, why, sizeof why);
-    x86_engine_jit_pool_publish_stats(g_engine.jit, jit);
-    if (st != kX86pRunIntercept && st != kX86pRunBudget)
-      refuse(entry, cpu, why[0] ? why : x86p_jit_run_status_name(st));
-    guest_quantum();
-    if (++steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
-      refuse(entry, cpu,
-             "the call has not returned within the step cap -- it is "
-             "not finishing");
-  }
+  /* volatile: run_call takes a host setjmp, and a longjmp back into it
+     leaves a non-volatile object that changed since indeterminate. */
+  volatile EngineRun run = {cpu, entry, entry_esp, return_to, 0u, &call_frame};
+  run_call(&run);
 
   /*
    * The guest stack must be at least back past the return address this

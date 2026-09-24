@@ -1302,6 +1302,16 @@ the exact helper answers everything the arm refuses. On `#test-play`
 guest worker's top 30; together they were about 6.9%. Translated blocks rise
 from 35% to 41% of the worker and port native code falls from 25% to 18%.
 
+**A guest call crosses into JavaScript only when its guest takes a setjmp.**
+Emscripten routes every call out of a function that holds `setjmp` through a
+JavaScript `invoke_*` wrapper, and `x2_engine_call` held the one that
+`_setjmp3` needs around its whole run loop. The loop is now in `run_guest`,
+which holds none, and `run_setjmps` holds the setjmp and is entered only after a
+guest reaches `_setjmp3`. On `#test-play` (10,114,051-byte wasm, 25 s profile)
+`imports.<computed>` falls from 2,251 to 844 samples, and none of what remains
+comes from a guest call. `wasm-to-js` falls from 1,413 to 618, and JS glue from
+12.8% to 9.3% of the guest worker.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
