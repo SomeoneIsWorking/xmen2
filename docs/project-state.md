@@ -1333,6 +1333,14 @@ non-black, with 0 uncaptured errors, against 0 and 121 at the previous pin.
 `HashBindGroupKey` and the stderr path leave the profile's top 30, and JS glue
 falls from 7.3% to 4.6% of the guest worker.
 
+**A browser frame writes each uniform buffer once** (SDL `a36f1ff99`,
+web-port `865d0c4`). SDL's WebGPU backend malloc'd a copy of every uniform
+push and issued one queue write per push at submit, each a crossing into
+JavaScript. It now keeps one staging copy per uniform buffer per command
+buffer. On `#test-play` (10,115,182-byte wasm) `writeBuffer` falls from 1,825
+samples to 679, and `malloc` leaves the guest worker's top 30. The canvas
+still reads 91% non-black, with no uncaptured errors.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
