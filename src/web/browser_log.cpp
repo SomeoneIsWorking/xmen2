@@ -23,7 +23,7 @@ constexpr std::size_t kBytesPerBlock = 32u * 1024u;
 constexpr std::size_t kLinesPerCostReport = 2000;
 
 std::uint64_t monotonic_nanoseconds() {
-  struct timespec now {};
+  struct timespec now{};
   if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
     return 0;
   }

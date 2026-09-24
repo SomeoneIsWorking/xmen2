@@ -36,6 +36,7 @@ void x86_engine_run_host_at(struct X86pCpu *cpu,
  * live host frame (a return to the translated call's caller, a
  * setjmp3 thunk, the engine return trampoline).
  */
-X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user, void *run_user);
+X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user,
+                                              void *run_user);
 
 #endif /* X2_X86_ENGINE_DISPATCH_H */

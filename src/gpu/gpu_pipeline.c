@@ -25,8 +25,11 @@ static const GpuShaderWord d3d8_fixed_vert_code[] =
 static const GpuShaderWord d3d8_fixed_frag_code[] =
 #include "shaders/d3d8_fixed_frag.inc"
     ;
+static const GpuShaderWord d3d8_vs11_vert_code[] =
+#include "shaders/d3d8_vs11_vert.inc"
+    ;
 
-static SDL_GPUShader *g_vs, *g_fs;
+static SDL_GPUShader *g_vs, *g_fs, *g_vs11;
 typedef struct {
   int clamp, mag_point, min_filter, mip, max_anisotropy;
   float lod_bias;
@@ -73,6 +76,57 @@ static int shaders_ready(void) {
                         simply undefined texels. */
                      SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
   return g_vs && g_fs;
+}
+
+/* The VS 1.1 entry: its own uniform block, the program and the constants. */
+static int vs11_shader_ready(void) {
+  if (!g_vs11)
+    g_vs11 = load_shader(d3d8_vs11_vert_code,
+                         X2_GPU_SHADER_SIZE(d3d8_vs11_vert_code),
+                         SDL_GPU_SHADERSTAGE_VERTEX, 0, 3);
+  return g_vs11 != NULL;
+}
+
+/* The fixed-function entry's five attributes. Position is always present;
+   the shader needs all of them bound, so an absent colour or texcoord is
+   pointed at the position's bytes and neutralised by the uniforms instead. A
+   missing binding would be a validation error, and a zero stride would read
+   the same vertex. */
+static int fixed_attributes(const PipeKey *k, SDL_GPUVertexAttribute at[5]) {
+  int nat = 0;
+  at[nat].location = 0;
+  at[nat].buffer_slot = 0;
+  at[nat].format = k->pos_is_float4 ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                                    : SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  at[nat].offset = (Uint32)k->pos_offset;
+  nat++;
+  at[nat].location = 1;
+  at[nat].buffer_slot = 0;
+  at[nat].format = k->color_is_float4 ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                                      : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+  at[nat].offset =
+      (Uint32)(k->color_offset >= 0 ? k->color_offset : k->pos_offset);
+  nat++;
+  at[nat].location = 2;
+  at[nat].buffer_slot = 0;
+  at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+  at[nat].offset = (Uint32)(k->uv_offset >= 0 ? k->uv_offset : k->pos_offset);
+  nat++;
+  at[nat].location = 3;
+  at[nat].buffer_slot = 0;
+  at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  at[nat].offset =
+      (Uint32)(k->normal_offset >= 0 ? k->normal_offset : k->pos_offset);
+  nat++;
+  at[nat].location = 4;
+  at[nat].buffer_slot = 0;
+  at[nat].format = k->specular_is_float4
+                       ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                       : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+  at[nat].offset =
+      (Uint32)(k->specular_offset >= 0 ? k->specular_offset : k->pos_offset);
+  nat++;
+  return nat;
 }
 
 static SDL_GPUBlendFactor sdl_blend(GpuBlend b);
@@ -152,8 +206,8 @@ SDL_GPUGraphicsPipeline *gpu_pipeline_for(const PipeKey *k) {
   SDL_GPUGraphicsPipelineCreateInfo ci;
   SDL_GPUColorTargetDescription ct;
   SDL_GPUVertexBufferDescription vb;
-  SDL_GPUVertexAttribute at[5];
-  int nat = 0, i;
+  SDL_GPUVertexAttribute at[GPU_VS_INPUTS];
+  int nat, i;
 
   for (i = 0; i < g_npipes; i++)
     if (memcmp(&g_pipes[i].key, k, sizeof *k) == 0)
@@ -174,49 +228,21 @@ SDL_GPUGraphicsPipeline *gpu_pipeline_for(const PipeKey *k) {
   vb.pitch = k->stride;
   vb.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
 
-  /* Position is always present; the shader needs all three attributes bound,
-     so an absent colour or texcoord is pointed at the position's bytes and
-     neutralised by the uniforms instead. A missing binding would be a
-     validation error, and a zero stride would read the same vertex. */
-  at[nat].location = 0;
-  at[nat].buffer_slot = 0;
-  at[nat].format = k->pos_is_float4 ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
-                                    : SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  at[nat].offset = (Uint32)k->pos_offset;
-  nat++;
-  at[nat].location = 1;
-  at[nat].buffer_slot = 0;
-  at[nat].format = k->color_is_float4 ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
-                                      : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
-  at[nat].offset =
-      (Uint32)(k->color_offset >= 0 ? k->color_offset : k->pos_offset);
-  nat++;
-  at[nat].location = 2;
-  at[nat].buffer_slot = 0;
-  at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-  at[nat].offset = (Uint32)(k->uv_offset >= 0 ? k->uv_offset : k->pos_offset);
-  nat++;
-  at[nat].location = 3;
-  at[nat].buffer_slot = 0;
-  at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  at[nat].offset =
-      (Uint32)(k->normal_offset >= 0 ? k->normal_offset : k->pos_offset);
-  nat++;
-  at[nat].location = 4;
-  at[nat].buffer_slot = 0;
-  at[nat].format = k->specular_is_float4
-                       ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
-                       : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
-  at[nat].offset =
-      (Uint32)(k->specular_offset >= 0 ? k->specular_offset : k->pos_offset);
-  nat++;
+  if (k->vs_program) {
+    if (!vs11_shader_ready())
+      return NULL;
+    gpu_vs_program_attributes(&k->vs_inputs, at);
+    nat = GPU_VS_INPUTS;
+  } else {
+    nat = fixed_attributes(k, at);
+  }
 
   ci.vertex_input_state.vertex_buffer_descriptions = &vb;
   ci.vertex_input_state.num_vertex_buffers = 1;
   ci.vertex_input_state.vertex_attributes = at;
   ci.vertex_input_state.num_vertex_attributes = (Uint32)nat;
 
-  ci.vertex_shader = g_vs;
+  ci.vertex_shader = k->vs_program ? g_vs11 : g_vs;
   ci.fragment_shader = g_fs;
   ci.primitive_type =
       k->prim == GPU_PRIM_TRIANGLESTRIP ? SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP
@@ -352,6 +378,10 @@ void gpu_pipeline_shutdown(void) {
   if (g_fs) {
     SDL_ReleaseGPUShader(g_gpu, g_fs);
     g_fs = NULL;
+  }
+  if (g_vs11) {
+    SDL_ReleaseGPUShader(g_gpu, g_vs11);
+    g_vs11 = NULL;
   }
 }
 #endif /* X2_WITH_SDL */

@@ -1,10 +1,10 @@
 #include "control.h"
 
-#include <lucent/cvar_c.h>
 #include "control_command_bridge.h"
 #include "control_http.h"
 #include "control_input_route.h"
 #include "x2_log.h"
+#include <lucent/cvar_c.h>
 
 #include "../input/touch_inject.h"
 #include "autosave_runtime.h"

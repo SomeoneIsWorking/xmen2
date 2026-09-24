@@ -60,7 +60,8 @@ int main() {
   if (g_lines.size() != 1 || !contains(g_lines[0], "x86port[unit]") ||
       !contains(g_lines[0], "an error the run has to be able to read") ||
       g_dumps != 0) {
-    return fail("an error diagnostic did not reach the port's logger", g_lines.size());
+    return fail("an error diagnostic did not reach the port's logger",
+                g_lines.size());
   }
 
   {
@@ -107,8 +108,7 @@ int main() {
     x86p_diagnostic_report(&diagnostic);
   }
   lucent::set_sink(nullptr);
-  if (g_lines.size() != 5 ||
-      !contains(g_lines[4], "installed a second time")) {
+  if (g_lines.size() != 5 || !contains(g_lines[4], "installed a second time")) {
     return fail("reinstalling the sink did not route again", g_lines.size());
   }
   return 0;

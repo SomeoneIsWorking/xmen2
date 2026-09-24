@@ -11,16 +11,16 @@ extern "C" {
 namespace x2::ui {
 
 struct ControllerAssignmentRow {
-    std::string id;
-    std::string name;
-    bool stable_identity;
-    bool transient_assignment;
-    int pad;
-    int owner;
+  std::string id;
+  std::string name;
+  bool stable_identity;
+  bool transient_assignment;
+  int pad;
+  int owner;
 };
 
 std::vector<ControllerAssignmentRow>
-controller_assignment_rows(const X2Settings& settings);
+controller_assignment_rows(const X2Settings &settings);
 
 } // namespace x2::ui
 

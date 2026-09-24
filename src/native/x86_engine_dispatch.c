@@ -21,7 +21,8 @@
  * check that it belongs to this CPU is what the thread-local lookup used to
  * provide, so it stays.
  */
-static const X86GuestCallFrame *require_call_frame(struct X86pCpu *cpu, const X86GuestCallFrame *frame) {
+static const X86GuestCallFrame *
+require_call_frame(struct X86pCpu *cpu, const X86GuestCallFrame *frame) {
   if (frame && frame->cpu == cpu)
     return frame;
   x2_log_error("engine: dispatch at 0x%08x has no matching canonical CPU "
@@ -30,7 +31,8 @@ static const X86GuestCallFrame *require_call_frame(struct X86pCpu *cpu, const X8
   abort();
 }
 
-void x86_engine_run_host_at(struct X86pCpu *cpu, const X86GuestCallFrame *frame) {
+void x86_engine_run_host_at(struct X86pCpu *cpu,
+                            const X86GuestCallFrame *frame) {
   (void)require_call_frame(cpu, frame);
   /* Eligible native imports run directly on the canonical x86port state. */
   if (__builtin_expect(x86_import_fastpath_dispatch(cpu), 0)) {
@@ -53,9 +55,11 @@ void x86_engine_run_host_at(struct X86pCpu *cpu, const X86GuestCallFrame *frame)
   cpu->eip = ret;
 }
 
-X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user, void *run_user) {
+X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user,
+                                              void *run_user) {
   (void)user;
-  const X86GuestCallFrame *ctx = require_call_frame(cpu, (const X86GuestCallFrame *)run_user);
+  const X86GuestCallFrame *ctx =
+      require_call_frame(cpu, (const X86GuestCallFrame *)run_user);
   const uint32_t eip = cpu->eip;
 
   /* The cases that need the title call loop's own host frame back. */

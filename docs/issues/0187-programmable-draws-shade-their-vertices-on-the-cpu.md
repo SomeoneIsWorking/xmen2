@@ -1,7 +1,7 @@
 ---
 id: 187
 title: programmable draws shade their vertices on the CPU, every draw
-status: open
+status: closed
 symptom: the browser's guest worker spends about 1.7% in d3d8_vs_execute and 1.4% in d3d8_build_draw_impl, nearly all of it for DrawIndexedPrimitive with the one skinning shader
 state_items: S010, S021
 tags: d3d8,vertex-shader,performance,web,rendering
@@ -50,3 +50,28 @@ already produces it) into the host shader language once, at
 bind the guest's vertex buffer directly. This removes the CPU pass, the
 per-draw buffer and its upload. The CPU executor stays as the reference the
 translated shader is differentially tested against.
+
+## Resolution
+
+VS 1.1 runs on the GPU. `d3d8_vs_gpu.cpp` packs the decoded program once per
+shader into `GpuVsProgram` (`src/gpu/gpu_vs_program.h`). `d3d8_vs_draw.c`
+binds the guest's vertex buffer and hands the program and the device's
+constant file to the draw. `gpu_vertex_uniforms.c` and `gpu_shadow.c` push
+them to `vs11_program.glsl`, which is included by `d3d8_vs11.vert` (the scene)
+and `shadow_vs11.vert` (the caster). It interprets the program as uniform
+data, so no shader is compiled at run time. Programs with an input past v15 or
+a SHORT2/SHORT4 input keep the CPU executor, and the log names them once.
+
+Differential proof:
+
+- `d3d8_vs_gpu_selftest.c` (`--d3d8-selftest`) draws one program through the
+  production draw builder on each executor and needs identical pixels. The
+  program covers relative addressing from a UBYTE4, every opcode, negation,
+  swizzles, partial masks and all three outputs. Ten shader mutants fail it.
+- `gpu_shadow_selftest.c` needs a programmable caster to shadow the same
+  pixels as a fixed one. Two mutants of `shadow_vs11.vert` fail it.
+
+On `#test-play` (10,068,268-byte wasm) the heartbeat shows 20,118
+programmable draws on the GPU and none on the executor.
+`d3d8_vs_execute` is gone from the profile, and `d3d8_build_draw_impl` fell
+from 1.6% to 0.87% of the worker.

@@ -12,6 +12,7 @@
 #include "d3d8_vertex_shader.h"
 
 #include "d3d8_state.h"
+#include "gpu_vs_program.h"
 #include <stdint.h>
 
 #define VS_MAX 64
@@ -121,6 +122,10 @@ struct D3D8VertexShader {
   uint16_t declaration_dwords;
   uint16_t function_dwords;
   D3D8VSProgram program;
+  /* The program packed for the GPU (d3d8_vs_gpu.cpp): 0 not yet, 1 packed,
+     -1 it has no form the GPU runs and draws take the CPU executor. */
+  int gpu_state;
+  GpuVsProgram gpu;
 };
 
 /* The decoded program, decoding it now if it has not been. A program that

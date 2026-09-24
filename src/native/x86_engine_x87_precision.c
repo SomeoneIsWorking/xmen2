@@ -12,11 +12,14 @@ static int g_double = -1;
 
 static int wanted(void) {
   if (g_double < 0) {
-    g_double = lucent_cvar_flag("x87.double", 1) && x86p_x87_double_arith_available();
-    lucent_log_info("engine", "x87 arithmetic: %s",
-                    g_double ? "binary64 (x87.double=1, and this host has no x87 unit)"
-                    : x86p_x87_double_arith_available() ? "extended (x87.double=0)"
-                                                        : "this host's own (x87.double does not apply here)");
+    g_double =
+        lucent_cvar_flag("x87.double", 1) && x86p_x87_double_arith_available();
+    lucent_log_info(
+        "engine", "x87 arithmetic: %s",
+        g_double ? "binary64 (x87.double=1, and this host has no x87 unit)"
+        : x86p_x87_double_arith_available()
+            ? "extended (x87.double=0)"
+            : "this host's own (x87.double does not apply here)");
   }
   return g_double;
 }

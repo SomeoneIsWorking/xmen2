@@ -39,7 +39,8 @@
 /* `.../Foo.app/Contents/MacOS/foo` -> `.../Foo.app`, or 0 when the executable
    is not inside a bundle at all. Purely textual so it can be tested without a
    bundle on disk; the caller checks what it found before publishing. */
-int x2_macos_bundle_root(const char *executable, char *root, unsigned capacity) {
+int x2_macos_bundle_root(const char *executable, char *root,
+                         unsigned capacity) {
   static const char k_suffix[] = "/Contents/MacOS/";
   const char *at;
   const char *found = NULL;
@@ -117,7 +118,8 @@ int x2_macos_bundle_init(const char *executable) {
      using, and the two never disagree because both are set from one file. */
   snprintf(path, sizeof path,
            "%s/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json", root);
-  publish_file(path, kX2ConfigVulkanDriverFiles, "the MoltenVK driver manifest");
+  publish_file(path, kX2ConfigVulkanDriverFiles,
+               "the MoltenVK driver manifest");
   publish_file(path, kX2ConfigVulkanIcdFilenames,
                "the MoltenVK driver manifest");
 

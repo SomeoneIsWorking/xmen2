@@ -7,9 +7,10 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
-import shutil
 import subprocess
 import sys
+
+from llvm_tools import find_llvm_tool
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,24 +32,6 @@ def translation_units(database: Path) -> tuple[Path, ...]:
             continue
         units.add(source)
     return tuple(sorted(units))
-
-
-def find_clang_tidy() -> str | None:
-    """clang-tidy as installed, including kegs that are not on PATH.
-
-    Homebrew does not link its llvm formula into /opt/homebrew/bin, because
-    doing so would shadow Apple's toolchain. Only looking at PATH therefore
-    reports "clang-tidy is required" on a machine that has it installed, and
-    the check silently stops running on every such developer's machine.
-    """
-    found = shutil.which("clang-tidy")
-    if found:
-        return found
-    for keg in ("/opt/homebrew/opt/llvm/bin", "/usr/local/opt/llvm/bin"):
-        candidate = Path(keg) / "clang-tidy"
-        if candidate.is_file():
-            return str(candidate)
-    return None
 
 
 def sysroot_arguments() -> list[str]:
@@ -92,7 +75,7 @@ def main() -> int:
     args = parse_args()
     build_dir = args.build_dir.resolve()
     database = build_dir / "compile_commands.json"
-    executable = find_clang_tidy()
+    executable = find_llvm_tool("clang-tidy")
     if executable is None:
         print("clang_tidy: clang-tidy is required", file=sys.stderr)
         return 2

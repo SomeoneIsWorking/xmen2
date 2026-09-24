@@ -1400,6 +1400,22 @@ On `#test-play` (10,134,398-byte wasm, 90 s) dispatcher re-entries fall to
 40-44 a second to 44-51. The canvas reads 98.2% non-black with no uncaptured
 errors.
 
+**VS 1.1 runs on the GPU** (issue #187). A programmable draw used to run the
+guest's program on the CPU into a buffer made, uploaded and destroyed for that
+draw. The device now packs each decoded program once (`d3d8_vs_gpu.cpp`); the
+draw binds the guest's own vertex buffer and pushes the program and constant
+file to `vs11_program.glsl`, an interpreter that the scene and shadow vertex
+shaders share. A program with an input past v15 or a SHORT input keeps the
+CPU executor. The executor is the reference: `--d3d8-selftest` draws one
+program both ways and needs identical pixels (ten shader mutants caught), and
+`--vk-selftest` needs a programmable shadow caster to match a fixed one. On
+`#test-play` (10,068,268-byte wasm, 90 s) the game's 20,118 programmable draws
+all ran on the GPU, none on the executor. `d3d8_vs_execute` went from 602
+samples to none, and `d3d8_build_draw_impl` from 1.6% of the worker to 0.87%.
+Presents stay at about 43 a second, a scene-dependent figure. The canvas reads
+98.2% non-black, skinned characters draw correctly, and there are no
+uncaptured errors.
+
 **Browser blocks call overrides and thunks in place** (x86port `614cd72`,
 `9aaa4bd`). The wasm backend had no leaves, so every CALL to a leaf override
 or leaf-safe thunk left the block for the dispatcher: about 24,000 hand-backs

@@ -95,8 +95,7 @@ int pe_map(const char *path, PeImage *out) {
        module's OWN base; what would not be fine is relocating silently,
        so the new base is returned and the caller prints it. */
     if (guest_memory_map_any(GUEST_MODULE_LO, GUEST_MODULE_HI, 0x01000000u,
-                             imgsize,
-                             PROT_READ | PROT_WRITE, &base) != 0) {
+                             imgsize, PROT_READ | PROT_WRITE, &base) != 0) {
       x2_log_error("pe_map: %s wants 0x%08x, which is taken, and no "
                    "free span of %u bytes was found below 4 GB. Guest "
                    "pointers are 32-bit, so there is nowhere else to "

@@ -1,0 +1,258 @@
+/*
+ * The fixed-function vertex stage's uniforms, outputs and body, shared by the
+ * two vertex entry points: d3d8_fixed.vert (a vertex format the device lays
+ * out) and d3d8_vs11.vert (a VS 1.1 program run on the GPU). See
+ * d3d8_fixed.vert for what the stage is.
+ */
+layout(location = 0) out vec4 v_color;
+layout(location = 1) out vec2 v_uv;
+/* The DIRECTION a cube map is sampled with. D3D8 generates it rather than
+   reading it from the vertex -- see texgen below. */
+layout(location = 2) out vec3 v_dir;
+layout(location = 3) out vec2 v_uv1;
+layout(location = 4) out vec4 v_shadow;
+
+/* SDL_GPU binds vertex uniform buffers at set 1. */
+layout(set = 1, binding = 0) uniform VertexState {
+    mat4  mvp;
+    vec4  viewport;        /* x, y, width, height in pixels */
+    uint  pretransformed;  /* 1 for D3DFVF_XYZRHW */
+    uint  has_diffuse;     /* 0 when the vertex format has no diffuse colour */
+    uint  lighting;        /* D3DRS_LIGHTING */
+    uint  nlights;         /* how many entries of light[] are enabled */
+
+    mat4  world;           /* lighting is computed in WORLD space */
+    vec4  global_ambient;  /* D3DRS_AMBIENT */
+    vec4  mat_diffuse;
+    vec4  mat_ambient;
+    vec4  mat_emissive;
+    uint  has_normal;      /* 0 when the vertex format carries no normal */
+    uint  color_vertex;    /* D3DRS_COLORVERTEX */
+    uint  has_specular;    /* 0 when COLOR2 is absent */
+    uint  normalize_normals; /* D3DRS_NORMALIZENORMALS */
+    uint  diffuse_source;  /* D3DMATERIALCOLORSOURCE */
+    uint  ambient_source;
+    uint  emissive_source;
+    /*
+     * D3DTSS_TEXCOORDINDEX's generator bits: 0 none, 1 camera-space
+     * REFLECTION vector, 2 camera-space normal, 3 camera-space position.
+     * The engine's environment-mapped characters use 1 with an FVF of
+     * position and normal ONLY -- there are no texture coordinates in the
+     * vertex to sample a cube with, which is the whole reason this exists.
+     */
+    uint  texgen;
+    uint  programmable;
+    uint  material_source_pad0;
+    uint  material_source_pad1;
+    uint  material_source_pad2;
+    mat4  worldview;       /* camera space, where the generators are defined */
+    uint  texture_transform;
+    uint  texture_transform_pad0;
+    uint  texture_transform_pad1;
+    uint  texture_transform_pad2;
+    mat4  texture_matrix;
+    uint  texgen1;
+    uint  texture_transform1;
+    uvec2 stage1_pad;
+    mat4  texture_matrix1;
+    /* Each light is five vec4s: diffuse, ambient, (position, range),
+       (direction, type), (attenuation, unused). Packed by hand because a
+       std140 array of structs would pad every member to 16 bytes anyway. */
+    vec4  light[8 * 5];
+    mat4  shadow_mvp;
+    uint  shadow_enabled;
+} vs;
+
+/*
+ * D3D8 fixed-function lighting, the subset this title uses.
+ *
+ * Per vertex, in world space, because that is where D3D8 puts the lights:
+ *
+ *   colour = emissive + ambient_material * (global_ambient + sum(light_ambient))
+ *          + sum over lights of  diffuse_material * light_diffuse * N.L * atten
+ *
+ * NOT here, and each is reported by name where the state is read rather than
+ * left to look applied: specular lighting and spot cones (a spot lights as a
+ * point).
+ */
+vec4 material_source(uint source, vec4 material, vec4 color1, vec4 color2)
+{
+    if (vs.color_vertex == 0u) return material;
+    if (source == 1u && vs.has_diffuse != 0u) return color1;
+    if (source == 2u && vs.has_specular != 0u) return color2;
+    return material;
+}
+
+vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse,
+                vec4 vertex_specular, bool has_n)
+{
+    vec4 diffuse_material = material_source(vs.diffuse_source, vs.mat_diffuse,
+                                            vertex_diffuse, vertex_specular);
+    vec4 ambient_material = material_source(vs.ambient_source, vs.mat_ambient,
+                                            vertex_diffuse, vertex_specular);
+    vec4 emissive_material = material_source(vs.emissive_source, vs.mat_emissive,
+                                             vertex_diffuse, vertex_specular);
+    vec3 acc = emissive_material.rgb
+             + ambient_material.rgb * vs.global_ambient.rgb;
+    /*
+     * NO NORMAL is a lit case, not an unlit one.
+     *
+     * D3D8 takes the vertex normal as (0,0,0) when the FVF carries none, which
+     * kills every N.L term and leaves emissive + ambient standing. A zero
+     * normal here does exactly that, because max(dot(0, L), 0) is 0 -- but it
+     * must not go through normalize(), which is undefined for a zero vector and
+     * would put a NaN into every channel.
+     */
+    vec3 n = has_n ? (vs.normalize_normals != 0u ? normalize(wnormal) : wnormal)
+                   : vec3(0.0);
+
+    for (uint i = 0u; i < vs.nlights; i++) {
+        vec4 ldiff = vs.light[i * 5u + 0u];
+        vec4 lamb  = vs.light[i * 5u + 1u];
+        vec4 lpos  = vs.light[i * 5u + 2u];   /* xyz position, w range */
+        vec4 ldir  = vs.light[i * 5u + 3u];   /* xyz direction, w type  */
+        vec4 latt  = vs.light[i * 5u + 4u];
+        vec3 to_light;
+        float atten = 1.0;
+
+        if (ldir.w == 3.0) {                   /* D3DLIGHT_DIRECTIONAL */
+            to_light = -normalize(ldir.xyz);
+        } else {
+            vec3 d = lpos.xyz - wpos;
+            float dist = length(d);
+            if (dist > lpos.w) continue;       /* outside the light's range */
+            to_light = dist > 0.0 ? d / dist : vec3(0.0, 0.0, 1.0);
+            float den = latt.x + latt.y * dist + latt.z * dist * dist;
+            atten = den > 0.0 ? 1.0 / den : 1.0;
+        }
+        acc += ambient_material.rgb * lamb.rgb * atten;
+        acc += diffuse_material.rgb * ldiff.rgb *
+               max(dot(n, to_light), 0.0) * atten;
+    }
+    return vec4(min(acc, vec3(1.0)), diffuse_material.a);
+}
+
+/*
+ * The stage itself, from the five values a vertex brings: its position,
+ * diffuse and specular colours, first texture coordinate and normal. The
+ * fixed-function entry (d3d8_fixed.vert) reads them from the vertex; the VS
+ * 1.1 entry (d3d8_vs11.vert) passes what the guest's program computed, in
+ * the same places the CPU executor's output buffer used to put them.
+ */
+void d3d8_vertex_stage(vec4 in_pos, vec4 in_color, vec2 in_uv, vec3 in_normal,
+                       vec4 in_specular)
+{
+    if (vs.programmable != 0u) {
+        gl_Position = in_pos;
+    } else if (vs.pretransformed != 0u) {
+        /*
+         * Pixel coordinates to clip space. D3D's origin is the top-left of the
+         * viewport and Y grows downward. SDL_GPU's shader clip convention maps
+         * positive Y toward the top of the render target, so Y must reverse as
+         * it moves from pixels into clip space. Mapping it like X mirrors every
+         * XYZRHW primitive vertically; the game's asymmetric sword cursor makes
+         * both the mirrored image and its reflected screen position visible.
+         *
+         * RHW is deliberately NOT divided through. It carries 1/w for
+         * perspective-correct interpolation of a vertex the game already
+         * projected, and this stage has no perspective to correct: dividing
+         * would move geometry the engine placed exactly.
+         */
+        vec2 ndc = vec2(
+            (in_pos.x - vs.viewport.x) / vs.viewport.z * 2.0 - 1.0,
+            1.0 - (in_pos.y - vs.viewport.y) / vs.viewport.w * 2.0);
+        gl_Position = vec4(ndc, in_pos.z, 1.0);
+    } else {
+        gl_Position = vs.mvp * vec4(in_pos.xyz, 1.0);
+    }
+    /*
+     * D3DCOLOR is 0xAARRGGBB, so the bytes in memory are B,G,R,A and the
+     * attribute arrives in that order.
+     *
+     * WHITE when the vertex format has no diffuse component. That is D3D8's
+     * own answer with lighting disabled, and the attribute is aliased onto the
+     * position when there is no colour to point it at -- so reading it would
+     * multiply every texel by the float bits of the vertex's X coordinate.
+     * With lighting ENABLED the right answer is the lit material colour, and
+     * that is what lit_colour computes -- including for a vertex with no
+     * normal, which is where this used to fall through to white.
+     *
+     * THE SKY WAS WHITE BECAUSE OF THAT FALL-THROUGH. The menu's sky dome is a
+     * 16-triangle strip of stride 12: position and nothing else -- no texture,
+     * no diffuse, no normal. Gating the whole lighting path on a normal being
+     * present sent it to `vec4(1.0)`, and an untextured white draw covering the
+     * horizon is a white sky. D3D8 lights it: with no normal every N.L term is
+     * zero and the material's emissive and ambient terms are what remain, which
+     * is exactly how an engine colours a sky dome.
+     */
+    vec4 diffuse = vs.has_diffuse != 0u
+        ? (vs.programmable != 0u ? in_color : in_color.zyxw) : vec4(1.0);
+    vec4 specular = vs.has_specular != 0u
+        ? (vs.programmable != 0u ? in_specular : in_specular.zyxw) : vec4(1.0);
+    if (vs.lighting != 0u && vs.pretransformed == 0u) {
+        vec3 wpos = (vs.world * vec4(in_pos.xyz, 1.0)).xyz;
+        /* The normal by the world matrix's upper 3x3. Correct for the rigid
+           and uniformly-scaled transforms an engine of this age uses; a
+           non-uniform scale would need the inverse transpose, and this stage
+           does not have one to give. `in_normal` is only READ when the vertex
+           format has one -- otherwise the attribute is aliased onto other
+           bytes, and transforming those would be reading rubbish however
+           little the result contributed. */
+        bool has_n = vs.has_normal != 0u;
+        vec3 wnrm = has_n ? mat3(vs.world) * in_normal : vec3(0.0);
+        v_color = lit_colour(wpos, wnrm, diffuse, specular, has_n);
+    } else {
+        v_color = diffuse;
+    }
+    v_uv = in_uv;
+    v_shadow = vs.shadow_enabled != 0u
+        ? vs.shadow_mvp * (vs.programmable != 0u ? in_pos
+                                                : vec4(in_pos.xyz, 1.0))
+        : vec4(0.0);
+
+    /*
+     * Texture-coordinate generation, in CAMERA space.
+     *
+     * D3D8 defines the reflection vector as R = I - 2(N.I)N with I the
+     * normalised vector from the eye to the vertex -- in camera space the eye
+     * is the origin, so I is the normalised camera-space position. The normal
+     * goes through the same matrix's upper 3x3, with the same caveat about
+     * non-uniform scale as the lighting above.
+     */
+    v_dir = vec3(0.0, 0.0, 1.0);
+    v_uv1 = in_uv;
+    vec4 generated0 = vec4(in_uv, 0.0, 1.0);
+    if (vs.texgen != 0u) {
+        vec3 cpos = (vs.worldview * vec4(in_pos.xyz, 1.0)).xyz;
+        vec3 cnrm = normalize(mat3(vs.worldview) * in_normal);
+        if (vs.texgen == 1u) {
+            vec3 i = normalize(cpos);
+            generated0 = vec4(i - 2.0 * dot(cnrm, i) * cnrm, 1.0);
+        } else if (vs.texgen == 2u) {
+            generated0 = vec4(cnrm, 1.0);
+        } else {
+            generated0 = vec4(cpos, 1.0);
+        }
+    }
+    uint count0 = vs.texture_transform & 0xffu;
+    if (count0 != 0u)
+        generated0 = vs.texture_matrix * generated0;
+    if ((vs.texture_transform & 0x100u) != 0u) {
+        if (count0 == 3u && abs(generated0.z) > 1e-8)
+            generated0.xy /= generated0.z;
+        else if (count0 == 4u && abs(generated0.w) > 1e-8)
+            generated0.xyz /= generated0.w;
+    }
+    v_uv = generated0.xy;
+    v_dir = generated0.xyz;
+    if (vs.texgen1 != 0u) {
+        vec3 cpos = (vs.worldview * vec4(in_pos.xyz, 1.0)).xyz;
+        vec3 cnrm = normalize(mat3(vs.worldview) * in_normal);
+        vec4 generated = vs.texgen1 == 2u ? vec4(cnrm, 1.0)
+                       : vs.texgen1 == 3u ? vec4(cpos, 1.0)
+                                         : vec4(in_uv, 0.0, 1.0);
+        if (vs.texture_transform1 == 2u)
+            generated = vs.texture_matrix1 * generated;
+        v_uv1 = generated.xy;
+    }
+}

@@ -16,6 +16,8 @@
 #ifndef GPU_DRAW_H
 #define GPU_DRAW_H
 
+#include "gpu_vs_program.h"
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -172,6 +174,15 @@ typedef struct {
    */
   int pretransformed;
   int programmable; /* position/color are VS 1.1 outputs */
+  /*
+   * A VS 1.1 draw the GPU runs: the program and the constant file it reads,
+   * or NULL. Set, the vertex buffer is the guest's own and the program
+   * produces position, colour and texture coordinate; the offsets below then
+   * say only which of those the stage receives. Unset, a programmable draw's
+   * vertices are the CPU executor's output. Borrowed for the gpu_draw call.
+   */
+  const GpuVsProgram *vs_program;
+  const float (*vs_constants)[4]; /* GPU_VS_CONSTANTS of them */
   int color_offset;
   int specular_offset;
   int uv_offset;

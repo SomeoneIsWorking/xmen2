@@ -22,11 +22,11 @@ LEGACY_LIMITS = {
     "src/native/kernel32.c": 3624,            # waits extracted into kernel32_wait.c
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
     "src/native/x2native.c": 2329,            # was 2152
-    "src/d3d8/d3d8_drawcall.c": 1695,         # was 1650
+    "src/d3d8/d3d8_drawcall.c": 1650,         # was 1695; VS source -> d3d8_vs_draw.c
     "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
-    "src/gpu/gpu_draw.c": 1123,               # was 1250
-    "src/d3d8/d3d8_report.c": 1514,           # vtable call -> d3d8_selftest_call.c
+    "src/gpu/gpu_draw.c": 1016,               # was 1123; uniforms -> gpu_vertex_uniforms.c
+    "src/d3d8/d3d8_report.c": 1433,           # was 1514; gamma -> d3d8_gamma_selftest.c
     "src/native/threads.c": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.c
     "src/gpu/gpu_device.c": 758,              # pass attachments -> gpu_pass_attachments.c
     "src/d3d8/d3d8_resource.c": 1050,         # was 924

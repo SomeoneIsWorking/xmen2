@@ -78,7 +78,8 @@ static void addr_predicate_is_frame_independent(void) {
                         0x00320000u);
   CHECK(x86_guest_call_depth() == 69u);
   CHECK(x86_guest_call_top() == &frames[68]);
-  CHECK(x86_engine_jit_intercept(&body, NULL, &frames[68]) == 1); /* was 0 -- the bug */
+  CHECK(x86_engine_jit_intercept(&body, NULL, &frames[68]) ==
+        1); /* was 0 -- the bug */
   CHECK(x86_engine_jit_intercept(&thunk, NULL, &frames[68]) == 1);
   CHECK(x86_engine_jit_intercept(&plain, NULL, &frames[68]) == 0);
 

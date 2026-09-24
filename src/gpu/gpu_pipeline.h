@@ -35,6 +35,10 @@ typedef struct {
   int cull;
   int pretransformed;
   int has_depth_target;
+  /* A VS 1.1 draw the GPU runs: its shader, and its inputs as attributes in
+     place of the offsets above. */
+  int vs_program;
+  GpuVsInputLayout vs_inputs;
 } PipeKey;
 
 /* The cached pipeline for this state, built on first use. NULL means it could

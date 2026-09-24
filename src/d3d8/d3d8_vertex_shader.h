@@ -5,6 +5,7 @@
 #include <stddef.h>
 
 #include "d3d8_state.h"
+#include "gpu_vs_program.h"
 #include <stdint.h>
 
 #define D3D8_VS_CONSTANTS 96
@@ -38,10 +39,20 @@ int d3d8_vs_execute(uint32_t handle,
                     uint32_t stride, uint32_t first, uint32_t count,
                     D3D8VSOutput *output);
 
+/*
+ * The program `handle` names, packed for the GPU (issue #187), or NULL when it
+ * has no form the GPU runs -- an input past v15, or one of the SHORT types --
+ * and its draws take d3d8_vs_execute. Which one, and why, is reported once
+ * per shader. `input_end` receives the furthest byte an input reads, which a
+ * draw's stride must cover.
+ */
+const GpuVsProgram *d3d8_vs_gpu_program(uint32_t handle, uint32_t *input_end);
+
 void d3d8_vs_report(void);
-/* The executor's draws and vertex invocations on the heartbeat, with their
-   deltas, zeros included: the per-vertex denominator for the executor's
-   profile samples, which a scene with more skinned characters inflates. */
+/* Programmable draws on the heartbeat, with their deltas, zeros included:
+   those the GPU ran and the vertices they covered, and the CPU executor's
+   draws and vertex invocations -- the per-vertex denominator for its profile
+   samples, which a scene with more skinned characters inflates. */
 void d3d8_vs_beat_report(void);
 int d3d8_vs_selftest(void);
 

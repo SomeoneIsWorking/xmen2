@@ -75,6 +75,82 @@ static uint32_t g_second_pass[SHADOW_TEST_W * SHADOW_TEST_H];
 static unsigned rgb_sum(uint32_t pixel) {
   return (pixel & 0xffu) + ((pixel >> 8) & 0xffu) + ((pixel >> 16) & 0xffu);
 }
+
+/*
+ * A caster whose position a VS 1.1 program produces casts through
+ * shadow_vs11.vert (issue #187). `mov oPos, v0` places it where the fixed
+ * stage's identity transform does. Neither caster has a normal, so both are lit
+ * alike, and the two images must be identical -- and must hold a shadow, or
+ * they agree about nothing. The receiver is drawn first: a programmable draw
+ * cannot set the frame's light, and the product's frames have a lit
+ * fixed-function draw ahead of their skinned casters in the same way.
+ */
+static GpuVsProgram g_caster_program;
+static float g_caster_constants[GPU_VS_CONSTANTS][4];
+static uint32_t g_fixed_caster[SHADOW_TEST_W * SHADOW_TEST_H];
+static uint32_t g_program_caster[SHADOW_TEST_W * SHADOW_TEST_H];
+
+static int render_receiver_first(GpuDraw *receiver, GpuDraw *caster,
+                                 uint32_t *pixels) {
+  int ok;
+  gpu_shadow_configure(1, 512);
+  if (!gpu_offscreen_begin(SHADOW_TEST_W, SHADOW_TEST_H, 0.0f, 0.0f, 0.0f,
+                           1.0f))
+    return 0;
+  ok = gpu_draw(receiver) && gpu_draw(caster) &&
+       gpu_offscreen_read(pixels,
+                          SHADOW_TEST_W * SHADOW_TEST_H * sizeof *pixels);
+  gpu_offscreen_end();
+  return ok;
+}
+
+static void describe_program(void) {
+  const uint32_t position =
+      (uint32_t)GPU_VS_REG_INPUT | 0xe4u << GPU_VS_SOURCE_SWIZZLE_SHIFT;
+  memset(&g_caster_program, 0, sizeof g_caster_program);
+  gpu_vs_program_set_input(&g_caster_program, 0, GPU_VS_INPUT_FLOAT3, 0);
+  g_caster_program.block.insn[0][0] =
+      (uint32_t)GPU_VS_OP_MOV | 0xfu << 8 | (uint32_t)GPU_VS_REG_OUT_POS << 16;
+  g_caster_program.block.insn[0][1] = position;
+  g_caster_program.block.insn[0][2] = position;
+  g_caster_program.block.insn[0][3] = position;
+  g_caster_program.block.count = 1;
+}
+
+static int program_caster_check(GpuBuffer caster_buffer, GpuDraw *receiver,
+                                const uint32_t *no_caster) {
+  GpuDraw fixed, program;
+  unsigned shadowed = 0, differ = 0;
+
+  describe_draw(&fixed, caster_buffer, 2);
+  fixed.normal_offset = -1;
+  program = fixed;
+  describe_program();
+  program.vs_program = &g_caster_program;
+  program.vs_constants = g_caster_constants;
+  program.programmable = 1;
+  program.color_offset = 0;
+  program.uv_offset = 0;
+  if (!render_receiver_first(receiver, &fixed, g_fixed_caster) ||
+      !render_receiver_first(receiver, &program, g_program_caster)) {
+    x2_log_info("gpu shadow selftest: FAILED -- the VS 1.1 caster could not "
+                "be drawn.\n");
+    return 1;
+  }
+  for (unsigned i = 0; i < SHADOW_TEST_W * SHADOW_TEST_H; i++) {
+    if (rgb_sum(g_fixed_caster[i]) + 60 < rgb_sum(no_caster[i]))
+      shadowed++;
+    if (g_fixed_caster[i] != g_program_caster[i])
+      differ++;
+  }
+  if (shadowed < 20 || differ) {
+    x2_log_info("gpu shadow selftest: FAILED -- the fixed caster shadowed %u "
+                "pixels; the VS 1.1 caster's image differs from it in %u.\n",
+                shadowed, differ);
+    return 1;
+  }
+  return 0;
+}
 #endif
 
 int gpu_shadow_selftest(void) {
@@ -150,10 +226,13 @@ int gpu_shadow_selftest(void) {
                 darker, caster_dependent, unchanged);
     goto done;
   }
+  if (program_caster_check(caster_buffer, &receiver, no_caster))
+    goto done;
   x2_log_info(
       "gpu shadow selftest: PASSED -- %u pixels darkened only when the "
       "shadow pass was sampled; %u vanished when the caster was removed; "
-      "%u control pixels stayed unchanged.\n",
+      "%u control pixels stayed unchanged; a VS 1.1 caster shadowed the "
+      "same pixels.\n",
       darker, caster_dependent, unchanged);
   result = 0;
 

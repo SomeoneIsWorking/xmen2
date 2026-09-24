@@ -8,6 +8,7 @@
  * reusing a slot cannot make an old handle silently name a different shader.
  */
 #include "d3d8_vertex_shader_internal.h"
+#include "d3d8_vs_draw.h"
 
 #include "d3d8_state.h"
 
@@ -174,15 +175,20 @@ const uint32_t *d3d8_vs_function(const D3D8VertexShader *s, size_t *bytes) {
 }
 
 void d3d8_vs_beat_report(void) {
-  static unsigned long p_executions, p_vertices;
-  unsigned long executions, vertices;
+  static unsigned long p_executions, p_vertices, p_gpu_draws, p_gpu_vertices;
+  unsigned long executions, vertices, gpu_draws, gpu_vertices;
   d3d8_vs_execution_counts(&executions, &vertices);
-  x2_log_error("[HB]           VS 1.1 executor %lu draw(s) (+%lu), %lu "
-               "vertex invocation(s) (+%lu)\n",
-               executions, executions - p_executions, vertices,
-               vertices - p_vertices);
+  d3d8_vs_draw_gpu_counts(&gpu_draws, &gpu_vertices);
+  x2_log_error("[HB]           VS 1.1 on the GPU %lu draw(s) (+%lu) over %lu "
+               "vertices (+%lu); CPU executor %lu draw(s) (+%lu), %lu vertex "
+               "invocation(s) (+%lu)\n",
+               gpu_draws, gpu_draws - p_gpu_draws, gpu_vertices,
+               gpu_vertices - p_gpu_vertices, executions,
+               executions - p_executions, vertices, vertices - p_vertices);
   p_executions = executions;
   p_vertices = vertices;
+  p_gpu_draws = gpu_draws;
+  p_gpu_vertices = gpu_vertices;
 }
 
 void d3d8_vs_report(void) {

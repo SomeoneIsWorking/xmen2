@@ -54,6 +54,9 @@ static const GpuShaderWord shadow_depth_vert_code[] =
 static const GpuShaderWord shadow_depth_frag_code[] =
 #include "shaders/shadow_depth_frag.inc"
     ;
+static const GpuShaderWord shadow_vs11_vert_code[] =
+#include "shaders/shadow_vs11_vert.inc"
+    ;
 
 typedef struct {
   uint32_t stride;
@@ -62,6 +65,8 @@ typedef struct {
   int pos_is_float4;
   int primitive;
   int cull;
+  int vs_program; /* the caster's VS 1.1 program runs here too */
+  GpuVsInputLayout vs_inputs;
 } ShadowPipeKey;
 
 typedef struct {
@@ -75,7 +80,7 @@ static SDL_GPUTexture *g_texture;
 static uint32_t g_texture_resolution;
 static SDL_GPUSampler *g_sampler;
 static SDL_GPUTextureFormat g_format;
-static SDL_GPUShader *g_vertex_shader, *g_fragment_shader;
+static SDL_GPUShader *g_vertex_shader, *g_fragment_shader, *g_vs11_shader;
 static SDL_GPUCommandBuffer *g_shadow_command;
 static SDL_GPURenderPass *g_shadow_pass;
 static GpuShadowFramePolicy g_frame_policy;
@@ -184,12 +189,44 @@ static int resources_ready(void) {
   return 1;
 }
 
+/* The VS 1.1 caster's entry: slot 0 the shadow matrix, then the program's
+   two blocks. Made on the first such caster. */
+static int vs11_shader_ready(void) {
+  if (!g_vs11_shader)
+    g_vs11_shader = load_shader(shadow_vs11_vert_code,
+                                X2_GPU_SHADER_SIZE(shadow_vs11_vert_code),
+                                SDL_GPU_SHADERSTAGE_VERTEX, 0, 3);
+  if (!g_vs11_shader) {
+    x2_log_error("gpu shadow: the VS 1.1 depth shader could not be created: "
+                 "%s\n",
+                 SDL_GetError());
+    g_resource_failures++;
+  }
+  return g_vs11_shader != NULL;
+}
+
+static unsigned fixed_attributes(const GpuDraw *draw,
+                                 SDL_GPUVertexAttribute attributes[2]) {
+  attributes[0].location = 0;
+  attributes[0].buffer_slot = 0;
+  attributes[0].format = draw->programmable
+                             ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                             : SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+  attributes[0].offset = (uint32_t)draw->pos_offset;
+  attributes[1].location = 1;
+  attributes[1].buffer_slot = 0;
+  attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+  attributes[1].offset = draw->uv_offset >= 0 ? (uint32_t)draw->uv_offset
+                                              : (uint32_t)draw->pos_offset;
+  return 2;
+}
+
 static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   ShadowPipeKey key;
   SDL_GPUGraphicsPipelineCreateInfo info;
   SDL_GPUVertexBufferDescription vertex_buffer;
-  SDL_GPUVertexAttribute attributes[2];
-  unsigned i;
+  SDL_GPUVertexAttribute attributes[GPU_VS_INPUTS];
+  unsigned i, count;
   memset(&key, 0, sizeof key);
   key.stride = draw->vertex_stride;
   key.pos_offset = draw->pos_offset;
@@ -197,6 +234,10 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   key.pos_is_float4 = draw->programmable;
   key.primitive = draw->prim;
   key.cull = draw->cull;
+  if (draw->vs_program) {
+    key.vs_program = 1;
+    key.vs_inputs = draw->vs_program->inputs;
+  }
   for (i = 0; i < g_pipeline_count; i++)
     if (memcmp(&g_pipelines[i].key, &key, sizeof key) == 0)
       return g_pipelines[i].pipeline;
@@ -210,22 +251,19 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   vertex_buffer.slot = 0;
   vertex_buffer.pitch = draw->vertex_stride;
   vertex_buffer.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
-  attributes[0].location = 0;
-  attributes[0].buffer_slot = 0;
-  attributes[0].format = draw->programmable
-                             ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
-                             : SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
-  attributes[0].offset = (uint32_t)draw->pos_offset;
-  attributes[1].location = 1;
-  attributes[1].buffer_slot = 0;
-  attributes[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
-  attributes[1].offset = draw->uv_offset >= 0 ? (uint32_t)draw->uv_offset
-                                              : (uint32_t)draw->pos_offset;
+  if (draw->vs_program) {
+    if (!vs11_shader_ready())
+      return NULL;
+    gpu_vs_program_attributes(&draw->vs_program->inputs, attributes);
+    count = GPU_VS_INPUTS;
+  } else {
+    count = fixed_attributes(draw, attributes);
+  }
   info.vertex_input_state.vertex_buffer_descriptions = &vertex_buffer;
   info.vertex_input_state.num_vertex_buffers = 1;
   info.vertex_input_state.vertex_attributes = attributes;
-  info.vertex_input_state.num_vertex_attributes = 2;
-  info.vertex_shader = g_vertex_shader;
+  info.vertex_input_state.num_vertex_attributes = count;
+  info.vertex_shader = draw->vs_program ? g_vs11_shader : g_vertex_shader;
   info.fragment_shader = g_fragment_shader;
   info.primitive_type = draw->prim == GPU_PRIM_TRIANGLESTRIP
                             ? SDL_GPU_PRIMITIVETYPE_TRIANGLESTRIP
@@ -322,6 +360,8 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   if (gpu_pass_binds_vertex_changed(&g_binds, vertices, vertex_serial))
     SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
   SDL_PushGPUVertexUniformData(g_shadow_command, 0, matrix, sizeof matrix);
+  if (draw->vs_program)
+    gpu_vs_program_push(g_shadow_command, draw->vs_program, draw->vs_constants);
   memset(&texture_binding, 0, sizeof texture_binding);
   texture_binding.texture = texture;
   texture_binding.sampler = sampler;
@@ -427,10 +467,12 @@ void gpu_shadow_shutdown(void) {
     SDL_ReleaseGPUShader(g_gpu, g_vertex_shader);
   if (g_fragment_shader)
     SDL_ReleaseGPUShader(g_gpu, g_fragment_shader);
+  if (g_vs11_shader)
+    SDL_ReleaseGPUShader(g_gpu, g_vs11_shader);
   g_sampler = NULL;
   g_texture = NULL;
   g_texture_resolution = 0;
-  g_vertex_shader = g_fragment_shader = NULL;
+  g_vertex_shader = g_fragment_shader = g_vs11_shader = NULL;
   g_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 

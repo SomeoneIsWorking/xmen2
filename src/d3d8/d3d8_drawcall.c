@@ -25,6 +25,7 @@
 #include "d3d8_texture_stage.h"
 #include "d3d8_types.h"
 #include "d3d8_vertex_shader.h"
+#include "d3d8_vs_draw.h"
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
@@ -1131,7 +1132,6 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   }
 
   if (programmable) {
-    D3D8VSOutput *vertices;
     /* Once per armed frame, on the first shader draw -- the palette is
        uploaded per draw and this is the one the table is describing. */
     if (g_ft_on > 0 && !g_ft_done && g_ft_frame && !g_ft_probed) {
@@ -1149,55 +1149,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
       constants_probe(s->vertex_shader_constant, 6, D3D8_MAX_VS_CONSTANTS);
       constants_dump(s->vertex_shader_constant, D3D8_MAX_VS_CONSTANTS);
     }
-    uint32_t count, bytes;
-    if (!req->vertex_guest_bytes || !req->vertex_bytes || !req->stride) {
-      x2_log_error("d3d8: programmable draw has no host-visible "
-                   "stream-0 bytes (guest=0x%08x bytes=%u stride=%u).\n",
-                   req->vertex_guest_bytes, req->vertex_bytes, req->stride);
+    if (!d3d8_vs_draw_source(s, req, out)) {
       g_refused_fvf++;
       return 0;
     }
-    count = req->vertex_bytes / req->stride;
-    if (!count || count > UINT32_MAX / sizeof *vertices) {
-      x2_log_error("d3d8: programmable draw derives %u vertices "
-                   "from %u bytes at stride %u.\n",
-                   count, req->vertex_bytes, req->stride);
-      g_refused_fvf++;
-      return 0;
-    }
-    bytes = count * (uint32_t)sizeof *vertices;
-    vertices = malloc(bytes);
-    if (!vertices) {
-      g_refused_fvf++;
-      return 0;
-    }
-    if (!d3d8_vs_execute(fvf, s->vertex_shader_constant,
-                         guest_memory_const_pointer(req->vertex_guest_bytes),
-                         req->vertex_bytes, req->stride, 0, count, vertices)) {
-      free(vertices);
-      g_refused_fvf++;
-      return 0;
-    }
-    out->vertices = gpu_buffer_create(GPU_BUF_VERTEX, bytes);
-    if (!out->vertices ||
-        !gpu_buffer_upload(out->vertices, 0, vertices, bytes)) {
-      if (out->vertices)
-        gpu_buffer_destroy(out->vertices);
-      out->vertices = 0;
-      free(vertices);
-      g_refused_fvf++;
-      return 0;
-    }
-    free(vertices);
-    out->owns_vertices = 1;
-    out->vertex_stride = sizeof(D3D8VSOutput);
-    out->pos_offset = offsetof(D3D8VSOutput, position);
-    out->pretransformed = 0;
-    out->programmable = 1;
-    out->color_offset = offsetof(D3D8VSOutput, diffuse);
-    out->specular_offset = -1;
-    out->uv_offset = offsetof(D3D8VSOutput, texcoord);
-    out->normal_offset = -1;
   } else {
     out->pos_offset = vl.pos_offset;
     out->pretransformed = vl.pretransformed;

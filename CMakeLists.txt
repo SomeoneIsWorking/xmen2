@@ -1450,6 +1450,12 @@ add_test(NAME source_policy_selftest
                  ${CMAKE_SOURCE_DIR}/tools/verify_source_policy.py --selftest)
 set_tests_properties(source_policy_selftest PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME clang_format
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_format.py)
+add_test(NAME clang_format_selftest
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_format.py --selftest)
+set_tests_properties(clang_format clang_format_selftest PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME clang_tidy
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/clang_tidy.py
                  --build-dir ${CMAKE_BINARY_DIR} --jobs 2)
@@ -1961,10 +1967,14 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vertex_shader.c
     src/d3d8/d3d8_vs_decode.cpp
     src/d3d8/d3d8_vs_execute.cpp
+    src/d3d8/d3d8_vs_gpu.cpp
+    src/d3d8/d3d8_vs_draw.c
     src/d3d8/d3d8_screen_space_test.c
     src/d3d8/d3d8_device_bindings.c
     src/d3d8/d3d8_binding_selftest.c
     src/d3d8/d3d8_selftest_call.c
+    src/d3d8/d3d8_gamma_selftest.c
+    src/d3d8/d3d8_vs_gpu_selftest.c
     src/d3d8/d3d8_light_selftest.c
     src/d3d8/d3d8_host_report.c
     src/d3d8/d3d8_report.c
@@ -1977,6 +1987,8 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_present_luma.c
     src/gpu/gpu_readback.c
     src/gpu/gpu_draw.c
+    src/gpu/gpu_vertex_uniforms.c
+    src/gpu/gpu_vs_program.c
     src/gpu/gpu_frame_epoch.c
     src/gpu/gpu_index_arena.c
     src/gpu/gpu_index_storage.c
