@@ -1365,6 +1365,14 @@ On `#test-play` (10,119,323-byte wasm, 15 s profile of the guest worker),
 509 to 0, and `x86p_alu` from 363 to 111. Translated blocks rise from 50.3% to
 52.8% of the worker. The canvas reads 98% non-black with no uncaptured errors.
 
+**Mapping a browser staging page no longer clears it** (SDL `81ae4a8`,
+web-port `1e3fccd`). The staging ring cycles each page on its first write of a
+frame. SDL's WebGPU backend answered that with a memset of the whole 4 MiB
+page, and switched the page to a GPU buffer nothing used. Its uploads copy out
+of that memory when they are recorded, so neither step protected anything. On
+`#test-play` (10,119,389-byte wasm) `WEBGPU_MapTransferBuffer` falls from 727
+samples to 4. The canvas still reads 98% non-black with no uncaptured errors.
+
 **The x87-order overrides now answer in the browser** (#165). They were
 gated on an x87 host, so wasm ran the frustum test, matrix multiply and
 invert as translated x87. With `x87_real` a double there, the same wasm
