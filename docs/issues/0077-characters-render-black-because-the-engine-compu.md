@@ -1,11 +1,11 @@
 ---
 id: 77
 title: Historical black characters in the Cyclops dialogue diverged at skinning shader selection
-status: investigating
+status: resolved
 symptom: characters render black or very dark in gameplay while the environment looks correct; Cyclops dark with head reading as collapsed
 tags: rendering,lighting,d3d8,engine,jit
 created: 2026-08-15
-updated: 2026-08-24
+updated: 2026-09-24
 ---
 
 ## Observation
@@ -57,3 +57,31 @@ state at each draw. Whole-run `X2_LIGHTLOG` has no scene/frame boundary, so its
 nine route-dependent differences cannot answer this issue. See C203--C205,
 I055 and I059. Do not conflate this historical dialogue defect with the
 intermittent soldier-buffer defect resolved in issue #84.
+
+## Closure (2026-09-24)
+
+Captured on the current native build through `tools/live_case.py`'s
+tutorial route (`act0/tutorial/tutorial1`, scripts on). The run waited for the
+authored conversation and dumped F9 frame tables with SIGUSR1 while Cyclops
+says "Nightcrawler, we've located the Professor". This is the same dialogue as
+the retained comparison.
+
+- Screenshot: Cyclops and the figure in the chair are both fully coloured and
+  lit. Neither reads as a silhouette.
+- Frame table, frame 507: the two character hulls are draws 41 and 43, both
+  stride 32 and drawn from guest vertices through the vertex shader. The run's
+  SetVertexShader census holds one shader handle (`0xf0000101`, created once,
+  bound, never refused) and no FVF `0x002`, the fixed-function stride-12 form
+  the hulls took when this was open. The GPU VS 1.1 path ran exactly 600 draws
+  per 5 s: two per frame, the two hulls. CPU executor: 0.
+- Shader lifecycle: 1 created, 0 deleted, 0 refused.
+
+The ordered signature is not the historical 77 draws. This frame has 89. Its
+prefix matches the stock capture's recorded counts (20 / 212 / 32 … 548 / 727),
+but the conversation panel adds UI draws and the order of the large world
+draws differs (1870 before 1582). So by this issue's own rule, it is not the
+frame from `drive.log`, and that log no longer exists to recapture. What the
+rule protected was the attribution to shader selection. That now holds
+directly in the scene the defect was reported in: the hulls take the shader
+path that C205 restored by raising `MaxVertexShaderConst` to 256, and the
+actors are coloured. Resolved on that evidence.
