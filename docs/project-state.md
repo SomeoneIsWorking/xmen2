@@ -1641,13 +1641,11 @@ every console line over CDP, where WebLua's own buffer held 50 and none of them
 the heartbeat. The heartbeat now also reports invalidation in both halves — the
 calls x86port received, the guest bytes they named, the cached blocks they
 actually dropped, and which of guest memory's three operations asked — so the
-residual translation churn can be attributed rather than guessed at. Separately,
-that window is 2.5 GB of **committed** memory before the first frame, and a
-loaded host refuses it by name and the product will not start (issue #159); the
-region sizes in `guest_layout.h` are collision-avoiding ceilings, not measured
-requirements. A browser with no GPU does worse than refuse: the display-failure
-path reaches for `document` from a guest worker, kills it, and wedges the run
-(issue #160).
+residual translation churn can be attributed rather than guessed at. The window
+is committed in full before the first frame, so its regions in `guest_layout.h`
+are sized to measured reach plus headroom (issue #159): 848 MB of guest window
+and 0.96 GiB of wasm memory in all on `#test-play`, where it had been 2.5 GB and
+2.53 GiB, and `guest_layout_report` prints each region's reach at shutdown.
 An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
 a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.

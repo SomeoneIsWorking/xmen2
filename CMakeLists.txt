@@ -1847,6 +1847,7 @@ set(X2_NATIVE_SOURCES
     src/runtime/x86_abi/x87crt.c
     src/native/kernel32.c
     src/native/kernel32_wait.c
+    src/native/kernel32_virtual.c
     src/native/win_path.c
     src/native/host_dir_cache.c
     src/native/advapi32.c
@@ -1951,6 +1952,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_hotep.c
     src/native/x86_thunk_probe.c
     src/native/run_reports.c
+    src/native/guest_layout_report.c
     src/native/x86rt_native.c
     src/native/env_file.c
     src/native/startup.c

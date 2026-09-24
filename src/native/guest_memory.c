@@ -68,16 +68,15 @@ static uint32_t g_host_page_size;
 #if GUEST_ARENA_WINDOW
 static uint8_t g_perms[GUEST_PAGE_COUNT];
 #endif
-#if GUEST_ARENA_OWNED
 /*
- * Which pages have been mapped before, so a later map can hand back the zeroes
- * Win32 promises. An arena keeps its bytes when a page is released -- nothing
- * unmaps them -- so without this the guest reads whatever the previous owner
- * of that address left behind. The host's own mmap zeroes, which is why the
- * identity path needs no table.
+ * Which pages have been mapped before. An owned arena keeps its bytes when a
+ * page is released -- nothing unmaps them -- so a later map clears them to
+ * hand back the zeroes Win32 promises; the host's own mmap zeroes on the
+ * identity path. On every path it is also how far each layout region has ever
+ * reached, which is what a window that commits its whole span must hold.
+ * Written with g_pages_lock held.
  */
-static unsigned char g_written[GUEST_PAGE_COUNT];
-#endif
+static unsigned char g_mapped_before[GUEST_PAGE_COUNT];
 
 void guest_memory_set_remap_observer(GuestMemoryRemapObserver observer) {
   g_remapped = observer;
@@ -157,10 +156,9 @@ static int span(uint32_t address, size_t size, uint32_t *first,
 static void zero_reused_pages(uint32_t first, uint32_t count) {
   uint32_t i;
   for (i = 0; i < count; i++) {
-    if (g_written[first + i]) {
+    if (g_mapped_before[first + i]) {
       memset(host_pointer((first + i) * GUEST_PAGE_SIZE), 0, GUEST_PAGE_SIZE);
     }
-    g_written[first + i] = 1;
   }
 }
 #endif
@@ -300,8 +298,45 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
 #if !GUEST_ARENA_OWNED
   pages_fill(first, count, PAGE_MAPPED | (unsigned char)protection);
 #endif
+  memset(&g_mapped_before[first], 1, count);
   pthread_mutex_unlock(&g_pages_lock);
   return 0;
+}
+
+uint32_t guest_memory_run(uint32_t address, int *mapped) {
+  const uint32_t first = address / GUEST_PAGE_SIZE;
+  const uint32_t limit = GUEST_LAYOUT_LIMIT / GUEST_PAGE_SIZE;
+  uint32_t page = first;
+  int state;
+  if (first >= limit) {
+    *mapped = 0;
+    return 0;
+  }
+  state = (g_pages[first] & PAGE_MAPPED) != 0;
+  while (page < limit && ((g_pages[page] & PAGE_MAPPED) != 0) == state) {
+    page++;
+  }
+  *mapped = state;
+  return (page - first) * GUEST_PAGE_SIZE;
+}
+
+GuestMemoryRegionUse guest_memory_region_use(uint32_t lo, uint32_t hi) {
+  GuestMemoryRegionUse use = {0, 0, 0};
+  uint64_t page;
+  const uint64_t end = hi ? (uint64_t)hi : GUEST_SPACE_SIZE;
+  pthread_mutex_lock(&g_pages_lock);
+  for (page = lo / GUEST_PAGE_SIZE;
+       page < end / GUEST_PAGE_SIZE && page < GUEST_PAGE_COUNT; page++) {
+    if (g_mapped_before[page]) {
+      use.pages_ever++;
+      use.top = (page + 1u) * GUEST_PAGE_SIZE;
+    }
+    if (g_pages[page] & PAGE_MAPPED) {
+      use.pages_now++;
+    }
+  }
+  pthread_mutex_unlock(&g_pages_lock);
+  return use;
 }
 
 int guest_memory_map_any(uint32_t first_address, uint32_t last_address,

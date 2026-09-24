@@ -19,9 +19,9 @@ DEFAULT_LIMIT = 500
 # would have failed 26 files that nobody touched. Each entry records what it
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
-    "src/native/kernel32.c": 3624,            # waits extracted into kernel32_wait.c
+    "src/native/kernel32.c": 3087,            # was 3624; virtual memory -> kernel32_virtual.c
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
-    "src/native/x2native.c": 2329,            # was 2152
+    "src/native/x2native.c": 2174,            # was 2329
     "src/d3d8/d3d8_drawcall.c": 1650,         # was 1695; VS source -> d3d8_vs_draw.c
     "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c

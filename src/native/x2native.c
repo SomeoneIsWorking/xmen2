@@ -390,10 +390,10 @@ static uint32_t guest_stack_top;
 static int guest_stack_init(void) {
   /* Below 4 GB like everything else the guest addresses, and mapped rather
      than malloc'd so its address is predictable in a fault report. */
-  /* High, deliberately. The game manages its own address space and walks
-     upward from just above its image reserving arenas; anything of ours in
-     that path collides with it. Measured: with the stack at 0x30000000 the
-     guest's arena walk ran straight into it. */
+  /* Above the game's own arenas, which it places by walking VirtualQuery
+     upward from its image. That walk once ran into this stack at 0x30000000,
+     because VirtualQuery called the runtime's pages free; it now reports any
+     mapped page it cannot attribute as reserved (kernel32_virtual.c). */
   if (pe_map_anon_low(GUEST_RUNTIME_BASE, GUEST_STACK) != 0)
     return -1;
   guest_stack_top = GUEST_RUNTIME_BASE + GUEST_STACK - 64u;

@@ -4,20 +4,16 @@
 #include "kernel32_wait.h"
 #include "guest_clock.h"
 #include "kernel32_handles.h"
+#include "stdcall_import.h"
 #include "threads.h"
 #include "winmm.h"
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <stdlib.h>
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define WAIT_OBJECT_0 0u
 #define WAIT_TIMEOUT 258u
 #define WAIT_FAILED 0xFFFFFFFFu
-static void ret_std(CPU *C, uint32_t value, int nargs) {
-  C->reg[kX86pEax] = value;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 static uint32_t wait_remaining_ms(double start, uint32_t ms) {
   if (ms == 0xFFFFFFFFu)
     return 1000u;

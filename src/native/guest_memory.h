@@ -69,6 +69,30 @@ typedef struct GuestMemoryRemapCounts {
 } GuestMemoryRemapCounts;
 
 GuestMemoryRemapCounts guest_memory_remap_counts(void);
+
+/*
+ * How much of [lo, hi) the run has used. `top` is one past the highest page
+ * ever mapped there (0 if none), `pages_ever` the distinct pages ever mapped,
+ * `pages_now` those mapped now. The browser window commits its whole span, so
+ * the ever-reached figures, not the current ones, are what the layout has to
+ * hold (#159). hi 0 means the end of the space.
+ */
+typedef struct GuestMemoryRegionUse {
+  uint64_t top;
+  uint32_t pages_ever;
+  uint32_t pages_now;
+} GuestMemoryRegionUse;
+
+GuestMemoryRegionUse guest_memory_region_use(uint32_t lo, uint32_t hi);
+
+/*
+ * The run of pages from `address` (page-aligned down) that are all mapped or
+ * all unmapped, ending no later than GUEST_LAYOUT_LIMIT: its length in bytes,
+ * with *mapped saying which. 0 at or above the limit, where nothing is ever
+ * placed. This is what VirtualQuery calls free, so a page the runtime owns
+ * is never offered to the guest as empty.
+ */
+uint32_t guest_memory_run(uint32_t address, int *mapped);
 const char *guest_memory_remap_cause_name(GuestMemoryRemapCause cause);
 
 /*

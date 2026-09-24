@@ -232,8 +232,24 @@ int main(void) {
   check(!guest_memory_is_readable(GUEST_LAYOUT_LIMIT, 1) &&
             !x86_peek32(GUEST_LAYOUT_LIMIT, &value),
         "and is neither readable nor peekable");
+  {
+    int mapped = -1;
+    check(guest_memory_run(last_page, &mapped) == 4096u && mapped == 1,
+          "the last page is a mapped run of one, ending at the layout");
+    check(guest_memory_run(last_page - 8192u, &mapped) == 8192u && mapped == 0,
+          "a free run stops at the next mapped page, for VirtualQuery");
+    check(guest_memory_run(GUEST_LAYOUT_LIMIT, &mapped) == 0u && mapped == 0,
+          "nothing past the layout is ever offered as a run");
+  }
+  check(guest_memory_region_use(last_page, 0).top == GUEST_LAYOUT_LIMIT &&
+            guest_memory_region_use(last_page, 0).pages_now == 1u,
+        "the region report sees the last page mapped");
   check(guest_memory_release(last_page, 4096) == 0,
         "release the last page of the window");
+  check(guest_memory_region_use(last_page, 0).pages_now == 0u &&
+            guest_memory_region_use(last_page, 0).pages_ever == 1u &&
+            guest_memory_region_use(last_page, 0).top == GUEST_LAYOUT_LIMIT,
+        "and still reports how far the run reached after the release");
 
   check(guest_memory_map_any(base, base + 8192, 4096, 4096,
                              PROT_READ | PROT_WRITE, &address) == 0 &&

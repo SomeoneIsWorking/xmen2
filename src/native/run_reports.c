@@ -19,6 +19,7 @@
 #include "dialog_selection_scale.h"
 #include "dinput_pad_report.h"
 #include "gpu_prompt_glyphs.h"
+#include "guest_layout_report.h"
 #include "heartbeat.h"
 #include "input_record.h"
 #include "keycap_labels.h"
@@ -70,6 +71,7 @@ void x2_interrupt_reports(int killed) {
   x86_override_leaves_report();
   d3d8_host_report();
   guest_heap_report();
+  guest_layout_report();
   /* The threads and their critical sections are reported on EVERY ending,
      not only on a kill. They lived in x86_diag_dump, which the clean
      X2_MAX_FRAMES stop deliberately skips -- so the runs that WORK, the ones

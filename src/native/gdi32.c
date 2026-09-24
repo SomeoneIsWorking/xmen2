@@ -26,6 +26,7 @@
 #include "../presentation/display_geometry.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -35,13 +36,6 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
-
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
-static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->reg[kX86pEax] = eax;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 
 /* wingdi.h indices, only the ones a display query plausibly asks for. */
 #define DRIVERVERSION 0

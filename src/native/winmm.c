@@ -11,6 +11,7 @@
  */
 #include "guest_clock.h"
 #include "igvk_ark.h"
+#include "stdcall_import.h"
 #include "winmm.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -19,14 +20,7 @@
 #include <string.h>
 #include <time.h>
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
 #define TIMERR_NOERROR 0u
-
-static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->reg[kX86pEax] = eax;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 
 /*
  * timeBeginPeriod(uPeriod) / timeEndPeriod(uPeriod)
