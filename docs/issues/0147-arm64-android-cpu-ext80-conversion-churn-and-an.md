@@ -269,3 +269,17 @@ split above is the one to trust.
    time, plus an inline compare against the run's `return_to` -- the intercept's
    only dynamic condition. That is the next structural win and it is
    substantially larger than anything above it here.
+
+10. **Blocks chain and leaves run in place on ARM64** (x86port `9a796b6`).
+    Each block has two chain slots; a linked exit checks the run's stop and
+    budget and branches to its successor past the prologue, and a computed exit
+    that misses probes the block cache's front array, as on x64. Direct CALLs
+    to a consumer leaf and CALL-through-register leaf sites complete without
+    leaving the block. Under `qemu-aarch64` the engine differential chains
+    4,089 of 4,096 block entries with zero failures across 3,318 checks.
+
+    Not yet measured on the device: the dispatch-loop share above
+    (`x86p_jit_engine_run` 37.06%, the intercept 16.68%) is the number this
+    should collapse, and a re-profile of the title screen on the ARM64
+    Cuttlefish device is what closes that. As the thread split at the top of
+    this issue says, the device cannot turn it into a frame-time claim.
