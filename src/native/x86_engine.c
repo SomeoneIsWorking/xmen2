@@ -323,6 +323,10 @@ static void run_call(volatile EngineRun *run) {
 }
 
 int x2_engine_call(uint32_t addr, CPU *C) {
+  return x2_engine_resume(addr, C, C->reg[kX86pEsp]);
+}
+
+int x2_engine_resume(uint32_t addr, CPU *C, uint32_t frame_esp) {
   X86pCpu *cpu = C;
   x86_override_leaf_forbid("called guest code");
 
@@ -367,7 +371,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
   cpu->fs_base = g_fsbase;
   cpu->gs_base = g_gsbase;
   const uint32_t entry = addr;
-  const uint32_t entry_esp = cpu->reg[kX86pEsp];
+  const uint32_t entry_esp = frame_esp;
   const uint32_t return_to = RD32(entry_esp);
   cpu->eip = addr;
   X86GuestCallFrame call_frame;

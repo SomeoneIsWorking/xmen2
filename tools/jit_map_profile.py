@@ -14,7 +14,7 @@ address charged hot samples to one-time registration code in the first use.
 
     tools/jit_map_profile.py --map scratch/jitdump/jit.map \\
         --perf-data scratch/jitdump/perf.data --log scratch/jitdump/run.log \\
-        --game-dir "$GAME_PC_DIR" [--top 30] [--blocks]
+        --game-dir "$GAME_PC_DIR" [--top 30] [--blocks] [--time START,END]
     tools/jit_map_profile.py --selftest
 """
 import argparse
@@ -130,8 +130,9 @@ def export_table(modules, game_dir):
     return table
 
 
-def sample_ips(perf_data):
-    out = subprocess.run(["perf", "script", "-G", "-i", perf_data, "-F", "ip"],
+def sample_ips(perf_data, time_range=None):
+    window = ["--time", time_range] if time_range else []
+    out = subprocess.run(["perf", "script", "-G", "-i", perf_data, "-F", "ip", *window],
                          capture_output=True, text=True, check=True).stdout
     return [int(word, 16) for word in out.split()]
 
@@ -188,6 +189,8 @@ def main():
     parser.add_argument("--game-dir", help="the directory holding the mapped modules")
     parser.add_argument("--top", type=int, default=30)
     parser.add_argument("--blocks", action="store_true", help="rank blocks, not functions")
+    parser.add_argument("--time", help="only samples in this perf time window, START,END "
+                        "in perf's own seconds (as `perf script -F time` prints them)")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
     if args.selftest:
@@ -204,7 +207,7 @@ def main():
     if not modules:
         sys.exit(f"jit_map_profile: {args.log} says no module was mapped")
     names = Names(modules, export_table(modules, args.game_dir))
-    report(sample_ips(args.perf_data), ranges, names, args.top, args.blocks)
+    report(sample_ips(args.perf_data, args.time), ranges, names, args.top, args.blocks)
     return 0
 
 

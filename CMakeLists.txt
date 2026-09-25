@@ -1950,6 +1950,7 @@ set(X2_NATIVE_SOURCES
     src/net/lan_rendezvous.cpp
     src/net/udp_broadcast_socket.cpp
     src/native/lan_nat_negotiation.cpp
+    src/native/storage_device_check.cpp
     src/native/control_ui_route.c
     src/native/control_input_route.c
     src/native/macos_bundle.c

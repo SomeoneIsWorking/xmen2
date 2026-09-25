@@ -106,6 +106,46 @@ int x2_engine_selftest(void) {
   check("OF", (uint32_t)x86p_flag_of(&cpu.flags), 0u, &failures);
 
   /*
+   * Resuming a body mid-function (x2_engine_resume), for an override that
+   * replaces only a leading part of a retail function:
+   *
+   *   +0x100  push ebx            <- the part the override replaces
+   *   +0x101  mov  eax, 0xDEAD
+   *   +0x106  mov  eax, 0x11      <- resumed here
+   *   +0x10b  pop  ebx
+   *   +0x10c  ret
+   *
+   * The override has pushed EBX itself. The frame's return address is a real
+   * guest address, +0x200, whose code would set ECX to 0xBAD and return to
+   * the engine: the run must stop AT the frame's return address, not wherever
+   * the resumed ESP's top word happens to point.
+   */
+  {
+    static const uint8_t body[] = {0x53, 0xB8, 0xAD, 0xDE, 0x00, 0x00, 0xB8,
+                                   0x11, 0x00, 0x00, 0x00, 0x5B, 0xC3};
+    static const uint8_t beyond[] = {0xB9, 0xAD, 0x0B, 0x00, 0x00, 0xC3};
+    const uint32_t frame_esp = stack - 8u;
+    memcpy(guest_memory_pointer(SELFTEST_PAGE + 0x100u), body, sizeof body);
+    memcpy(guest_memory_pointer(SELFTEST_PAGE + 0x200u), beyond, sizeof beyond);
+    WR32(stack - 4u, ENGINE_RETURN_ADDR);
+    WR32(frame_esp, SELFTEST_PAGE + 0x200u);
+    WR32(frame_esp - 4u, 0x5555u);
+    cpu_reset(&cpu);
+    cpu.reg[kX86pEsp] = frame_esp - 4u;
+    cpu.reg[kX86pEcx] = 0xDEADBEEFu;
+    if (!x2_engine_resume(SELFTEST_PAGE + 0x106u, &cpu, frame_esp)) {
+      x2_log_error("[ENGINE] selftest: x2_engine_resume declined its own "
+                   "program while an engine is selected.\n");
+      failures++;
+    } else {
+      check("resume eax", cpu.reg[kX86pEax], 0x11u, &failures);
+      check("resume ebx", cpu.reg[kX86pEbx], 0x5555u, &failures);
+      check("resume ecx", cpu.reg[kX86pEcx], 0xDEADBEEFu, &failures);
+      check("resume esp", cpu.reg[kX86pEsp], frame_esp + 4u, &failures);
+    }
+  }
+
+  /*
    * The call-out predicate, against BOTH answers.
    *
    * x86_native_body_at decides whether the engine hands an address back to
@@ -139,9 +179,9 @@ int x2_engine_selftest(void) {
                  failures);
     return 0;
   }
-  x2_log_error("[ENGINE] selftest passed: 6 guest instructions executed "
-               "through x86port, 10 checks, and the call-out predicate "
-               "answered both ways.\n");
+  x2_log_error("[ENGINE] selftest passed: a 6-instruction call and a "
+               "resumed 3-instruction body executed through x86port, 12 "
+               "checks, and the call-out predicate answered both ways.\n");
   /*
    * The take set is checked HERE and not at init for the same reason the
    * predicate above is: an address is only classifiable once the modules are

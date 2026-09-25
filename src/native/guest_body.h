@@ -25,6 +25,13 @@
    state nothing downstream can explain. */
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep);
 
+/* Continue a guest body at `linked_at`, an address inside it, after an
+   override has built the frame the body has there; the body's return address
+   is the word at `frame_esp`. For an override that replaces only a leading
+   part of a retail function. Stops the run on failure, as x86_guest_body. */
+void x86_guest_body_resume(CPU *C, const char *module, uint32_t linked_at,
+                           uint32_t frame_esp);
+
 /* The same call for code that must REPORT a failure rather than stop: returns
    1 when the body ran, 0 with the reason in `why` when the module is not
    mapped or the engine declined it. For the self-test battery, whose whole job

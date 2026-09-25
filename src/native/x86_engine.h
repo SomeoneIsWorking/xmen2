@@ -42,6 +42,15 @@ const char *x2_engine_name(void);
  */
 int x2_engine_call(uint32_t addr, struct X86pCpu *C);
 
+/*
+ * Continue a guest function at `addr`, an address INSIDE its body, until it
+ * returns: the function's own return address is the word at `frame_esp`, and
+ * the caller has already built the frame the body expects at `addr`. The same
+ * contract as x2_engine_call otherwise, which is this with `addr` the entry
+ * and `frame_esp` the entry ESP.
+ */
+int x2_engine_resume(uint32_t addr, struct X86pCpu *C, uint32_t frame_esp);
+
 /* Release a finished guest pthread's worker-local WASM translations. */
 void x2_engine_detach_thread(void);
 

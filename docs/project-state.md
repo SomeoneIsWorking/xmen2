@@ -689,10 +689,20 @@ in a component-major register file now, with a0's rounding cached until a0
 is written, and shows at 1.6%. Old and new executors were compared on the same
 draws in-game (4.08M vertices, bit-identical; a swizzle mutant was caught).
 
+Level load (Dead Zone from the boot, unpaced, windowless) was one busy
+thread for 2.8 s behind "Loading...", two frames of it exactly 702 ms: the
+storage-device check (XMen2.exe `0x004aee50`) spins on the game timer for
+0.7 s, an Xbox memory-unit settle delay, before asking a PC device manager
+whose answers are constants. `src/native/storage_device_check.cpp` runs the
+check without the spin (engine `x2_engine_resume`, proved by the engine
+selftest and a mutant it caught): the same load shows 1.56 s, and every save,
+load and transition check drops 0.7 s. The rest is load work, drawn a
+loading frame every 200 ms; `tools/jit_map_profile.py --time` ranks it.
+
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
-product evidence; the roughly 500 ms load hitch remains visible, asset I/O has
-not been profiled. Remaining CPU cost belongs to x86port JIT translation
+product evidence; asset I/O within the remaining load work has not been
+profiled. Remaining CPU cost belongs to x86port JIT translation
 quality rather than a title-local execution engine.
 
 ### S011 — oracle and differential RE workflow: partial
