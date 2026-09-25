@@ -1,11 +1,11 @@
 ---
 id: 143
 title: ARM64 JIT startup and movie-thread stalls
-status: open
+status: resolved
 symptom: cold startup spends most sampled time republishing old code; post-intro frames stall for seconds
 tags: performance,jit,arm64,boot,threads
 created: 2026-09-05
-updated: 2026-09-05
+updated: 2026-09-25
 ---
 
 ## Causes and ownership
@@ -139,3 +139,17 @@ comparison failures and ARM64 JIT tests remain required. Its Linux gate passed
 hosted ARM64 build and all runtime tests passed; its four oracle classification
 failures prompted this correction. Native ARM64 hosted confirmation of the
 correction remains pending, without changing the validated product sources.
+
+## Resolution (2026-09-25)
+
+The hosted ARM64 confirmation is in. x86port Runtime CI run 36125420029
+(`a52f5f9`) passed its macOS arm64 / Apple Clang job at 57 of 57. The four
+x86-hardware oracles skipped as classified, their compiled unavailable-branch
+fixtures passed, and `test_jit_startup` and `test_jit_engine` passed natively.
+Both stalls this issue names are gone: whole-prefix code republication at
+startup, and movie workers blocking the guest lock. Earlier Mac observations
+here verified that.
+
+This issue does not cover macOS gameplay performance on a reference device,
+physical controllers, or stock conformance. S010 carries the missing macOS
+ARM64 budget run, and the release state items carry the rest.
