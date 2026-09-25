@@ -9,7 +9,8 @@ namespace {
    save object passed to it. */
 inline constexpr uint32_t kGameOwnerRva = 0x0006dce0u;
 inline constexpr uint32_t kSerializerSlot = 0x208u;
-inline constexpr uint32_t kSelf = 0x2fc00u;
+/* The stream cursor: the guest address the next read or write uses. */
+inline constexpr uint32_t kCursor = 0x2fc00u;
 inline constexpr uint32_t kHeaderFlagA = 0x2fc04u;
 inline constexpr uint32_t kHeaderFlagB = 0x2fc44u;
 
@@ -35,7 +36,7 @@ bool CampaignSnapshot::capture(const CPU &cpu) {
   }
   std::memset(guest_memory_pointer(object_), 0,
               X2_CAMPAIGN_SNAPSHOT_OBJECT_BYTES);
-  WR32(object_ + kSelf, object_);
+  WR32(object_ + kCursor, object_);
   WR8(object_ + kHeaderFlagA, 0u);
   WR8(object_ + kHeaderFlagB, 0u);
 
@@ -44,6 +45,7 @@ bool CampaignSnapshot::capture(const CPU &cpu) {
     return false;
   }
   guest::GuestCall(cpu).virtual_call(owner, kSerializerSlot, {object_});
+  WR32(object_ + kCursor, object_);
   captured_ = true;
   return true;
 }

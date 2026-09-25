@@ -173,8 +173,17 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   address 0. Reproduced by having the override decline without running the
   SDK: the add then fails and both clients carry on, because no negotiator
   exists. Since the port answers Begin, the SDK never allocates one.
-- The lobby shows the re-formed campaign's difficulty as Easy; whether that is
-  the save's real difficulty is unchecked.
+- **Difficulty and the host's own apply.** The lobby labelled every re-formed
+  campaign Easy. Session `+0x3df` is the difficulty (lobby text `0x867` +
+  value, `FUN_005b8a50`), read from the owner's `+0x60c` (slot 0x268), and it
+  was 1 before the host applied its save and 0 after. The snapshot's
+  `+0x2fc00` is the stream cursor, not a self pointer: the serializer left it
+  at the end of the campaign, and apply (slot 0x20c) read the zeroed tail --
+  the owner block holding the difficulty and everything after it. Retail
+  applies a buffer read from disk, cursor at its start; `FUN_00608260` rewinds
+  only the copy it hosts, so clients were right and only the host was wrong.
+  `CampaignSnapshot` now rewinds a finished capture. A Normal campaign now
+  logs mode 1 and hosts as "Saved Campaign (Normal)".
 - **Network pause.** It waits for every player's Ready; the keyboard key that
   readies has not been identified.
 

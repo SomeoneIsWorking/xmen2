@@ -1953,8 +1953,7 @@ three, B rejoins, B and C pair, and all three load the same scene
 
 Gaps: drop-out re-forms nobody (a leaving client is the retail "dropped"
 path, which is observed only for two players); the keyboard key for the network
-pause's Ready is unknown; the lobby labels a re-formed campaign Easy without a
-check against the save; and no run has crossed two machines
+pause's Ready is unknown; and no run has crossed two machines
 or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
