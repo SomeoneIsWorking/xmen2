@@ -101,9 +101,12 @@ vec4 vs11_source(uint word)
 
 void vs11_run()
 {
+    /* One loop sets every starting value. Zeroing the file and then storing
+       oD0 separately crashes Qualcomm's shader compiler (Adreno 722, driver
+       0x8032004a: a null dereference in libllvm-qgl.so while it builds the
+       pipeline), and it did so on New Game's first programmable draw. */
     for (uint i = 0u; i < VS11_FILE_CONST; i++)
-        vs11_reg[i] = vec4(0.0);
-    vs11_reg[VS11_OUT_D0] = vec4(1.0);
+        vs11_reg[i] = vec4(i == VS11_OUT_D0 ? 1.0 : 0.0);
     vs11_reg[VS11_FILE_INPUT + 0u] = vs11_input(vs11_in0, vs11.input_type[0].x);
     vs11_reg[VS11_FILE_INPUT + 1u] = vs11_input(vs11_in1, vs11.input_type[0].y);
     vs11_reg[VS11_FILE_INPUT + 2u] = vs11_input(vs11_in2, vs11.input_type[0].z);
