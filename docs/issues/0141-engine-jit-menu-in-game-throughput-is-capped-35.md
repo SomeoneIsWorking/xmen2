@@ -1,11 +1,12 @@
 ---
 id: 141
 title: Representative JIT performance is unqualified; QPC pacing spin and broad x86port codegen cost remain
-status: open
-symptom: Later targeted unpaced native-override sessions reach roughly 60-69 FPS, superseding the original 30-35 FPS diagnostic, but no declared representative gameplay budget is qualified; the QueryPerformanceCounter pacing spin remains open and remaining broad CPU cost belongs to x86port JIT codegen
+status: resolved
+symptom: the engine=jit menu and in-game throughput was capped near 30-35 FPS by per-import unwinding and a QueryPerformanceCounter pacing spin, with no declared budget to qualify against
+state_items: S010
 tags: jit,x86port,performance,crossings,pc,native
 created: 2026-09-03
-updated: 2026-09-04
+updated: 2026-09-25
 ---
 
 ## Option 1 landed: inline intercept dispatch (2026-09-03)
@@ -516,3 +517,24 @@ second in the level, and presents per 5 s were unchanged (219-294 against
 A separate one-off burst of ~10M reads in the 1.5 s before the first frame
 comes from libIGCore+0xcf4e through the same timer read. It is boot-only and
 not yet attributed further.
+
+## Resolution (2026-09-25) -- the paced product meets the declared budget
+
+G003 now names the desktop reference system and the budgets: gameplay and
+menus hold a mean within 2% of 16.67 ms, p99 at most 25 ms, and no frame over
+50 ms. Measured on that system in the paced product, from a reset
+`/performance` window:
+
+- Dead Zone, 60 s of walking and attacking by synthetic pad: 3,599 frames,
+  mean 16.68 ms, p99 19.21 ms, max 25.12 ms.
+- The main menu, 30 s: mean 16.67 ms, p99 18.61 ms, max 19.51 ms.
+
+Options 1-3 landed. Broad codegen work continued through #142 and the
+2026-09-23 progress above. The remaining performance gaps are tracked
+elsewhere:
+
+- heavy combat;
+- the non-desktop hosts (#143, #147, #136 and the browser issues);
+- the retail audio fade that freezes a frame at each movie switch.
+
+S010 holds these gaps.

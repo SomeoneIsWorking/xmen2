@@ -708,11 +708,33 @@ one block over a boot and load (5-7% of boot). Its region filter (`b93421a`)
 skips ranges where no block was ever inserted, and the scan now shows at
 0.01%.
 
-Gap: no target frame-time or load-time budget defines "fast enough." The later
-unpaced results are targeted diagnostic cases, not bounded representative
-product evidence; asset I/O within the remaining load work has not been
-profiled. Remaining CPU cost belongs to x86port JIT translation
-quality rather than a title-local execution engine.
+**Against the G003 budgets (2026-09-25).** These runs used the reference
+system, the paced product and headless Vulkan, while other workloads held the
+load average near 7. Each window started from `/performance/reset`.
+
+| scene | frames | mean | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|---:|---:|
+| Dead Zone, walking and attacking by synthetic pad, 60 s | 3,599 | 16.68 | 16.68 | 17.89 | 19.21 | 25.12 |
+| main menu, 30 s | 1,798 | 16.67 | 16.68 | 17.68 | 18.61 | 19.51 |
+
+Transitions: the frame between the legal screen and "Loading..." freezes for
+630 ms, loading frames are 200 ms apart, and Dead Zone launches 0.66 s after
+the loading screen appears. Each switch between opening movies freezes one
+frame for 380-390 ms. The next movie's load is 30-40 ms of that (open plus
+first frame). The rest is the retail audio fade-out, `FUN_0058fc70(duration)`.
+It lowers the SFX and music volumes in steps and ticks the sound manager
+inside a 0.16 s busy wait (`FUN_0058fdf0`, constant `0x0069d260`) after each
+step, then stops every sound before it returns. Its callers depend on audio
+being stopped on return, so it stays synchronous. Headless movie
+windows present unthrottled (no vsync), so their frame means are not product
+numbers; the windowed swapchain is vsync-paced.
+
+Gap: the gameplay window had no enemies in reach, so heavy combat is
+unmeasured against the budget. The runs were headless rather than windowed.
+Only the desktop reference system is qualified: macOS ARM64, Android and the
+browser have no reference device or budget run (#143, #147, #136 and
+S021's issues). Asset I/O within the remaining load work has not been
+profiled.
 
 ### S011 — oracle and differential RE workflow: partial
 

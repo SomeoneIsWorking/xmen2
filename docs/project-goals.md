@@ -104,6 +104,23 @@ asset loading prevents responsive play.
 - Performance changes retain equivalent dispatch resolution and observable game
   behavior under differential checks.
 
+**Reference system and budgets.** The desktop reference system is an AMD Ryzen
+7 5700X (8 cores, 16 threads) with a Radeon RX 6700-class (Navi 22) GPU, 16 GB
+of RAM, Linux x86-64 and the Vulkan backend. Budgets apply to the paced product
+at the retail limiter's 60 Hz period. They are read from the control channel's
+`/performance/reset` and `/status` window.
+
+- Gameplay, over at least 60 s: mean frame time within 2% of 16.67 ms, p99 at
+  most 25 ms, and no frame over 50 ms.
+- Menus: the same as gameplay.
+- Cinematics: no frame over 50 ms, except at a switch between movies or
+  screens, which falls under the stall budget.
+- Visible stalls: no frozen frame over 1 s at a screen or level transition,
+  and a loading screen presents at least every 250 ms.
+
+Other released hosts (macOS ARM64, Android, the browser) state their own
+reference devices when they are qualified.
+
 **Constraints.** Optimizations must remove measured causes and preserve guest
 semantics. Performance is measured in the paced player product as well as in
 diagnostic runs.
