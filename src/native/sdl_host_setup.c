@@ -29,7 +29,7 @@ static void route(void *userdata, int category, SDL_LogPriority priority,
   lucent_log(level_for(priority), "sdl", "%s", message);
 }
 
-int sdl_host_setup(void) {
+int sdl_host_setup(int window) {
   SDL_SetLogOutputFunction(route, NULL);
   if (!SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")) {
     x2_log_error("x2native: could not disable SDL touch-to-mouse events: %s\n",
@@ -37,6 +37,7 @@ int sdl_host_setup(void) {
     return 0;
   }
 #ifdef __EMSCRIPTEN__
+  (void)window;
   if (!SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_SENSOR) ||
       !dinput_pad_subsystem_start()) {
     x2_log_error("x2native: SDL would not start its browser event sources on "
@@ -44,9 +45,17 @@ int sdl_host_setup(void) {
                  SDL_GetError());
     return 0;
   }
+#else
+  if (window && !SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+    x2_log_error("x2native: SDL video would not start: %s\n", SDL_GetError());
+    return 0;
+  }
 #endif
   return 1;
 }
 #else
-int sdl_host_setup(void) { return 1; }
+int sdl_host_setup(int window) {
+  (void)window;
+  return 1;
+}
 #endif

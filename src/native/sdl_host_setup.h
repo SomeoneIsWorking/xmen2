@@ -25,12 +25,16 @@
  * it outlives every guest thread, and the runtime removes the listeners when
  * it exits -- and stay started for the run; later starts only count a
  * reference.
+ *
+ * VIDEO, for a windowed run, starts here too and stays started: the display's
+ * shape decides the width of the configured resolution, and that is published
+ * to the game (display_mode_seed.c) before any window exists.
  */
 #ifndef X2_SDL_HOST_SETUP_H
 #define X2_SDL_HOST_SETUP_H
 
 /* Returns 1, or 0 having logged why SDL refused. A build without SDL has
    nothing to configure. */
-int sdl_host_setup(void);
+int sdl_host_setup(int window);
 
 #endif /* X2_SDL_HOST_SETUP_H */

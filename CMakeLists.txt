@@ -543,7 +543,9 @@ target_link_libraries(test_settings_overlay PRIVATE ${X2_SDL})
 add_test(NAME settings_overlay COMMAND test_settings_overlay)
 
 add_executable(test_display_mode_seed tests/test_display_mode_seed.c
-                src/presentation/display_mode_seed.c)
+                src/presentation/display_mode_seed.c
+                src/presentation/display_geometry.c
+                src/presentation/resolution_ladder.c)
 target_include_directories(test_display_mode_seed PRIVATE src/presentation
                           src/native src/config)
 add_test(NAME display_mode_seed COMMAND test_display_mode_seed)

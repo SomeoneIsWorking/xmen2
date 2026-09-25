@@ -1630,7 +1630,7 @@ int main(int argc, char **argv) {
   if (x2native_options_uses_project_env(&options) &&
       x2_load_project_env(argv[0]) < 0)
     return 2;
-  if (!sdl_host_setup())
+  if (!sdl_host_setup(options.window))
     return 1;
   /* Runtime CVars (engine selection, JIT knobs): compiled default < the
      x2native-runtime.conf file < environment X2_* < --set. Must precede the

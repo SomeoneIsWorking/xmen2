@@ -14,6 +14,8 @@
 #include <string.h>
 
 #include "advapi32.h"
+#include "display_geometry.h"
+#include "resolution_ladder.h"
 #include "settings_store.h"
 
 /* The exact store path and value name, as the retail engine itself writes
@@ -81,10 +83,27 @@ int x2_display_mode_seed_publish(void) {
   return 1;
 }
 
+/* The setting IS a height; the stored width is the one derived on the
+   display where it was last chosen. A default or a moved profile carries a
+   width for another shape -- the 1280x720 default pillarboxed on a 2728x1264
+   phone -- so the width is re-derived from the display this run has before
+   the mode is published. An unknown display (a headless run) keeps it. */
+static void fit_display(X2Settings *settings) {
+  unsigned display_w = 0, display_h = 0;
+
+  if (!x2_display_pixel_size(&display_w, &display_h))
+    return;
+  settings->width =
+      (uint16_t)x2_resolution_width_for(settings->height, display_w, display_h);
+}
+
 void x2_display_mode_seed_boot(void) {
   X2Settings *settings = x2_settings_store();
-  int acted = x2_display_mode_seed_publish();
-  int current = x2_display_mode_seed_is_current();
+  int acted, current;
+
+  fit_display(settings);
+  acted = x2_display_mode_seed_publish();
+  current = x2_display_mode_seed_is_current();
 
   /* This early write supplies the warm-profile path. Retail first-run
      initialization may install its own 800x600 default afterwards;

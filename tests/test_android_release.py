@@ -189,7 +189,7 @@ def main() -> int:
     assert "android.permission.INTERNET" in manifest
     sdl_setup = (ROOT / "src/native/sdl_host_setup.c").read_text(encoding="utf-8")
     assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in sdl_setup
-    assert "if (!sdl_host_setup())" in native_main
+    assert "if (!sdl_host_setup(options.window))" in native_main
     assert "debug.boot_map" in activity
     assert "XMen2GameActivity.BOOT_MAP" in setup
     assert "act1/deadzone/deadzone1" in (ROOT / "docs/android-release.md").read_text(
