@@ -1,7 +1,7 @@
 ---
 id: 189
 title: Adreno's shader compiler crashed on the VS 1.1 interpreter at New Game
-status: open
+status: resolved
 symptom: on an Adreno 722 phone, New Game exits at the loading screen with SIGSEGV at 0x48 in /vendor/lib64/libllvm-qgl.so
 state_items: S018
 tags: android,vulkan,adreno,shaders,crash
@@ -58,5 +58,9 @@ the separate store is gone. On the phone, all three shaders that include the
 interpreter now compile. On desktop, the D3D8 selftest still finds that the
 GPU program and the CPU executor draw the same pixels.
 
-Remaining before resolution: New Game on the phone reaching gameplay with a
-build that contains the fix.
+## Verified on the device
+
+The CI-signed v0.2.9 APK was installed over v0.2.8 on the same phone. New
+Game → Loading created the same 104-dword vertex shader, built its pipeline
+and drew the first level, with no fault in the run. The frame wall averaged
+25 ms over about 4,500 intervals.
