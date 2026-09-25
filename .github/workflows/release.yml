@@ -168,7 +168,12 @@ jobs:
           X2_ANDROID_KEY_PASSWORD: ${{ secrets.X2_ANDROID_KEY_PASSWORD }}
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-          export ANDROID_NDK_VERSION=$(ls "$ANDROID_HOME/ndk" | tail -n 1)
+          # One NDK everywhere: the version shared/android-port pins and
+          # local builds use. The runner's newest NDK drifted (r29 shipped
+          # while r28 was tested), and a release built on another compiler
+          # than the one profiled cannot be symbolized against it.
+          export ANDROID_NDK_VERSION=28.2.13676358
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null
           export X2_ANDROID_KEYSTORE="$RUNNER_TEMP/signing/release.keystore"
           export X2_ANDROID_VERSION_CODE="${{ github.run_number }}"
           export X2_ANDROID_VERSION_NAME="${GITHUB_REF_NAME#v}"
