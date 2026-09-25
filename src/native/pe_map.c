@@ -11,6 +11,7 @@
  */
 #include "guest_layout.h"
 #include "guest_memory.h"
+#include "pe_export_search.h"
 #include "pe_map.h"
 #include "platform_file_map.h"
 #include "platform_mman.h"
@@ -245,6 +246,7 @@ static uint32_t data_dir(uint32_t base, int which, uint32_t *size) {
 
 uint32_t pe_export_rva(uint32_t base, const char *name) {
   uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
+  long found;
   const unsigned char *p = guest_memory_const_pointer(base);
   uint32_t names, ords, funcs;
   if (!dir)
@@ -253,14 +255,11 @@ uint32_t pe_export_rva(uint32_t base, const char *name) {
   funcs = RD32_(p, dir + 0x1C);
   names = RD32_(p, dir + 0x20);
   ords = RD32_(p, dir + 0x24);
-  for (i = 0; i < n; i++) {
-    uint32_t nr = RD32_(p, names + i * 4);
-    if (strcmp(guest_memory_const_pointer(base + nr), name) == 0) {
-      uint16_t o = (uint16_t)RD16(p, ords + i * 2);
-      return RD32_(p, funcs + (uint32_t)o * 4);
-    }
-  }
-  return 0;
+  found = pe_export_name_index(p, names, n, name);
+  if (found < 0)
+    return 0;
+  i = (uint32_t)found;
+  return RD32_(p, funcs + (uint32_t)(uint16_t)RD16(p, ords + i * 2) * 4);
 }
 
 /*

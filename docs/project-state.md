@@ -699,6 +699,15 @@ selftest and a mutant it caught): the same load shows 1.56 s, and every save,
 load and transition check drops 0.7 s. The rest is load work, drawn a
 loading frame every 200 ms; `tools/jit_map_profile.py --time` ranks it.
 
+Two host costs showed in the boot profile. Import binding found each export
+with a linear `strcmp` walk (7.3% of boot in `strcmp`, 3.2% in
+`pe_export_rva`). `src/native/pe_export_search.c` binary-searches the sorted
+name table instead, and together the two now take under 0.3%. jit-common
+scanned every block-table slot on each invalidation, and 461 of them dropped
+one block over a boot and load (5-7% of boot). Its region filter (`b93421a`)
+skips ranges where no block was ever inserted, and the scan now shows at
+0.01%.
+
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
 product evidence; asset I/O within the remaining load work has not been

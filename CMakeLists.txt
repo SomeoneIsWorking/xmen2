@@ -1828,6 +1828,7 @@ set(X2_NATIVE_SOURCES
     src/native/load_game_menu_runtime.c
     src/native/save_trace_runtime.c
     src/native/pe_map.c
+    src/native/pe_export_search.c
     src/native/platform_file_map.c
     src/native/win32_sdl.c
     src/native/win32_mouse.c
@@ -2169,6 +2170,11 @@ add_test(NAME guest_memory_window COMMAND test_guest_memory_window)
 
 # guest_teb over the real guest arena; the heap and the PE TLS directory are
 # the test's injected boundaries.
+add_executable(test_pe_export_search tests/test_pe_export_search.c
+               src/native/pe_export_search.c)
+target_include_directories(test_pe_export_search PRIVATE src/native)
+add_test(NAME pe_export_search COMMAND test_pe_export_search)
+
 add_executable(test_guest_teb tests/test_guest_teb.c src/native/guest_teb.c
     src/native/guest_memory.c src/native/guest_memory_arena.c src/native/guest_memory_probe.c)
 target_include_directories(test_guest_teb PRIVATE src/native src/runtime/x86_abi)
