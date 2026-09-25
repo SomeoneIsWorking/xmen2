@@ -39,6 +39,8 @@
  *
  * Each override preserves the original return register and stack effect.
  */
+#include "../input/touch_runtime.h"
+#include "conversation_accept_prompt.h"
 #include "guest_body.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -92,7 +94,6 @@ static uint32_t exe_base(void) {
 #define CV_ACTOR_B 0x21b34u
 #define CV_ELIGIBLE 0x239c0u
 
-#define CVF_VISIBLE 0x2u
 #define CVF_ENDING 0x8u
 
 /* Record fields. */
@@ -905,8 +906,11 @@ void x2_override_0045d1a0(CPU *C) {
   }
 
   /* 0x0045d4b5: the "$MENU_ACCEPT" prompt -- a 32x32 icon, drawn only while
-     the conversation is visible. Decoded from the capture, not the listing. */
-  if (RD8(self + CV_FLAGS) & CVF_VISIBLE) {
+     the conversation is visible. Decoded from the capture, not the listing.
+     Not in touch play, where the reply line is the control
+     (conversation_accept_prompt.h). */
+  if (x2_conversation_draws_accept_prompt(RD8(self + CV_FLAGS),
+                                          x2_touch_runtime_active())) {
     uint32_t sing = call0(C, FN_CONV_SINGLETON, 0);
     uint32_t target = RD32(sing + CV_DRAW_A);
     uint32_t py, px, quad, colour, args[9];
@@ -918,11 +922,7 @@ void x2_override_0045d1a0(CPU *C) {
     px = thiscall(C, RD32(G_LAYOUT_INDEX), sing + CV_LAYOUT, 1, &zero);
 
     {
-      uint32_t q[4];
-      q[0] = 0x3f800000u;
-      q[1] = 0x3f800000u;
-      q[2] = 0x3f800000u;
-      q[3] = 0x3f800000u;
+      uint32_t q[4] = {0x3f800000u, 0x3f800000u, 0x3f800000u, 0x3f800000u};
       quad = thiscall(C, RD32(G_MAKE_RGBA), scratch + 0x10u, 4, q);
     }
     colour = cdecl_call(C, FN_PACK_ARGB, 1, &quad);

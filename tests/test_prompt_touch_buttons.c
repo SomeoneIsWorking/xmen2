@@ -13,6 +13,7 @@
  * both a matching and a non-matching draw.
  */
 #include "../src/config/settings_store.h"
+#include "conversation_accept_prompt.h"
 #include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "prompt_action_labels.h"
@@ -190,6 +191,24 @@ int main(void) {
   CHECK("nothing is rewritten while touch play is off",
         !x2_prompt_touch_begin(guest_wide(drawn, length), length));
   g_touch_active = 1;
+
+  /* A cap drawn by itself. The conversation's "Enter" beside a reply is its
+     own "$MENU_ACCEPT" icon, and its owner stops asking for it in touch play;
+     the rebinding screen's lone cap IS the binding and reaches this rewrite,
+     which leaves it drawn with touch play on or off. */
+  CHECK("the conversation's accept cap is not drawn in touch play",
+        !x2_conversation_draws_accept_prompt(X2_CONVERSATION_VISIBLE, 1));
+  length = compose(drawn, 0, "Esc", "");
+  CHECK("a rebinding screen's lone cap is kept in touch play",
+        !x2_prompt_touch_begin(guest_wide(drawn, length), length));
+  g_touch_active = 0;
+  CHECK("touch play off keeps the conversation's accept cap",
+        x2_conversation_draws_accept_prompt(X2_CONVERSATION_VISIBLE, 0));
+  CHECK("and the rebinding screen's lone cap",
+        !x2_prompt_touch_begin(guest_wide(drawn, length), length));
+  g_touch_active = 1;
+  CHECK("a hidden conversation draws no accept cap either way",
+        !x2_conversation_draws_accept_prompt(0u, 0));
 
   /* The footer's shape: the authored token marker, then the cap, then the
      words. The marker emits no quad. */
