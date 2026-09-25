@@ -63,6 +63,10 @@ The GUI object at `CHud+4` has vtable `0069dca4`:
   vec3, size vec2, colour vec4, rotation, fill fraction, icon index, layer, flags.
   It checks visibility bit 0 at GUI `+85c30`, layer 0..2, and the corresponding
   resource `+85c24+layer*4`, then submits to `005ee180`.
+  In `005a5170` the energy potion (icon `0xb`, call `005a596d`) gets rotation
+  `[esp+0x48]`, which `005a5838` fills with game time + 1.0, so retail spins it;
+  health (icon `0xa`, `005a5644`) passes 0. The mobile ring layout zeroes the
+  rotation for both, because each potion is a button there.
 - `+94`, `004bdfa0`: **a getter**, returning GUI+12. It does not draw text or
   consume stack arguments. `005f11b0` is the text submitter: thiscall, nine
   arguments, `ret 36`: font, x, z, width, height, scale, alignment, colour, text.

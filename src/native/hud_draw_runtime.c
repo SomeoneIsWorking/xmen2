@@ -307,6 +307,11 @@ static void sprite_submit(CPU *cpu) {
     dimensions[i] = old_size[i] * transform.scale;
   write_floats(position, point, 3);
   write_floats(size, dimensions, 2);
+  /* Retail spins the energy icon (rotation = game time + 1, 005a5838) and
+     holds health at 0. In a ring each potion is a button, so both stand
+     still. The argument is by value, so the caller never reads it back. */
+  if (g_scope.group == 2)
+    WRF32(cpu->reg[kX86pEsp] + 16u, 0.0f);
   x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
   write_floats(position, old_position, 3);
   write_floats(size, old_size, 2);
