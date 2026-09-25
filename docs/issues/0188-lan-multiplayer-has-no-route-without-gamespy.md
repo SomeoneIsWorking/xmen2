@@ -184,8 +184,18 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   only the copy it hosts, so clients were right and only the host was wrong.
   `CampaignSnapshot` now rewinds a finished capture. A Normal campaign now
   logs mode 1 and hosts as "Saved Campaign (Normal)".
-- **Network pause.** It waits for every player's Ready; the keyboard key that
-  readies has not been identified.
+- **Network pause.** The pda menu (`FUN_005ce7f0`) in network mode (flags & 2)
+  resumes only on the host: Back (input bit 4) calls `FUN_0060b8f0` when the
+  player is the host (`FUN_00610d10`) and config +0xb9 is clear; a client's
+  Back is swallowed once flag 4 is set. So the host's Esc is the footer's
+  "Ready" and clients wait for it. Two gaps remain: the footer's key cap for
+  the runtime-composed "$MENU_BACK Ready" draws empty, and the Players list
+  (`FUN_005cfef0`) ignores Back on both machines.
+- **Networked Team Management.** Accepting it on the host ran
+  `imul cx, cx, 5` at 0x614a1a, which the JIT refused ("unsupported
+  instruction") and the host died. x86port now emits 16- and 32-bit
+  two/three-operand IMUL through one shared `multiply.c`; accept returns both
+  machines to the pda.
 
 ## The transport
 
