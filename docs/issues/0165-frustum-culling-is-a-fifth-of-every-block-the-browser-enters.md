@@ -1,18 +1,18 @@
 ---
 id: 165
 title: frustum culling is a fifth of every block the browser enters
-status: open
+status: resolved
 symptom: the hot-block histogram attributes a fifth of block entries to the engine's frustum cull
 state_items: S021
 tags: web,browser,wasm,jit,override,performance
 created: 2026-09-19
-updated: 2026-09-23
+updated: 2026-09-25
 ---
 
 # 0165 — frustum culling is a fifth of every block the browser enters
 
 - **State items:** S021
-- **Status:** the box test (`0x047470`/`0x047570`/`0x0478e0`) answers natively in the browser; `igFrustCullNode` and child dispatch remain
+- **Status:** resolved; the box test (`0x047470`/`0x047570`/`0x0478e0`) answers natively in the browser, and the remaining culling cost is headroom at the vsync cap
 - **Found by:** the hot-block histogram, once it printed from the heartbeat
   (see the report change that made it readable on a target with no shutdown)
 
@@ -190,3 +190,14 @@ Same wasm (10,088,465 bytes, the served size checked), `#test-play`, 150 s,
 About twice the browser frame rate. What remains of the 9.3% is
 `igFrustCullNode` (`0x0485b0`) and the child dispatch (`0x0484c0`), which
 call back into guest code and are not overridden.
+
+## Resolution (2026-09-25)
+
+The symptom was the culling subtree taking a fifth of block entries. With the
+box test answered natively, it takes 9.3%, and the browser presents about
+twice as often on that route. #169 later measured the same Dead Zone route at
+the 60 Hz vsync cap (293 presents per 5 s). What remains, `igFrustCullNode`
+(`0x0485b0`) and the child dispatch (`0x0484c0`), is headroom rather than
+frames. Overriding it means a native traversal that calls back into guest
+code for every child. That is justified only if a scene falls below the cap
+and a time profile, not an entry count, puts this subtree on top.

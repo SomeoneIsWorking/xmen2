@@ -1,12 +1,12 @@
 ---
 id: 169
 title: the import the browser crosses into most is not the one that costs
-status: open
+status: resolved
 symptom: ranking imports by call count aims optimization at the wrong one; the most-crossed import is 6.5% of import time
 state_items: S021
 tags: web,browser,wasm,imports,measurement,instrument
 created: 2026-09-19
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # 0169 — the import the browser crosses into most is not the one that costs
@@ -154,3 +154,14 @@ null refusal is removed. The Dead Zone worker profile afterwards has
 spread of earlier runs on this route (0.66% to 2.45%), which depends on what
 the scene streams. No wall-clock gain is claimed from it; the proxy count per
 guest read is what changed.
+
+## Resolution (2026-09-25)
+
+The defect was an unarmed heartbeat table that ranked imports by calls and
+could be read as a time ranking. Unarmed, the table now heads itself "top
+imports by CALLS -- arm X2_HOTEP to rank by time" (`heartbeat.c`). Armed, it
+ranks by exclusive host time. The costs that ranking exposed are fixed and
+recorded above: `GetCursorPos`'s main-thread proxy, split guest file reads,
+and redundant uniform bind-group sets. The remaining `DrawIndexedPrimitive`
+time is ordinary per-draw work with no single owner, and the route presents
+at the 60 Hz vsync cap.
