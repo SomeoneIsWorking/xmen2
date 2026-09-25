@@ -1973,9 +1973,15 @@ and stays at its main menu with the Join row offered; the host's network pause
 resumes once every player readies with the in-game Back key (keypad 6 on the
 keyboard by default).
 
+The route also works across two network stacks. On 2026-09-25, A ran in an
+unprivileged network namespace at 10.77.0.1 and B in a child namespace at
+10.77.0.2, joined only by a veth pair, each with a default route over it. B's
+main menu offered "Join fedora" from A's broadcast. B joined, and both reached
+the tutorial scene: the session had two players, with B as client 1.
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
-is the retail "dropped" path); and no run has crossed two machines or
-Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+is the retail "dropped" path); and no run has crossed two physical machines,
+real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
 ### S022 — native Windows host package and CI release: missing

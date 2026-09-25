@@ -208,6 +208,22 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   two/three-operand IMUL through one shared `multiply.c`; accept returns both
   machines to the pda.
 
+## Across two network stacks
+
+Every run above shared one machine's network stack. On 2026-09-25, two
+instances ran on separate stacks. `unshare -Urn` gave A a user and network
+namespace, and a child namespace (`unshare -n`) held B. A veth pair joined
+them as 10.77.0.1 and 10.77.0.2 on a /24, with a default route over the veth
+on each side. Limited broadcast leaves by the default route, and a real LAN
+has one. Each instance's control channel is on its own loopback, so B's
+driver ran under `nsenter -t <holder> -n`. A played the tutorial alone, and
+B's main menu listed "Join fedora" from A's presence broadcast. After Return,
+A re-formed for two, B walked the join script, and both directors reported
+started with two session players, B as client 1, in the tutorial scene.
+
+Two physical machines and Android remain unobserved. Both instances reported
+the same host name, because the UTS namespace was shared.
+
 ## The transport
 
 - **Transport** (`CNetModuleWin32`, vtable 0x006a4a88). One UDP socket,
