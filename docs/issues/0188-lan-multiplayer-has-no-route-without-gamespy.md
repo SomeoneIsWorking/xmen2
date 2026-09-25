@@ -96,12 +96,28 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   - The port's autosave already produces that exact buffer mid-game: game
     vtable 0x208 serializes the running campaign (`autosave_runtime.c`).
 
-  So drop-in is a re-formed session: on a join request the host serializes the
-  running campaign, hosts it as a saved campaign, the joiner receives it, and
-  every peer reloads at that state. A join therefore costs everyone one load;
-  no route adds a player to a level already loaded.
-- **Seamless entry.** Auto-hosting on a normal start and a main-menu list of
-  LAN hosts are not built; today the player goes Play Online → Host or Join.
+  So drop-in is a re-formed session: the host serializes the running campaign,
+  hosts it as a saved campaign, the joiner receives it, and every peer reloads
+  at that state. A join therefore costs everyone one load; no route adds a
+  player to a level already loaded.
+
+  That re-form is built and observed (`x2::lan::SessionDirector`,
+  `src/native/lan_session_director.cpp`). It drives the retail menus by
+  focusing a named item and delivering one accept, and it reaches the front end
+  with the console's own queued `mainmenuexit 1`. Host: capture → main →
+  online → Ready → Host Game → install the capture as the hosted save (the
+  load-completion sequence at 0x004aed10) → Post Game → Start Game once every
+  player is Ready. Join: main → online → Ready → Join Game → the search menu
+  (`player_game_options`, whose Search item is named `text_mapname`) → the
+  first listed game → Ready (bit 2 of the local player's +0x1c, player from
+  `FUN_006111f0`) → wait for the start. Observed: A mid-campaign with
+  `/lan?host=1`, B at its main menu with `/lan?join=1`; both loaded the same
+  scene and showed the same dialogue. Nothing triggers either script except the
+  control route yet.
+- **Seamless entry.** No presence service yet: a game on the LAN is not
+  announced outside the retail lobby, so nothing lists hosts on the main menu
+  or asks a running host to re-form. The lobby shows the re-formed campaign's
+  difficulty as Easy; whether that is the save's real difficulty is unchecked.
 - **With a save,** Continue still replaces the Play Online row.
 - **Network pause.** It waits for every player's Ready; the keyboard key that
   readies has not been identified.

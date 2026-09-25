@@ -292,8 +292,10 @@ This paragraph records source provenance only; the local UI/config/input owners
 and their tests define the current architecture.
 
 `tools/check_structure.py` is the normal mechanical boundary: new host source
-files are capped at 500 lines and existing larger files are frozen. Extract a
-cohesive owner and lower a legacy limit; never raise one to land a feature.
+files are capped at 1,200 lines and the listed legacy files are frozen at their
+measured size. Extract a cohesive owner and lower a legacy limit; never raise
+one to land a feature. New host code is C++: focused classes in `x2::`
+namespaces, with an `extern "C"` shim only where a C translation unit calls in.
 
 ## Required repository guardrails
 

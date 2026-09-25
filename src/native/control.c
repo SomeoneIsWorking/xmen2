@@ -8,6 +8,7 @@
 
 #include "../input/touch_inject.h"
 #include "autosave_runtime.h"
+#include "control_console.h"
 #include "control_performance_route.h"
 #include "control_query.h"
 #include "control_save_route.h"
@@ -21,6 +22,7 @@
 #include "gpu_device.h"
 #include "gpu_frame_timing.h"
 #include "input_probe.h"
+#include "lan_session.h"
 #include "save_trace_runtime.h"
 #include "transient_controller_assignment.h"
 #include "x86rt.h"
@@ -85,8 +87,10 @@ void control_pump(CPU *cpu, double now) {
   int cmd;
 
   x2_autosave_runtime_poll(cpu);
+  x2_lan_session_poll(cpu, now);
   if (!g_port)
     return;
+  control_console_pump(cpu);
   pthread_mutex_lock(&g_lock);
   cmd = g_cmd;
   if (cmd == CMD_NONE) {
@@ -389,6 +393,10 @@ static void serve(x2_socket_t fd) {
     route_shot(fd);
   else if (!strcmp(path, "/input"))
     route_input(fd, query ? query : "");
+  else if (!strcmp(path, "/lan"))
+    x2_lan_session_route(fd, query ? query : "");
+  else if (!strcmp(path, "/console"))
+    control_console_route(fd, query ? query : "");
   else if (!strcmp(path, "/save"))
     control_save_route(fd);
   else if (!strcmp(path, "/performance/reset"))
@@ -414,6 +422,9 @@ static void serve(x2_socket_t fd) {
         "  GET /screenshot   the current frame, as a PNG\n"
         "  GET /input[?controller=N]  the GAME's binding table "
         "and which actions read down\n"
+        "  GET /console?command=openmenu+online  run a game console command\n"
+        "  GET /lan[?host=1]  LAN session status; re-form this game as a "
+        "lobby\n"
         "  GET /save         bounded retail save/load trace\n"
         "  GET /performance/reset  start a fresh frame-time window\n"
         "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "

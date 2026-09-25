@@ -1934,8 +1934,13 @@ does (`winsock_resolve`, `test_winsock_posix`), adapter-bound datagram sockets
 receive broadcasts, and the co-op participation policy maps seats to game
 players so it leaves network players alone (`test_player_participation_policy`).
 
-Gaps: joining a game already in progress (the host drops its lobby handlers
-at game start); auto-hosting on a normal start and a main-menu LAN list; Play
+Joining a game in progress works as a re-formed session: the host captures the
+running campaign, hosts it as a saved campaign through the retail lobby, and
+the joiner joins and readies through the same menus; both reload at that state
+(`x2::lan::SessionDirector`, triggered by the `/lan` control route).
+
+Gaps: nothing triggers the re-form in play -- no presence service announces a
+running game, so there is no main-menu LAN list and no join request; Play
 Online is replaced by Continue when a save exists; the keyboard key for the
 network pause's Ready is unknown; and no run has crossed two machines or
 Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)

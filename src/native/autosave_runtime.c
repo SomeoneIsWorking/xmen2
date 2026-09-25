@@ -4,6 +4,7 @@
 #include "autosave_policy.h"
 #include "autosave_storage.h"
 #include "boot_blackout.h"
+#include "campaign_snapshot.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "save_directory.h"
@@ -20,15 +21,8 @@
 
 enum {
   EXE_PREFERRED = 0x00400000u,
-  FN_GAME_OWNER = 0x0006dce0u,
   MANAGER_RVA = 0x0035cbc0u,
-  MANAGER_MODE = 0xd4u,
-  SERIALIZER_VSLOT = 0x208u,
-  SNAPSHOT_PAYLOAD_BYTES = 0x2fc00u,
-  SNAPSHOT_OBJECT_BYTES = 0x2fc78u,
-  SNAPSHOT_SELF = 0x2fc00u,
-  SNAPSHOT_HEADER_FLAG_A = 0x2fc04u,
-  SNAPSHOT_HEADER_FLAG_B = 0x2fc44u
+  MANAGER_MODE = 0xd4u
 };
 
 typedef enum {
@@ -42,7 +36,7 @@ typedef enum {
 
 static X2AutosavePolicy g_policy;
 static uint32_t g_exe;
-static uint32_t g_snapshot;
+static X2CampaignSnapshot *g_snapshot;
 static uint32_t g_last_manager_mode;
 static AutosaveLastResult g_last_result;
 static int g_last_errno;
@@ -68,32 +62,9 @@ static uint32_t exe_base(void) {
 }
 
 static int serialize_snapshot(const CPU *source) {
-  CPU call = *source;
-  uint32_t owner;
-  uint32_t target;
-
   if (!g_snapshot)
-    g_snapshot = guest_malloc(SNAPSHOT_OBJECT_BYTES);
-  if (!g_snapshot)
-    return 0;
-  memset(guest_memory_pointer(g_snapshot), 0, SNAPSHOT_OBJECT_BYTES);
-  WR32(g_snapshot + SNAPSHOT_SELF, g_snapshot);
-  WR8(g_snapshot + SNAPSHOT_HEADER_FLAG_A, 0u);
-  WR8(g_snapshot + SNAPSHOT_HEADER_FLAG_B, 0u);
-
-  x86_guest_call_args(&call, g_exe + FN_GAME_OWNER, 0u);
-  owner = call.reg[kX86pEax];
-  if (!owner || !RD32(owner))
-    return 0;
-  target = RD32(RD32(owner) + SERIALIZER_VSLOT);
-  if (!target)
-    return 0;
-  call = *source;
-  call.reg[kX86pEsp] -= 4u;
-  WR32(call.reg[kX86pEsp], g_snapshot);
-  call.reg[kX86pEcx] = owner;
-  x86_guest_call_args(&call, target, 4u);
-  return 1;
+    g_snapshot = x2_campaign_snapshot_create();
+  return x2_campaign_snapshot_capture(g_snapshot, source);
 }
 
 static int publish_snapshot(const CPU *source) {
@@ -105,8 +76,9 @@ static int publish_snapshot(const CPU *source) {
     g_last_result = AUTOSAVE_LAST_SERIALIZER_FAILED;
     return 0;
   }
-  if (!x2_autosave_header_from_payload(guest_memory_const_pointer(g_snapshot),
-                                       SNAPSHOT_PAYLOAD_BYTES, header)) {
+  if (!x2_autosave_header_from_payload(
+          guest_memory_const_pointer(x2_campaign_snapshot_address(g_snapshot)),
+          X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES, header)) {
     g_last_result = AUTOSAVE_LAST_HEADER_FAILED;
     return 0;
   }
@@ -116,8 +88,9 @@ static int publish_snapshot(const CPU *source) {
     return 0;
   }
   if (!x2_autosave_storage_publish(
-          directory, header, guest_memory_const_pointer(g_snapshot),
-          SNAPSHOT_PAYLOAD_BYTES, X2_AUTOSAVE_FAULT_NONE)) {
+          directory, header,
+          guest_memory_const_pointer(x2_campaign_snapshot_address(g_snapshot)),
+          X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES, X2_AUTOSAVE_FAULT_NONE)) {
     g_last_errno = errno;
     g_last_result = AUTOSAVE_LAST_PUBLISH_FAILED;
     return 0;

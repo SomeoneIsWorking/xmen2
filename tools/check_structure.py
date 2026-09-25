@@ -7,7 +7,10 @@ import sys
 from pathlib import Path
 
 
-DEFAULT_LIMIT = 500
+# The user set the cap for new host files at 1,200 lines (2026-09-25). The
+# legacy entries below stay frozen at their own measured sizes, including
+# those under the cap: a known monolith still may not grow.
+DEFAULT_LIMIT = 1200
 
 # Existing monoliths are frozen at their measured size. They are debt, not
 # examples: extraction should lower these numbers, never raise them.
@@ -81,7 +84,7 @@ def selftest() -> int:
         return 1
     found = violations(bad)
     if len(found) != 2 or not any(
-        "501 lines (limit 500)" in failure for failure in found
+        f"{DEFAULT_LIMIT + 1} lines (limit {DEFAULT_LIMIT})" in failure for failure in found
     ):
         print("check_structure selftest: growth was not detected", file=sys.stderr)
         return 1

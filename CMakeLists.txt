@@ -1914,6 +1914,11 @@ set(X2_NATIVE_SOURCES
     src/native/control.c
     src/native/control_http.c
     src/native/control_save_route.c
+    src/native/control_console.cpp
+    src/native/retail_front_end.cpp
+    src/native/campaign_snapshot.cpp
+    src/native/lan_session.cpp
+    src/native/lan_session_director.cpp
     src/native/control_ui_route.c
     src/native/control_input_route.c
     src/native/macos_bundle.c
