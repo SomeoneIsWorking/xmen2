@@ -16,46 +16,40 @@ struct X2PromptQuad {
   uint8_t sheet; /* X2_KEYCAP_SHEET_*: the atlas, or the key label sheet */
 };
 
-#define X2_PROMPT_QUADS_MAX 512u
-#define X2_PROMPT_RUNS_MAX 128u
+/* Where the engine wrote the collapsed glyph a quad replaces: the text
+   batch's current vertex array and the index of the glyph's first vertex in
+   it. The draw that submits that array range is the one that places it. */
+struct X2PromptVertexKey {
+  uint32_t vertex_array;
+  uint32_t vertex;
+};
 
-/*
- * The store is the frame's LAYOUT RECORD: one run per string the glyph loop
- * laid out, in layout order, holding the number of glyphs the retail emitter
- * produced for it and the quads of ours among them (none for ordinary text).
- * A text pass lays strings out before drawing them, and a non-indexed draw
- * submits a contiguous window of them -- one footer element, or a speaker's
- * name, line and response button together -- with its own world matrix. So a
- * draw takes the window its glyph count declares, and no other quads.
- */
+#define X2_PROMPT_QUADS_MAX 512u
 
 /* The glyph count a non-indexed text draw of `primitives` submits, or 0 if
    it is not a run of whole glyphs. */
 unsigned x2_prompt_draw_glyphs(uint32_t primitives);
 
-/* Drop every run: a new frame. Prompt runs laid out and never drawn are
-   counted. */
+/* Drop every quad: a new frame. Quads never drawn are counted. */
 void x2_prompt_quads_reset(void);
 /* Remaining quad slots; a producer checks this before it enters the retail
    loop so native interception is all-or-nothing. */
 unsigned x2_prompt_quads_available(void);
-/* Open the run of a string identified by `identity` whose emitter produces
-   `emitted` glyphs. A pending run of the same string is a re-measurement and
-   is replaced; a full record evicts its oldest run. Returns 0 only when a run
-   is already open. */
-int x2_prompt_quads_begin_run(uint32_t identity, unsigned emitted);
-/* 1 means the quad was retained in the open run. A producer must reserve an
-   entire string before its first call; 0 after reservation is an invariant
+/* Retain `count` quads replacing the glyph the engine writes at `key`. A
+   pending quad at the same key is stale -- its vertices are being written
+   over -- and is dropped first. 1 means all were retained; a producer
+   reserves capacity for its whole string first, so 0 is an invariant
    failure. */
-int x2_prompt_quads_add(const struct X2PromptQuad *quad);
-void x2_prompt_quads_end_run(void);
-/* Take the earliest contiguous window of runs that carries quads of ours and
-   whose glyphs sum to `glyphs`: copy its quads into `out` (capacity
-   X2_PROMPT_QUADS_MAX), drop the window, and return the quad count. 0 when
-   no such window is pending. */
-unsigned x2_prompt_quads_take_run(unsigned glyphs, struct X2PromptQuad *out);
-/* Pending runs that carry quads of ours, and those quads. */
-unsigned x2_prompt_quads_pending(unsigned *quads);
+int x2_prompt_quads_put(struct X2PromptVertexKey key,
+                        const struct X2PromptQuad *quads, unsigned count);
+/* Take every pending quad whose glyph lies in `vertices` vertices of
+   `vertex_array` from `start` -- the range a draw submits -- in the order
+   they were laid out, and drop them. `out` holds X2_PROMPT_QUADS_MAX. */
+unsigned x2_prompt_quads_take_range(uint32_t vertex_array, uint32_t start,
+                                    uint32_t vertices,
+                                    struct X2PromptQuad *out);
+/* Pending quads. */
+unsigned x2_prompt_quads_pending(void);
 void x2_prompt_quads_report(void);
 
 #endif

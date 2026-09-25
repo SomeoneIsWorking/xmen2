@@ -6,7 +6,7 @@ symptom: with a controller, pause and team footers read "Back / Scroll / Rotate"
 state_items: S007
 tags: input,pad,prompts,glyphs,text
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-25
 ---
 
 # 0184 — footer prompt glyphs were drawn with another draw's transform
@@ -31,11 +31,21 @@ Three independent ones.
    first draw's text plane put it — off the footer. Measured: one draw submits a
    contiguous window of laid-out strings (conversation: speaker 7 + line 59 +
    `A` 1 = one 67-glyph draw), and draw order need not follow layout order.
-   Fix: `prompt_glyph_quads.c` keeps a layout record of every string (non-
-   prompt strings as empty runs); the finalizer takes the earliest contiguous
-   window whose glyph count equals the draw's `6 * glyphs - 2` primitives and
-   renders those quads with its own transform. Live: 956/956 prompt windows
-   taken, 0 never drawn.
+   The first fix matched a draw's glyph count (`6 * glyphs - 2` primitives)
+   to the earliest contiguous window of laid-out strings with that count. It
+   guessed wrong whenever two windows had the same size: in the pause menu the
+   17-glyph "Blink Portal (down)" row took the footer's `[Esc] Back` key, and
+   once plain windows were used up the key moved to "Objectives".
+   Fix: attribution is exact. At each intercepted emit `FUN_005ee400` reads
+   where the engine writes the glyph — writer `ECX`, batch `[ECX]`, vertex
+   array `[batch+4+[batch+0x10]*4]`, vertex `[batch+0x14]+[batch+0x20]` — and
+   keys the quad by it (a later glyph written at the same key replaces it).
+   `drawNonIndexed(type, primitives, start)` submits `primitives + 2` strip
+   vertices from `start` of the context's current array at `VC+0x1f0`, and
+   the finalizer takes the quads keyed inside that range. Live, pause menu
+   open: 3800 of 3804 quads placed by 950 draws, 0 overwritten, 0 undrawn
+   (the other 4 were the frame in flight at exit); no row carries a key and
+   the footer shows `Esc`.
 2. **Stick directions had no icon.** `pad_glyph_code` did not map the axis
    codes (left stick 1..4, right stick 7..10), so "Scroll"/"Rotate" kept the
    stock name. Eight direction icons were added to `glyphs.json`.
@@ -54,6 +64,8 @@ Three independent ones.
 map): pad footer shows B Back, left-stick Scroll, right-stick Rotate; the
 conversation shows the `A` glyph; the keyboard pause footer and conversation
 show the `Esc`/`Enter` keycaps. The metrics log reports no collision:
-"published 28 cell(s)". `test_prompt_glyph_batch` exercises the window matcher
-against the real store (a matcher ignoring the glyph count fails 5 checks);
+"published 28 cell(s)". `test_prompt_glyph_batch` exercises the range matcher
+against the real store, including the "Blink Portal" case; a closed range end,
+ignoring the vertex array, dropping the overwrite, or a wrong strip length
+each fail 2–9 checks across it and `test_prompt_glyph_draw`;
 `test_prompt_glyph_metrics` covers the skipped retail bytes.

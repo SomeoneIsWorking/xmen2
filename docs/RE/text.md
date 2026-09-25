@@ -275,10 +275,21 @@ The port-owned atlas is RGBA, retained and uploaded by
 the engine batch colour and the generated atlas UVs. Failure to read the
 batch colour or reserve a complete string keeps that entire string on the
 retail path. Failure to obtain all three engine matrices or submit through the
-GPU path discards the matching batch at that exact boundary. The outer batch
-wrapper also discards any queue left after a draw returns without its nested
-finalizer, so native art cannot leak into an unrelated draw. None of these
+GPU path discards the matching batch at that exact boundary. None of these
 conditions is silently accepted.
+
+Which draw places a quad is decided by vertex position, not by counting
+(issue #184). The emitter's writer is `ECX`, its batch `[ECX]`; the batch's
+current vertex array is `[batch+4+[batch+0x10]*4]` and its next vertex is
+`[batch+0x14]+[batch+0x20]` (`FUN_005840a0` appends there, one vertex per
+call, six per glyph). Each harvested quad is keyed by the array and vertex
+of the glyph it replaces. `drawNonIndexed(type [ESP+4], primitiveCount
+[ESP+8], startVertex [ESP+0xc])`, `RET 0xc`, draws a strip of
+`primitiveCount + 2` vertices from `startVertex` of the visual context's
+current array at `VC+0x1f0`, and a live probe showed that array equal to the
+text batch's. The finalizer therefore takes exactly the quads keyed inside
+its range; a quad no draw submits stays pending until the frame ends, where
+it is counted as undrawn, so native art cannot leak into an unrelated draw.
 
 ### Live verification and the baseline defect
 

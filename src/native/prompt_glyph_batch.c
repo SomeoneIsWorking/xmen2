@@ -26,19 +26,25 @@
 
 static unsigned g_nonindexed_depth;
 static uint32_t g_nonindexed_primitives;
+static uint32_t g_nonindexed_start;
+static int g_nonindexed_readable;
 static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
 static unsigned long g_with_prompts, g_drawn;
 static unsigned long g_transform_refused, g_gpu_refused;
-static unsigned long g_unreadable_count;
+static unsigned long g_unreadable_count, g_unreadable_array;
 
 void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   g_calls++;
   g_nonindexed_depth++;
-  /* CHECKED, not dereferenced: this count decides which retained prompt a
-     draw places, and a draw whose argument cannot be read places none rather
-     than placing the wrong one. */
-  if (!guest_memory_try_read32(C->reg[kX86pEsp] + 8u,
-                               &g_nonindexed_primitives)) {
+  /* drawNonIndexed(type, primitiveCount, startVertex), RET 0xc. CHECKED,
+     not dereferenced: these decide which retained prompt a draw places, and
+     a draw whose arguments cannot be read places none rather than placing
+     the wrong one. */
+  g_nonindexed_readable =
+      guest_memory_try_read32(C->reg[kX86pEsp] + 8u,
+                              &g_nonindexed_primitives) &&
+      guest_memory_try_read32(C->reg[kX86pEsp] + 0xcu, &g_nonindexed_start);
+  if (!g_nonindexed_readable) {
     g_nonindexed_primitives = 0;
     g_unreadable_count++;
   }
@@ -51,26 +57,39 @@ static int batch_transform(void *owner, float mvp[16]) {
   return x2_ui_transform_current(*(const uint32_t *)owner, mvp);
 }
 
+/* The quads this draw submits, taken out of the store. */
+static unsigned take_drawn(uint32_t context, struct X2PromptQuad *quads) {
+  uint32_t vertex_array;
+  if (!guest_memory_try_read32(context + 0x1f0u, &vertex_array)) {
+    g_unreadable_array++;
+    return 0;
+  }
+  return x2_prompt_quads_take_range(vertex_array, g_nonindexed_start,
+                                    g_nonindexed_primitives + 2u, quads);
+}
+
 /*
  * updateContextState is the only evidenced point where a batch has a
  * finalized transform. A text pass lays all of its strings out before it
  * draws any, so what is pending here may belong to later draws: this draw
- * takes only the string run whose glyph count its primitive count declares,
- * and the rest wait for their own draws (issue #184).
+ * takes only the quads whose collapsed glyphs lie in the vertex range it
+ * submits -- the context's current vertex array at VC+0x1f0, a strip of
+ * primitiveCount + 2 vertices from startVertex -- and the rest wait for their
+ * own draws (issue #184).
  */
 void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
-  unsigned count;
+  unsigned count = 0;
 
   x86_guest_body(C, "libIGGfx.dll", 0x10034e60u);
   g_finalizer_calls++;
   if (!g_nonindexed_depth)
     return;
   g_nested_finalizers++;
-  count = x2_prompt_quads_take_run(
-      x2_prompt_draw_glyphs(g_nonindexed_primitives), quads);
+  if (g_nonindexed_readable)
+    count = take_drawn(context, quads);
   if (count) {
     g_with_prompts++;
     if (!x2_ui_transform_current(context, mvp))
@@ -100,9 +119,14 @@ void x2_prompt_glyph_batch_report(void) {
               g_calls, g_finalizer_calls, g_nested_finalizers, g_with_prompts,
               g_drawn, g_transform_refused, g_gpu_refused);
   if (g_unreadable_count)
-    x2_log_info("        %lu draw(s) had an unreadable primitive count -- no "
-                "retained touch prompt could be attributed to them\n",
+    x2_log_info("        %lu draw(s) had an unreadable primitive count or "
+                "start vertex -- no retained prompt could be attributed to "
+                "them\n",
                 g_unreadable_count);
+  if (g_unreadable_array)
+    x2_log_info("        %lu draw(s) had no readable vertex array at "
+                "VC+0x1f0 -- their prompts stayed undrawn\n",
+                g_unreadable_array);
   if (!g_calls)
     x2_log_info("        ZERO calls at libIGGfx.dll 0x100352d0 -- the "
                 "engine's non-indexed draw boundary was not reached.\n");

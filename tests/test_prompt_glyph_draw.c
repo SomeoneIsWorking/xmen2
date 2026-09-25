@@ -97,6 +97,27 @@ static uint32_t guest_wide(const uint16_t *codes, unsigned n) {
 static unsigned long g_super_calls;
 static unsigned long g_emitter_calls;
 static uint32_t g_batch;
+
+/* The emitter's text writer and its batch, as FUN_005ee400 sees them: ECX
+   is the writer, [ECX] the batch, whose current vertex array is slot
+   [+0x10] of the table at +4 and whose next vertex is [+0x14] + [+0x20]. */
+#define TEXT_WRITER (GUEST_PAGE + 0x7c0u)
+#define TEXT_BATCH (GUEST_PAGE + 0x7d0u)
+#define TEXT_ARRAY 0x01f29db8u
+
+static void text_batch_init(void) {
+  WR32(TEXT_WRITER, TEXT_BATCH);
+  WR32(TEXT_BATCH + 4u, 0u);
+  WR32(TEXT_BATCH + 8u, TEXT_ARRAY);
+  WR32(TEXT_BATCH + 0x10u, 1u);
+  WR32(TEXT_BATCH + 0x14u, 12u);
+  WR32(TEXT_BATCH + 0x20u, 0u);
+}
+
+/* The next vertex the engine writes. */
+static uint32_t text_vertex(void) {
+  return RD32(TEXT_BATCH + 0x14u) + RD32(TEXT_BATCH + 0x20u);
+}
 static float g_emitted_rects[1024][4];
 
 static uint32_t float_bits(float value) {
@@ -120,6 +141,7 @@ static void guest_body_005ee400(CPU *C) {
       g_emitted_rects[g_emitter_calls][i] =
           bits_float(RD32(C->reg[kX86pEsp] + (i + 1u) * 4u));
   g_emitter_calls++;
+  WR32(TEXT_BATCH + 0x20u, RD32(TEXT_BATCH + 0x20u) + 6u);
   C->reg[kX86pEsp] += 4u + 0x20u;
 }
 
@@ -154,9 +176,9 @@ static void guest_body_005ee780(CPU *C) {
     WR32(stack + 28u, float_bits(0.3f));
     WR32(stack + 32u, float_bits(0.4f));
     emitter.reg[kX86pEsp] = stack;
-    /* Deliberately not the batch: colour must have been pre-read from
+    /* Deliberately not the loop's arg2: colour must have been pre-read from
        FUN_005ee780 arg2+8 before this loop was armed. */
-    emitter.reg[kX86pEcx] = 0x12345678u;
+    emitter.reg[kX86pEcx] = TEXT_WRITER;
     x2_override_005ee400(&emitter);
     if (emitter.reg[kX86pEsp] != stack + 0x24u)
       fail("the retail emitter did not own its RET 0x20 stack effect");
@@ -225,6 +247,7 @@ int main(void) {
   g_stack = GUEST_STACK_TOP;
   g_batch = GUEST_PAGE + 0x780u;
   WR32(g_batch + 8u, 0x7f2468acu);
+  text_batch_init();
 
   if (!native_stubs_registered("XMen2.exe", 0x005ee780))
     fail("the constructor did not register the glyph-loop override");
@@ -322,11 +345,14 @@ int main(void) {
     unsigned long emit_before = g_emitter_calls;
     uint32_t entry;
 
+    uint32_t start;
+
     x2_prompt_quads_reset();
     entry = g_stack - 32u;
+    start = text_vertex();
     call_glyph_loop(&cpu, guest_wide(one, 1));
-    /* One emitted glyph: the draw that submits it declares 6*1-2. */
-    count = x2_prompt_quads_take_run(x2_prompt_draw_glyphs(4u), quads);
+    /* One emitted glyph: the draw that submits it covers its six vertices. */
+    count = x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u, quads);
     if (cpu.reg[kX86pEsp] != entry + 32u)
       fail("the retail glyph loop did not own its RET 0x1c ABI");
     else
@@ -364,11 +390,19 @@ int main(void) {
     CPU cpu;
     unsigned i, count, collapsed = 0, stock = 0;
     unsigned long emit_before = g_emitter_calls;
+    uint32_t start;
 
     x2_prompt_quads_reset();
+    start = text_vertex();
     call_glyph_loop(&cpu, guest_wide(esc_back, 10));
-    count =
-        x2_prompt_quads_take_run(x2_prompt_draw_glyphs(6u * 9u - 2u), quads);
+    /* The key is keyed where its right edge (emitted glyph 4) was written:
+       a draw that ends before that glyph does not own it. */
+    if (x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u * 4u, quads) ||
+        x2_prompt_quads_take_range(TEXT_ARRAY + 4u, start, 6u * 9u, quads))
+      fail("a draw that does not submit the key's right edge took the key");
+    else
+      ok("only the draw submitting the key's right edge takes the key");
+    count = x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u * 9u, quads);
     for (i = 0; i < 9u; i++) {
       collapsed +=
           (unsigned)(i < 5u && rect_collapsed((unsigned)emit_before + i));
@@ -407,7 +441,7 @@ int main(void) {
     x2_prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(spaced, 5));
     call_glyph_loop(&cpu, guest_wide(stray, 2));
-    x2_prompt_quads_pending(&count);
+    count = x2_prompt_quads_pending();
     if (count || g_emitter_calls != emit_before + 6u ||
         !rect_has_area((unsigned)emit_before + 1u) ||
         !rect_has_area((unsigned)emit_before + 5u))
@@ -431,7 +465,7 @@ int main(void) {
     g_batch = 0x23456780u;
     x2_prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    x2_prompt_quads_pending(&count);
+    count = x2_prompt_quads_pending();
     if (count || g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||
         !rect_has_area((unsigned)emit_before + 1u))
@@ -454,15 +488,14 @@ int main(void) {
     unsigned i, count = 0;
     unsigned long emit_before;
     x2_prompt_quads_reset();
-    if (!x2_prompt_quads_begin_run(1u, X2_PROMPT_QUADS_MAX - 1u))
-      fail("the store refused a filler run");
-    for (i = 0; i + 1u < X2_PROMPT_QUADS_MAX; i++)
-      if (!x2_prompt_quads_add(&filler))
+    for (i = 0; i + 1u < X2_PROMPT_QUADS_MAX; i++) {
+      const struct X2PromptVertexKey key = {0u, i * 6u};
+      if (!x2_prompt_quads_put(key, &filler, 1u))
         fail("the queue refused a filler before its stated capacity");
-    x2_prompt_quads_end_run();
+    }
     emit_before = g_emitter_calls;
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    x2_prompt_quads_pending(&count);
+    count = x2_prompt_quads_pending();
     if (count != X2_PROMPT_QUADS_MAX - 1u ||
         g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||

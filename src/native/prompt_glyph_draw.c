@@ -147,14 +147,42 @@ static void collapse(CPU *C) {
   WR32(C->reg[kX86pEsp] + 16u, RD32(C->reg[kX86pEsp] + 8u));
 }
 
-static void retain(const struct X2PromptQuad *q) {
-  if (!x2_prompt_quads_add(q)) {
+/*
+ * Where the emitter is about to write this glyph: ECX is the text writer and
+ * [ECX] its batch, whose current vertex array is slot [batch+0x10] of the
+ * array table at batch+4 and whose next vertex is base [batch+0x14] plus
+ * count [batch+0x20] (FUN_005840a0 appends there). drawNonIndexed submits a
+ * range of the same array (prompt_glyph_batch.c), so this key names the draw
+ * that will place the quad. Read with checked reads: the emitter writes
+ * through these same fields next, so an unreadable one is a broken model,
+ * not a glyph to guess about.
+ */
+static struct X2PromptVertexKey g_key;
+
+static void read_key(const CPU *C) {
+  uint32_t batch, slot, base, count;
+  if (!guest_memory_try_read32(C->reg[kX86pEcx], &batch) ||
+      !guest_memory_try_read32(batch + 0x10u, &slot) ||
+      !guest_memory_try_read32(batch + 4u + slot * 4u, &g_key.vertex_array) ||
+      !guest_memory_try_read32(batch + 0x14u, &base) ||
+      !guest_memory_try_read32(batch + 0x20u, &count)) {
+    x2_log_error("PROMPT DRAW: the text writer at ECX %08x has no readable "
+                 "vertex cursor; the batch model is wrong, so no quad can be "
+                 "placed by the draw that submits it.\n",
+                 C->reg[kX86pEcx]);
+    abort();
+  }
+  g_key.vertex = base + count;
+}
+
+static void retain(const struct X2PromptQuad *quads, unsigned count) {
+  if (!x2_prompt_quads_put(g_key, quads, count)) {
     x2_log_error("PROMPT DRAW: reserved queue capacity was "
                  "lost inside one synchronous retail string; "
                  "atomic interception cannot continue.\n");
     abort();
   }
-  g_intercepted++;
+  g_intercepted += count;
 }
 
 static void intercept_glyph(CPU *C, uint16_t c) {
@@ -182,7 +210,7 @@ static void intercept_glyph(CPU *C, uint16_t c) {
   q.y1 = corners[3];
   q.color = g_cursor_color;
   q.sheet = X2_KEYCAP_SHEET_ATLAS;
-  retain(&q);
+  retain(&q, 1u);
   collapse(C);
 }
 
@@ -213,9 +241,7 @@ static void intercept_keycap(CPU *C, uint16_t c) {
     }
     read_corners(C, right);
     x2_keycap_quads(g_cap.left, right, art, g_cursor_color, quads);
-    for (i = 0; i < X2_KEYCAP_QUADS; i++) {
-      retain(&quads[i]);
-    }
+    retain(quads, X2_KEYCAP_QUADS);
     g_cap.open = 0;
     g_keys_drawn++;
   }
@@ -237,6 +263,7 @@ void x2_override_005ee400(CPU *C) {
   if (g_cursor_string) {
     uint16_t c = cursor_take();
     g_emitted_seen++;
+    read_key(C);
     if (c == X2_KEYCAP_GLYPH_LEFT || g_cap.open) {
       intercept_keycap(C, c);
     } else {
@@ -289,16 +316,6 @@ static struct PromptStringPlan plan_string(uint32_t s) {
   return plan;
 }
 
-/* Every string the loop lays out enters the layout record, ours or not: a
-   draw submits a window of adjacent strings, and a window can only be summed
-   over the strings that are in it (prompt_glyph_quads.c). */
-static void record_stock_string(uint32_t s) {
-  if (!s || !x2_prompt_quads_begin_run(x2_prompt_string_hash(s, NULL),
-                                       plan_string(s).emitted))
-    return;
-  x2_prompt_quads_end_run();
-}
-
 void x2_override_005ee780(CPU *C) {
   uint32_t s = glyph_loop_string(C);
   unsigned i;
@@ -311,7 +328,6 @@ void x2_override_005ee780(CPU *C) {
     unsigned length = 0;
     (void)x2_prompt_string_hash(s, &length);
     if (x2_prompt_touch_begin(s, length)) {
-      record_stock_string(s);
       g_cursor_string = s;
       g_cursor_index = 0;
       g_touch_mode = 1;
@@ -338,33 +354,23 @@ void x2_override_005ee780(CPU *C) {
        every precondition first, including the one-glyph case. */
     if (plan.unavailable || !plan.native) {
       g_unavailable_refused++;
-      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
     if (!guest_memory_try_read32(batch + 8u, &color)) {
       g_color_refused++;
-      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
     if (x2_prompt_quads_available() < plan.native) {
       g_queue_refused++;
-      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
 
-    if (!x2_prompt_quads_begin_run(x2_prompt_string_hash(s, NULL),
-                                   plan.emitted)) {
-      x2_log_error("PROMPT DRAW: a string run could not open because "
-                   "another was still open; atomic interception cannot "
-                   "continue.\n");
-      abort();
-    }
     g_predicted += plan.emitted;
     g_emitted_seen_before = g_emitted_seen;
     g_cursor_string = s;
@@ -374,7 +380,6 @@ void x2_override_005ee780(CPU *C) {
     x86_guest_body(C, "XMen2.exe", 0x005ee780u);
     g_cursor_string = 0;
     g_cap.open = 0;
-    x2_prompt_quads_end_run();
     if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
       g_desync++;
       x2_log_error("PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
@@ -385,7 +390,6 @@ void x2_override_005ee780(CPU *C) {
     }
     return;
   }
-  record_stock_string(s);
   g_super_called++;
   x86_guest_body(C, "XMen2.exe", 0x005ee780u);
 }

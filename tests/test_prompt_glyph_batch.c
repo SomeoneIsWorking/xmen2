@@ -95,30 +95,47 @@ static void guest_body_10034e60(CPU *C) {
   C->reg[kX86pEcx] = 0xeeeeeeeeu;
 }
 
-/* Lay out one string the way prompt_glyph_draw.c does: `native` quads of
-   ours among `emitted` glyphs, identified by `identity`. */
-static void lay_out(uint32_t identity, unsigned emitted, unsigned native,
-                    uint16_t codepoint) {
-  struct X2PromptQuad quad;
+/* The vertex array the drawing context submits from, and the one other
+   text batches write into. */
+#define ARRAY_TEXT 0x01f29db8u
+#define ARRAY_OTHER 0x01f40000u
+#define CONTEXT 0x12345678u
+static uint32_t draw_start;
+static uint32_t context_array = ARRAY_TEXT;
+
+/* Retain `native` quads of ours for a glyph the engine wrote at `vertex` of
+   `array`, the way prompt_glyph_draw.c does. */
+static void put(uint32_t array, uint32_t vertex, unsigned native,
+                uint16_t codepoint) {
+  struct X2PromptQuad quads[8];
+  const struct X2PromptVertexKey key = {array, vertex};
   unsigned i;
-  memset(&quad, 0, sizeof quad);
-  quad.codepoint = codepoint;
-  if (!x2_prompt_quads_begin_run(identity, emitted)) {
-    printf("  FAIL  the store refused a run\n");
-    failures++;
-    return;
-  }
+  memset(quads, 0, sizeof quads);
   for (i = 0; i < native; i++)
-    (void)x2_prompt_quads_add(&quad);
-  x2_prompt_quads_end_run();
+    quads[i].codepoint = codepoint;
+  if (!x2_prompt_quads_put(key, quads, native)) {
+    printf("  FAIL  the store refused a quad\n");
+    failures++;
+  }
 }
 
-/* The primitive count a draw of `glyphs` whole glyphs declares. */
+/* The primitive count a strip of `glyphs` whole glyphs declares, and the
+   first vertex of glyph `index` in the batch. */
 static uint32_t primitives_for(unsigned glyphs) { return glyphs * 6u - 2u; }
+static uint32_t glyph(unsigned index) { return index * 6u; }
+
+static void draw(uint32_t start, unsigned glyphs, CPU *cpu) {
+  draw_start = start;
+  draw_primitives = primitives_for(glyphs);
+  cpu->reg[kX86pEcx] = CONTEXT;
+  x2_prompt_glyph_batch_draw_nonindexed(cpu);
+}
 
 static void reset_case(uint32_t primitives) {
   x2_prompt_quads_reset();
   draw_primitives = primitives;
+  draw_start = 0;
+  context_array = ARRAY_TEXT;
   primitives_readable = 1;
   transform_ok = 1;
   gpu_ok = 1;
@@ -133,7 +150,7 @@ static void reset_case(uint32_t primitives) {
   memset(events, 0, sizeof events);
 }
 
-static unsigned pending_runs(void) { return x2_prompt_quads_pending(NULL); }
+static unsigned pending(void) { return x2_prompt_quads_pending(); }
 
 int main(void) {
   CPU cpu;
@@ -144,8 +161,8 @@ int main(void) {
   check(native_stubs_registered("libIGGfx.dll", 0x10034e60u),
         "the override registers Alchemy's context-state finalizer");
 
-  reset_case(primitives_for(3));
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
+  reset_case(0);
+  draw(glyph(0), 3u, &cpu);
   check(!strcmp(events, "UD"),
         "a draw with no prompt run is an untouched super-call");
   check(transform_calls == 0 && gpu_calls == 0,
@@ -154,103 +171,114 @@ int main(void) {
         "every finalized draw offers its own primitive count to the touch "
         "prompts, whether or not it carries prompt art");
 
-  /* A footer: three elements laid out, THEN drawn one per draw. Each draw
-     must take the element it submits and leave the others for theirs. */
-  reset_case(primitives_for(16));
-  lay_out(0xa1u, 9u, 1u, 0x81u);  /* "<B> Back"        */
-  lay_out(0xa2u, 16u, 4u, 0x90u); /* "[Up] [Down] Scroll" */
-  lay_out(0xa3u, 12u, 2u, 0x91u); /* "[J][L] Rotate"   */
-  cpu.reg[kX86pEcx] = 0x12345678u;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
+  /* A footer: three elements laid out one after another in the batch, THEN
+     drawn one per draw. Each draw takes the element it submits and leaves
+     the others for theirs. */
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(0), 1u, 0x81u);  /* "<B> Back", glyphs 0..8   */
+  put(ARRAY_TEXT, glyph(9), 4u, 0x90u);  /* "[Up] [Down] Scroll", 9.. */
+  put(ARRAY_TEXT, glyph(25), 2u, 0x91u); /* "[J][L] Rotate", 25..36   */
+  draw(glyph(9), 16u, &cpu);
   check(!strcmp(events, "UTGD"),
         "prompt art draws after finalization and before the stock batch");
   check(gpu_count == 4u && gpu_first_codepoint == 0x90u,
-        "the draw takes exactly the run its primitive count submits");
-  check(transform_context == 0x12345678u,
+        "the draw takes exactly the quads in the vertex range it submits");
+  check(transform_context == CONTEXT,
         "the matrix lookup stays keyed to the finalizer's input context");
-  check(pending_runs() == 2u,
-        "the other elements' runs wait for their own draws");
+  check(pending() == 3u, "the other elements wait for their own draws");
 
-  event_count = 0;
-  memset(events, 0, sizeof events);
-  draw_primitives = primitives_for(9);
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_count == 1u && gpu_first_codepoint == 0x81u && pending_runs() == 1u,
+  gpu_calls = 0;
+  draw(glyph(0), 9u, &cpu);
+  check(gpu_calls == 1u && gpu_count == 1u && gpu_first_codepoint == 0x81u &&
+            pending() == 2u,
         "a later draw in the same pass places its own element");
 
-  draw_primitives = primitives_for(5);
   gpu_calls = 0;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_calls == 0 && pending_runs() == 1u,
-        "a draw of text that is no pending string takes nothing");
+  draw(glyph(37), 9u, &cpu);
+  check(gpu_calls == 0 && pending() == 2u,
+        "a draw of text past every prompt takes nothing");
 
-  draw_primitives = 7u; /* not a whole number of glyphs */
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_calls == 0 && pending_runs() == 1u,
-        "a draw that is not whole glyphs takes nothing");
+  /* The range is half-open: a glyph that starts where the draw ends is the
+     next draw's. */
+  draw(glyph(16), 9u, &cpu);
+  check(gpu_calls == 0 && pending() == 2u,
+        "a glyph starting one past the draw's last vertex stays pending");
+
+  context_array = ARRAY_OTHER;
+  draw(glyph(25), 12u, &cpu);
+  check(gpu_calls == 0 && pending() == 2u,
+        "the same range of another vertex array takes nothing");
+  context_array = ARRAY_TEXT;
 
   primitives_readable = 0;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_calls == 0 && pending_runs() == 1u,
-        "an unreadable primitive count places nothing rather than the "
-        "wrong string");
+  draw(glyph(25), 12u, &cpu);
+  check(gpu_calls == 0 && pending() == 2u,
+        "an unreadable draw argument places nothing rather than the wrong "
+        "string");
+  primitives_readable = 1;
 
   /* A conversation: name, line and response button laid out in that order
-     and drawn together as one window, then the response text alone. */
-  reset_case(primitives_for(7 + 59 + 1));
-  lay_out(0xb1u, 7u, 0u, 0u);    /* "Cyclops"            */
-  lay_out(0xb2u, 59u, 0u, 0u);   /* the spoken line      */
-  lay_out(0xb3u, 1u, 1u, 0x80u); /* "<A>"               */
-  lay_out(0xb4u, 11u, 0u, 0u);   /* "continue..."        */
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_count == 1u && gpu_first_codepoint == 0x80u && pending_runs() == 0u,
-        "a draw of adjacent strings takes the prompt inside its window");
-  gpu_calls = 0;
-  draw_primitives = primitives_for(1);
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_calls == 0,
-        "a one-glyph draw cannot take a button already placed by its own "
-        "window");
+     and drawn together as one range. */
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(66), 1u, 0x80u); /* "<A>" after 7 + 59 glyphs */
+  draw(glyph(0), 7u + 59u + 1u, &cpu);
+  check(gpu_count == 1u && gpu_first_codepoint == 0x80u && pending() == 0u,
+        "a draw of adjacent strings takes the prompt inside its range");
 
-  reset_case(primitives_for(9));
-  lay_out(0xa1u, 9u, 1u, 0x81u);
-  lay_out(0xa1u, 9u, 1u, 0x82u);
-  check(pending_runs() == 1u,
-        "a re-measurement of the same string replaces the pending run");
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(gpu_first_codepoint == 0x82u, "the draw places the latest measurement");
+  /* The pause menu (issue #184). The row "Blink Portal (down)" is 17 plain
+     glyphs, and the footer's "[Esc] Ready" (10 glyphs) and "Players" (7)
+     after it are 17 too. A glyph-count matcher gave the row the footer's key
+     ("Blink [POR]tal"); the row's own range holds no quad of ours. */
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(17 + 4), 5u, 0x9au); /* the key's right edge */
+  draw(glyph(0), 17u, &cpu);
+  check(gpu_calls == 0 && pending() == 5u,
+        "a plain row whose glyph count equals the footer's places no key");
+  draw(glyph(17), 17u, &cpu);
+  check(gpu_calls == 1u && gpu_count == 5u && gpu_first_codepoint == 0x9au,
+        "the footer's key is placed by the draw that submits it");
 
-  reset_case(primitives_for(9));
-  lay_out(0xa1u, 9u, 3u, 0x81u);
+  /* The engine writing a glyph over a slot whose quad was never drawn: the
+     vertices are the latest string's, and so is the art. */
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(3), 1u, 0x81u);
+  put(ARRAY_TEXT, glyph(3), 1u, 0x82u);
+  check(pending() == 1u, "a glyph written over replaces its pending quad");
+  draw(glyph(0), 9u, &cpu);
+  check(gpu_first_codepoint == 0x82u, "the draw places the latest glyph");
+
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
   transform_ok = 0;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(!strcmp(events, "UTD") && gpu_calls == 0 && pending_runs() == 0u,
-        "an unavailable engine transform refuses and discards its own run");
+  draw(glyph(0), 9u, &cpu);
+  check(!strcmp(events, "UTD") && gpu_calls == 0 && pending() == 0u,
+        "an unavailable engine transform refuses and discards its quads");
 
-  reset_case(primitives_for(9));
-  lay_out(0xa1u, 9u, 3u, 0x81u);
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
   gpu_ok = 0;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
-  check(!strcmp(events, "UTGD") && pending_runs() == 0u,
-        "a GPU refusal discards its run instead of leaking it to a later "
-        "draw");
+  draw(glyph(0), 9u, &cpu);
+  check(!strcmp(events, "UTGD") && pending() == 0u,
+        "a GPU refusal discards its quads instead of leaking them to a "
+        "later draw");
 
-  reset_case(primitives_for(9));
-  lay_out(0xa1u, 9u, 3u, 0x81u);
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
+  cpu.reg[kX86pEcx] = CONTEXT;
   x2_prompt_glyph_batch_update_context_state(&cpu);
   check(!strcmp(events, "U") && transform_calls == 0 && gpu_calls == 0 &&
-            pending_runs() == 1u,
+            pending() == 3u,
         "the finalizer alone never mistakes an indexed draw for text");
 
-  reset_case(primitives_for(9));
-  lay_out(0xa1u, 9u, 3u, 0x81u);
+  reset_case(0);
+  put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
   super_runs_finalizer = 0;
-  x2_prompt_glyph_batch_draw_nonindexed(&cpu);
+  draw(glyph(0), 9u, &cpu);
   check(!strcmp(events, "D") && gpu_calls == 0 && touch_publishes == 0,
         "a draw that never finalized places nothing and offers nothing");
 
   x2_prompt_quads_reset();
-  check(pending_runs() == 0u, "a new frame drops every undrawn run");
+  check(pending() == 0u, "a new frame drops every undrawn quad");
 
   printf("  the report reads:\n");
   x2_prompt_glyph_batch_report();
@@ -265,11 +293,22 @@ int main(void) {
  * symbol per function -- and an entry point this test does not model is a
  * FAILURE that names itself, never a silent return.
  */
-/* The draw's one modelled argument is its primitive count at [ESP+8]. */
+/* The draw's modelled arguments are its primitive count at [ESP+8] and its
+   start vertex at [ESP+0xc]; the context's current vertex array is at
+   VC+0x1f0. Any other read is not modelled and fails. */
 int guest_memory_try_read(uint32_t address, void *destination, size_t size) {
-  if (!primitives_readable || address != 8u || size != sizeof draw_primitives)
+  const uint32_t *value = NULL;
+  if (size != sizeof(uint32_t))
     return 0;
-  memcpy(destination, &draw_primitives, size);
+  if (address == 8u && primitives_readable)
+    value = &draw_primitives;
+  else if (address == 0xcu && primitives_readable)
+    value = &draw_start;
+  else if (address == CONTEXT + 0x1f0u)
+    value = &context_array;
+  if (!value)
+    return 0;
+  memcpy(destination, value, size);
   return 1;
 }
 
