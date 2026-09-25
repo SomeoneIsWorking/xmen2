@@ -20,6 +20,12 @@ namespace x2::input {
  * So the origin is the contact's own landing point, exactly as the camera
  * swipe beside it already worked, and a ring radius of travel from there is
  * full deflection.
+ *
+ * THE CENTRE FOLLOWS A THUMB THAT OVERSHOOTS. A thumb pushed past the rim
+ * drags the centre with it, keeping the thumb on the rim. With a fixed
+ * centre, reversing after an overshoot meant travelling all the way back
+ * across it before the character turned, which is what made the stick feel
+ * stiff next to every other mobile game.
  */
 class ThumbStick {
 public:
@@ -45,10 +51,16 @@ public:
      outside the unit circle. */
   Deflection deflection() const { return deflection_; }
 
+  /* Where the ring should be drawn while a thumb holds it. */
+  bool engaged() const { return engaged_; }
+  lucent::touch::Point centre() const { return centre_; }
+
   void release();
 
 private:
   float travel_ = 0.0F;
+  bool engaged_ = false;
+  lucent::touch::Point centre_;
   Deflection deflection_;
 };
 

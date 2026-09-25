@@ -111,7 +111,7 @@ document uses the action meanings proven by `binding_rows.c` and
 
 | Zone | Action mapping |
 |---|---|
-| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin |
+| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`x2_layout_stick_reach`) takes it |
 | Bottom-right action diamond | Attack (A) below, Smash (B) outside, Use (X) above, Jump (Y) inside |
 | Arc inboard of the diamond | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
 | Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
@@ -131,6 +131,14 @@ clamped to the unit circle rather than per axis so the diagonals cannot outrun
 every other direction, and travel inside 8% of full is the thumb resting.
 The knob is drawn at that live deflection, so the one control with a value
 rather than a state shows its value.
+
+The stick floats, as mobile games' sticks do. A thumb landing anywhere in the
+lower-left reach takes it, not only one landing on the ring. The reach runs
+from the potions down to the bottom edge, and stops at the centreline and at
+the nearest action or power. While the thumb is down, the ring is drawn
+centred on it. A thumb pushed past the rim drags the centre along behind it,
+so reversing direction turns at once instead of first travelling back across
+the landing point. Travel is still one ring radius.
 
 The movement stick is smaller than the original overlay to leave more of the
 playfield visible. Jump is on the opposite hand from movement, so a player can

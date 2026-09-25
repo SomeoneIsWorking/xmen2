@@ -137,6 +137,9 @@ public:
   ThumbStick::Deflection stick_deflection() const {
     return stick_.deflection();
   }
+  // Where the movement ring is drawn: centred on the thumb while one holds
+  // it, at its layout position otherwise.
+  X2Rect stick_ring() const;
 
 private:
   void rebuild_zones();
@@ -144,6 +147,7 @@ private:
   translate(std::span<const lucent::touch::Event> events);
 
   ThumbStick stick_;
+  X2Rect stick_ring_{};
   Viewport viewport_;
   std::array<X2Rect, 4> portraits_{};
   std::array<int, 4> power_icons_{-1, -1, -1, -1};

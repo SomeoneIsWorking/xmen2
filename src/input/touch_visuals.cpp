@@ -13,7 +13,7 @@ constexpr std::uint32_t kPromptVisualId = 1000;
 
 std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
                             const std::set<std::uint32_t> &active,
-                            ThumbStick::Deflection stick,
+                            ThumbStick::Deflection stick, X2Rect stick_ring,
                             std::span<const PromptButton> prompts,
                             X2TouchVisual *out, std::size_t capacity) {
   std::size_t count = 0;
@@ -27,9 +27,12 @@ std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
     if (!zone.visible) {
       continue;
     }
-    emit({zone.zone.id, zone.zone.left, zone.zone.top, zone.zone.right,
-          zone.zone.bottom, static_cast<int>(zone.action),
-          active.contains(zone.zone.id) ? 1 : 0,
+    /* The stick's zone is where a thumb may land; the ring is drawn apart. */
+    const X2Rect drawn = zone.stick ? stick_ring
+                                    : X2Rect{zone.zone.left, zone.zone.top,
+                                             zone.zone.right, zone.zone.bottom};
+    emit({zone.zone.id, drawn.left, drawn.top, drawn.right, drawn.bottom,
+          static_cast<int>(zone.action), active.contains(zone.zone.id) ? 1 : 0,
           zone.stick ? X2_TOUCH_VISUAL_STICK : X2_TOUCH_VISUAL_BUTTON,
           zone.stick ? stick.x : 0.0F, zone.stick ? stick.y : 0.0F,
           zone.power_icon});

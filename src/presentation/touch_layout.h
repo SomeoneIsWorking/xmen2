@@ -99,6 +99,15 @@ int x2_layout_slot_is_hud(int slot);
 int x2_layout_build(X2LayoutViewport viewport, X2Rect *out);
 
 /*
+ * Where a movement thumb may land: the lower-left of the screen, not just the
+ * drawn ring. Wider than kX2SlotStick by design, so it is not a slot (slots
+ * never overlap). It stops at the centreline, at the leftmost action or power
+ * button, and at the retail HUD's potions; its lower half holds the ring.
+ * `slots` is a layout x2_layout_build produced for the same viewport.
+ */
+X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots);
+
+/*
  * Grow a drawn rectangle to something a finger can actually hit.
  *
  * A retail footer prompt is one line of text a few pixels tall. The port

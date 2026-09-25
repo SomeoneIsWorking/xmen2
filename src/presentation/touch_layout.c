@@ -216,3 +216,17 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
 
   return 1;
 }
+
+X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots) {
+  const X2Rect ring = slots[kX2SlotStick];
+  float right = viewport.width * 0.5F;
+  float top = viewport.height * 0.5F;
+  for (int slot = kX2SlotLightAttack; slot <= kX2SlotPower4; ++slot) {
+    right = fminf(right, slots[slot].left);
+  }
+  top = fmaxf(top, slots[kX2SlotPotions].bottom);
+  const X2Rect reach = {viewport.safe_left, fminf(top, ring.top),
+                        fmaxf(right, ring.right),
+                        viewport.height - viewport.safe_bottom};
+  return reach;
+}

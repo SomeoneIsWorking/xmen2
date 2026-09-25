@@ -120,6 +120,24 @@ int main(void) {
       CHECK(x2_layout_slot_name(i),
             slots[i].top > slots[kX2SlotPortraits].bottom);
     }
+    /* The stick's reach holds the ring, stays left of the centreline and of
+       every action and power, below the potions, inside the safe region. */
+    {
+      const X2Rect reach = x2_layout_stick_reach(viewport, slots);
+      const X2Rect ring = slots[kX2SlotStick];
+      CHECK("stick reach holds the ring",
+            reach.left <= ring.left && reach.top <= ring.top &&
+                reach.right >= ring.right && reach.bottom >= ring.bottom);
+      CHECK("stick reach is larger than the ring", area(reach) > area(ring));
+      CHECK("stick reach is inside the safe region",
+            reach.left >= viewport.safe_left - 0.5f &&
+                reach.bottom <= viewport.height - viewport.safe_bottom + 0.5f);
+      CHECK("stick reach is below the potions",
+            reach.top >= slots[kX2SlotPotions].bottom - 0.5f);
+      for (i = (int)kX2SlotLightAttack; i <= (int)kX2SlotPower4; ++i)
+        CHECK(x2_layout_slot_name(i),
+              !x2_layout_rects_overlap(reach, slots[i]));
+    }
     /* Pause leaves the retail status/notification centerline clear. */
     CHECK(name, slots[kX2SlotPause].top < viewport.height * 0.5f);
     CHECK(name,

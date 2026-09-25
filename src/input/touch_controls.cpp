@@ -29,9 +29,9 @@ void add_button_events(std::vector<ActionEvent> &out,
 
 void add_stick_events(std::vector<ActionEvent> &out,
                       const lucent::touch::Event &event, ThumbStick &stick,
-                      const lucent::touch::Zone &zone,
+                      const X2Rect &ring,
                       const std::array<TouchAction, 4> &actions) {
-  stick.set_travel(std::min(zone.right - zone.left, zone.bottom - zone.top) *
+  stick.set_travel(std::min(ring.right - ring.left, ring.bottom - ring.top) *
                    0.5F);
   const ThumbStick::Deflection deflection = stick.track(event);
   const std::array<float, 4> values = {
@@ -197,7 +197,11 @@ void TouchControls::rebuild_zones() {
   // rectangles are not recomputed here, because the previous version's
   // eighteen hand-tuned fractions were what let the drawn HUD and the
   // touchable zones drift apart.
-  add(left_stick, slots[kX2SlotStick], 0, TouchAction::MoveLeft, true);
+  // The stick captures the whole lower-left reach, not only its ring; the
+  // ring is drawn where the thumb lands.
+  stick_ring_ = slots[kX2SlotStick];
+  add(left_stick, x2_layout_stick_reach(layout_viewport, slots), 0,
+      TouchAction::MoveLeft, true);
   add(10, slots[kX2SlotLightAttack], 20, TouchAction::LightAttack, false);
   add(11, slots[kX2SlotHeavyAttack], 20, TouchAction::HeavyAttack, false);
   add(12, slots[kX2SlotUse], 20, TouchAction::Use, false);
@@ -277,7 +281,7 @@ TouchControls::translate(std::span<const lucent::touch::Event> events) {
       continue;
     if (found->stick) {
       if (event.zone_id == left_stick) {
-        add_stick_events(actions, event, stick_, found->zone,
+        add_stick_events(actions, event, stick_, stick_ring_,
                          {TouchAction::Forward, TouchAction::Backward,
                           TouchAction::MoveLeft, TouchAction::MoveRight});
       }
@@ -297,6 +301,17 @@ TouchControls::translate(std::span<const lucent::touch::Event> events) {
     }
   }
   return actions;
+}
+
+X2Rect TouchControls::stick_ring() const {
+  if (!stick_.engaged()) {
+    return stick_ring_;
+  }
+  const float half_w = (stick_ring_.right - stick_ring_.left) * 0.5F;
+  const float half_h = (stick_ring_.bottom - stick_ring_.top) * 0.5F;
+  const lucent::touch::Point centre = stick_.centre();
+  return {centre.x - half_w, centre.y - half_h, centre.x + half_w,
+          centre.y + half_h};
 }
 
 } // namespace x2::input

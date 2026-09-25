@@ -7,10 +7,12 @@ namespace x2::input {
 
 void ThumbStick::set_travel(float travel) {
   travel_ = travel > 0.0F ? travel : 0.0F;
-  deflection_ = {};
 }
 
-void ThumbStick::release() { deflection_ = {}; }
+void ThumbStick::release() {
+  engaged_ = false;
+  deflection_ = {};
+}
 
 ThumbStick::Deflection ThumbStick::track(const lucent::touch::Event &event) {
   const bool released = event.phase == lucent::touch::Phase::ended ||
@@ -20,9 +22,22 @@ ThumbStick::Deflection ThumbStick::track(const lucent::touch::Event &event) {
     return deflection_;
   }
 
-  const float x = (event.position.x - event.origin.x) / travel_;
-  const float y = (event.position.y - event.origin.y) / travel_;
-  const float reach = std::hypot(x, y);
+  if (!engaged_ || event.phase == lucent::touch::Phase::began) {
+    engaged_ = true;
+    centre_ = event.origin;
+  }
+  float x = (event.position.x - centre_.x) / travel_;
+  float y = (event.position.y - centre_.y) / travel_;
+  float reach = std::hypot(x, y);
+  if (reach > 1.0F) {
+    /* Drag the centre so the thumb sits on the rim. */
+    const float excess = (reach - 1.0F) / reach;
+    centre_.x += x * travel_ * excess;
+    centre_.y += y * travel_ * excess;
+    x /= reach;
+    y /= reach;
+    reach = 1.0F;
+  }
   if (reach <= kDeadZone) {
     deflection_ = {};
     return deflection_;

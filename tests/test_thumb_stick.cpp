@@ -86,6 +86,25 @@ int main() {
           std::fabs(corner.x - corner.y) < 0.01F && corner.x > 0.6F);
   }
 
+  /* Past the rim the centre follows the thumb, so reversing turns at once
+     instead of after travelling back across the landing point. */
+  {
+    ThumbStick stick;
+    stick.set_travel(100.0F);
+    stick.track(at(0.0F, 0.0F, 0.0F, 0.0F, lucent::touch::Phase::began));
+    stick.track(at(0.0F, 0.0F, 300.0F, 0.0F));
+    close_to("an overshoot drags the centre behind the thumb", stick.centre().x,
+             200.0F);
+    const auto back = stick.track(at(0.0F, 0.0F, 150.0F, 0.0F));
+    check("so pulling back half a radius already steers the other way",
+          back.x < -0.4F);
+    const auto next = stick.track(
+        at(500.0F, 500.0F, 500.0F, 500.0F, lucent::touch::Phase::began));
+    close_to("a new contact starts from its own landing point",
+             stick.centre().x, 500.0F);
+    close_to("and is neutral there", next.x, 0.0F);
+  }
+
   /* A hand's tremor is not steering. */
   {
     ThumbStick stick;

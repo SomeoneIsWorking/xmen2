@@ -6,6 +6,7 @@ extern "C" {
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -252,6 +253,44 @@ int main() {
     std::cerr << "touch controls: directional events did not compose into "
                  "signed axes\n";
     return 1;
+  }
+
+  controls.route({{{1, stick_centre, lucent::touch::Phase::ended}}});
+
+  /* A thumb that lands above the ring, outside it, still takes the stick,
+     and the ring is drawn under that thumb until it lifts. */
+  {
+    const float ring = slots[kX2SlotStick].right - slots[kX2SlotStick].left;
+    const lucent::touch::Point outside{stick_centre.x + ring * 0.2F,
+                                       slots[kX2SlotStick].top - ring * 0.2F};
+    const auto landed =
+        controls.route({{{4, outside, lucent::touch::Phase::began}}});
+    const X2Rect drawn = controls.stick_ring();
+    if (!has_value(landed, x2::input::TouchAction::Forward, 0.0F) ||
+        std::fabs((drawn.left + drawn.right) * 0.5F - outside.x) > 0.5F ||
+        std::fabs((drawn.top + drawn.bottom) * 0.5F - outside.y) > 0.5F) {
+      std::cerr << "a thumb above the ring did not take the stick there\n";
+      return 1;
+    }
+    const auto pushed_left =
+        controls.route({{{4,
+                          {outside.x - ring * 0.5F, outside.y},
+                          lucent::touch::Phase::moved}}});
+    const auto x = x2::input::touch_axis_value(
+        pushed_left, x2::input::TouchAction::MoveLeft,
+        x2::input::TouchAction::MoveRight);
+    if (!x || *x > -0.95F) {
+      std::cerr << "a ring radius from a landing outside the ring was not "
+                   "full deflection\n";
+      return 1;
+    }
+    controls.route({{{4, outside, lucent::touch::Phase::ended}}});
+    const X2Rect rest = controls.stick_ring();
+    if (rest.left != slots[kX2SlotStick].left ||
+        rest.top != slots[kX2SlotStick].top) {
+      std::cerr << "the ring did not return to its place on release\n";
+      return 1;
+    }
   }
 
   const std::vector<lucent::touch::Contact> button = {
