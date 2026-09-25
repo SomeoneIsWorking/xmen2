@@ -35,6 +35,21 @@ typedef struct X2Rect {
   float bottom;
 } X2Rect;
 
+/* What the retail HUD drew this frame that a finger can press, in output
+ * pixels; each mask bit says that entry was drawn. The potions are health,
+ * then energy. The menu icons are the pause menu and team menu icons, in
+ * that order, that the game's mouse overlay draws at the top centre and its
+ * click handler acts on. */
+#define X2_HUD_MENU_ICONS 2
+typedef struct X2HudRegions {
+  X2Rect portraits[4];
+  unsigned portrait_mask;
+  X2Rect potions[2];
+  unsigned potion_mask;
+  X2Rect menu_icons[X2_HUD_MENU_ICONS];
+  unsigned menu_icon_mask;
+} X2HudRegions;
+
 /* The output, and the region of it a player can actually reach: a phone's
    cutout and gesture bar are not drawable, and a control placed under one is
    invisible or steals the system gesture. */
@@ -75,7 +90,7 @@ typedef enum X2LayoutSlot {
   kX2SlotPower2,
   kX2SlotPower3,
   kX2SlotPower4,
-  kX2SlotPause,
+  kX2SlotPortMenu,
   kX2SlotCount /* MUST stay last */
 } X2LayoutSlot;
 

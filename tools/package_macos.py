@@ -45,9 +45,6 @@ BUNDLE_NAME = "X-Men Legends II"
 # reliable way to get two incompatible copies loaded at once.
 SYSTEM_PREFIXES = ("/usr/lib/", "/System/", "/Library/Apple/")
 
-UI_DIRECTORIES = ("touch",)
-
-
 def refuse(message: str) -> None:
     raise SystemExit(f"macos: {message}")
 
@@ -249,15 +246,6 @@ def stage_ui(ui_directory: Path, resources: Path) -> None:
     for name in UI_FILES:
         shutil.copy2(require_file(ui_directory / name, f"UI resource {name}"),
                      target / name)
-    for name in UI_DIRECTORIES:
-        source = ui_directory / name
-        if not source.is_dir():
-            continue
-        (target / name).mkdir(exist_ok=True)
-        for svg in sorted(source.glob("*.svg")):
-            shutil.copy2(svg, target / name / svg.name)
-    if not sorted((target / "touch").glob("*.svg")):
-        refuse(f"touch-control SVG resources are missing: {ui_directory / 'touch'}")
 
 
 def stage_icon(resources: Path) -> None:
@@ -359,15 +347,12 @@ def selftest() -> int:
         ui.mkdir()
         for name in UI_FILES:
             (ui / name).write_bytes(name.encode())
-        (ui / "touch").mkdir()
-        (ui / "touch/face_a.svg").write_text("<svg/>", encoding="ascii")
         app = temporary / "X-Men Legends II.app"
         stage_bundle(app, binary, ui, with_libraries=False)
         required = [
             app / "Contents/Info.plist",
             app / "Contents/MacOS/x2native",
             app / "Contents/Resources/ui/settings.rcss",
-            app / "Contents/Resources/ui/touch/face_a.svg",
         ]
         complete = all(path.is_file() for path in required)
         no_game = not any(path.name.lower() == "xmen2.exe"

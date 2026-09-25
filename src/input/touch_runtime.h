@@ -40,10 +40,13 @@ typedef enum {
 
 void x2_touch_runtime_cancel(void);
 void x2_touch_runtime_cancel_because(X2TouchCancelCause cause);
-/* Copies the HUD's output-pixel portrait bounds. Null or mask zero clears
- * them. Visibility/layout changes release captured portrait pointers. */
-void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
-                                  unsigned visible_mask);
+
+/* Copies the HUD's drawn tap regions (X2HudRegions). Null clears them all.
+ * Visibility/layout changes release captured HUD contacts, never the stick or
+ * the action buttons. */
+void x2_touch_runtime_hud_regions(const X2HudRegions *regions);
+/* 1 once per tap of the port menu button, for the UI that owns the menu. */
+int x2_touch_runtime_take_menu_request(void);
 /* The window event owner drains all portrait transitions in FIFO order,
  * including cancellation when no SDL event is pending. */
 int x2_touch_runtime_take_pointer(X2TouchPointer *pointer);

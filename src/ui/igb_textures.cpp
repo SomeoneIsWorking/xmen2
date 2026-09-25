@@ -8,6 +8,7 @@ extern "C" {
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -46,14 +47,15 @@ void cut_to_circle_premultiplied(std::vector<Rml::byte> &rgba,
 /* One cell of a bottom-first atlas, top row first. Empty when the image is
    not the grid the atlases are. */
 std::vector<Rml::byte> atlas_cell(const uint8_t *rgba, int width, int height,
-                                  int cell, Rml::Vector2i &size) {
-  if (width % kIconAtlasColumns || height % kIconAtlasRows || cell < 0 ||
-      cell >= kIconAtlasColumns * kIconAtlasRows) {
+                                  int cell, IconGrid grid,
+                                  Rml::Vector2i &size) {
+  if (grid.columns <= 0 || grid.rows <= 0 || width % grid.columns ||
+      height % grid.rows || cell < 0 || cell >= grid.columns * grid.rows) {
     return {};
   }
-  size = {width / kIconAtlasColumns, height / kIconAtlasRows};
-  const int left = (cell % kIconAtlasColumns) * size.x;
-  const int top = (cell / kIconAtlasColumns) * size.y;
+  size = {width / grid.columns, height / grid.rows};
+  const int left = (cell % grid.columns) * size.x;
+  const int top = (cell / grid.columns) * size.y;
   std::vector<Rml::byte> out(static_cast<size_t>(size.x * size.y * 4));
   for (int row = 0; row < size.y; ++row) {
     const int stored = height - 1 - (top + row);
@@ -68,14 +70,15 @@ std::vector<Rml::byte> atlas_cell(const uint8_t *rgba, int width, int height,
 } // namespace
 
 std::string IgbTextureRenderInterface::source_for(const std::string &host_path,
-                                                  int cell) {
+                                                  int cell, IconGrid grid) {
   auto found = keys_.find(host_path);
   if (found == keys_.end()) {
     std::string key = std::to_string(keys_.size());
     paths_.emplace(key, host_path);
     found = keys_.emplace(host_path, key).first;
   }
-  return kIgbSourcePrefix + found->second + "#" + std::to_string(cell);
+  return kIgbSourcePrefix + found->second + "#" + std::to_string(cell) + "@" +
+         std::to_string(grid.columns) + "x" + std::to_string(grid.rows);
 }
 
 Rml::TextureHandle
@@ -91,7 +94,13 @@ IgbTextureRenderInterface::LoadTexture(Rml::Vector2i &texture_dimensions,
     x2_log_error("igb texture: %s was never issued\n", source.c_str());
     return {};
   }
-  const int cell = std::atoi(source.c_str() + hash + 1);
+  IconGrid grid;
+  int cell = -1;
+  if (std::sscanf(source.c_str() + hash + 1, "%d@%dx%d", &cell, &grid.columns,
+                  &grid.rows) != 3) {
+    x2_log_error("igb texture: %s names no cell and grid\n", source.c_str());
+    return {};
+  }
   igb file{};
   if (igb_open(&file, path->second.c_str()) != 0) {
     x2_log_error("igb texture: cannot read %s\n", path->second.c_str());
@@ -105,10 +114,10 @@ IgbTextureRenderInterface::LoadTexture(Rml::Vector2i &texture_dimensions,
     int length = 0;
     const Rgba rgba(igb_image_to_rgba(&image, &length), &std::free);
     Rml::Vector2i size;
-    const auto pixels =
-        rgba && length == image.width * image.height * 4
-            ? atlas_cell(rgba.get(), image.width, image.height, cell, size)
-            : std::vector<Rml::byte>{};
+    const auto pixels = rgba && length == image.width * image.height * 4
+                            ? atlas_cell(rgba.get(), image.width, image.height,
+                                         cell, grid, size)
+                            : std::vector<Rml::byte>{};
     if (pixels.empty()) {
       x2_log_error("igb texture: %s image %dx%d format %d has no cell %d\n",
                    path->second.c_str(), image.width, image.height,

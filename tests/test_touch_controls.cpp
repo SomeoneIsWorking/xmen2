@@ -14,6 +14,15 @@ extern "C" {
 
 namespace {
 
+/* The HUD publication with only these portraits drawn. */
+X2HudRegions with_portraits(const std::array<X2Rect, 4> &portraits,
+                            unsigned mask) {
+  X2HudRegions regions{};
+  std::copy(portraits.begin(), portraits.end(), regions.portraits);
+  regions.portrait_mask = mask;
+  return regions;
+}
+
 bool power_slots() {
   using lucent::touch::Contact;
   using lucent::touch::Phase;
@@ -83,7 +92,8 @@ bool portrait_regions() {
   const auto has_portrait = [&controls] {
     const auto zones = controls.zones();
     return std::any_of(zones.begin(), zones.end(), [](const auto &zone) {
-      return zone.action >= TouchAction::SelectHero1;
+      return zone.action >= TouchAction::SelectHero1 &&
+             zone.action <= TouchAction::SelectHero4;
     });
   };
   if (has_portrait()) {
@@ -95,7 +105,7 @@ bool portrait_regions() {
                                     {200, 100, 230, 180},
                                     {500, 150, 550, 200},
                                     {650, 100, 730, 180}}};
-  controls.set_portraits(rectangles, 5);
+  controls.set_hud(with_portraits(rectangles, 5));
   const auto hero3 = std::find_if(
       controls.zones().begin(), controls.zones().end(),
       [](const auto &zone) { return zone.action == TouchAction::SelectHero3; });
@@ -112,7 +122,7 @@ bool portrait_regions() {
     std::cerr << "published portrait rectangle did not route hero selection\n";
     return false;
   }
-  if (!controls.set_portraits(rectangles, 5).empty()) {
+  if (!controls.set_hud(with_portraits(rectangles, 5)).empty()) {
     std::cerr << "unchanged HUD canceled an active portrait\n";
     return false;
   }
@@ -132,7 +142,7 @@ bool portrait_regions() {
   controls.route(
       std::array{lucent::touch::Contact{2, attack_point, Phase::began}});
   rectangles[0].right += 10;
-  const auto changed = controls.set_portraits(rectangles, 5);
+  const auto changed = controls.set_hud(with_portraits(rectangles, 5));
   if (changed.size() != 1 ||
       changed.front().action != TouchAction::SelectHero1 ||
       changed.front().phase != Phase::canceled || changed.front().value != 0 ||
@@ -146,20 +156,20 @@ bool portrait_regions() {
   controls.route(portrait);
   auto invalid = rectangles;
   invalid[0].right = std::numeric_limits<float>::infinity();
-  const auto rejected = controls.set_portraits(invalid, 5);
+  const auto rejected = controls.set_hud(with_portraits(invalid, 5));
   if (rejected.size() != 1 || rejected.front().phase != Phase::canceled ||
       has_portrait()) {
     std::cerr << "invalid portrait input retained stale regions or captures\n";
     return false;
   }
   for (unsigned variant = 0; variant < 4; ++variant) {
-    controls.set_portraits(rectangles, 5);
+    controls.set_hud(with_portraits(rectangles, 5));
     if (variant == 0)
-      controls.set_portraits({}, 5);
+      controls.set_hud({});
     else if (variant == 1)
-      controls.set_portraits(rectangles, 0);
+      controls.set_hud(with_portraits(rectangles, 0));
     else if (variant == 2)
-      controls.set_portraits(rectangles, 16);
+      controls.set_hud(with_portraits(rectangles, 16));
     else
       controls.set_viewport({600, 1000, {10, 20, 10, 20}});
     if (has_portrait()) {
@@ -261,8 +271,12 @@ int main() {
      and the ring is drawn under that thumb until it lifts. */
   {
     const float ring = slots[kX2SlotStick].right - slots[kX2SlotStick].left;
+    /* Halfway between the reach's top and the ring's: outside the ring,
+       inside the area the stick owns, whatever the ring's size. */
+    const X2Rect reach = x2_layout_stick_reach(layout_viewport, slots);
     const lucent::touch::Point outside{stick_centre.x + ring * 0.2F,
-                                       slots[kX2SlotStick].top - ring * 0.2F};
+                                       (reach.top + slots[kX2SlotStick].top) *
+                                           0.5F};
     const auto landed =
         controls.route({{{4, outside, lucent::touch::Phase::began}}});
     const X2Rect drawn = controls.stick_ring();
@@ -301,14 +315,12 @@ int main() {
     return 1;
   }
 
-  /* Pause replaced the scattered utility row: a touch player with no
-     controller has to be able to reach the menus, and this is the only
-     button that does it. */
-  const std::vector<lucent::touch::Contact> pause_button = {
-      {3, centre(kX2SlotPause), lucent::touch::Phase::began}};
-  const auto pause_events = controls.route(pause_button);
-  if (!has_value(pause_events, x2::input::TouchAction::Pause, 1.0F)) {
-    std::cerr << "pause zone was not reachable\n";
+  /* A touch player has no F2: this button is the port menu's only way in. */
+  const std::vector<lucent::touch::Contact> menu_button = {
+      {3, centre(kX2SlotPortMenu), lucent::touch::Phase::began}};
+  const auto menu_events = controls.route(menu_button);
+  if (!has_value(menu_events, x2::input::TouchAction::PortMenu, 1.0F)) {
+    std::cerr << "port menu zone was not reachable\n";
     return 1;
   }
 
@@ -342,7 +354,8 @@ int main() {
      neither divides a slot into quarters nor assumes all four are visible. */
   const std::array<X2Rect, 4> portrait_rectangles{
       {{710, 30, 758, 80}, {}, {}, {}}};
-  controls.set_portraits(portrait_rectangles, 1);
+  X2HudRegions hud = with_portraits(portrait_rectangles, 1);
+  controls.set_hud(hud);
   const lucent::touch::Point portrait_point{734, 55};
   const std::vector<lucent::touch::Contact> portrait = {
       {5, portrait_point, lucent::touch::Phase::began}};
@@ -356,17 +369,57 @@ int main() {
     return 1;
   }
 
-  const auto zones = controls.zones();
-  if (std::any_of(zones.begin(), zones.end(), [](const auto &zone) {
-        return zone.visible &&
-               (zone.action == x2::input::TouchAction::CameraLeft ||
-                zone.action == x2::input::TouchAction::SelectHero1 ||
-                zone.action == x2::input::TouchAction::SelectHero2 ||
-                zone.action == x2::input::TouchAction::SelectHero3 ||
-                zone.action == x2::input::TouchAction::SelectHero4);
-      })) {
-    std::cerr << "gesture or retail portrait hit zones leaked into the visual "
-                 "overlay\n";
+  /* The camera gesture has nothing to draw; a portrait the game draws gets
+     a ring around it, and only the portraits the HUD published do. */
+  const auto visible = [&controls](x2::input::TouchAction action) {
+    const auto zones = controls.zones();
+    return std::any_of(zones.begin(), zones.end(), [action](const auto &zone) {
+      return zone.visible && zone.action == action;
+    });
+  };
+  if (visible(x2::input::TouchAction::CameraLeft) ||
+      !visible(x2::input::TouchAction::SelectHero1) ||
+      visible(x2::input::TouchAction::SelectHero2)) {
+    std::cerr << "only the published portraits are ringed, and never the "
+                 "camera gesture\n";
+    return 1;
+  }
+
+  /* A potion the HUD drew is a tap target for its own action. */
+  hud.potions[0] = {40, 120, 100, 180};
+  hud.potions[1] = {110, 120, 170, 180};
+  hud.potion_mask = 3;
+  controls.set_hud(hud);
+  const auto health =
+      controls.route({{{6, {70, 150}, lucent::touch::Phase::began}}});
+  controls.route({{{6, {70, 150}, lucent::touch::Phase::ended}}});
+  const auto energy =
+      controls.route({{{7, {140, 150}, lucent::touch::Phase::began}}});
+  controls.route({{{7, {140, 150}, lucent::touch::Phase::ended}}});
+  if (health.size() != 1 ||
+      health.front().action != x2::input::TouchAction::HealthPack ||
+      energy.size() != 1 ||
+      energy.front().action != x2::input::TouchAction::EnergyPack ||
+      !visible(x2::input::TouchAction::HealthPack)) {
+    std::cerr << "a tap on a potion did not use it (" << health.size() << ", "
+              << energy.size() << ")\n";
+    return 1;
+  }
+
+  /* A retail menu icon is clicked where it is drawn: the tap reaches the
+     retail pointer at the icon's centre, wherever the finger landed in it. */
+  hud.menu_icons[1] = {520, 10, 552, 42};
+  hud.menu_icon_mask = 2;
+  controls.set_hud(hud);
+  const auto menu =
+      controls.route({{{8, {522, 40}, lucent::touch::Phase::began}}});
+  controls.route({{{8, {522, 40}, lucent::touch::Phase::ended}}});
+  if (menu.size() != 1 ||
+      menu.front().action != x2::input::TouchAction::RetailTeamMenu ||
+      menu.front().position.x != 536 || menu.front().position.y != 26 ||
+      !x2::input::clicks_retail_pointer(menu.front().action) ||
+      visible(x2::input::TouchAction::RetailPauseMenu)) {
+    std::cerr << "a tap on a retail menu icon was not its click\n";
     return 1;
   }
 

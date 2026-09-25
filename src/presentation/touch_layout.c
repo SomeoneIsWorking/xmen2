@@ -16,13 +16,13 @@
  * a tall phone and a wide tablet; positions are insets from the safe edges for
  * the same reason.
  */
-static const float kStickDiameter = 0.34F; /* of the short edge */
-static const float kButtonDiameter = 0.18F;
+static const float kStickDiameter = 0.38F; /* of the short edge */
+static const float kButtonDiameter = 0.21F;
 static const float kButtonGap = 0.025F;
 static const float kEdgeInset = 0.06F;
 static const float kHudVitalsWidth = 0.30F;  /* of the WIDTH */
 static const float kHudVitalsHeight = 0.14F; /* of the HEIGHT */
-static const float kHudPotionsHeight = 0.10F;
+static const float kHudPotionsHeight = 0.17F;
 static const float kHudPortraitsWidth = 0.24F;
 static const float kHudPortraitsHeight = 0.22F;
 static const float kHudGap = 0.02F;
@@ -40,7 +40,7 @@ static const float kTouchTargetPadding = 0.012F;
 static const char *const kSlotNames[] = {
     "vitals",       "potions", "portraits", "stick",   "light-attack",
     "heavy-attack", "use",     "jump",      "power-1", "power-2",
-    "power-3",      "power-4", "pause"};
+    "power-3",      "power-4", "port-menu"};
 
 _Static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                    (int)kX2SlotCount,
@@ -164,7 +164,17 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     const float arc = reach + button * 0.5F + power * 0.5F + gap;
     const float inboard = arc + power * 0.5F;
     const float needed = inset * 2.0F + stick + separation + extent + inboard;
-    const float fit = needed > width ? width / needed : 1.0F;
+    /* The right cluster also has to fit UNDER the portraits: its height is
+       the diamond's lower half plus whichever rises higher, Use or the arc's
+       top power. A short landscape phone runs out of height first. */
+    float arc_rise = 0.0F;
+    for (int i = 0; i < 4; ++i) {
+      const float angle = kPowerAngles[i] * 3.14159265F / 180.0F;
+      arc_rise = fmaxf(arc_rise, sinf(angle) * arc + power * 0.5F);
+    }
+    const float needed_h = inset + extent + fmaxf(extent, arc_rise) + gap;
+    const float room_h = bottom - out[kX2SlotPortraits].bottom;
+    const float fit = fminf(1.0F, fminf(width / needed, room_h / needed_h));
     const float s_stick = stick * fit;
     const float s_button = button * fit;
     const float s_inset = inset * fit;
@@ -206,10 +216,10 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
       }
     }
 
-    /* Pause uses the top gap between the vitals reservation and the
-     * centerline. The retail HUD publishes status/notification icons on the
-     * centerline; centering Pause there covered those icons in gameplay. */
-    out[kX2SlotPause] =
+    /* The port menu uses the top gap between the vitals reservation and the
+     * centreline. The game's mouse overlay draws its own menu icons on the
+     * centreline, which are tapped where they are drawn. */
+    out[kX2SlotPortMenu] =
         centred((out[kX2SlotVitals].right + (left + right) * 0.5F) * 0.5F,
                 top + s_inset + s_button * 0.375F, s_button * 0.75F);
   }

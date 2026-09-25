@@ -105,6 +105,17 @@ action on `WM_LBUTTONDOWN`. `005fc100` also reads those centres for presentation
 Moving the centres preserves ordinary-size portrait selection; changing visual
 portrait scale requires a corresponding, explicitly owned hit-region policy.
 
+The same handler has four fixed boxes besides the portraits. The potion
+centres `00a0a0bc` (health, action 9) and `00a0a118` (energy, action `0xd`)
+take ±`[00682cc0]`. Two icons take a box `[00683ffc]` square from a left edge
+and a top: `00a0a10c/00a0a114` (hover 1, action `0x13`) and
+`00a0a124/00a0a12c` (hover 2, action `0x12`). The mouse-overlay presenter
+`005fc100` sets those two every frame and draws them 32 units square either
+side of the top centre. Tapping them in a running game showed that the left
+one opens the pause menu and the right one the team menu.
+`src/native/hud_draw_runtime.c` publishes both as touch regions through the
+same HUD-space mapping as the portraits.
+
 ## Retained scene transforms and authored art
 
 Model vmethod `+8`, `00573110`, resolves the named transform wrapper through

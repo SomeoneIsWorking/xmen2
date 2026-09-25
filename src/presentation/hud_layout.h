@@ -16,9 +16,21 @@ typedef struct {
   float scale, x, z;
 } X2HudTransform;
 
+/* The retail potion kinds, in the order CHud stacks them. */
+enum { X2_HUD_POTION_HEALTH = 0, X2_HUD_POTION_ENERGY = 1, X2_HUD_POTIONS = 2 };
+
 typedef struct {
-  X2Rect vitals, potions, portraits[4], selector;
+  X2Rect vitals;
+  /* One ring per potion, side by side under the vitals: square, so a touch
+     button's circle is inscribed in it. */
+  X2Rect potions[X2_HUD_POTIONS];
+  X2Rect portraits[4], selector;
 } X2HudPlacement;
+
+/* Inside a potion ring: where its icon is drawn, and the badge its count is
+   drawn in at the ring's lower right. */
+X2Rect x2_hud_potion_icon(X2Rect ring);
+X2Rect x2_hud_potion_count(X2Rect ring);
 
 int x2_hud_layout_mobile(const X2HudSettings *settings, int touch_enabled);
 int x2_hud_layout_build(X2LayoutViewport viewport,

@@ -46,68 +46,34 @@ body {
     opacity: 1;
 }
 
-/* Each action's ring takes its prompt glyph's colour -- the Xbox face
-   colours the game's own prompts are drawn in -- so the circle and the glyph
-   inside it read as one control. */
-.touch-zone.zone-light {
-    border-color: rgba(95, 177, 58, 85%);
-}
-.touch-zone.zone-light.active {
-    border-color: #5FB13A;
-    background-color: rgba(95, 177, 58, 45%);
-}
-
-.touch-zone.zone-heavy {
-    border-color: rgba(209, 59, 51, 85%);
-}
-.touch-zone.zone-heavy.active {
-    border-color: #D13B33;
-    background-color: rgba(209, 59, 51, 45%);
-}
-
-.touch-zone.zone-use {
-    border-color: rgba(46, 109, 180, 85%);
-}
-.touch-zone.zone-use.active {
-    border-color: #2E6DB4;
-    background-color: rgba(46, 109, 180, 45%);
-}
-
-.touch-zone.zone-jump {
-    border-color: rgba(232, 178, 31, 85%);
-}
-.touch-zone.zone-jump.active {
-    border-color: #E8B21F;
-    background-color: rgba(232, 178, 31, 45%);
-}
-
-/* A power: the game's own round icon, filling the circle it is outlined by. */
-.touch-zone.zone-power {
+/* A button: the game's own round icon -- a power's, or the talent and HUD
+   art for attack, smash, use, jump and pause -- filling the circle it is
+   outlined by. */
+.touch-zone.zone-icon {
     border-color: rgba(220, 238, 255, 80%);
     background-color: rgba(10, 18, 29, 45%);
 }
-.touch-zone.zone-power.active {
+.touch-zone.zone-icon.active {
     border-color: #FFFFFF;
     background-color: rgba(255, 255, 255, 30%);
 }
 
-.touch-power-icon {
+.touch-game-icon {
     width: 92%;
     height: 92%;
     display: block;
     pointer-events: none;
 }
 
-.touch-zone.zone-pause {
-    border-color: rgba(220, 220, 220, 60%);
+/* A hero portrait or a potion: the game draws the art itself, under this
+   element, so the control is the same ring with nothing filling it. */
+.touch-zone.zone-ring {
+    border-color: rgba(220, 238, 255, 80%);
+    background-color: rgba(0, 0, 0, 0%);
 }
-
-.touch-icon {
-    width: 50%;
-    height: 50%;
-    display: block;
-    margin: 0 auto;
-    pointer-events: none;
+.touch-zone.zone-ring.active {
+    border-color: #FFFFFF;
+    background-color: rgba(255, 255, 255, 22%);
 }
 
 .touch-label {
@@ -121,17 +87,9 @@ body {
 }
 
 
-.touch-zone.zone-light {
-    border-width: 3dp;
-}
-
 .touch-zone.stick.active .touch-stick-knob {
     background-color: rgba(125, 232, 255, 85%);
     border-color: #FFFFFF;
-}
-
-.touch-zone.zone-pause .touch-label {
-    display: none;
 }
 
 /*

@@ -64,11 +64,29 @@ static void check_hud_layout_shapes(void) {
     CHECK(placement.vitals.right > placement.vitals.left);
     CHECK(placement.vitals.bottom > placement.vitals.top);
 
-    /* Potions directly below vitals */
-    CHECK(placement.potions.left >= vp.safe_left);
-    CHECK(placement.potions.top >= placement.vitals.bottom);
-    CHECK(placement.potions.right > placement.potions.left);
-    CHECK(placement.potions.bottom > placement.potions.top);
+    /* Potions: two round buttons side by side directly below vitals, each
+       holding the retail icon and its count inside the ring. */
+    for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
+      X2Rect ring = placement.potions[i];
+      X2Rect icon = x2_hud_potion_icon(ring);
+      X2Rect count = x2_hud_potion_count(ring);
+      CHECK(ring.left >= vp.safe_left);
+      CHECK(ring.top >= placement.vitals.bottom);
+      CHECK(ring.right > ring.left);
+      CHECK(fabsf((ring.right - ring.left) - (ring.bottom - ring.top)) < 0.01f);
+      CHECK(icon.left > ring.left && icon.right < ring.right);
+      CHECK(icon.top > ring.top && icon.bottom < ring.bottom);
+      CHECK(count.left > ring.left && count.right <= ring.right);
+      CHECK(count.top > ring.top && count.bottom <= ring.bottom);
+    }
+    CHECK(placement.potions[X2_HUD_POTION_ENERGY].left >
+          placement.potions[X2_HUD_POTION_HEALTH].right);
+    /* ...and stay inside the band the touch layout keeps clear for them,
+       so the stick's reach below it never lands on a potion. */
+    X2Rect slots[kX2SlotCount];
+    CHECK(x2_layout_build(vp, slots));
+    CHECK(placement.potions[X2_HUD_POTION_ENERGY].bottom <=
+          slots[kX2SlotPotions].bottom);
 
     /* Portraits in top-right */
     for (unsigned i = 0; i < 4; ++i) {
@@ -108,8 +126,8 @@ static void check_hud_scales(void) {
   scaled = base;
   scaled.potions_scale_percent = 150;
   CHECK(x2_hud_layout_build(vp, &scaled, &p_scaled));
-  CHECK(p_scaled.potions.right - p_scaled.potions.left >
-        p_base.potions.right - p_base.potions.left);
+  CHECK(p_scaled.potions[0].right - p_scaled.potions[0].left >
+        p_base.potions[0].right - p_base.potions[0].left);
 
   /* Scale portraits */
   scaled = base;

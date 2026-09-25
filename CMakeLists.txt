@@ -1668,19 +1668,6 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
-set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
-add_custom_command(
-    OUTPUT "${X2_TOUCH_ICON_STAMP}"
-    COMMAND ${Python3_EXECUTABLE}
-            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
-            --copy-svg-dir "${CMAKE_BINARY_DIR}/ui/touch"
-    DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
-            "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
-            "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
-            ${X2_PROMPT_GLYPH_INPUTS}
-    COMMENT "x2native: staging shared SVGs for touch-control feedback"
-    VERBATIM)
-add_custom_target(x2_touch_icons DEPENDS "${X2_TOUCH_ICON_STAMP}")
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
@@ -1692,7 +1679,6 @@ add_library(x2_rmlui_ui STATIC
     src/ui/touch_document.cpp
     src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.c)
-add_dependencies(x2_rmlui_ui x2_touch_icons)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
                                                src/presentation src/input
                                                src/gpu)
@@ -1919,6 +1905,7 @@ set(X2_NATIVE_SOURCES
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
     src/native/power_slots_runtime.c
+    src/native/touch_art.c
     src/native/guest_teb.c
     src/native/hud_portrait_position.c
     src/native/hud_portrait_position_runtime.c

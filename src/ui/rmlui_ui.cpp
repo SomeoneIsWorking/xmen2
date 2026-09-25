@@ -227,6 +227,11 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
                   "startup.\n");
     }
   }
+  if (x2_touch_runtime_take_menu_request()) {
+    x2_settings_overlay_show();
+    x2_log_info("RMLUI: the touch menu button showed the Port Settings "
+                "overlay.\n");
+  }
   const bool settings_visible = x2_settings_overlay_visible();
   /* Not the gameplay overlay's own gate: a rewritten action prompt is drawn
      on exactly the screens where that gate is deliberately false. */

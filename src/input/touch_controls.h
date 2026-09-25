@@ -46,7 +46,22 @@ enum class TouchAction : std::uint8_t {
   SelectHero2,
   SelectHero3,
   SelectHero4,
+  // The pause and team menu icons the game's mouse overlay draws at the top
+  // centre. Like a portrait, a tap is a click on the retail icon.
+  RetailPauseMenu,
+  RetailTeamMenu,
+  // The port's own RmlUi menu (F2 on a keyboard).
+  PortMenu,
 };
+
+// True for an action that is a click on something the retail GUI drew, which
+// its own mouse handler acts on, rather than a pad button.
+constexpr bool clicks_retail_pointer(TouchAction action) {
+  return (action >= TouchAction::SelectHero1 &&
+          action <= TouchAction::SelectHero4) ||
+         action == TouchAction::RetailPauseMenu ||
+         action == TouchAction::RetailTeamMenu;
+}
 
 struct SafeArea {
   float left = 0.0F;
@@ -120,10 +135,11 @@ public:
   // caller must publish those events before applying the new layout so a
   // rotation cannot leave an action pressed in the guest.
   std::vector<ActionEvent> set_viewport(Viewport viewport);
-  // Actual output-pixel bounds published by the native HUD. Empty or invalid
-  // regions remove portrait captures; changing them leaves other controls held.
-  std::vector<ActionEvent> set_portraits(std::span<const X2Rect> portraits,
-                                         unsigned visible_mask);
+  // What the native HUD drew that a finger can press, in output pixels:
+  // portraits, potions and the retail menu icons. A group with a rectangle
+  // that is not a real on-screen area is dropped whole rather than routed
+  // to; a change releases only HUD captures, never the stick or buttons.
+  std::vector<ActionEvent> set_hud(const X2HudRegions &regions);
   // The atlas cell of each power slot, or -1 when the hero has no power
   // there; only slots with a power get a zone. A change releases captured
   // contacts, as a layout change does, so a power that vanishes under a
@@ -143,18 +159,19 @@ public:
 
 private:
   void rebuild_zones();
+  unsigned accept_regions(std::span<const X2Rect> regions, unsigned mask,
+                          std::span<X2Rect> out) const;
   std::vector<ActionEvent>
   translate(std::span<const lucent::touch::Event> events);
 
   ThumbStick stick_;
   X2Rect stick_ring_{};
   Viewport viewport_;
-  std::array<X2Rect, 4> portraits_{};
   std::array<int, 4> power_icons_{-1, -1, -1, -1};
-  unsigned portraits_visible_ = 0;
+  X2HudRegions hud_{};
   std::vector<ZoneVisual> zones_;
   lucent::touch::Router router_;
-  lucent::touch::Router portrait_router_;
+  lucent::touch::Router hud_router_;
 };
 
 } // namespace x2::input

@@ -5,6 +5,7 @@
 
 #include "igb_textures.hpp"
 #include "power_slots.h"
+#include "touch_art.h"
 #include "touch_controls.h"
 #include "touch_runtime.h"
 #include "ui_resources.h"
@@ -23,28 +24,61 @@ Rml::ElementDocument *document;
 Rml::Element *root;
 std::vector<X2TouchVisual> visuals;
 bool document_visible;
-/* The image each power button shows, so a hero swap that keeps the same
-   number of powers still redraws them. */
-std::string power_sources;
+/* The image each button shows, so a hero swap that keeps the same number
+   of powers still redraws them. */
+std::string icon_sources;
 
-/* The game's own prompt glyph for the pad button a control presses -- the
-   same shared/port-assets art the retail prompts are lettered in -- drawn
-   inside the port's circle. */
-const char *glyph_relative_path(int action) {
+/* One cell of a retail art file. */
+struct GameIcon {
+  X2TouchArt art;
+  int cell;
+  IconGrid grid;
+};
+
+/* The game's own round icon for an action button, in the same style as the
+   power icons beside it: the talent atlas's fist, double fist, open hand and
+   wing, and the HUD atlas's screen frame for the port menu. False for an
+   action drawn by the retail HUD itself or by nothing. */
+bool game_icon(int action, GameIcon &icon) {
   using x2::input::TouchAction;
   switch (static_cast<TouchAction>(action)) {
   case TouchAction::LightAttack:
-    return "touch/face_a.svg";
+    icon = {X2_TOUCH_ART_TALENTS, 6, {}};
+    return true;
   case TouchAction::HeavyAttack:
-    return "touch/face_b.svg";
+    icon = {X2_TOUCH_ART_TALENTS, 2, {}};
+    return true;
   case TouchAction::Use:
-    return "touch/face_x.svg";
+    icon = {X2_TOUCH_ART_TALENTS, 3, {}};
+    return true;
   case TouchAction::Jump:
-    return "touch/face_y.svg";
-  case TouchAction::Pause:
-    return "touch/start.svg";
+    icon = {X2_TOUCH_ART_TALENTS, 7, {}};
+    return true;
+  case TouchAction::PortMenu:
+    icon = {X2_TOUCH_ART_HUD, 4, {kIconAtlasColumns, kHudAtlasRows}};
+    return true;
   default:
-    return "";
+    return false;
+  }
+}
+
+/* True for a control laid over art the game draws itself -- a hero
+   portrait, a potion or a mouse-overlay menu icon -- which gets a ring and
+   no fill of its own. */
+bool over_retail_art(int action) {
+  using x2::input::TouchAction;
+  switch (static_cast<TouchAction>(action)) {
+  case TouchAction::SelectHero1:
+  case TouchAction::SelectHero2:
+  case TouchAction::SelectHero3:
+  case TouchAction::SelectHero4:
+  case TouchAction::HealthPack:
+  case TouchAction::EnergyPack:
+  case TouchAction::RetailPauseMenu:
+  case TouchAction::RetailTeamMenu:
+    return true;
+  default:
+    return false;
   }
 }
 
@@ -64,24 +98,6 @@ const char *action_title(int action) {
   }
 }
 
-const char *zone_action_class(int action) {
-  using x2::input::TouchAction;
-  switch (static_cast<TouchAction>(action)) {
-  case TouchAction::LightAttack:
-    return " zone-light";
-  case TouchAction::HeavyAttack:
-    return " zone-heavy";
-  case TouchAction::Use:
-    return " zone-use";
-  case TouchAction::Jump:
-    return " zone-jump";
-  case TouchAction::Pause:
-    return " zone-pause";
-  default:
-    return "";
-  }
-}
-
 /* The kind decides the element's style, and a prompt has no action of its
    own: it is the retail UI's own word with a control drawn round it. */
 const char *visual_class(const X2TouchVisual &visual) {
@@ -91,8 +107,10 @@ const char *visual_class(const X2TouchVisual &visual) {
   case X2_TOUCH_VISUAL_PROMPT:
     return " prompt";
   default:
-    return visual.power_icon >= 0 ? " zone-power"
-                                  : zone_action_class(visual.action);
+    if (over_retail_art(visual.action)) {
+      return " zone-ring";
+    }
+    return " zone-icon";
   }
 }
 
@@ -106,10 +124,29 @@ std::string power_source(const X2TouchVisual &visual) {
   return textures->source_for(atlas, visual.power_icon);
 }
 
-std::string all_power_sources() {
+/* The game's icon for an action button; empty when it has none or the
+   art is not available. */
+std::string action_source(const X2TouchVisual &visual) {
+  IgbTextureRenderInterface *textures = igb_texture_interface();
+  GameIcon icon{};
+  if (!textures || !game_icon(visual.action, icon)) {
+    return {};
+  }
+  const char *path = x2_touch_art_path(icon.art);
+  if (!path[0]) {
+    return {};
+  }
+  return textures->source_for(path, icon.cell, icon.grid);
+}
+
+std::string icon_source(const X2TouchVisual &visual) {
+  return visual.power_icon >= 0 ? power_source(visual) : action_source(visual);
+}
+
+std::string all_icon_sources() {
   std::string all;
   for (const auto &visual : visuals) {
-    all += power_source(visual) + ";";
+    all += icon_source(visual) + ";";
   }
   return all;
 }
@@ -122,26 +159,22 @@ void rebuild() {
   const size_t count = x2_touch_runtime_visuals(nullptr, 0);
   visuals.resize(count);
   x2_touch_runtime_visuals(visuals.data(), visuals.size());
-  power_sources = all_power_sources();
+  icon_sources = all_icon_sources();
   std::ostringstream rml;
   for (const auto &visual : visuals) {
     rml << "<div id='touch-zone-" << visual.id << "' class='touch-zone"
         << visual_class(visual) << "'>";
     if (visual.kind == X2_TOUCH_VISUAL_STICK) {
       rml << "<div class='touch-stick-knob'></div>";
-    } else if (visual.power_icon >= 0) {
-      const std::string source = power_source(visual);
-      if (!source.empty()) {
-        rml << "<img class='touch-power-icon' src='" << source << "' />";
-      }
     } else if (visual.kind != X2_TOUCH_VISUAL_PROMPT) {
-      const char *glyph = glyph_relative_path(visual.action);
-      if (glyph[0]) {
-        rml << "<img class='touch-icon' src='" << glyph << "' />";
-      }
-      const char *title = action_title(visual.action);
-      if (title[0]) {
-        rml << "<span class='touch-label'>" << title << "</span>";
+      const std::string source = icon_source(visual);
+      if (!source.empty()) {
+        rml << "<img class='touch-game-icon' src='" << source << "' />";
+      } else {
+        const char *title = action_title(visual.action);
+        if (title[0]) {
+          rml << "<span class='touch-label'>" << title << "</span>";
+        }
       }
     }
     rml << "</div>";
@@ -214,7 +247,7 @@ void touch_document_shutdown() {
   root = nullptr;
   visuals.clear();
   document_visible = false;
-  power_sources.clear();
+  icon_sources.clear();
 }
 
 void touch_document_set_visible(bool visible) {
@@ -236,7 +269,7 @@ void touch_document_update() {
   if (visuals.empty())
     return;
   x2_touch_runtime_visuals(visuals.data(), visuals.size());
-  if (all_power_sources() != power_sources)
+  if (all_icon_sources() != icon_sources)
     rebuild();
 
   const Rml::Vector2i dimensions = document->GetContext()->GetDimensions();

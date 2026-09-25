@@ -206,24 +206,10 @@ def emit_header(path: Path) -> None:
           f"keycap glyph codepoint(s) from shared assets")
 
 
-def copy_svg_directory(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    expected = {f"{name}.svg" for name in ICONS}
-    for old in path.glob("*.svg"):
-        if old.name not in expected:
-            old.unlink()
-    for name, source in zip(ICONS, svg_paths(), strict=True):
-        shutil.copy2(source, path / f"{name}.svg")
-    (path / ".touch-icons.stamp").write_text(
-        f"{SET_NAME} {len(ICONS)}\n", encoding="ascii")
-    print(f"copied {len(ICONS)} shared {SET_NAME} SVGs to {path}")
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--emit-header", type=Path)
-    parser.add_argument("--copy-svg-dir", type=Path)
     parser.add_argument("--print-key-font", action="store_true",
                         help="print the shared key typeface's path")
     args = parser.parse_args()
@@ -250,10 +236,7 @@ def main() -> int:
     if args.emit_header:
         emit_header(args.emit_header)
         return 0
-    if args.copy_svg_dir:
-        copy_svg_directory(args.copy_svg_dir)
-        return 0
-    parser.error("choose --selftest, --emit-header, --copy-svg-dir or "
+    parser.error("choose --selftest, --emit-header or "
                  "--print-key-font; generated NOTHING")
     return 0
 

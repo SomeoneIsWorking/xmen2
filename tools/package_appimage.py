@@ -121,13 +121,6 @@ def stage_appdir(appdir: Path, binary: Path, ui_directory: Path) -> None:
     for name in UI_FILES:
         copy_file(ui_directory / name, appdir / "usr/share/xmen2" / name,
                   f"UI resource {name}")
-    touch_directory = ui_directory / "touch"
-    touch_icons = sorted(touch_directory.glob("*.svg"))
-    if not touch_icons:
-        refuse(f"touch-control SVG resources are missing: {touch_directory}")
-    for icon in touch_icons:
-        copy_file(icon, appdir / "usr/share/xmen2/touch" / icon.name,
-                  f"touch-control icon {icon.name}")
     appdir.joinpath("AppRun").chmod(0o755)
     appdir.joinpath("usr/bin/x2native").chmod(0o755)
 
@@ -191,9 +184,6 @@ def selftest() -> int:
         binary.write_bytes(b"native fixture")
         for name in UI_FILES:
             (ui / name).write_bytes(name.encode())
-        touch = ui / "touch"
-        touch.mkdir()
-        (touch / "face_a.svg").write_text("<svg/>", encoding="ascii")
         appdir = temporary / "AppDir"
         stage_appdir(appdir, binary, ui)
         required = [
@@ -202,7 +192,6 @@ def selftest() -> int:
             appdir / "usr/share/applications/xmen2-port.desktop",
             appdir / "usr/share/icons/hicolor/scalable/apps/xmen2-port.svg",
             appdir / "usr/share/xmen2/touch_controls.rcss",
-            appdir / "usr/share/xmen2/touch/face_a.svg",
         ]
         complete = all(path.is_file() for path in required)
         no_game = not any(path.name.lower() == "xmen2.exe"

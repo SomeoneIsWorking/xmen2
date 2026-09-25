@@ -90,8 +90,7 @@ std::optional<float> touch_axis_value(std::span<const ActionEvent> events,
 std::vector<ActionEvent> TouchControls::set_viewport(Viewport viewport) {
   auto released = cancel();
   viewport_ = viewport;
-  portraits_ = {};
-  portraits_visible_ = 0;
+  hud_ = {};
   rebuild_zones();
   return released;
 }
@@ -112,8 +111,7 @@ std::vector<ActionEvent>
 PortraitPointer::route(std::span<const ActionEvent> events) {
   std::vector<ActionEvent> selected;
   for (const auto &event : events) {
-    if (event.action < TouchAction::SelectHero1 ||
-        event.action > TouchAction::SelectHero4)
+    if (!clicks_retail_pointer(event.action))
       continue;
     if (owner_.accepts(event.contact_id, event.phase))
       selected.push_back(event);
@@ -121,40 +119,61 @@ PortraitPointer::route(std::span<const ActionEvent> events) {
   return selected;
 }
 
-std::vector<ActionEvent>
-TouchControls::set_portraits(std::span<const X2Rect> portraits,
-                             unsigned visible_mask) {
-  std::array<X2Rect, 4> next{};
-  unsigned next_visible = 0;
-  if (portraits.size() == next.size() && !(visible_mask & ~15u)) {
-    for (unsigned i = 0; i < next.size(); ++i) {
-      if (!(visible_mask & (1u << i)))
-        continue;
-      const auto &rect = portraits[i];
-      if (!std::isfinite(rect.left) || !std::isfinite(rect.top) ||
-          !std::isfinite(rect.right) || !std::isfinite(rect.bottom) ||
-          rect.left < 0 || rect.top < 0 || rect.right > viewport_.width ||
-          rect.bottom > viewport_.height || rect.right <= rect.left ||
-          rect.bottom <= rect.top) {
-        next = {};
-        next_visible = 0;
-        break;
-      }
-      next[i] = rect;
-      next_visible |= 1u << i;
+namespace {
+
+bool same_rects(std::span<const X2Rect> a, std::span<const X2Rect> b) {
+  return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+                    [](const X2Rect &x, const X2Rect &y) {
+                      return x.left == y.left && x.top == y.top &&
+                             x.right == y.right && x.bottom == y.bottom;
+                    });
+}
+
+} // namespace
+
+/* The drawn HUD regions for a mask, all-or-nothing: one rectangle that is not
+   a real on-screen area drops the whole group rather than routing to it.
+   Returns the accepted mask. */
+unsigned TouchControls::accept_regions(std::span<const X2Rect> regions,
+                                       unsigned mask,
+                                       std::span<X2Rect> out) const {
+  std::fill(out.begin(), out.end(), X2Rect{});
+  if (regions.size() != out.size() || (mask & ~((1u << out.size()) - 1u)))
+    return 0;
+  for (unsigned i = 0; i < out.size(); ++i) {
+    if (!(mask & (1u << i)))
+      continue;
+    const auto &rect = regions[i];
+    if (!std::isfinite(rect.left) || !std::isfinite(rect.top) ||
+        !std::isfinite(rect.right) || !std::isfinite(rect.bottom) ||
+        rect.left < 0 || rect.top < 0 || rect.right > viewport_.width ||
+        rect.bottom > viewport_.height || rect.right <= rect.left ||
+        rect.bottom <= rect.top) {
+      std::fill(out.begin(), out.end(), X2Rect{});
+      return 0;
     }
+    out[i] = rect;
   }
-  const bool same = std::equal(next.begin(), next.end(), portraits_.begin(),
-                               [](const X2Rect &a, const X2Rect &b) {
-                                 return a.left == b.left && a.top == b.top &&
-                                        a.right == b.right &&
-                                        a.bottom == b.bottom;
-                               });
-  if (same && next_visible == portraits_visible_)
+  return mask;
+}
+
+std::vector<ActionEvent> TouchControls::set_hud(const X2HudRegions &regions) {
+  X2HudRegions next{};
+  next.portrait_mask =
+      accept_regions(regions.portraits, regions.portrait_mask, next.portraits);
+  next.potion_mask =
+      accept_regions(regions.potions, regions.potion_mask, next.potions);
+  next.menu_icon_mask = accept_regions(regions.menu_icons,
+                                       regions.menu_icon_mask, next.menu_icons);
+  if (same_rects(next.portraits, hud_.portraits) &&
+      same_rects(next.potions, hud_.potions) &&
+      same_rects(next.menu_icons, hud_.menu_icons) &&
+      next.portrait_mask == hud_.portrait_mask &&
+      next.potion_mask == hud_.potion_mask &&
+      next.menu_icon_mask == hud_.menu_icon_mask)
     return {};
-  auto released = translate(portrait_router_.cancel());
-  portraits_ = next;
-  portraits_visible_ = next_visible;
+  auto released = translate(hud_router_.cancel());
+  hud_ = next;
   rebuild_zones();
   return released;
 }
@@ -181,7 +200,7 @@ void TouchControls::rebuild_zones() {
     // the router is told there is nothing to route against.
     const std::vector<lucent::touch::Zone> empty;
     router_.set_zones(empty);
-    portrait_router_.set_zones(empty);
+    hud_router_.set_zones(empty);
     return;
   }
 
@@ -214,7 +233,7 @@ void TouchControls::rebuild_zones() {
         false);
     zones_.back().power_icon = power_icons_[i];
   }
-  add(40, slots[kX2SlotPause], 20, TouchAction::Pause, false);
+  add(40, slots[kX2SlotPortMenu], 20, TouchAction::PortMenu, false);
 
   // Camera is an invisible relative swipe over the playfield -- everything
   // the controls and the HUD do not claim. Lowest priority, so a combat
@@ -235,26 +254,36 @@ void TouchControls::rebuild_zones() {
     router_zones.push_back(zone.zone);
   router_.set_zones(router_zones);
 
-  // Drawn portrait bounds, never quarters inferred from a layout slot. A
-  // separate router lets their changing bounds cancel only portrait captures.
+  // Drawn HUD bounds, never quarters inferred from a layout slot. A
+  // separate router lets their changing bounds cancel only HUD captures.
   router_zones.clear();
-  const TouchAction heroes[4] = {
-      TouchAction::SelectHero1, TouchAction::SelectHero2,
-      TouchAction::SelectHero3, TouchAction::SelectHero4};
-  for (std::uint32_t i = 0; i < portraits_.size(); ++i) {
-    if (!(portraits_visible_ & (1u << i)))
-      continue;
-    add(50 + i, portraits_[i], 30, heroes[i], false, false);
-    router_zones.push_back(zones_.back().zone);
-  }
-  portrait_router_.set_zones(router_zones);
+  const auto add_hud = [&](std::uint32_t first_id,
+                           std::span<const X2Rect> regions, unsigned mask,
+                           std::span<const TouchAction> actions) {
+    for (std::uint32_t i = 0; i < regions.size(); ++i) {
+      if (!(mask & (1u << i)))
+        continue;
+      add(first_id + i, regions[i], 30, actions[i], false);
+      router_zones.push_back(zones_.back().zone);
+    }
+  };
+  const std::array heroes{TouchAction::SelectHero1, TouchAction::SelectHero2,
+                          TouchAction::SelectHero3, TouchAction::SelectHero4};
+  // The retail potions, each in its own ring: a tap uses that potion.
+  const std::array potions{TouchAction::HealthPack, TouchAction::EnergyPack};
+  const std::array menus{TouchAction::RetailPauseMenu,
+                         TouchAction::RetailTeamMenu};
+  add_hud(50, hud_.portraits, hud_.portrait_mask, heroes);
+  add_hud(60, hud_.potions, hud_.potion_mask, potions);
+  add_hud(70, hud_.menu_icons, hud_.menu_icon_mask, menus);
+  hud_router_.set_zones(router_zones);
 }
 
 std::vector<ActionEvent>
 TouchControls::route(std::span<const lucent::touch::Contact> contacts) {
   std::vector<lucent::touch::Event> events;
   for (const auto &contact : contacts) {
-    auto routed = portrait_router_.route(std::span{&contact, 1});
+    auto routed = hud_router_.route(std::span{&contact, 1});
     if (routed.empty())
       routed = router_.route(std::span{&contact, 1});
     events.insert(events.end(), routed.begin(), routed.end());
@@ -264,7 +293,7 @@ TouchControls::route(std::span<const lucent::touch::Contact> contacts) {
 
 std::vector<ActionEvent> TouchControls::cancel() {
   auto events = router_.cancel();
-  const auto portraits = portrait_router_.cancel();
+  const auto portraits = hud_router_.cancel();
   events.insert(events.end(), portraits.begin(), portraits.end());
   return translate(events);
 }
@@ -287,12 +316,11 @@ TouchControls::translate(std::span<const lucent::touch::Event> events) {
       }
     } else if (event.zone_id == camera_swipe) {
       add_camera_events(actions, event, found->zone);
-    } else if (found->action >= TouchAction::SelectHero1 &&
-               found->action <= TouchAction::SelectHero4) {
+    } else if (clicks_retail_pointer(found->action)) {
       auto selected = event;
-      // Selection belongs to the retail mouse handler. Its fixed logical hit
-      // radius needs the drawn portrait center even when mobile scaling makes
-      // the touch region larger; moving a captured finger never drags a hero.
+      // The retail mouse handler acts on these. Its fixed logical hit boxes
+      // need the drawn centre even when mobile scaling makes the touch region
+      // larger; moving a captured finger never drags a hero.
       selected.position = {(found->zone.left + found->zone.right) * 0.5F,
                            (found->zone.top + found->zone.bottom) * 0.5F};
       add_button_events(actions, selected, found->action);

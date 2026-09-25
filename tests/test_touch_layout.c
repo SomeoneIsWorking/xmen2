@@ -139,13 +139,13 @@ int main(void) {
               !x2_layout_rects_overlap(reach, slots[i]));
     }
     /* Pause leaves the retail status/notification centerline clear. */
-    CHECK(name, slots[kX2SlotPause].top < viewport.height * 0.5f);
+    CHECK(name, slots[kX2SlotPortMenu].top < viewport.height * 0.5f);
     CHECK(name,
-          slots[kX2SlotPause].right <
+          slots[kX2SlotPortMenu].right <
               (viewport.safe_left + viewport.width - viewport.safe_right) *
                   0.5f);
-    CHECK(name, slots[kX2SlotPause].left > slots[kX2SlotVitals].right ||
-                    slots[kX2SlotPause].top > slots[kX2SlotVitals].bottom);
+    CHECK(name, slots[kX2SlotPortMenu].left > slots[kX2SlotVitals].right ||
+                    slots[kX2SlotPortMenu].top > slots[kX2SlotVitals].bottom);
     /* The stick and the action cluster must not be reachable by one hand
        only because they are close: they belong to opposite thumbs. */
     CHECK(name, slots[kX2SlotStick].right < slots[kX2SlotJump].left);

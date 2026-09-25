@@ -78,7 +78,9 @@ public:
   void note_source(const SDL_Event &event);
 
   void cancel(X2TouchCancelCause cause);
-  void set_hud_regions(const X2Rect portraits[4], unsigned visible_mask);
+  void set_hud_regions(const X2HudRegions *regions);
+  // True once per press of the port menu button.
+  bool take_menu_request();
   void set_power_slots(const int icons[X2_POWER_SLOTS]);
   bool take_pointer(X2TouchPointer &out);
   std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
@@ -121,6 +123,7 @@ private:
      from, so neither owner computes its own and they cannot disagree about
      where the screen is. */
   X2LayoutViewport viewport_{};
+  bool menu_requested_ = false;
 };
 
 namespace {
@@ -157,6 +160,10 @@ void TouchRuntime::publish(std::span<const ActionEvent> actions) {
     pointer_.resolved(event.position, event.phase);
   }
   for (const auto &event : actions) {
+    if (event.action == TouchAction::PortMenu &&
+        event.phase == lucent::touch::Phase::began) {
+      menu_requested_ = true;
+    }
     if (is_release(event.phase)) {
       active_zones_.erase(event.zone_id);
     } else {
@@ -169,7 +176,7 @@ void TouchRuntime::publish(std::span<const ActionEvent> actions) {
 void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.cancel());
   contacts_.clear();
-  publish(controls_.set_portraits({}, 0));
+  publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
     return;
@@ -372,19 +379,24 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
     census.pointer_events++;
   }
   publish(controls_.cancel());
-  publish(controls_.set_portraits({}, 0));
+  publish(controls_.set_hud({}));
   contacts_.clear();
   active_zones_.clear();
   prompt_buttons().release();
 }
 
-void TouchRuntime::set_hud_regions(const X2Rect portraits[4],
-                                   unsigned visible_mask) {
-  if (!portraits || !overlay_visible()) {
-    publish(controls_.set_portraits({}, 0));
+void TouchRuntime::set_hud_regions(const X2HudRegions *regions) {
+  if (!regions || !overlay_visible()) {
+    publish(controls_.set_hud({}));
   } else {
-    publish(controls_.set_portraits(std::span{portraits, 4}, visible_mask));
+    publish(controls_.set_hud(*regions));
   }
+}
+
+bool TouchRuntime::take_menu_request() {
+  const bool requested = menu_requested_;
+  menu_requested_ = false;
+  return requested;
 }
 
 void TouchRuntime::set_power_slots(const int icons[X2_POWER_SLOTS]) {
@@ -462,9 +474,12 @@ void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
   x2::input::runtime.cancel(cause);
 }
 
-void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
-                                  unsigned visible_mask) {
-  x2::input::runtime.set_hud_regions(portraits, visible_mask);
+void x2_touch_runtime_hud_regions(const X2HudRegions *regions) {
+  x2::input::runtime.set_hud_regions(regions);
+}
+
+int x2_touch_runtime_take_menu_request(void) {
+  return x2::input::runtime.take_menu_request() ? 1 : 0;
 }
 
 void x2_touch_runtime_power_slots(const int icons[X2_POWER_SLOTS]) {

@@ -18,6 +18,10 @@
         android:allowBackup="false"
         android:hasFragileUserData="true"
         android:supportsRtl="true">
+        <!-- Lets simpleperf profile the release build over adb (Android 10+),
+             which is the only way to measure a real phone's performance. It
+             grants nothing a debuggable build would: no memory or code access. -->
+        <profileable android:shell="true" />
         <activity
             android:name=".XMen2GameActivity"
             android:screenOrientation="landscape"

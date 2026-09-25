@@ -20,18 +20,23 @@ int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
   float right = v.width - v.safe_right - inset;
   float available = (right - left) * 0.4f;
   float bar_width = fminf(
-      available, short_edge * 0.30f * (float)s->vitals_scale_percent / 100.0f);
+      available, short_edge * 0.42f * (float)s->vitals_scale_percent / 100.0f);
   float bar_height = bar_width * 24.0f / 102.0f;
-  float potion_size = fminf(
-      available, short_edge * 0.14f * (float)s->potions_scale_percent / 100.0f);
+  float gap = short_edge * 0.02f;
+  float potion_size =
+      fminf((available - gap) / 2.0f,
+            short_edge * 0.15f * (float)s->potions_scale_percent / 100.0f);
   float face =
       fminf(available / 4.0f,
-            short_edge * 0.12f * (float)s->portraits_scale_percent / 100.0f);
+            short_edge * 0.16f * (float)s->portraits_scale_percent / 100.0f);
   X2HudPlacement layout = {0};
   layout.vitals = (X2Rect){left, top, left + bar_width, top + bar_height};
-  float potion_top = layout.vitals.bottom + short_edge * 0.02f;
-  layout.potions =
-      (X2Rect){left, potion_top, left + potion_size, potion_top + potion_size};
+  float potion_top = layout.vitals.bottom + gap;
+  for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
+    float x = left + (float)i * (potion_size + gap);
+    layout.potions[i] =
+        (X2Rect){x, potion_top, x + potion_size, potion_top + potion_size};
+  }
   for (unsigned i = 0; i < 4; ++i) {
     float x = right - face * (float)(4 - i);
     layout.portraits[i] = (X2Rect){x, top, x + face, top + face};
@@ -42,6 +47,18 @@ int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
   layout.selector = (X2Rect){-1000.0f, -1000.0f, -1000.0f, -1000.0f};
   *out = layout;
   return 1;
+}
+
+X2Rect x2_hud_potion_icon(X2Rect ring) {
+  float inset = (ring.right - ring.left) * 0.16f;
+  return (X2Rect){ring.left + inset, ring.top + inset, ring.right - inset,
+                  ring.bottom - inset};
+}
+
+X2Rect x2_hud_potion_count(X2Rect ring) {
+  float size = (ring.right - ring.left) * 0.36f;
+  return (X2Rect){ring.right - size, ring.bottom - size, ring.right,
+                  ring.bottom};
 }
 
 X2HudSpace x2_hud_space(float aspect, float scale_x, float scale_z) {
