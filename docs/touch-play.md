@@ -253,17 +253,18 @@ divides by a window size learned somewhere else taps a fraction of the wrong
 surface: that is how a tap aimed at `Back` in a 1280x720 window went off the
 bottom of it.
 
-### Native presentation observation, 2026-09-08
+### Native presentation observation, 2026-09-25
 
-The [actual RmlUi/game capture](screenshots/touch-controls.png) shows the shared
-SVGs in the shipping Vulkan renderer at 1280×720, with an isolated profile forcing
-`input.touch_controls=2`, Xvfb, and SDL dummy audio. The tutorial cutscene ended
-through the normal Escape cancellation route (one request, one completion,
-controls released); the overlay then appeared during character control. Pause
-leaves the retail center notifications clear, and the vitals, potions, and party
-portraits remain visible. The live JIT report counted 383,048,017 block entries,
-94,546 translations, and zero refusals in 94,546 attempts. This is native UI
-presentation evidence, not Android touchscreen or performance qualification.
+The [actual RmlUi/game capture](screenshots/touch-controls.png) is the shipping
+renderer's final frame at 1280×720 (the control channel's `/screenshot`),
+from a windowed run in a private Xvfb display with an isolated profile forcing
+`input.touch_controls=2` and SDL dummy audio. The opening conversation's
+last line was continued by a tap on it. In control, the overlay shows the move
+stick, the A/B/X/Y actions in the game's prompt glyphs inside their own
+circles with their action names, Start, and the power button with the game's own icon for the hero's power. The vitals,
+potions and party portraits stay clear. This is native UI presentation
+evidence, not Android touchscreen or performance qualification. A headless
+`--no-window` run draws no overlay, so its captures cannot stand in for this.
 
 ## Driving it without a touchscreen
 
