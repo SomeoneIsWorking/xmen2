@@ -67,30 +67,44 @@ private:
   CPU cpu_;
 };
 
-/* A NUL-terminated string the guest can read, freed with its owner. */
-class GuestText {
+/* Guest heap bytes, freed with their owner. */
+class GuestBlock {
 public:
-  explicit GuestText(std::string_view text)
-      : address_(guest_malloc(static_cast<uint32_t>(text.size() + 1u))) {
-    if (address_) {
-      auto *bytes = static_cast<char *>(guest_memory_pointer(address_));
-      std::memcpy(bytes, text.data(), text.size());
-      bytes[text.size()] = 0;
-    }
-  }
-  ~GuestText() {
+  explicit GuestBlock(uint32_t size) : address_(guest_malloc(size)) {}
+  ~GuestBlock() {
     if (address_) {
       guest_free(address_);
     }
   }
-  GuestText(const GuestText &) = delete;
-  GuestText &operator=(const GuestText &) = delete;
+  GuestBlock(const GuestBlock &) = delete;
+  GuestBlock &operator=(const GuestBlock &) = delete;
 
   explicit operator bool() const { return address_ != 0u; }
   uint32_t address() const { return address_; }
+  uint8_t *bytes() const {
+    return static_cast<uint8_t *>(guest_memory_pointer(address_));
+  }
 
 private:
   uint32_t address_;
+};
+
+/* A NUL-terminated string the guest can read, freed with its owner. */
+class GuestText {
+public:
+  explicit GuestText(std::string_view text)
+      : block_(static_cast<uint32_t>(text.size() + 1u)) {
+    if (block_) {
+      std::memcpy(block_.bytes(), text.data(), text.size());
+      block_.bytes()[text.size()] = 0;
+    }
+  }
+
+  explicit operator bool() const { return static_cast<bool>(block_); }
+  uint32_t address() const { return block_.address(); }
+
+private:
+  GuestBlock block_;
 };
 
 /* A guest C string, bounded, as host text. */

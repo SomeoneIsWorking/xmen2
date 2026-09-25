@@ -11,7 +11,9 @@ enum {
   EXE_BASE = 0x41000000u,
   COMMAND_REGISTRY_RVA = 0x0015c890u,
   REGISTER_TARGET = 0x52001000u,
-  CALLBACK_TARGET = 0x53001000u
+  CALLBACK_TARGET = 0x53001000u,
+  JOIN_CALLBACK_TARGET = 0x53001010u,
+  MAX_REGISTRATIONS = 4
 };
 
 static uint32_t mapped_exe = EXE_BASE;
@@ -19,9 +21,10 @@ static X86Module module = {
     .name = "XMen2.exe", .base = &mapped_exe, .preferred = 0x00400000u};
 static uint32_t manager;
 static int original_calls, singleton_calls, registration_calls;
-static char registered_name[32];
-static uint32_t registered_callback, registered_method;
+static char registered_name[MAX_REGISTRATIONS][32];
+static uint32_t registered_callback[MAX_REGISTRATIONS], registered_method;
 static x86_override_fn callback_function;
+static int join_commands;
 static struct {
   const char *module;
   uint32_t ep;
@@ -44,8 +47,19 @@ void options_menu_stubs_set_manager(uint32_t value) { manager = value; }
 int options_menu_stubs_original_calls(void) { return original_calls; }
 int options_menu_stubs_singleton_calls(void) { return singleton_calls; }
 int options_menu_stubs_registration_calls(void) { return registration_calls; }
-const char *options_menu_stubs_command(void) { return registered_name; }
-uint32_t options_menu_stubs_callback(void) { return registered_callback; }
+const char *options_menu_stubs_command(int index) {
+  return registered_name[index];
+}
+uint32_t options_menu_stubs_callback(int index) {
+  return registered_callback[index];
+}
+int options_menu_stubs_join_commands(void) { return join_commands; }
+
+/* lan_session.cpp's command, which this test does not link. */
+void x2_lan_join_command(CPU *C) {
+  join_commands++;
+  C->reg[kX86pEsp] += 4u;
+}
 uint32_t options_menu_stubs_method(void) { return registered_method; }
 x86_override_fn options_menu_stubs_callback_function(void) {
   return callback_function;
@@ -71,13 +85,17 @@ X86Module *x86_modules(void) { return &module; }
 
 uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
                              const char *name, void *ctx) {
-  if (strcmp(owner, "options_menu") != 0 ||
-      strcmp(name, "port_settings") != 0 || ctx) {
-    fprintf(stderr, "options menu stub: callback identity changed\n");
-    abort();
+  if (!ctx && !strcmp(owner, "options_menu") &&
+      !strcmp(name, "port_settings") && fn == x2_port_settings_command) {
+    callback_function = fn;
+    return CALLBACK_TARGET;
   }
-  callback_function = fn;
-  return CALLBACK_TARGET;
+  if (!ctx && !strcmp(owner, "lan_session") && !strcmp(name, "port_lan_join") &&
+      fn == x2_lan_join_command) {
+    return JOIN_CALLBACK_TARGET;
+  }
+  fprintf(stderr, "options menu stub: callback identity changed\n");
+  abort();
 }
 
 void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
@@ -90,12 +108,13 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
   }
   if (target == REGISTER_TARGET) {
     const char *name = guest_memory_const_pointer(RD32(C->reg[kX86pEsp]));
-    if (callee_pop_bytes != 8u)
+    if (callee_pop_bytes != 8u || registration_calls == MAX_REGISTRATIONS)
       abort();
-    registration_calls++;
     registered_method = target;
-    registered_callback = RD32(C->reg[kX86pEsp] + 4u);
-    snprintf(registered_name, sizeof registered_name, "%s", name);
+    registered_callback[registration_calls] = RD32(C->reg[kX86pEsp] + 4u);
+    snprintf(registered_name[registration_calls],
+             sizeof registered_name[registration_calls], "%s", name);
+    registration_calls++;
     C->reg[kX86pEsp] += 8u;
     C->reg[kX86pEax] = 1u;
     return;

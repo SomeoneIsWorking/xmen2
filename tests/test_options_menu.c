@@ -11,15 +11,16 @@ enum {
   HEAP_BASE = 0x31000000u,
   HEAP_SIZE = 0x00010000u,
   REGISTER_TARGET = 0x52001000u,
-  CALLBACK_TARGET = 0x53001000u
+  CALLBACK_TARGET = 0x53001000u,
+  JOIN_CALLBACK_TARGET = 0x53001010u
 };
 
 void options_menu_stubs_set_manager(uint32_t value);
 int options_menu_stubs_original_calls(void);
 int options_menu_stubs_singleton_calls(void);
 int options_menu_stubs_registration_calls(void);
-const char *options_menu_stubs_command(void);
-uint32_t options_menu_stubs_callback(void);
+const char *options_menu_stubs_command(int index);
+uint32_t options_menu_stubs_callback(int index);
 uint32_t options_menu_stubs_method(void);
 x86_override_fn options_menu_stubs_callback_function(void);
 int options_menu_stubs_override_is(const char *name, uint32_t ep);
@@ -66,12 +67,16 @@ int main(void) {
                     "the retail registrar was not super-called exactly once");
   failures += check(options_menu_stubs_singleton_calls() == 1,
                     "the retail command registry was not obtained once");
-  failures += check(options_menu_stubs_registration_calls() == 1,
-                    "the port command was not registered exactly once");
-  failures += check(!strcmp(options_menu_stubs_command(), "port_settings"),
-                    "the registered command name is not `port_settings`");
-  failures += check(options_menu_stubs_callback() == CALLBACK_TARGET,
-                    "the registry received the wrong native callback");
+  failures += check(options_menu_stubs_registration_calls() == 2,
+                    "the two port commands were not registered once each");
+  failures += check(!strcmp(options_menu_stubs_command(0), "port_settings"),
+                    "the first registered command is not `port_settings`");
+  failures += check(options_menu_stubs_callback(0) == CALLBACK_TARGET,
+                    "`port_settings` received the wrong native callback");
+  failures += check(!strcmp(options_menu_stubs_command(1), "port_lan_join"),
+                    "the second registered command is not `port_lan_join`");
+  failures += check(options_menu_stubs_callback(1) == JOIN_CALLBACK_TARGET,
+                    "`port_lan_join` received the wrong native callback");
   failures += check(options_menu_stubs_method() == REGISTER_TARGET,
                     "registration bypassed the retail vtable method");
   failures += check(C.reg[kX86pEsp] == stack + 0xff4u,
@@ -87,9 +92,9 @@ int main(void) {
   x2_override_005f4900(&C);
   failures += check(options_menu_stubs_original_calls() == 2,
                     "a repeated retail registrar call was not super-called");
-  failures += check(options_menu_stubs_registration_calls() == 1 &&
+  failures += check(options_menu_stubs_registration_calls() == 2 &&
                         options_menu_stubs_singleton_calls() == 1,
-                    "a repeated registrar duplicated the port command");
+                    "a repeated registrar duplicated the port commands");
 
   x2_settings_overlay_hide();
   memset(&C, 0, sizeof C);
@@ -107,6 +112,6 @@ int main(void) {
   failures += check(!x2_settings_overlay_visible(),
                     "closing Port Settings did not release guest input");
 
-  printf("options menu ownership: %d of 17 checks passed\n", 17 - failures);
+  printf("options menu ownership: %d of 19 checks passed\n", 19 - failures);
   return failures != 0;
 }

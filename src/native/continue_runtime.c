@@ -5,6 +5,7 @@
 #include "exact_save_load.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "lan_session.h"
 #include "save_catalog.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
@@ -34,13 +35,14 @@ enum {
   DANGER_COMPARATOR = 0x002e6628u,
   ONLINE_COMPARATOR = 0x002e662cu,
   EMPTY_STRING = 0x00281968u,
-  LABEL_OPTION06 = 0x002a1290u,
-  LABEL_OPTION07 = 0x002a12d8u,
   LABEL_OPTION09 = 0x002a1280u,
   LOADGAME_COMMAND = 0x002a385cu,
   MENU_MODE = 0x003298a8u,
-  CONTINUE_COMMAND_SOURCE = X2_MAIN_MENU_ROWS
+  LAST_ROW = X2_MAIN_MENU_ROWS - 1u
 };
+
+/* The command the LAN Join row runs; registered by options_menu.c. */
+static const char JOIN_LAN_COMMAND[] = "port_lan_join";
 
 #define PRIMARY_LOCAL_PLAYER 0u
 
@@ -54,6 +56,8 @@ static const char *const TEXT[X2_MENU_TEXT_PLAY_ONLINE + 1u] = {
 static uint32_t g_exe;
 static uint32_t g_text[X2_MENU_TEXT_PLAY_ONLINE + 1u];
 static uint32_t g_continue_command;
+static uint32_t g_join_command;
+static uint32_t g_join_text;
 static uint32_t g_original_command[X2_MAIN_MENU_ROWS];
 static int g_original_commands_ready;
 static char g_latest_leaf[X2_SAVE_LEAF_CAPACITY];
@@ -107,7 +111,9 @@ static uint32_t guest_call0(const CPU *source, uint32_t target) {
   return call.reg[kX86pEax];
 }
 
-static uint32_t intern_command(const CPU *source) {
+/* The engine's interned copy of a command string, as authored rows hold. */
+static uint32_t intern_command(const CPU *source, uint32_t text,
+                               uint32_t bytes) {
   CPU call = *source;
   uint32_t pool;
 
@@ -117,12 +123,34 @@ static uint32_t intern_command(const CPU *source) {
   call.reg[kX86pEsp] -= 4u;
   WR32(call.reg[kX86pEsp], 2u);
   call.reg[kX86pEsp] -= 4u;
-  WR32(call.reg[kX86pEsp], (uint32_t)strlen("loadgame") + 1u);
+  WR32(call.reg[kX86pEsp], bytes);
   call.reg[kX86pEsp] -= 4u;
-  WR32(call.reg[kX86pEsp], g_exe + LOADGAME_COMMAND);
+  WR32(call.reg[kX86pEsp], text);
   call.reg[kX86pEcx] = pool;
   x86_guest_call_args(&call, g_exe + FN_INTERN, 12u);
   return call.reg[kX86pEax];
+}
+
+static uint32_t intern_join_command(const CPU *source) {
+  uint32_t text = copy_guest_string(JOIN_LAN_COMMAND);
+  uint32_t command;
+
+  if (!text)
+    return 0;
+  command = intern_command(source, text, (uint32_t)sizeof JOIN_LAN_COMMAND);
+  guest_free(text);
+  return command;
+}
+
+/* The Join row's text, re-copied whenever the announced host changes. */
+static uint32_t join_text(const char *label) {
+  if (g_join_text) {
+    if (!strcmp(guest_memory_const_pointer(g_join_text), label))
+      return g_join_text;
+    guest_free(g_join_text);
+  }
+  g_join_text = copy_guest_string(label);
+  return g_join_text;
 }
 
 static uint32_t find_item(const CPU *source, uint32_t menu, unsigned row) {
@@ -157,9 +185,9 @@ static uint32_t localized(const CPU *source, uint32_t text) {
 }
 
 static void set_text(const CPU *source, uint32_t menu, unsigned row,
-                     X2MainMenuText text) {
+                     uint32_t text) {
   CPU call = *source;
-  uint32_t display = localized(source, g_text[text]);
+  uint32_t display = localized(source, text);
   call.reg[kX86pEsp] -= 4u;
   WR32(call.reg[kX86pEsp], display);
   call.reg[kX86pEsp] -= 4u;
@@ -196,9 +224,18 @@ static int catalog_for_show(void) {
   return 0;
 }
 
+static uint32_t row_command(unsigned source) {
+  if (source == X2_MENU_COMMAND_CONTINUE)
+    return g_continue_command;
+  if (source == X2_MENU_COMMAND_JOIN_LAN)
+    return g_join_command;
+  return g_original_command[source];
+}
+
 static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
   X2ContinueMenuPlan plan;
   uint32_t item[X2_MAIN_MENU_ROWS];
+  const char *join_label = x2_lan_session_join_label();
   unsigned row;
 
   g_continue_command_armed = 0;
@@ -208,7 +245,15 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
     return;
   }
   if (!g_continue_command)
-    g_continue_command = intern_command(source);
+    g_continue_command = intern_command(source, g_exe + LOADGAME_COMMAND,
+                                        (uint32_t)strlen("loadgame") + 1u);
+  if (!g_join_command)
+    g_join_command = intern_join_command(source);
+  if (join_label && (!g_join_command || !join_text(join_label))) {
+    x2_log_error("main menu: the LAN Join row could not be prepared; "
+                 "leaving it out\n");
+    join_label = NULL;
+  }
   for (row = 0; row < X2_MAIN_MENU_ROWS; row++)
     item[row] = find_item(source, menu, row);
   for (row = 0; row < X2_MAIN_MENU_ROWS; row++)
@@ -221,22 +266,26 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
     g_original_commands_ready = 1;
   }
 
-  x2_continue_menu_plan(has_save && g_continue_command != 0u, &plan);
+  x2_continue_menu_plan(has_save && g_continue_command != 0u,
+                        join_label != NULL, &plan);
   g_continue_command_armed = plan.show_last_row;
   for (row = 0; row < X2_MAIN_MENU_ROWS; row++) {
-    unsigned source_row = plan.command_source[row];
-    uint32_t command = source_row == CONTINUE_COMMAND_SOURCE
-                           ? g_continue_command
-                           : g_original_command[source_row];
-    WR32(item[row] + ITEM_COMMAND, command);
-    set_text(source, menu, row, plan.text[row]);
+    WR32(item[row] + ITEM_COMMAND, row_command(plan.command_source[row]));
+    set_text(source, menu, row,
+             plan.text[row] == X2_MENU_TEXT_JOIN_LAN ? g_join_text
+                                                     : g_text[plan.text[row]]);
   }
-  set_visible(source, menu, 5u,
+  set_visible(source, menu, LAST_ROW,
               plan.show_last_row && RD32(g_exe + MENU_MODE) != 2u);
-  WR32(g_exe + DANGER_COMPARATOR,
-       g_exe + (plan.danger_row == 3u ? LABEL_OPTION07 : LABEL_OPTION06));
+  WR32(g_exe + DANGER_COMPARATOR, g_exe + LABEL_RVA[plan.danger_row]);
   WR32(g_exe + ONLINE_COMPARATOR,
        g_exe + (plan.disable_online_special ? EMPTY_STRING : LABEL_OPTION09));
+}
+
+void x2_main_menu_refresh(CPU *cpu, uint32_t menu) {
+  if (!exe_base() || !menu)
+    return;
+  apply_menu_plan(cpu, menu, catalog_for_show());
 }
 
 void x2_override_005c9260(CPU *C) {

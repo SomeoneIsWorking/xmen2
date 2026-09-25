@@ -19,7 +19,7 @@ int main(void) {
   unsigned slot = 99u;
   unsigned i;
 
-  x2_continue_menu_plan(0, &plan);
+  x2_continue_menu_plan(0, 0, &plan);
   CHECK(plan.text[0] == X2_MENU_TEXT_NEW_GAME);
   CHECK(plan.text[4] == X2_MENU_TEXT_OPTIONS);
   CHECK(plan.show_last_row); /* Play Online leads to LAN play */
@@ -28,7 +28,7 @@ int main(void) {
   for (i = 0; i < X2_MAIN_MENU_ROWS; i++)
     CHECK(plan.command_source[i] == i);
 
-  x2_continue_menu_plan(1, &plan);
+  x2_continue_menu_plan(1, 0, &plan);
   CHECK(plan.text[0] == X2_MENU_TEXT_CONTINUE);
   CHECK(plan.text[1] == X2_MENU_TEXT_NEW_GAME);
   CHECK(plan.text[2] == X2_MENU_TEXT_LOAD_GAME);
@@ -40,6 +40,27 @@ int main(void) {
   CHECK(plan.disable_online_special);
   for (i = 0; i < X2_MAIN_MENU_ROWS; i++)
     CHECK(plan.command_source[i] == (i ? i - 1u : 6u));
+
+  /* A LAN game leads; Play Online, then Review, make room for it. */
+  x2_continue_menu_plan(0, 1, &plan);
+  CHECK(plan.text[0] == X2_MENU_TEXT_JOIN_LAN);
+  CHECK(plan.command_source[0] == X2_MENU_COMMAND_JOIN_LAN);
+  CHECK(plan.text[1] == X2_MENU_TEXT_NEW_GAME);
+  CHECK(plan.text[4] == X2_MENU_TEXT_REVIEW);
+  CHECK(plan.text[5] == X2_MENU_TEXT_OPTIONS);
+  CHECK(plan.command_source[5] == 4u);
+  CHECK(plan.danger_row == 3u);
+  CHECK(plan.disable_online_special);
+
+  x2_continue_menu_plan(1, 1, &plan);
+  CHECK(plan.text[0] == X2_MENU_TEXT_JOIN_LAN);
+  CHECK(plan.text[1] == X2_MENU_TEXT_CONTINUE);
+  CHECK(plan.command_source[1] == X2_MENU_COMMAND_CONTINUE);
+  CHECK(plan.text[2] == X2_MENU_TEXT_NEW_GAME);
+  CHECK(plan.text[4] == X2_MENU_TEXT_DANGER_ROOM);
+  CHECK(plan.text[5] == X2_MENU_TEXT_OPTIONS);
+  CHECK(plan.danger_row == 4u);
+  CHECK(plan.disable_online_special);
 
   CHECK(x2_continue_leaf_slot("autosave.save", &slot) && slot == 0u);
   CHECK(x2_continue_leaf_slot("saveslot0.save", &slot) && slot == 0u);

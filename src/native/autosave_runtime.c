@@ -7,6 +7,7 @@
 #include "campaign_snapshot.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "lan_session.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
 #include "x86rt.h"
@@ -159,6 +160,7 @@ static void x2_autosave_override_00484ce0(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x00484ce0u);
   succeeded = (C->reg[kX86pEax] & 0xffu) != 0u;
   x2_save_trace_map_return(map, succeeded);
+  x2_lan_session_map_loaded(map, succeeded);
   x2_autosave_runtime_map_return(succeeded);
   /* The boot's own destination load completes here: this is the signal the
      boot blackout waits for. Later zone loads arrive while the blackout is

@@ -6,7 +6,7 @@ symptom: with the Play Online row enabled, the retail online menu stops at "Onli
 state_items: S023
 tags: network,multiplayer,gamespy,winsock
 created: 2026-09-24
-updated: 2026-09-24
+updated: 2026-09-25
 ---
 
 # 0188 — LAN multiplayer has no route without GameSpy's servers
@@ -112,13 +112,65 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   first listed game → Ready (bit 2 of the local player's +0x1c, player from
   `FUN_006111f0`) → wait for the start. Observed: A mid-campaign with
   `/lan?host=1`, B at its main menu with `/lan?join=1`; both loaded the same
-  scene and showed the same dialogue. Nothing triggers either script except the
-  control route yet.
-- **Seamless entry.** No presence service yet: a game on the LAN is not
-  announced outside the retail lobby, so nothing lists hosts on the main menu
-  or asks a running host to re-form. The lobby shows the re-formed campaign's
-  difficulty as Easy; whether that is the save's real difficulty is unchecked.
-- **With a save,** Continue still replaces the Play Online row.
+  scene and showed the same dialogue. The presence service below triggers both.
+- **Seamless entry** is built on a presence service of the port's own (UDP
+  5166, broadcast, `src/net/`), since the retail lobby is only reachable
+  through menus. Each instance announces once a second what it is doing:
+  playing a campaign map alone, holding an open lobby, or hosting a network
+  game (a client in someone else's game stays silent). A peer expires after
+  3.5 s. The main menu puts a "Join <host>" row first (`continue_policy.c`;
+  with Continue also present, Review then Play Online give way). Choosing it
+  sends JoinRequest until that host announces its lobby, then runs the
+  director's join script. The host answers the first request by re-forming
+  for everyone present plus every distinct requester; a request that arrives
+  while the re-form is under way raises the count
+  (`x2::lan::Coordinator::answer_join_requests`); before that fix, two
+  machines asking in different polls produced a lobby for two that started
+  without the second. The host starts once that
+  many players are Ready, or after 45 s with those who are.
+
+  Leaving a network game blanks the host-info block's version (session
+  +0x3e2), and a browser hides a reply whose version differs from its own
+  (`FUN_006090d0` clears the entry's compatible flag). The host script
+  therefore rebuilds the block with `FUN_006156d0`, as a first host has it,
+  before it opens the online menu.
+
+  Observed: A playing single player, B's menu row joins it and both load the
+  same scene; C then drops in and A re-forms around the running campaign.
+  A client whose host re-forms loses it mid-level. The session's disconnect
+  handler runs `lostconnectdialog` inline (console slot 0x18), so the dialog
+  (`FUN_005f2220`, string 0x110c) is open before the port sees the empty
+  session. Yes and Back continue in single player (Back runs Yes's script,
+  empty or `dangerRoomEndMission()`); No runs `mainMenuExit()`. The director
+  focuses the popup option whose script is `mainMenuExit()` (popup slot 0x34)
+  and accepts it, so the dialog closes through its own handler, then follows
+  the host back through its lobby.
+- **Third and fourth players** need GameSpy's NAT negotiation, and the port
+  answers it on the LAN. The session links every client to every other one:
+  when a player joins a lobby that already has a client, the host sends the
+  newcomer message 0x21 and each client already in it message 0x22, both
+  carrying one cookie (`FUN_00605870`). Each side then calls
+  `NNBeginNegotiationWithSocket` (0x0063b970) so natneg*.gamespy.com can tell
+  it the other's address, and the completion callback `FUN_006050a0` links the
+  two (`FUN_00607210`: the peer's node, then message 0x23). Those names no
+  longer resolve, so Begin failed at once; the game ignores its result, and
+  the host gave up after 15 s ("Unable to add player 3. Attempting to try
+  again..."). Two players never negotiate, which is why they always worked.
+
+  `x2::lan::NatNegotiation` overrides Begin and `NNCancel` (0x0063ba10). Each
+  side broadcasts {cookie, client index, its game socket's endpoint} on the
+  presence port (`RendezvousTable`), and completes through the game's
+  callback with nr_success and the partner's sockaddr_in, or with
+  nr_deadbeatpartner after 10 s without one. Observed: three fresh instances,
+  B and C pressing Join together; both sides paired within 5 ms, the host
+  added players 2 and 3, all three Readied and loaded the same scene.
+
+  Still unexplained: after a failed add, both clients called guest address 0
+  on the main thread while pumping the game socket (the retry path that
+  follows "Unable to add player"). A failed pairing now reaches that path
+  only through nr_deadbeatpartner, which has not been exercised.
+- The lobby shows the re-formed campaign's difficulty as Easy; whether that is
+  the save's real difficulty is unchecked.
 - **Network pause.** It waits for every player's Ready; the keyboard key that
   readies has not been identified.
 

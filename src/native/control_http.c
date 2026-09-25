@@ -19,6 +19,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void send_all(x2_socket_t socket, const void *p, size_t n) {
@@ -46,13 +47,25 @@ static void reply(x2_socket_t socket, int code, const char *status,
 
 void control_reply_text(x2_socket_t socket, int code, const char *status,
                         const char *fmt, ...) {
-  char body[1024];
+  va_list ap, measure;
+  char *body;
   int n;
-  va_list ap;
   va_start(ap, fmt);
-  n = vsnprintf(body, sizeof body, fmt, ap);
+  va_copy(measure, ap);
+  n = vsnprintf(NULL, 0, fmt, measure);
+  va_end(measure);
+  body = n < 0 ? NULL : (char *)malloc((size_t)n + 1u);
+  if (!body) {
+    va_end(ap);
+    x2_log_error("control: a %d reply body could not be formatted\n", code);
+    reply(socket, 500, "Internal Server Error", "text/plain; charset=utf-8",
+          "reply formatting failed\n", strlen("reply formatting failed\n"));
+    return;
+  }
+  vsnprintf(body, (size_t)n + 1u, fmt, ap);
   va_end(ap);
   reply(socket, code, status, "text/plain; charset=utf-8", body, (size_t)n);
+  free(body);
 }
 
 void control_reply_json(x2_socket_t socket, int code, const char *status,

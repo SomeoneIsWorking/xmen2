@@ -271,6 +271,24 @@ add_executable(test_winsock_posix tests/test_winsock_posix.c
                src/native/winsock_posix.c src/native/winsock_resolve.c)
 add_test(NAME winsock_posix COMMAND test_winsock_posix)
 
+add_executable(test_control_http tests/test_control_http.c
+               src/native/control_http.c)
+target_include_directories(test_control_http PRIVATE src/native)
+target_link_libraries(test_control_http PRIVATE pthread)
+add_test(NAME control_http COMMAND test_control_http)
+
+add_executable(test_lan_presence_protocol tests/test_lan_presence_protocol.cpp
+               src/net/lan_presence_protocol.cpp)
+add_test(NAME lan_presence_protocol COMMAND test_lan_presence_protocol)
+
+add_executable(test_lan_presence_policy tests/test_lan_presence_policy.cpp
+               src/net/lan_presence_policy.cpp)
+add_test(NAME lan_presence_policy COMMAND test_lan_presence_policy)
+
+add_executable(test_lan_rendezvous tests/test_lan_rendezvous.cpp
+               src/net/lan_rendezvous.cpp)
+add_test(NAME lan_rendezvous COMMAND test_lan_rendezvous)
+
 add_executable(test_touch_controls tests/test_touch_controls.cpp
                src/input/touch_controls.cpp
                src/input/thumb_stick.cpp
@@ -1919,6 +1937,14 @@ set(X2_NATIVE_SOURCES
     src/native/campaign_snapshot.cpp
     src/native/lan_session.cpp
     src/native/lan_session_director.cpp
+    src/native/lan_coordinator.cpp
+    src/native/retail_net_session.cpp
+    src/net/lan_presence.cpp
+    src/net/lan_presence_policy.cpp
+    src/net/lan_presence_protocol.cpp
+    src/net/lan_rendezvous.cpp
+    src/net/udp_broadcast_socket.cpp
+    src/native/lan_nat_negotiation.cpp
     src/native/control_ui_route.c
     src/native/control_input_route.c
     src/native/macos_bundle.c
@@ -2168,7 +2194,7 @@ add_dependencies(x2native x2_shaders x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(x2native PRIVATE src/runtime/x86_abi src/native src/vulkan
                                             src/config src/presentation src/ui
-                                            src/input src/save src/audio
+                                            src/input src/save src/audio src/net
                                             src/media src/gpu src/d3d8 src/gen
                                             ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)

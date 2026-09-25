@@ -1936,14 +1936,27 @@ players so it leaves network players alone (`test_player_participation_policy`).
 
 Joining a game in progress works as a re-formed session: the host captures the
 running campaign, hosts it as a saved campaign through the retail lobby, and
-the joiner joins and readies through the same menus; both reload at that state
-(`x2::lan::SessionDirector`, triggered by the `/lan` control route).
+the joiner joins and readies through the same menus; everyone reloads at that
+state (`x2::lan::SessionDirector`).
 
-Gaps: nothing triggers the re-form in play -- no presence service announces a
-running game, so there is no main-menu LAN list and no join request; Play
-Online is replaced by Continue when a save exists; the keyboard key for the
-network pause's Ready is unknown; and no run has crossed two machines or
-Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+Seamless entry is built on the port's own presence service (UDP 5166,
+`src/net/`, `x2::lan::Coordinator`): a game being played announces itself, the
+main menu's first row becomes "Join <host>", choosing it asks that host to
+re-form, and the joiner walks into the lobby once it opens. A client whose host
+re-forms leaves through the game's own lost-connection dialog and follows the
+host back. GameSpy's NAT negotiation, which links every pair of clients once a
+session has three players, is answered on the LAN (`x2::lan::NatNegotiation`,
+`test_lan_rendezvous`). Observed on one machine with three isolated instances:
+A playing alone, B joins from its menu row, then C drops in; A re-forms for
+three, B rejoins, B and C pair, and all three load the same scene
+(`test_lan_presence_protocol`, `test_lan_presence_policy`).
+
+Gaps: drop-out re-forms nobody (a leaving client is the retail "dropped"
+path, which is observed only for two players); the keyboard key for the network
+pause's Ready is unknown; the lobby labels a re-formed campaign Easy without a
+check against the save; a failed pairing's retry path once called guest
+address 0 and has not been re-exercised; and no run has crossed two machines
+or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
 ### S022 — native Windows host package and CI release: missing

@@ -2,12 +2,14 @@
 
 #include "guest_call.hpp"
 #include "retail_front_end.hpp"
+#include "retail_net_session.hpp"
 
 extern "C" {
 #include "dinput_fifo.h"
 #include "x2_log.h"
 }
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -20,10 +22,14 @@ using Kind = ScriptAction::Kind;
    unpaced; a lobby waiting for joiners has no deadline at all. */
 inline constexpr double kAwaitSeconds = 60.0;
 inline constexpr double kRepressSeconds = 4.0;
+/* The script a popup option runs to return to the main menu. */
+inline constexpr const char *kLeaveScript = "mainMenuExit()";
 inline constexpr double kReadyPollSeconds = 1.0;
+/* How long an open lobby holds for a player it expects -- a client coming
+   back from the game this re-form ended, or the player who asked -- before
+   it starts with those who are Ready. */
+inline constexpr double kLateJoinerSeconds = 45.0;
 
-/* FUN_006097b0: CNetPlayManager (online flag in its first byte). */
-inline constexpr uint32_t kNetManagerRva = 0x002097b0u;
 /* FUN_00608260(manager, save, flag): host this save; FUN_00608330(manager,
    name): the name the lobby shows for it. */
 inline constexpr uint32_t kHostSaveRva = 0x00208260u;
@@ -45,22 +51,13 @@ inline constexpr uint32_t kEndLoadSlot = 0x280u;
 inline constexpr uint32_t kGameModeSlot = 0x268u;
 inline constexpr uint32_t kSaveAppliedFlagRva = 0x0030b70du;
 inline constexpr uint32_t kFinishLoadRva = 0x000d17e0u;
-/* FUN_00612be0: the session. +0x3df records the game mode; +0x26c is the
-   player list {head, -, cursor, count}, each node {-, -, next, -, player},
-   and a player is Ready while bit 2 of +0x1c is set. */
-inline constexpr uint32_t kSessionRva = 0x00653058u;
-inline constexpr uint32_t kSessionGameMode = 0x3dfu;
-inline constexpr uint32_t kSessionPlayers = 0x26cu;
-inline constexpr uint32_t kListCount = 0xcu;
-inline constexpr uint32_t kNodeNext = 0x8u;
-inline constexpr uint32_t kNodePlayer = 0x10u;
-inline constexpr uint32_t kPlayerFlags = 0x1cu;
-inline constexpr uint32_t kPlayerReady = 0x4u;
+/* Start Game itself refuses a lobby of one (FUN_005bacd0). */
 inline constexpr uint32_t kMinimumPlayers = 2u;
-/* FUN_006111f0(session): this machine's player. */
-inline constexpr uint32_t kLocalPlayerRva = 0x002111f0u;
-/* The net manager's browser list: entries counted at +0x2214. */
-inline constexpr uint32_t kListedGames = 0x2214u;
+
+/* Steps that wait on other machines' players, which no deadline bounds. */
+bool waits_on_players(Kind kind) {
+  return kind == Kind::StartWhenReady || kind == Kind::AwaitGameStart;
+}
 
 const char *kind_name(Kind kind) {
   switch (kind) {
@@ -78,6 +75,8 @@ const char *kind_name(Kind kind) {
     return "start";
   case Kind::LeaveToMainMenu:
     return "leave";
+  case Kind::ResetHostInfo:
+    return "host-info";
   case Kind::AwaitListedGame:
     return "browse";
   case Kind::ReadyUp:
@@ -93,6 +92,7 @@ std::vector<ScriptAction> host_script() {
       {Kind::CaptureCampaign, "", ""},
       {Kind::QueueCommand, "mainmenuexit 1", ""},
       {Kind::AwaitMenu, "main", ""},
+      {Kind::ResetHostInfo, "", ""},
       {Kind::QueueCommand, "openmenu online", ""},
       {Kind::AwaitMenu, "online", ""},
       {Kind::Press, "text_ready", "campaign_lobby"},
@@ -121,24 +121,16 @@ std::vector<ScriptAction> join_script() {
   };
 }
 
-uint32_t local_player(const CPU &cpu, uint32_t exe) {
-  return guest::GuestCall(cpu).thiscall(exe + kLocalPlayerRva,
-                                        exe + kSessionRva);
-}
-
-bool is_ready(uint32_t player) {
-  return player && (RD32(player + kPlayerFlags) & kPlayerReady) != 0u;
-}
-
 } // namespace
 
-bool SessionDirector::request(Role role) {
+bool SessionDirector::request(Role role, uint32_t expected_players) {
   std::lock_guard lock(mutex_);
   if (requested_ || next_ < script_.size()) {
     return false;
   }
   requested_ = true;
   requested_role_ = role;
+  expected_players_ = std::max(expected_players, kMinimumPlayers);
   return true;
 }
 
@@ -160,10 +152,12 @@ void SessionDirector::fail(const std::string &why) {
 }
 
 void SessionDirector::begin(Role role, double now) {
+  role_ = role;
   script_ = role == Role::Host ? host_script() : join_script();
   next_ = 0;
   deadline_ = now + kAwaitSeconds;
   next_attempt_ = now;
+  step_started_ = now;
   exit_queued_ = false;
   x2_log_info("lan: %s (%zu steps)",
               role == Role::Host ? "re-forming this game as a LAN lobby"
@@ -207,7 +201,7 @@ void SessionDirector::poll_unguarded(const CPU &cpu, double now) {
                std::to_string(next_ + 1) + " of " +
                std::to_string(script_.size()) + ")");
     if (!step(cpu, now)) {
-      if (!script_.empty() && kind != Kind::StartWhenReady && now > deadline_) {
+      if (!script_.empty() && !waits_on_players(kind) && now > deadline_) {
         fail(std::string(kind_name(kind)) + " \"" + text +
              "\" did not complete within " +
              std::to_string(static_cast<int>(kAwaitSeconds)) +
@@ -218,6 +212,7 @@ void SessionDirector::poll_unguarded(const CPU &cpu, double now) {
     ++next_;
     deadline_ = now + kAwaitSeconds;
     next_attempt_ = now;
+    step_started_ = now;
     if (next_ == script_.size()) {
       x2_log_info("lan: the lobby started the game");
       set_status("started");
@@ -259,13 +254,12 @@ bool SessionDirector::step(const CPU &cpu, double now) {
   case Kind::StartWhenReady:
     return start_when_ready(cpu, now);
   case Kind::LeaveToMainMenu:
-    return leave_to_main_menu(cpu);
-  case Kind::AwaitListedGame: {
-    const uint32_t exe = x86_module_base("XMen2.exe");
-    const uint32_t manager =
-        guest::GuestCall(cpu).cdecl_call(exe + kNetManagerRva);
-    return RD32(manager + kListedGames) != 0u;
-  }
+    return leave_to_main_menu(cpu, now);
+  case Kind::ResetHostInfo:
+    retail::NetSession(cpu).reset_host_info();
+    return true;
+  case Kind::AwaitListedGame:
+    return retail::NetSession(cpu).joinable_listed_games() != 0u;
   case Kind::ReadyUp:
     return ready_up(cpu, now);
   case Kind::AwaitGameStart:
@@ -282,9 +276,19 @@ bool SessionDirector::step(const CPU &cpu, double now) {
   return false;
 }
 
-bool SessionDirector::leave_to_main_menu(const CPU &cpu) {
+bool SessionDirector::leave_to_main_menu(const CPU &cpu, double now) {
   if (last_menu_ == "main") {
     return true;
+  }
+  /* A client whose host went away is looking at the game's own "lost
+     connection" dialog (FUN_005f2220). Its No runs mainMenuExit(): choose it,
+     so the dialog closes and leaves as it always does. */
+  if (retail::FrontEnd::focus_popup_option(cpu, kLeaveScript)) {
+    if (now >= next_attempt_) {
+      next_attempt_ = now + kRepressSeconds;
+      accept_popup(now);
+    }
+    return false;
   }
   if (!exit_queued_) {
     exit_queued_ = true;
@@ -295,13 +299,22 @@ bool SessionDirector::leave_to_main_menu(const CPU &cpu) {
   return false;
 }
 
+void SessionDirector::accept_popup(double now) {
+  std::array<char, 128> why{};
+  if (!dinput_inject_press("Return", now, 0.0, "lan", why.data(),
+                           static_cast<int>(why.size()))) {
+    x2_log_error("lan: accept on the popup was not delivered: %s", why.data());
+    return;
+  }
+  x2_log_info("lan: chose the popup's %s", kLeaveScript);
+}
+
 bool SessionDirector::ready_up(const CPU &cpu, double now) {
   if (last_menu_ != "join") {
     fail("the join menu closed before this player was Ready");
     return false;
   }
-  const uint32_t exe = x86_module_base("XMen2.exe");
-  if (is_ready(local_player(cpu, exe))) {
+  if (retail::NetSession(cpu).local_player_ready()) {
     return true;
   }
   if (now >= next_attempt_) {
@@ -337,9 +350,9 @@ bool SessionDirector::install_campaign(const CPU &cpu) {
     fail("no captured campaign to host");
     return false;
   }
-  const uint32_t manager =
-      guest::GuestCall(cpu).cdecl_call(exe + kNetManagerRva);
-  if (!RD8(manager)) {
+  const retail::NetSession session(cpu);
+  const uint32_t manager = session.manager();
+  if (!session.online()) {
     fail("the net manager is not online");
     return false;
   }
@@ -363,7 +376,7 @@ bool SessionDirector::install_campaign(const CPU &cpu) {
   guest::GuestCall(cpu).cdecl_call(exe + kFinishLoadRva);
   const uint32_t mode =
       guest::GuestCall(cpu).virtual_call(owner, kGameModeSlot);
-  WR8(exe + kSessionRva + kSessionGameMode, mode & 0xffu);
+  session.set_game_mode(static_cast<uint8_t>(mode));
   guest::GuestCall(cpu).virtual_call(busy, kBusyEndSlot, {1u});
   x2_log_info("lan: the captured campaign is the hosted save (mode %u)", mode);
   return true;
@@ -378,18 +391,22 @@ bool SessionDirector::start_when_ready(const CPU &cpu, double now) {
     return false;
   }
   next_attempt_ = now + kReadyPollSeconds;
-  const uint32_t exe = x86_module_base("XMen2.exe");
-  const uint32_t players = exe + kSessionRva + kSessionPlayers;
-  const uint32_t count = RD32(players + kListCount);
-  if (count < kMinimumPlayers) {
+  const retail::NetSession session(cpu);
+  if (!session.all_ready(kMinimumPlayers)) {
     return false;
   }
-  for (uint32_t node = RD32(players); node; node = RD32(node + kNodeNext)) {
-    if (!is_ready(RD32(node + kNodePlayer))) {
+  const uint32_t count = session.player_count();
+  const uint32_t expected = expected_players();
+  if (count < expected) {
+    if (now - step_started_ < kLateJoinerSeconds) {
       return false;
     }
+    x2_log_info("lan: %u of %u expected players came within %.0f s; "
+                "starting with them",
+                count, expected, kLateJoinerSeconds);
+  } else {
+    x2_log_info("lan: all %u players are Ready; starting", count);
   }
-  x2_log_info("lan: all %u players are Ready; starting", count);
   return press(cpu, "text_startgame", now);
 }
 
@@ -398,5 +415,25 @@ SessionDirector g_director;
 } // namespace
 
 SessionDirector &session_director() { return g_director; }
+
+bool SessionDirector::hosting() const {
+  {
+    std::lock_guard lock(mutex_);
+    if (requested_) {
+      return requested_role_ == Role::Host;
+    }
+  }
+  return directing() && role_ == Role::Host;
+}
+
+void SessionDirector::expect_players(uint32_t count) {
+  std::lock_guard lock(mutex_);
+  expected_players_ = std::max(expected_players_, count);
+}
+
+uint32_t SessionDirector::expected_players() const {
+  std::lock_guard lock(mutex_);
+  return expected_players_;
+}
 
 } // namespace x2::lan

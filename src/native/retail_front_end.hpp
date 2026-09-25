@@ -29,6 +29,9 @@ public:
      executable is not mapped or the console is shutting down. */
   static bool queue_command(const CPU &cpu, std::string_view command);
 
+  /* The active menu object (a CMenu), or 0 when no menu is up. */
+  static uint32_t active_menu_object(const CPU &cpu);
+
   /* The name the active menu was opened by ("online", "host", ...), or empty
      when no menu is up. */
   static std::string active_menu(const CPU &cpu);
@@ -36,6 +39,11 @@ public:
   /* Focus the active menu's item called `item`, as a pointer or pad would.
      False when no menu is up or it has no such item. */
   static bool focus(const CPU &cpu, std::string_view item);
+
+  /* Focus the open popup's option that runs `script`, as a pointer or pad
+     would, so the next accept chooses it. False when no popup is open or none
+     of its options runs that script. */
+  static bool focus_popup_option(const CPU &cpu, std::string_view script);
 };
 
 } // namespace x2::retail

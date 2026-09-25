@@ -1,5 +1,6 @@
 #include "lan_session.h"
 
+#include "lan_coordinator.hpp"
 #include "lan_session_director.hpp"
 
 extern "C" {
@@ -9,7 +10,21 @@ extern "C" {
 #include <array>
 
 extern "C" void x2_lan_session_poll(CPU *cpu, double now) {
-  x2::lan::session_director().poll(*cpu, now);
+  x2::lan::coordinator().poll(*cpu, now);
+}
+
+extern "C" void x2_lan_session_map_loaded(uint32_t map, int succeeded) {
+  x2::lan::coordinator().map_loaded(map, succeeded != 0);
+}
+
+extern "C" const char *x2_lan_session_join_label(void) {
+  return x2::lan::coordinator().join_label();
+}
+
+extern "C" void x2_lan_join_command(CPU *cpu) {
+  x2::lan::coordinator().join_chosen();
+  /* A retail menu command is void and takes nothing: just its RET. */
+  cpu->reg[kX86pEsp] += 4u;
 }
 
 extern "C" void x2_lan_session_route(x2_socket_t fd, const char *query) {
@@ -32,5 +47,7 @@ extern "C" void x2_lan_session_route(x2_socket_t fd, const char *query) {
                             : "this machine joins the LAN game it finds");
     return;
   }
-  control_reply_text(fd, 200, "OK", "%s\n", director.status().c_str());
+  control_reply_text(fd, 200, "OK", "%s\ndirector: %s\n",
+                     x2::lan::coordinator().status().c_str(),
+                     director.status().c_str());
 }

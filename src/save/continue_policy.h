@@ -12,8 +12,14 @@ typedef enum {
   X2_MENU_TEXT_DANGER_ROOM,
   X2_MENU_TEXT_REVIEW,
   X2_MENU_TEXT_OPTIONS,
-  X2_MENU_TEXT_PLAY_ONLINE
+  X2_MENU_TEXT_PLAY_ONLINE,
+  /* "Join <host>": the port's LAN row, its text supplied at runtime. */
+  X2_MENU_TEXT_JOIN_LAN
 } X2MainMenuText;
+
+/* command_source values beyond the six shipped rows. */
+#define X2_MENU_COMMAND_CONTINUE 6u
+#define X2_MENU_COMMAND_JOIN_LAN 7u
 
 typedef struct {
   X2MainMenuText text[X2_MAIN_MENU_ROWS];
@@ -27,10 +33,14 @@ typedef struct {
   int auto_ack_pending;
 } X2ContinueTransaction;
 
-/* command_source is an original shipped row index (0..5), or 6 for the
-   native Continue command. The plan never depends on previously-mutated menu
-   state, so repeated Show calls cannot progressively shift the rows. */
-void x2_continue_menu_plan(int has_save, X2ContinueMenuPlan *out);
+/* command_source is an original shipped row index (0..5), or one of the
+   X2_MENU_COMMAND_* port commands. The rows are, in order, Join (when a LAN
+   game is announced), Continue (with a save), then the shipped rows; while
+   more than six remain, Play Online leaves first and Review second. The plan
+   never depends on previously-mutated menu state, so repeated Show calls
+   cannot progressively shift the rows. */
+void x2_continue_menu_plan(int has_save, int has_lan_game,
+                           X2ContinueMenuPlan *out);
 
 /* Choose the retail metadata staging record for an exact catalog leaf.
    Manual leaves keep their authored slot; autosave uses record zero only as
