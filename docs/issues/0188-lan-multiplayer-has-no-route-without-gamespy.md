@@ -184,13 +184,24 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   only the copy it hosts, so clients were right and only the host was wrong.
   `CampaignSnapshot` now rewinds a finished capture. A Normal campaign now
   logs mode 1 and hosts as "Saved Campaign (Normal)".
-- **Network pause.** The pda menu (`FUN_005ce7f0`) in network mode (flags & 2)
-  resumes only on the host: Back (input bit 4) calls `FUN_0060b8f0` when the
-  player is the host (`FUN_00610d10`) and config +0xb9 is clear; a client's
-  Back is swallowed once flag 4 is set. So the host's Esc is the footer's
-  "Ready" and clients wait for it. Two gaps remain: the footer's key cap for
-  the runtime-composed "$MENU_BACK Ready" draws empty, and the Players list
-  (`FUN_005cfef0`) ignores Back on both machines.
+- **Network pause.** Only the host's pda pauses everyone; a client's pda
+  pauses nobody. In the paused pda each player readies with the in-game Back
+  binding -- on the keyboard that is HighAttack (keypad 6 by default), not
+  Esc: the pda's back handler (`FUN_005ce770`) sends message 0x4b
+  (`FUN_0060cf90`) and the list shows that player Ready. Play resumes once all
+  are Ready (observed with three players). The footer names the key, but its
+  cap was drawn on another menu line: prompt art is matched to a draw by
+  glyph count, and "Blink Portal (down)" took the footer's Esc cap.
+- **Leaving by choice.** A client's Quit Game empties its session mid-level
+  exactly as a host re-form does, and was followed back in. The quit dialog's
+  Yes runs the script `mainMenuExit()` (`FUN_0049fb00`) while the session is
+  still up; the lost-connection and "not enough players" dialogs run it only
+  after the session emptied. The coordinator records the first as a choice
+  (`should_follow_host`, `test_lan_presence_policy`).
+- **Starting too soon.** The host lobby silently ignores a Start pressed about
+  a second after a third player's NAT pairing. The director presses again
+  every 4 s until the session's started byte (+0x44c, set by `FUN_005f3c20`)
+  is set.
 - **Networked Team Management.** Accepting it on the host ran
   `imul cx, cx, 5` at 0x614a1a, which the JIT refused ("unsupported
   instruction") and the host died. x86port now emits 16- and 32-bit

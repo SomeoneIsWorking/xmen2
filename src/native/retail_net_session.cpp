@@ -14,6 +14,7 @@ inline constexpr uint32_t kHostInfoConstructRva = 0x002156d0u;
 inline constexpr uint32_t kSessionRva = 0x00653058u;
 inline constexpr uint32_t kSessionGameMode = 0x3dfu;
 inline constexpr uint32_t kSessionPlayers = 0x26cu;
+inline constexpr uint32_t kSessionGameStarted = 0x44cu;
 inline constexpr uint32_t kListCount = 0xcu;
 inline constexpr uint32_t kNodeNext = 0x8u;
 inline constexpr uint32_t kNodePlayer = 0x10u;
@@ -66,6 +67,10 @@ bool NetSession::all_ready(uint32_t minimum) const {
 bool NetSession::local_player_ready() const {
   return ready(guest::GuestCall(cpu_).thiscall(exe_ + kLocalPlayerRva,
                                                exe_ + kSessionRva));
+}
+
+bool NetSession::game_started() const {
+  return RD8(exe_ + kSessionRva + kSessionGameStarted) != 0u;
 }
 
 void NetSession::set_game_mode(uint8_t mode) const {

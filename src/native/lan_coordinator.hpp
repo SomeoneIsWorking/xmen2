@@ -17,7 +17,9 @@
  * A re-form ends the host's network game, and every client already in it
  * loses its host while still in the level. Those clients wait, unannounced,
  * for the same host's lobby and walk back in, so a drop-in costs the others
- * one load and nothing else.
+ * one load and nothing else. A player who quits through the pause menu's
+ * Quit Game also empties its session mid-level; that is told apart by the
+ * script the quit dialog runs, and such a player stays at the main menu.
  */
 
 #include "lan_nat_negotiation.hpp"
@@ -51,6 +53,11 @@ public:
 
   /* The guest's thread: the player chose the Join row. */
   void join_chosen();
+
+  /* The guest's thread: mainMenuExit() ran. While a session is still up
+     that is the player choosing to leave (the quit dialog's Yes), and the
+     session emptying after it is not followed. */
+  void left_by_choice(const CPU &cpu);
 
   /* Any thread. */
   std::string status() const;
@@ -103,6 +110,8 @@ private:
   uint32_t reform_present_ = 1u;
   /* The host of the network game this machine last joined. */
   std::optional<Host> joined_;
+  /* The player chose to leave; consumed when the session empties. */
+  bool left_by_choice_ = false;
 
   std::string label_;
   std::string shown_label_;

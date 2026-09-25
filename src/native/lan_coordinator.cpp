@@ -100,12 +100,16 @@ void Coordinator::follow_lost_host(const presence::LocalFacts &facts,
   if (facts.session_players != 0u) {
     return;
   }
-  /* The session emptied. Still in the level as a client: the host left
-     without us (a re-form, or a crash); anywhere else the player left. */
-  const bool lost = lobby_role_ == LobbyRole::Client &&
-                    presence::is_campaign_map(facts.map) && joined_ &&
-                    !pending_ && !session_director().directing();
+  const bool lost = presence::should_follow_host(
+      {facts.map, lobby_role_ == LobbyRole::Client, joined_.has_value(),
+       pending_.has_value() || session_director().directing(),
+       left_by_choice_});
+  if (left_by_choice_ && lobby_role_ == LobbyRole::Client && joined_) {
+    x2_log_info("lan: left \"%s\" by choice; not rejoining",
+                joined_->name.c_str());
+  }
   lobby_role_ = LobbyRole::None;
+  left_by_choice_ = false;
   if (!lost) {
     return;
   }
@@ -114,6 +118,14 @@ void Coordinator::follow_lost_host(const presence::LocalFacts &facts,
   pending_since_ = now;
   x2_log_info("lan: lost \"%s\" mid-game; rejoining when its lobby opens",
               pending_->name.c_str());
+}
+
+void Coordinator::left_by_choice(const CPU &cpu) {
+  /* A client whose host already went is answering the lost-connection
+     dialog, whose way out runs the same script: its session is empty. */
+  if (retail::NetSession(cpu).player_count() != 0u) {
+    left_by_choice_ = true;
+  }
 }
 
 void Coordinator::report_socket_error() {

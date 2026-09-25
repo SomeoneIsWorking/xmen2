@@ -277,6 +277,11 @@ target_include_directories(test_control_http PRIVATE src/native)
 target_link_libraries(test_control_http PRIVATE pthread)
 add_test(NAME control_http COMMAND test_control_http)
 
+add_executable(test_control_query tests/test_control_query.c
+               src/native/control_query.c)
+target_include_directories(test_control_query PRIVATE src/native)
+add_test(NAME control_query COMMAND test_control_query)
+
 add_executable(test_lan_presence_protocol tests/test_lan_presence_protocol.cpp
                src/net/lan_presence_protocol.cpp)
 add_test(NAME lan_presence_protocol COMMAND test_lan_presence_protocol)

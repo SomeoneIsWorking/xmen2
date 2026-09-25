@@ -1951,10 +1951,14 @@ A playing alone, B joins from its menu row, then C drops in; A re-forms for
 three, B rejoins, B and C pair, and all three load the same scene
 (`test_lan_presence_protocol`, `test_lan_presence_policy`).
 
-Gaps: drop-out re-forms nobody (a leaving client is the retail "dropped"
-path, which is observed only for two players); the keyboard key for the network
-pause's Ready is unknown; and no run has crossed two machines
-or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+A client choosing Quit Game with three players leaves the other two playing
+and stays at its main menu with the Join row offered; the host's network pause
+resumes once every player readies with the in-game Back key (keypad 6 on the
+keyboard by default).
+
+Gaps: drop-out re-forms nobody (the others continue in the same session, which
+is the retail "dropped" path); and no run has crossed two machines or
+Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
 ### S022 — native Windows host package and CI release: missing

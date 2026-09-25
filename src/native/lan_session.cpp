@@ -5,9 +5,32 @@
 
 extern "C" {
 #include "control_query.h"
+#include "guest_body.h"
+#include "x86rt_native.h"
 }
 
 #include <array>
+
+namespace {
+
+/* The script function mainMenuExit(): what the pause menu's quit dialog runs
+   on Yes (text 0x7ea in the mainmenuexit handler, FUN_005f27a0). It queues
+   "mainmenuexit 1". The lost-connection and "not enough players" dialogs run
+   it too, but only after the session has emptied, so the coordinator counts
+   it as the player's choice only while the session is still up. */
+inline constexpr uint32_t kMainMenuExitScript = 0x0049fb00u;
+
+void main_menu_exit_script(CPU *C) {
+  x2::lan::coordinator().left_by_choice(*C);
+  x86_guest_body(C, "XMen2.exe", kMainMenuExitScript);
+}
+
+__attribute__((constructor)) void register_main_menu_exit_script() {
+  x86_register_override("XMen2.exe", kMainMenuExitScript,
+                        main_menu_exit_script);
+}
+
+} // namespace
 
 extern "C" void x2_lan_session_poll(CPU *cpu, double now) {
   x2::lan::coordinator().poll(*cpu, now);

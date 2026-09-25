@@ -42,6 +42,25 @@ struct LocalFacts {
 std::optional<Announce> local_announce(const LocalFacts &facts,
                                        const std::string &name);
 
+/* How the network session a machine played in as a client came to empty. */
+struct SessionEnd {
+  /* The last map that loaded successfully. */
+  std::string map;
+  /* This machine joined that session through another's lobby. */
+  bool client = false;
+  /* It still knows which host that was. */
+  bool knows_host = false;
+  /* It is already waiting for a host's lobby, or directing a re-form. */
+  bool busy = false;
+  /* The player left: the quit dialog's Yes ran mainMenuExit(). */
+  bool left_by_choice = false;
+};
+
+/* Should this machine wait for the host's lobby and walk back in? Only when
+   the host left it behind mid-level -- a re-form for a drop-in, or a crash.
+   A player who chose to quit stays at the main menu. */
+bool should_follow_host(const SessionEnd &end);
+
 struct Peer {
   uint64_t instance = 0u;
   Announce announce;

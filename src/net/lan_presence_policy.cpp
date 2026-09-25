@@ -45,6 +45,11 @@ std::optional<Announce> local_announce(const LocalFacts &facts,
   return Announce{Phase::NetworkGame, facts.session_players, name};
 }
 
+bool should_follow_host(const SessionEnd &end) {
+  return end.client && end.knows_host && !end.busy && !end.left_by_choice &&
+         is_campaign_map(end.map);
+}
+
 bool PeerTable::heard(uint64_t instance, const Announce &announce, double now) {
   auto known =
       std::find_if(peers_.begin(), peers_.end(), [instance](const Peer &peer) {

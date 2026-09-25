@@ -3,6 +3,43 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int hex_digit(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  if (c >= 'A' && c <= 'F') {
+    return c - 'A' + 10;
+  }
+  return -1;
+}
+
+/* Form decoding: '+' is a space and %XX a byte. A '%' not followed by two
+   hex digits is kept as written. Stops at `out_size - 1` bytes. */
+static void decode_value(const char *value, size_t size, char *out,
+                         size_t out_size) {
+  size_t in = 0, at = 0;
+  while (in < size && at + 1 < out_size) {
+    int high, low;
+    if (value[in] == '+') {
+      out[at++] = ' ';
+      in++;
+      continue;
+    }
+    if (value[in] == '%' && in + 2 < size &&
+        (high = hex_digit(value[in + 1])) >= 0 &&
+        (low = hex_digit(value[in + 2])) >= 0) {
+      out[at++] = (char)(high * 16 + low);
+      in += 3;
+      continue;
+    }
+    out[at++] = value[in++];
+  }
+  out[at] = '\0';
+}
+
 int control_query_arg(const char *query, const char *name, char *out,
                       size_t out_size) {
   size_t name_size;
@@ -16,11 +53,8 @@ int control_query_arg(const char *query, const char *name, char *out,
     if (!strncmp(part, name, name_size) && part[name_size] == '=') {
       const char *value = part + name_size + 1;
       const char *end = strchr(value, '&');
-      size_t size = end ? (size_t)(end - value) : strlen(value);
-      if (size >= out_size)
-        size = out_size - 1;
-      memcpy(out, value, size);
-      out[size] = '\0';
+      decode_value(value, end ? (size_t)(end - value) : strlen(value), out,
+                   out_size);
       return 1;
     }
     part = strchr(part, '&');

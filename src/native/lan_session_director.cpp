@@ -383,6 +383,10 @@ bool SessionDirector::install_campaign(const CPU &cpu) {
 }
 
 bool SessionDirector::start_when_ready(const CPU &cpu, double now) {
+  const retail::NetSession session(cpu);
+  if (session.game_started()) {
+    return true;
+  }
   if (last_menu_ != "host") {
     fail("the host menu closed before the game started");
     return false;
@@ -391,7 +395,6 @@ bool SessionDirector::start_when_ready(const CPU &cpu, double now) {
     return false;
   }
   next_attempt_ = now + kReadyPollSeconds;
-  const retail::NetSession session(cpu);
   if (!session.all_ready(kMinimumPlayers)) {
     return false;
   }
@@ -407,7 +410,14 @@ bool SessionDirector::start_when_ready(const CPU &cpu, double now) {
   } else {
     x2_log_info("lan: all %u players are Ready; starting", count);
   }
-  return press(cpu, "text_startgame", now);
+  /* The lobby silently ignores a start that comes too soon after the last
+     player's link (measured: pressed 1 s after a third player's NAT pairing,
+     ignored; the same press later started the game). Pressed again until the
+     session says the start was taken. */
+  if (press(cpu, "text_startgame", now)) {
+    next_attempt_ = now + kRepressSeconds;
+  }
+  return false;
 }
 
 namespace {

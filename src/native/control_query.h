@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 
-/* Copies one unescaped value from an already-separated HTTP query string.
-   The control protocol deliberately accepts only the numeric/identifier
-   vocabulary used by its loopback diagnostic routes. */
+/* Copies one value from an already-separated HTTP query string, form-decoded
+   ('+' and %XX), so a key named "Keypad 6" can be asked for. Truncated to
+   fit `out`. Returns 0 when the query has no such name. */
 int control_query_arg(const char *query, const char *name, char *out,
                       size_t out_size);
 

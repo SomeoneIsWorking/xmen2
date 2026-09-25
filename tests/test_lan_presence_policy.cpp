@@ -81,6 +81,33 @@ int main() {
         table.expire(1.6 + presence::PeerTable::kExpirySeconds) &&
             table.peers().size() == 1u && table.find(1u) && !table.find(2u));
 
+  /* A client's session emptied mid-level. */
+  {
+    const presence::SessionEnd left_behind{"act2/savage/savage1", true, true,
+                                           false, false};
+    check("a client left behind in a level follows its host",
+          presence::should_follow_host(left_behind));
+    presence::SessionEnd end = left_behind;
+    end.left_by_choice = true;
+    check("a player who chose to quit does not rejoin",
+          !presence::should_follow_host(end));
+    end = left_behind;
+    end.client = false;
+    check("a host has nobody to follow", !presence::should_follow_host(end));
+    end = left_behind;
+    end.knows_host = false;
+    check("an unknown host cannot be followed",
+          !presence::should_follow_host(end));
+    end = left_behind;
+    end.busy = true;
+    check("a machine already waiting or directing is not redirected",
+          !presence::should_follow_host(end));
+    end = left_behind;
+    end.map = "menu/main_back";
+    check("a session that ended off a campaign map is not followed",
+          !presence::should_follow_host(end));
+  }
+
   if (failures) {
     std::printf("%d failure(s)\n", failures);
     return 1;

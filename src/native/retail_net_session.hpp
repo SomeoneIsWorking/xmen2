@@ -15,7 +15,9 @@
  * at +0x26c as {head, -, cursor,
  * count}; each node is {-, -, next, -, player}, and a player is Ready while bit
  * 2 of +0x1c is set (FUN_00614240). The list is empty outside a network
- * session. FUN_006111f0 names this machine's player.
+ * session. FUN_006111f0 names this machine's player. The session's byte at
+ * +0x44c is set when a game is started from the lobby (FUN_005f3c20) and
+ * cleared on leaving it for the main menu (FUN_005f27a0).
  */
 
 extern "C" {
@@ -41,6 +43,8 @@ public:
   /* At least `minimum` players, every one of them Ready. */
   bool all_ready(uint32_t minimum) const;
   bool local_player_ready() const;
+  /* The lobby's start was taken: the game is starting or running. */
+  bool game_started() const;
 
   /* The session's record of the game mode a hosted save runs in. */
   void set_game_mode(uint8_t mode) const;
