@@ -422,6 +422,16 @@ void x2_engine_where(void) {
                         f->entry, named(f->entry));
     }
   }
+  /* A frame's eip is where its CPU copy last stood, which for a fault inside
+     translation is the address being translated, not the block that went
+     there. The main thread's engine remembers the last block it entered. */
+  {
+    uint32_t last = x86p_jit_engine_last_block_entry(
+        x86_engine_jit_pool_primary(g_engine.jit));
+    lucent_log_info("engine",
+                    "the main thread's engine last entered block 0x%08x (%s)",
+                    last, named(last));
+  }
 }
 
 void x2_engine_report(void) {

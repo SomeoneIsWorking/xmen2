@@ -165,10 +165,14 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   B and C pressing Join together; both sides paired within 5 ms, the host
   added players 2 and 3, all three Readied and loaded the same scene.
 
-  Still unexplained: after a failed add, both clients called guest address 0
-  on the main thread while pumping the game socket (the retry path that
-  follows "Unable to add player"). A failed pairing now reaches that path
-  only through nr_deadbeatpartner, which has not been exercised.
+  The clients that crashed after a failed add called a GameSpy SDK
+  negotiator's completion callback that was never set. With the servers
+  unresolvable, the real Begin allocated a negotiator (`FUN_0063b4f0`, zeroed)
+  and returned ne_dnserror before storing its callbacks; the SDK's think
+  (`FUN_0063be00`) later ran out of init retries and called `param_1[0xe]`,
+  address 0. Reproduced by having the override decline without running the
+  SDK: the add then fails and both clients carry on, because no negotiator
+  exists. Since the port answers Begin, the SDK never allocates one.
 - The lobby shows the re-formed campaign's difficulty as Easy; whether that is
   the save's real difficulty is unchecked.
 - **Network pause.** It waits for every player's Ready; the keyboard key that
