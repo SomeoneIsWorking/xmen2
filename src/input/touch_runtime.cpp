@@ -13,6 +13,7 @@ extern "C" {
 #include "touch_pad_publisher.h"
 #include "touch_pointer.h"
 #include "touch_prompt_buttons.h"
+#include "touch_skip_button.h"
 #include "touch_source.h"
 #include "touch_visuals.h"
 
@@ -84,6 +85,9 @@ public:
   void set_power_slots(const int icons[X2_POWER_SLOTS]);
   bool take_pointer(X2TouchPointer &out);
   std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
+  // The skip button's rectangle and whether a finger is on it, while one is
+  // drawn: touch play, a window, and a skip offered.
+  bool skip_button(X2Rect &rect, bool &held) const;
 
   bool has_window() const { return window_ != nullptr; }
   // Is there anything for the overlay document to draw -- the gameplay
@@ -108,6 +112,8 @@ private:
   bool route_to_pointer(const SDL_Event &event);
   // A finger on a rewritten action prompt: the key that prompt named.
   bool route_to_prompt(const SDL_TouchFingerEvent &finger);
+  // A finger on the cinematic's skip button: the offered skip.
+  bool route_to_skip(const SDL_TouchFingerEvent &finger);
   void publish(std::span<const ActionEvent> actions);
   void count_contact(Uint32 event_type) const;
   bool window_size(int &width, int &height) const;
@@ -116,6 +122,7 @@ private:
   PadPublisher pad_;
   PortraitPointer portraits_;
   RetailPointer pointer_;
+  SkipButton skip_;
   std::map<SDL_FingerID, Contact> contacts_;
   std::set<std::uint32_t> active_zones_;
   SDL_Window *window_ = nullptr;
@@ -241,6 +248,27 @@ bool TouchRuntime::route_to_prompt(const SDL_TouchFingerEvent &finger) {
                                 phase_of(finger.type), guest_clock_now_s());
 }
 
+bool TouchRuntime::route_to_skip(const SDL_TouchFingerEvent &finger) {
+  int width = 0;
+  int height = 0;
+  if (!window_size(width, height)) {
+    return false;
+  }
+  return skip_.press(static_cast<std::int64_t>(finger.fingerID),
+                     finger.x * static_cast<float>(width),
+                     finger.y * static_cast<float>(height),
+                     phase_of(finger.type), viewport_);
+}
+
+bool TouchRuntime::skip_button(X2Rect &rect, bool &held) const {
+  if (!window_ || !active() || !SkipButton::offered()) {
+    return false;
+  }
+  rect = SkipButton::place(viewport_);
+  held = skip_.held();
+  return true;
+}
+
 bool TouchRuntime::route_to_pointer(const SDL_Event &event) {
   X2TouchCensus &census = *x2_touch_census();
   int width = 0;
@@ -314,10 +342,11 @@ bool TouchRuntime::handle(const SDL_Event &event) {
     if (!finger) {
       return false;
     }
-    /* A prompt button first: it sits ON the retail GUI, and a contact that
-       reached the pointer as well would both press the key and click
-       whatever the words happen to be drawn over. */
-    return route_to_prompt(event.tfinger) || route_to_pointer(event);
+    /* The skip button and then a prompt button first: both sit ON the
+       retail GUI, and a contact that reached the pointer as well would both
+       press the control and click whatever is drawn beneath it. */
+    return route_to_skip(event.tfinger) || route_to_prompt(event.tfinger) ||
+           route_to_pointer(event);
   }
   /* Gameplay has begun under a held menu tap: retail's button must not be
      left down at a position nothing will press again. */
@@ -383,6 +412,7 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   contacts_.clear();
   active_zones_.clear();
   prompt_buttons().release();
+  skip_.release();
 }
 
 void TouchRuntime::set_hud_regions(const X2HudRegions *regions) {
@@ -492,6 +522,21 @@ int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
   return x2::input::runtime.visuals(out, capacity);
+}
+
+int x2_touch_runtime_skip_button(X2Rect *rect, int *held) {
+  X2Rect placed{};
+  bool pressed = false;
+  if (!x2::input::runtime.skip_button(placed, pressed)) {
+    return 0;
+  }
+  if (rect) {
+    *rect = placed;
+  }
+  if (held) {
+    *held = pressed ? 1 : 0;
+  }
+  return 1;
 }
 
 int x2_touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }

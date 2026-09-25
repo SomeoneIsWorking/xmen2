@@ -307,11 +307,19 @@ add_executable(test_thumb_stick tests/test_thumb_stick.cpp
 target_link_libraries(test_thumb_stick PRIVATE lucent::lucent)
 add_test(NAME thumb_stick COMMAND test_thumb_stick)
 
+# A physical stick's radial dead zone (the pad sample's), header-only.
+add_executable(test_pad_stick_dead_zone tests/test_pad_stick_dead_zone.c)
+target_include_directories(test_pad_stick_dead_zone PRIVATE src/native)
+target_link_libraries(test_pad_stick_dead_zone PRIVATE m)
+add_test(NAME pad_stick_dead_zone COMMAND test_pad_stick_dead_zone)
+
 # The only touch owner that reaches the pad the game reads, so it is the only
 # one whose failure is invisible to the others' tests. Needs SDL for the window
 # and the synthetic joystick, so it SKIPs (77) where neither exists.
 add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
+               src/input/touch_skip_button.cpp
+               src/input/cutscene_skip.c
                src/input/touch_pad_publisher.cpp
                src/input/touch_pointer.cpp
                src/input/touch_prompt_buttons.cpp
@@ -363,6 +371,13 @@ add_test(NAME hud_portrait_position COMMAND test_hud_portrait_position)
 add_executable(test_gameplay_control tests/test_gameplay_control.c
                src/input/gameplay_control.c)
 add_test(NAME gameplay_control COMMAND test_gameplay_control)
+
+# The cinematic skip a finger asks for: offered and taken by the cutscene
+# player, placed and pressed by the touch button.
+add_executable(test_touch_skip_button tests/test_touch_skip_button.cpp
+               src/input/touch_skip_button.cpp src/input/cutscene_skip.c)
+target_link_libraries(test_touch_skip_button PRIVATE lucent::lucent)
+add_test(NAME touch_skip_button COMMAND test_touch_skip_button)
 
 add_executable(test_macos_bundle tests/test_macos_bundle.c
                src/native/macos_bundle.c src/config/environment.c)
@@ -1668,6 +1683,12 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
+# The touch buttons' own art, authored as SVG and rasterized by SDL_image at
+# load time. tools/ui_resource_files.py lists the same files for packaging.
+foreach(x2_touch_icon punch smash use jump menu)
+    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_${x2_touch_icon}.svg"
+                   "${CMAKE_BINARY_DIR}/ui/touch_${x2_touch_icon}.svg" COPYONLY)
+endforeach()
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
@@ -1677,6 +1698,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/hud_settings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
+    src/ui/skip_document.cpp
     src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.c)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
@@ -1887,11 +1909,14 @@ set(X2_NATIVE_SOURCES
     src/native/cutscene_player_policy.c
     src/native/cutscene_control_clock.c
     src/native/cutscene_player.c
+    src/native/stick_axis_override.c
     src/native/input_probe.c
     src/native/text_put.c
     src/input/touch_controls.cpp
     src/input/thumb_stick.cpp
     src/input/touch_runtime.cpp
+    src/input/touch_skip_button.cpp
+    src/input/cutscene_skip.c
     src/input/touch_pad_publisher.cpp
     src/input/touch_pointer.cpp
     src/input/touch_prompt_buttons.cpp
@@ -1905,7 +1930,6 @@ set(X2_NATIVE_SOURCES
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
     src/native/power_slots_runtime.c
-    src/native/touch_art.c
     src/native/guest_teb.c
     src/native/hud_portrait_position.c
     src/native/hud_portrait_position_runtime.c

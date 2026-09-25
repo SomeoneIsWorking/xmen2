@@ -44,6 +44,11 @@ static X2HudSpace g_space, g_retail_space;
 static X2HudPlacement g_layout;
 /* What was drawn since the last publication, published whole each frame. */
 static X2HudRegions g_regions;
+/* Where the game's mouse overlay last drew its menu-icon row, in output
+   pixels; the relocated HUD's top row lines up with it. Negative until the
+   overlay has drawn one. The overlay draws after the HUD, so a frame lines
+   up with the row the previous frame drew. */
+static float g_menu_row_top = -1.0f;
 static unsigned long g_groups[4], g_total[4], g_sprites, g_texts, g_matrices;
 static unsigned long g_sprite_calls, g_text_calls, g_matrix_calls;
 static unsigned g_trace_mask;
@@ -93,7 +98,8 @@ static int prepare(void) {
   const X2Settings *settings = x2_settings_store();
   return prepare_space() &&
          x2_hud_layout_mobile(&settings->hud, x2_touch_runtime_active()) &&
-         x2_hud_layout_build(g_viewport, &settings->hud, &g_layout);
+         x2_hud_layout_build(g_viewport, &settings->hud, g_menu_row_top,
+                             &g_layout);
 }
 
 static void placement(unsigned group, X2HudSpace source, X2Rect target) {
@@ -249,6 +255,8 @@ static void mouse_overlay_draw(CPU *cpu) {
   g_regions.menu_icons[0] = menu_icon_region(MENU_ICON_LEFT, size);
   g_regions.menu_icons[1] = menu_icon_region(MENU_ICON_RIGHT, size);
   g_regions.menu_icon_mask = (1u << X2_HUD_MENU_ICONS) - 1u;
+  g_menu_row_top =
+      fminf(g_regions.menu_icons[0].top, g_regions.menu_icons[1].top);
 }
 
 static void portrait_draw(CPU *cpu) {

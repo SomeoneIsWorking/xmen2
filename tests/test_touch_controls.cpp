@@ -423,6 +423,24 @@ int main() {
     return 1;
   }
 
+  /* With the game's whole menu-icon row drawn, the port menu takes the next
+     place along it at the icons' size, and leaves the spot it waited in. */
+  hud.menu_icons[0] = {480, 10, 512, 42};
+  hud.menu_icon_mask = 3;
+  controls.set_hud(hud);
+  const auto beside =
+      controls.route({{{9, {576, 26}, lucent::touch::Phase::began}}});
+  controls.route({{{9, {576, 26}, lucent::touch::Phase::ended}}});
+  const auto waited = controls.route(
+      {{{10, centre(kX2SlotPortMenu), lucent::touch::Phase::began}}});
+  controls.route(
+      {{{10, centre(kX2SlotPortMenu), lucent::touch::Phase::ended}}});
+  if (!has_value(beside, x2::input::TouchAction::PortMenu, 1.0F) ||
+      has_value(waited, x2::input::TouchAction::PortMenu, 1.0F)) {
+    std::cerr << "the port menu did not join the game's menu-icon row\n";
+    return 1;
+  }
+
   const auto canceled = controls.cancel();
   /* Not a memorised count: cancel must release EVERY control still held, and
      a second cancel must then have nothing left to release. A fixed number

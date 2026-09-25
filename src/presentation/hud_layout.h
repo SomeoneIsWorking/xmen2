@@ -33,8 +33,14 @@ X2Rect x2_hud_potion_icon(X2Rect ring);
 X2Rect x2_hud_potion_count(X2Rect ring);
 
 int x2_hud_layout_mobile(const X2HudSettings *settings, int touch_enabled);
+/* The mobile placement for this viewport. `row_top` is the top edge, in
+   output pixels, of the menu-icon row the game's mouse overlay draws at the
+   top centre, or a negative value before the game has drawn it: the vitals
+   and portraits share that row's top, so the whole top band reads as one
+   line. Without it they sit at the safe area's top, inset. */
 int x2_hud_layout_build(X2LayoutViewport viewport,
-                        const X2HudSettings *settings, X2HudPlacement *out);
+                        const X2HudSettings *settings, float row_top,
+                        X2HudPlacement *out);
 X2HudSpace x2_hud_space(float aspect, float scale_x, float scale_z);
 /* Fit a retail source rectangle (left, top, width, height) into an output
    rectangle, preserving aspect. The source top is the greatest Z value. */

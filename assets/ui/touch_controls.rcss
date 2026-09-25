@@ -46,9 +46,9 @@ body {
     opacity: 1;
 }
 
-/* A button: the game's own round icon -- a power's, or the talent and HUD
-   art for attack, smash, use, jump and pause -- filling the circle it is
-   outlined by. */
+/* A button: a power's own round icon from the hero's atlas, or the port's
+   neon line art for attack, smash, use, jump and the port menu, filling the
+   circle it is outlined by. */
 .touch-zone.zone-icon {
     border-color: rgba(220, 238, 255, 80%);
     background-color: rgba(10, 18, 29, 45%);
@@ -58,15 +58,16 @@ body {
     background-color: rgba(255, 255, 255, 30%);
 }
 
-.touch-game-icon {
+.touch-icon {
     width: 92%;
     height: 92%;
     display: block;
     pointer-events: none;
 }
 
-/* A hero portrait or a potion: the game draws the art itself, under this
-   element, so the control is the same ring with nothing filling it. */
+/* A hero portrait, a potion or a menu icon: the game draws the art itself,
+   under this element, so the control is the same ring with nothing filling
+   it. The port menu beside the game's menu icons is drawn the same way. */
 .touch-zone.zone-ring {
     border-color: rgba(220, 238, 255, 80%);
     background-color: rgba(0, 0, 0, 0%);
@@ -75,17 +76,6 @@ body {
     border-color: #FFFFFF;
     background-color: rgba(255, 255, 255, 22%);
 }
-
-.touch-label {
-    color: rgba(244, 249, 255, 96%);
-    font-size: 10dp;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 2dp;
-    text-transform: uppercase;
-    letter-spacing: 0.2dp;
-}
-
 
 .touch-zone.stick.active .touch-stick-knob {
     background-color: rgba(125, 232, 255, 85%);

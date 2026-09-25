@@ -19,6 +19,7 @@
 #include "igb_textures.hpp"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
+#include "skip_document.hpp"
 #include "touch_document.hpp"
 #include "touch_runtime.h"
 #include "ui_resources.h"
@@ -29,6 +30,7 @@ namespace {
 std::unique_ptr<SystemInterface_SDL> system_interface;
 std::unique_ptr<x2::ui::IgbTextureRenderInterface> render_interface;
 Rml::Context *context;
+x2::ui::SkipDocument skip_document;
 SDL_Window *host_window;
 bool initialized;
 
@@ -95,6 +97,7 @@ bool gamepad_navigation(const SDL_Event &event) {
 }
 
 void discard_partial_initialization() {
+  skip_document.shutdown();
   x2::ui::touch_document_shutdown();
   x2::ui::settings_document_shutdown();
   context = nullptr;
@@ -158,6 +161,10 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   if (!x2::ui::touch_document_load(context)) {
     discard_partial_initialization();
     return initialize_failed("loading the touch overlay document");
+  }
+  if (!skip_document.load(context)) {
+    discard_partial_initialization();
+    return initialize_failed("loading the skip button document");
   }
   initialized = true;
   x2_log_info("RMLUI: Port Settings overlay initialized.\n");
@@ -237,8 +244,10 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
      on exactly the screens where that gate is deliberately false. */
   const bool touch_visible =
       x2_touch_runtime_has_visuals() && !settings_visible;
-  if ((!settings_visible && !touch_visible) || !device || !command_buffer ||
-      !swapchain || !window)
+  /* Its own gate: a cinematic hides the gameplay overlay. */
+  const bool skip_visible = x2::ui::SkipDocument::wanted() && !settings_visible;
+  if ((!settings_visible && !touch_visible && !skip_visible) || !device ||
+      !command_buffer || !swapchain || !window)
     return;
   if (!initialize(device, window, width, height))
     return;
@@ -255,6 +264,7 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
   render_interface->BeginFrame(command_buffer, swapchain, width, height);
   x2::ui::settings_document_update();
   x2::ui::touch_document_update();
+  skip_document.update();
   context->Update();
   context->Render();
   render_interface->EndFrame();
@@ -263,6 +273,7 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
 extern "C" void x2_ui_gpu_shutdown(void) {
   if (!initialized)
     return;
+  skip_document.shutdown();
   x2::ui::touch_document_shutdown();
   x2::ui::settings_document_shutdown();
   context = nullptr;

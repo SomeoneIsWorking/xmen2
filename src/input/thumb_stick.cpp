@@ -46,8 +46,9 @@ ThumbStick::Deflection ThumbStick::track(const lucent::touch::Event &event) {
   /* Clamp to the circle rather than to each axis on its own: a square clamp
      lets a corner reach 1.0 in BOTH axes, so the diagonals run faster than
      any direction the stick can otherwise produce. */
-  const float steered =
-      std::min((reach - kDeadZone) / (1.0F - kDeadZone), 1.0F) / reach;
+  const float travelled =
+      std::min((reach - kDeadZone) / (1.0F - kDeadZone), 1.0F);
+  const float steered = (kWalkStart + (1.0F - kWalkStart) * travelled) / reach;
   deflection_ = {x * steered, y * steered};
   return deflection_;
 }

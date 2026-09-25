@@ -92,6 +92,13 @@ int x2_touch_runtime_viewport(X2LayoutViewport *out);
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
 
+/* The cinematic's Skip button, in output pixels, while one is drawn: touch
+   play, a window, and a skip offered by the cutscene player
+   (cutscene_skip.h). Returns 0 when there is none; `held` says a finger is
+   on it. Its own document draws it, because the gameplay overlay is
+   deliberately hidden while a cinematic holds the controls. */
+int x2_touch_runtime_skip_button(X2Rect *rect, int *held);
+
 /* IS TOUCH THE INPUT THE PLAYER IS USING RIGHT NOW?
  *
  * One answer, two consumers: the on-screen pad and the mobile HUD placement.

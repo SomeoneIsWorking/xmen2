@@ -138,14 +138,25 @@ int main(void) {
         CHECK(x2_layout_slot_name(i),
               !x2_layout_rects_overlap(reach, slots[i]));
     }
-    /* Pause leaves the retail status/notification centerline clear. */
-    CHECK(name, slots[kX2SlotPortMenu].top < viewport.height * 0.5f);
-    CHECK(name,
-          slots[kX2SlotPortMenu].right <
-              (viewport.safe_left + viewport.width - viewport.safe_right) *
-                  0.5f);
-    CHECK(name, slots[kX2SlotPortMenu].left > slots[kX2SlotVitals].right ||
-                    slots[kX2SlotPortMenu].top > slots[kX2SlotVitals].bottom);
+    /* The port menu waits in the top band just right of the centreline,
+       where the game's own pause and team icons sit either side of it, and
+       at their size: not an action button's. */
+    {
+      const X2Rect menu = slots[kX2SlotPortMenu];
+      const float centre =
+          (viewport.safe_left + viewport.width - viewport.safe_right) * 0.5f;
+      CHECK(name, menu.bottom < viewport.height * 0.25f);
+      CHECK(name, menu.left > centre);
+      CHECK(name, menu.right - menu.left < slots[kX2SlotLightAttack].right -
+                                               slots[kX2SlotLightAttack].left);
+    }
+    /* Every round button is one size: the actions are not larger than the
+       powers beside them. */
+    for (i = (int)kX2SlotHeavyAttack; i <= (int)kX2SlotPower4; ++i)
+      CHECK("every action and power is one size",
+            fabsf((slots[i].right - slots[i].left) -
+                  (slots[kX2SlotLightAttack].right -
+                   slots[kX2SlotLightAttack].left)) < 0.01f);
     /* The stick and the action cluster must not be reachable by one hand
        only because they are close: they belong to opposite thumbs. */
     CHECK(name, slots[kX2SlotStick].right < slots[kX2SlotJump].left);

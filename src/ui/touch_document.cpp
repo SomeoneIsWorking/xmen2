@@ -5,7 +5,6 @@
 
 #include "igb_textures.hpp"
 #include "power_slots.h"
-#include "touch_art.h"
 #include "touch_controls.h"
 #include "touch_runtime.h"
 #include "ui_resources.h"
@@ -28,44 +27,33 @@ bool document_visible;
    of powers still redraws them. */
 std::string icon_sources;
 
-/* One cell of a retail art file. */
-struct GameIcon {
-  X2TouchArt art;
-  int cell;
-  IconGrid grid;
-};
-
-/* The game's own round icon for an action button, in the same style as the
-   power icons beside it: the talent atlas's fist, double fist, open hand and
-   wing, and the HUD atlas's screen frame for the port menu. False for an
+/* The port's own art for an action button: neon line icons in the style of
+   the game's mouse-overlay menu icons, shipped beside this document as SVG
+   (assets/ui/touch_*.svg) and rasterized by SDL_image at load. Empty for an
    action drawn by the retail HUD itself or by nothing. */
-bool game_icon(int action, GameIcon &icon) {
+const char *action_art(int action) {
   using x2::input::TouchAction;
   switch (static_cast<TouchAction>(action)) {
   case TouchAction::LightAttack:
-    icon = {X2_TOUCH_ART_TALENTS, 6, {}};
-    return true;
+    return "touch_punch.svg";
   case TouchAction::HeavyAttack:
-    icon = {X2_TOUCH_ART_TALENTS, 2, {}};
-    return true;
+    return "touch_smash.svg";
   case TouchAction::Use:
-    icon = {X2_TOUCH_ART_TALENTS, 3, {}};
-    return true;
+    return "touch_use.svg";
   case TouchAction::Jump:
-    icon = {X2_TOUCH_ART_TALENTS, 7, {}};
-    return true;
+    return "touch_jump.svg";
   case TouchAction::PortMenu:
-    icon = {X2_TOUCH_ART_HUD, 4, {kIconAtlasColumns, kHudAtlasRows}};
-    return true;
+    return "touch_menu.svg";
   default:
-    return false;
+    return "";
   }
 }
 
-/* True for a control laid over art the game draws itself -- a hero
-   portrait, a potion or a mouse-overlay menu icon -- which gets a ring and
-   no fill of its own. */
-bool over_retail_art(int action) {
+/* True for a control drawn as a bare ring: one laid over art the game draws
+   itself -- a hero portrait, a potion or a mouse-overlay menu icon -- and the
+   port menu, which sits in that menu-icon row and is drawn the way its
+   neighbours are, a glyph with no plate behind it. */
+bool ring_only(int action) {
   using x2::input::TouchAction;
   switch (static_cast<TouchAction>(action)) {
   case TouchAction::SelectHero1:
@@ -76,25 +64,10 @@ bool over_retail_art(int action) {
   case TouchAction::EnergyPack:
   case TouchAction::RetailPauseMenu:
   case TouchAction::RetailTeamMenu:
+  case TouchAction::PortMenu:
     return true;
   default:
     return false;
-  }
-}
-
-const char *action_title(int action) {
-  using x2::input::TouchAction;
-  switch (static_cast<TouchAction>(action)) {
-  case TouchAction::LightAttack:
-    return "Attack";
-  case TouchAction::HeavyAttack:
-    return "Smash";
-  case TouchAction::Use:
-    return "Use";
-  case TouchAction::Jump:
-    return "Jump";
-  default:
-    return "";
   }
 }
 
@@ -107,7 +80,7 @@ const char *visual_class(const X2TouchVisual &visual) {
   case X2_TOUCH_VISUAL_PROMPT:
     return " prompt";
   default:
-    if (over_retail_art(visual.action)) {
+    if (ring_only(visual.action)) {
       return " zone-ring";
     }
     return " zone-icon";
@@ -124,23 +97,9 @@ std::string power_source(const X2TouchVisual &visual) {
   return textures->source_for(atlas, visual.power_icon);
 }
 
-/* The game's icon for an action button; empty when it has none or the
-   art is not available. */
-std::string action_source(const X2TouchVisual &visual) {
-  IgbTextureRenderInterface *textures = igb_texture_interface();
-  GameIcon icon{};
-  if (!textures || !game_icon(visual.action, icon)) {
-    return {};
-  }
-  const char *path = x2_touch_art_path(icon.art);
-  if (!path[0]) {
-    return {};
-  }
-  return textures->source_for(path, icon.cell, icon.grid);
-}
-
 std::string icon_source(const X2TouchVisual &visual) {
-  return visual.power_icon >= 0 ? power_source(visual) : action_source(visual);
+  return visual.power_icon >= 0 ? power_source(visual)
+                                : action_art(visual.action);
 }
 
 std::string all_icon_sources() {
@@ -169,12 +128,7 @@ void rebuild() {
     } else if (visual.kind != X2_TOUCH_VISUAL_PROMPT) {
       const std::string source = icon_source(visual);
       if (!source.empty()) {
-        rml << "<img class='touch-game-icon' src='" << source << "' />";
-      } else {
-        const char *title = action_title(visual.action);
-        if (title[0]) {
-          rml << "<span class='touch-label'>" << title << "</span>";
-        }
+        rml << "<img class='touch-icon' src='" << source << "' />";
       }
     }
     rml << "</div>";

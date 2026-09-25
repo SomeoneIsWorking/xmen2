@@ -17,7 +17,9 @@
  * the same reason.
  */
 static const float kStickDiameter = 0.38F; /* of the short edge */
-static const float kButtonDiameter = 0.21F;
+/* Every round button -- the four actions and the four powers -- is this one
+   size, so no control reads as more important than its neighbours. */
+static const float kButtonDiameter = 0.165F;
 static const float kButtonGap = 0.025F;
 static const float kEdgeInset = 0.06F;
 static const float kHudVitalsWidth = 0.30F;  /* of the WIDTH */
@@ -32,9 +34,11 @@ static const float kHudGap = 0.02F;
    not evenly spread: each neighbouring pair -- and each power beside Jump or
    Use -- differs by a full diameter on one axis, so no two touch squares
    overlap, and the highest stays clear of the party portraits. */
-static const float kPowerDiameter = 0.78F; /* of an action button */
-static const float kPowerAngles[4] = {215.0F, 180.0F, 153.0F, 120.0F};
-static const float kTouchTargetMinimum = 0.075F; /* of the short edge */
+static const float kPowerAngles[4] = {208.0F, 179.0F, 146.0F, 109.0F};
+/* The game's own menu icons are 32 units of its 384-unit screen height; the
+   port menu that waits for them is that size. */
+static const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
+static const float kTouchTargetMinimum = 0.075F;   /* of the short edge */
 static const float kTouchTargetPadding = 0.012F;
 
 static const char *const kSlotNames[] = {
@@ -160,7 +164,7 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     const float extent = reach + button * 0.5F;
     const float separation = button * 0.5F;
     /* The powers' arc reaches further inboard than the diamond does. */
-    const float power = button * kPowerDiameter;
+    const float power = button;
     const float arc = reach + button * 0.5F + power * 0.5F + gap;
     const float inboard = arc + power * 0.5F;
     const float needed = inset * 2.0F + stick + separation + extent + inboard;
@@ -216,12 +220,15 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
       }
     }
 
-    /* The port menu uses the top gap between the vitals reservation and the
-     * centreline. The game's mouse overlay draws its own menu icons on the
-     * centreline, which are tapped where they are drawn. */
-    out[kX2SlotPortMenu] =
-        centred((out[kX2SlotVitals].right + (left + right) * 0.5F) * 0.5F,
-                top + s_inset + s_button * 0.375F, s_button * 0.75F);
+    /* The port menu belongs in the row of menu icons the game's mouse
+     * overlay draws either side of the top centre; the controls put it
+     * beside them once the game reports where they are. Until then it waits
+     * just right of that pair, at their size. */
+    {
+      const float icon = shortest * kMenuIconSize;
+      out[kX2SlotPortMenu] = centred((left + right) * 0.5F + icon * 1.5F + gap,
+                                     top + gap + icon * 0.5F, icon);
+    }
   }
 
   return 1;

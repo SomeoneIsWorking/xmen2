@@ -32,6 +32,7 @@
 #include "prompt_glyph_quads.h"
 #include "prompt_tokens.h"
 #include "prompt_touch_buttons.h"
+#include "stick_axis_override.h"
 #include "threads.h"
 #include "touch_hud_runtime.h"
 #include "ui_transform.h"
@@ -89,6 +90,7 @@ void x2_interrupt_reports(int killed) {
   x2_touch_runtime_report("");
   dinput_device_report();
   dinput_pad_report();
+  x2_stick_axis_report();
   x2_alchemy_controller_report();
   input_record_report();
   live_session_stop();

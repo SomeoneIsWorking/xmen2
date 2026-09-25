@@ -159,6 +159,9 @@ public:
 
 private:
   void rebuild_zones();
+  // Where the port menu goes: the next place in the game's menu-icon row,
+  // once the game has drawn that row, and `waiting` until it has.
+  X2Rect port_menu_rect(X2Rect waiting) const;
   unsigned accept_regions(std::span<const X2Rect> regions, unsigned mask,
                           std::span<X2Rect> out) const;
   std::vector<ActionEvent>

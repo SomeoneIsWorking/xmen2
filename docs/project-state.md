@@ -275,8 +275,15 @@ bulk: on 2026-09-23 Dead Zone ran unpaced at about 180 presents/s (5.6 ms)
 with a flat profile, its hottest translated block (`igTraversal::dispatch`,
 2.9%) stalled on the scene-graph node load. The native invert and x86port's
 inline FSQRT (`e216eee`, which took the function helpers from ~1.8% to ~1.0%
-of samples) then gave 203-217 presents/s on the same route. ARM64 has no host x87, so this
-Android frame has not been re-measured against that change.
+of samples) then gave 203-217 presents/s on the same route. ARM64 has no host x87. On the
+HONOR 600 (VKJ-NX9, Adreno 722), v0.2.10 spent about 45% of the game thread in
+binary128 `long double` softfloat; v0.2.11 (x86port `b2a7bed`, x87 helpers on
+raw 80-bit storage through host doubles) runs Continue gameplay at about 56
+presents/s (281 per 5 s heartbeat) against about 40 before. A 20 s simpleperf
+of that build: the game thread is CPU-bound, about one third in the x87
+helpers and their ext80<->double conversion, one third in translated code, 5%
+in the Adreno driver. The next step is emitting x87 arithmetic inline in the
+ARM64 JIT on host doubles.
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay

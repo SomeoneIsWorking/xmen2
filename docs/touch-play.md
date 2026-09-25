@@ -71,6 +71,25 @@ DirectInput code the prompt named, retained when the cap was composed and the
 binding had just been named. The control draws no art: the words retail
 already drew ARE the button, and the port's own outline would cover them.
 
+The prompts name the keyboard even with the touch pad claiming player one.
+The overlay publishes through a synthetic Xbox-family pad, and naming that
+pad drew an Xbox `B Back` on a phone -- a picture of a controller nobody
+holds, and one no finger could press, because only a keyboard cap is
+rewritten into a control. So while touch play is active, `pad_glyphs.c` does
+not treat the synthetic pad as a prompt device, and the label falls back to
+the game's own keyboard rows. Without touch play the same synthetic pad is a
+headless stand-in for a controller and keeps its glyphs.
+
+**A cinematic that holds the controls offers a Skip button** in the top-right
+corner, the phone's Escape. The cutscene player offers the skip on every input
+poll while an authored sequence holds the player's controls, and it takes a
+touch request on the same poll as the Escape edge, running the same owned
+completion (`src/input/cutscene_skip.h`). The button draws from its own
+document (`src/ui/skip_document.cpp`), because the gameplay overlay is hidden
+then. A tap after the offer has ended is refused rather than held, so it
+cannot skip the next cinematic. `/controls` lists it as `skip button` while
+it is drawn.
+
 Which draw places a prompt is decided by that draw's own glyph count, not by
 the order prompts arrive in. A frame lays every prompt out and only then
 draws them, one element per draw with its own world matrix; a glyph occupies
@@ -120,7 +139,7 @@ document uses the action meanings proven by `binding_rows.c` and
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
-| Top button beside vitals | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
+| Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
 | Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
 
@@ -148,22 +167,33 @@ The movement stick is smaller than the original overlay to leave more of the
 playfield visible. Jump is on the opposite hand from movement, so a player can
 move and jump with two thumbs. Controls remain anchored to safe edges on wide screens; one shared fit
 factor, the smaller of what the width and the height below the portraits
-allow, keeps the groups separate on narrow, short and portrait screens. The
-port menu button stays between the vitals reservation and the centreline,
-leaving the game's own menu icons on the centreline to be tapped.
+allow, keeps the groups separate on narrow, short and portrait screens. Every
+round button, action or power, is one size. The port menu button joins the
+row of menu icons the game's mouse overlay draws at the top centre: once the
+game reports where it drew them, the button takes the next place along that
+row at their size (`TouchControls::port_menu_rect`), and until then it waits
+just right of the centreline. The vitals and party portraits start at that
+row's top too (`x2_hud_layout_build`'s `row_top`), so the top band is one
+line even on a phone whose reported safe area starts lower than where the
+game draws its own icons.
 
 The layout must leave an inset for cutouts/navigation bars, support at least the
 left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen. Every
-button is drawn like a power button: a round icon from the game's own art
-filling a dark circle with a light ring. Attack, Smash, Use and Jump are the
-fist, double fist, open hand and wing of `Textures/ui/talent_icons.IGB`; the
-port menu is the screen frame of `Textures/ui/hud.IGB` (`src/native/touch_art.c`
-resolves both in the user's install). Portraits, potions and the retail menu
-icons are drawn by the game, so their controls are the same ring with no
-fill. Active controls get a bright border and filled background. The camera
+button is a round icon filling a dark circle with a light ring. A power shows
+its own icon from the hero's atlas. Attack, Smash, Use, Jump and the port menu
+show the port's own art, `assets/ui/touch_{punch,smash,use,jump,menu}.svg`:
+neon line icons in the style of the retail pause and team icons (a saturated
+outline, a soft glow and a pale core; orange for the attacks and the menu,
+blue for Use and Jump). They are drawn without filters, so SDL_image's SVG
+rasterizer renders them identically on every platform, at 384 pixels, which
+RmlUi scales down to the button: crisp at a phone's size. The game's own
+talent icons are 64-pixel cells and looked soft scaled up that far.
+Portraits, potions and the retail menu icons are drawn by the game, so their
+controls are the same ring with no fill; the port menu, in their row, is drawn
+the same way. Active controls get a bright border and filled background. The camera
 gesture stays invisible, captured zones highlight, and the persistent Input setting can hide the controls. Held contacts
 persist until finger-up/cancel rather than expiring on a test-channel timeout.
 
@@ -276,8 +306,7 @@ renderer's final frame at 2728×1264, a phone's shape, shown at half size
 from a windowed run in a private Xvfb display with an isolated profile forcing
 `input.touch_controls=2` and SDL dummy audio. The opening conversation's
 last line was continued by a tap on it. In control, the overlay shows the move
-stick, the four actions in the game's talent icons inside their own
-circles, the port menu button, and the power button with the game's own icon for the hero's power. The vitals,
+stick, the four actions inside their own circles, the port menu button, and the power button with the game's own icon for the hero's power. The vitals,
 potions and party portraits stay clear. This is native UI presentation
 evidence, not Android touchscreen or performance qualification. A headless
 `--no-window` run draws no overlay, so its captures cannot stand in for this.

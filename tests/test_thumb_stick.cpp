@@ -112,11 +112,12 @@ int main() {
     const auto tremor = stick.track(at(0.0F, 0.0F, 4.0F, 3.0F));
     close_to("travel inside the dead zone steers nothing",
              std::hypot(tremor.x, tremor.y), 0.0F);
-    /* Just outside it the stick starts from zero rather than stepping to
-       the dead zone's own size. */
+    /* Just outside it the stick starts at the game's slowest walk, not at a
+       length the game ignores. */
     const auto just_outside = stick.track(at(0.0F, 0.0F, 9.0F, 0.0F));
-    check("and just beyond it the stick starts from nothing",
-          just_outside.x > 0.0F && just_outside.x < 0.05F);
+    check("and just beyond it the stick starts at the slowest walk",
+          just_outside.x >= ThumbStick::kWalkStart &&
+              just_outside.x < ThumbStick::kWalkStart + 0.05F);
   }
 
   /* Lifting the thumb is neutral, and the ring must not go on drawing a

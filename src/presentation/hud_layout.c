@@ -8,7 +8,7 @@ int x2_hud_layout_mobile(const X2HudSettings *settings, int touch_enabled) {
 }
 
 int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
-                        X2HudPlacement *out) {
+                        float row_top, X2HudPlacement *out) {
   X2Rect validated[kX2SlotCount];
   if (!out || !x2_hud_settings_valid(s) || !x2_layout_build(v, validated))
     return 0;
@@ -16,7 +16,9 @@ int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
   float height = v.height - v.safe_top - v.safe_bottom;
   float short_edge = fminf(width, height);
   float inset = short_edge * (float)s->safe_inset_percent / 100.0f;
-  float left = v.safe_left + inset, top = v.safe_top + inset;
+  float left = v.safe_left + inset;
+  float top =
+      isfinite(row_top) && row_top >= 0.0f ? row_top : v.safe_top + inset;
   float right = v.width - v.safe_right - inset;
   float available = (right - left) * 0.4f;
   float bar_width = fminf(

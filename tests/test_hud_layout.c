@@ -46,17 +46,17 @@ static void check_hud_layout_shapes(void) {
 
   /* Rejects invalid parameters */
   CHECK(!x2_hud_layout_build((X2LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL,
-                             NULL));
+                             -1.0f, NULL));
   X2HudPlacement placement;
   CHECK(!x2_hud_layout_build((X2LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL,
-                             &placement));
+                             -1.0f, &placement));
 
   for (unsigned v = 0; v < sizeof(viewports) / sizeof(viewports[0]); ++v) {
     X2LayoutViewport vp = {viewports[v].width,      viewports[v].height,
                            viewports[v].safe_left,  viewports[v].safe_top,
                            viewports[v].safe_right, viewports[v].safe_bottom};
 
-    CHECK(x2_hud_layout_build(vp, &settings, &placement));
+    CHECK(x2_hud_layout_build(vp, &settings, -1.0f, &placement));
 
     /* Vitals in top-left */
     CHECK(placement.vitals.left >= vp.safe_left);
@@ -113,36 +113,62 @@ static void check_hud_scales(void) {
   X2HudPlacement p_base, p_scaled;
 
   x2_hud_settings_defaults(&base);
-  CHECK(x2_hud_layout_build(vp, &base, &p_base));
+  CHECK(x2_hud_layout_build(vp, &base, -1.0f, &p_base));
 
   /* Scale vitals */
   scaled = base;
   scaled.vitals_scale_percent = 150;
-  CHECK(x2_hud_layout_build(vp, &scaled, &p_scaled));
+  CHECK(x2_hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
   CHECK(p_scaled.vitals.right - p_scaled.vitals.left >
         p_base.vitals.right - p_base.vitals.left);
 
   /* Scale potions */
   scaled = base;
   scaled.potions_scale_percent = 150;
-  CHECK(x2_hud_layout_build(vp, &scaled, &p_scaled));
+  CHECK(x2_hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
   CHECK(p_scaled.potions[0].right - p_scaled.potions[0].left >
         p_base.potions[0].right - p_base.potions[0].left);
 
   /* Scale portraits */
   scaled = base;
   scaled.portraits_scale_percent = 150;
-  CHECK(x2_hud_layout_build(vp, &scaled, &p_scaled));
+  CHECK(x2_hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
   CHECK(p_scaled.portraits[0].right - p_scaled.portraits[0].left >
         p_base.portraits[0].right - p_base.portraits[0].left);
 
   /* Safe inset expands margins */
   scaled = base;
   scaled.safe_inset_percent = 5;
-  CHECK(x2_hud_layout_build(vp, &scaled, &p_scaled));
+  CHECK(x2_hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
   CHECK(p_scaled.vitals.left > p_base.vitals.left);
   CHECK(p_scaled.vitals.top > p_base.vitals.top);
   CHECK(p_scaled.portraits[3].right < p_base.portraits[3].right);
+}
+
+/* The top band is one line: once the game has drawn its menu-icon row, the
+   vitals and portraits start at that row's top even where the safe area's
+   top is lower -- a phone that reports a status-bar inset in landscape. */
+static void check_menu_row_alignment(void) {
+  X2LayoutViewport vp = {2728, 1264, 240, 130, 240, 0};
+  X2HudSettings settings;
+  X2HudPlacement waiting, aligned;
+  x2_hud_settings_defaults(&settings);
+
+  CHECK(x2_hud_layout_build(vp, &settings, -1.0f, &waiting));
+  CHECK(waiting.vitals.top > vp.safe_top);
+  CHECK(x2_hud_layout_build(vp, &settings, 20.0f, &aligned));
+  CHECK(aligned.vitals.top == 20.0f);
+  for (unsigned i = 0; i < 4; ++i)
+    CHECK(aligned.portraits[i].top == 20.0f);
+  /* The potions stay under the vitals, whichever row they follow, and
+     nothing moves sideways. */
+  CHECK(aligned.potions[0].top > aligned.vitals.bottom);
+  CHECK(aligned.potions[0].top < waiting.potions[0].top);
+  CHECK(aligned.vitals.left == waiting.vitals.left);
+  CHECK(aligned.portraits[3].right == waiting.portraits[3].right);
+  /* A non-finite row is no row. */
+  CHECK(x2_hud_layout_build(vp, &settings, NAN, &aligned));
+  CHECK(aligned.vitals.top == waiting.vitals.top);
 }
 
 static void check_transforms(void) {
@@ -183,6 +209,7 @@ int main(void) {
   check_layout_mode();
   check_hud_layout_shapes();
   check_hud_scales();
+  check_menu_row_alignment();
   check_transforms();
   printf("test_hud_layout: %d checks passed\n", g_checks);
   return 0;

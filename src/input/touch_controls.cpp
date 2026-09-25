@@ -188,6 +188,20 @@ TouchControls::set_power_icons(const std::array<int, 4> &icons) {
   return released;
 }
 
+X2Rect TouchControls::port_menu_rect(X2Rect waiting) const {
+  constexpr unsigned all_icons = (1u << X2_HUD_MENU_ICONS) - 1u;
+  if (hud_.menu_icon_mask != all_icons)
+    return waiting;
+  // One more step along the row the game spaced its own icons on, at their
+  // size, kept on screen.
+  const X2Rect &last = hud_.menu_icons[X2_HUD_MENU_ICONS - 1];
+  const float step = last.left - hud_.menu_icons[X2_HUD_MENU_ICONS - 2].left;
+  const X2Rect next{last.left + step, last.top, last.right + step, last.bottom};
+  if (step <= 0.0F || next.right > viewport_.width - viewport_.safe_area.right)
+    return waiting;
+  return next;
+}
+
 void TouchControls::rebuild_zones() {
   zones_.clear();
   X2LayoutViewport layout_viewport{
@@ -233,7 +247,8 @@ void TouchControls::rebuild_zones() {
         false);
     zones_.back().power_icon = power_icons_[i];
   }
-  add(40, slots[kX2SlotPortMenu], 20, TouchAction::PortMenu, false);
+  add(40, port_menu_rect(slots[kX2SlotPortMenu]), 20, TouchAction::PortMenu,
+      false);
 
   // Camera is an invisible relative swipe over the playfield -- everything
   // the controls and the HUD do not claim. Lowest priority, so a combat

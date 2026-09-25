@@ -3,7 +3,9 @@
 #include "dinput_pad_internal.h"
 #include "dinput_pad_report.h"
 #include "dinput_pad_virtual.h"
+#include "pad_stick_dead_zone.h"
 
+#include <math.h>
 #include <stdint.h>
 
 /* The six DirectInput axes this pad presents; see dinput_pad.h. */
@@ -185,6 +187,37 @@ int32_t dinput_pad_axis_uncounted(int pad, int axis, int32_t lo, int32_t hi) {
   return read_axis(pad, axis, lo, hi, 0);
 }
 
+#ifdef X2_WITH_SDL
+/*
+ * One component of a stick, after the stick's radial dead zone.
+ *
+ * The dead zone needs BOTH components, which is why a stick is read here as a
+ * pair and never axis by axis. The synthetic pad is exempt: the touch stick
+ * that drives it measures its own travel and has its own dead zone
+ * (src/input/thumb_stick.cpp), and a second one would swallow the start of
+ * every gentle push.
+ */
+static int read_stick_axis(int pad, SDL_Gamepad *gp, int axis) {
+  const int left = axis == DINPUT_PAD_AXIS_X || axis == DINPUT_PAD_AXIS_Y;
+  const int vertical = axis == DINPUT_PAD_AXIS_Y || axis == DINPUT_PAD_AXIS_RY;
+  const float x =
+      (float)SDL_GetGamepadAxis(gp, left ? SDL_GAMEPAD_AXIS_LEFTX
+                                         : SDL_GAMEPAD_AXIS_RIGHTX) /
+      32767.0f;
+  const float y =
+      (float)SDL_GetGamepadAxis(gp, left ? SDL_GAMEPAD_AXIS_LEFTY
+                                         : SDL_GAMEPAD_AXIS_RIGHTY) /
+      32767.0f;
+  X2PadStick stick = {x, y};
+  if (pad != dinput_pad_virtual_slot()) {
+    stick = x2_pad_stick_dead_zone(x, y,
+                                   left ? X2_PAD_LEFT_STICK_DEAD_ZONE
+                                        : X2_PAD_RIGHT_STICK_DEAD_ZONE);
+  }
+  return (int)lroundf((vertical ? stick.y : stick.x) * 32767.0f);
+}
+#endif
+
 static int32_t read_axis(int pad, int axis, int32_t lo, int32_t hi,
                          int counted) {
   /* Centred is the MIDPOINT of the range the game set, not zero: the game
@@ -198,16 +231,10 @@ static int32_t read_axis(int pad, int axis, int32_t lo, int32_t hi,
     return mid;
   switch (axis) {
   case DINPUT_PAD_AXIS_X:
-    raw = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTX);
-    break;
   case DINPUT_PAD_AXIS_Y:
-    raw = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFTY);
-    break;
   case DINPUT_PAD_AXIS_RX:
-    raw = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_RIGHTX);
-    break;
   case DINPUT_PAD_AXIS_RY:
-    raw = SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_RIGHTY);
+    raw = read_stick_axis(pad, gp, axis);
     break;
   case DINPUT_PAD_AXIS_Z: {
     /*

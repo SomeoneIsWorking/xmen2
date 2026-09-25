@@ -13,6 +13,7 @@
 #include "cutscene_player.h"
 #include "guest_memory.h"
 
+#include "../input/cutscene_skip.h"
 #include "../input/gameplay_control.h"
 #include "behaved_player.h"
 #include "conversation_player.h"
@@ -391,20 +392,24 @@ void x2_override_004d7c10(CPU *cpu) {
 
 void x2_override_004a00d0(CPU *cpu) {
   uint32_t mask = 0;
-  int down = 0;
+  int down = 0, locked, requested;
 
   x86_guest_body(cpu, "XMen2.exe", 0x004a00d0u);
   retire_released_sequence();
+  locked = g_player.active &&
+           control_state(cpu, g_player.sequence) == X2_CUTSCENE_CONTROL_LOCKED;
   /* Publish the lock to the one owner of "does the player control a
      character": this override runs every input poll, cutscene or not, so
-     the RELEASE is published as reliably as the acquisition. */
-  x2_gameplay_control_set_cutscene_locked(
-      g_player.active &&
-      control_state(cpu, g_player.sequence) == X2_CUTSCENE_CONTROL_LOCKED);
+     the RELEASE is published as reliably as the acquisition. The same fact
+     is the skip offer a touch button reads (cutscene_skip.h). */
+  x2_gameplay_control_set_cutscene_locked(locked);
+  x2_cutscene_skip_offer(locked);
   g_player.input_polls++;
   if (call_action_mask(cpu, &mask))
     down = !!(mask & (1u << CINEMATIC_SKIP_ACTION));
-  if (down && !g_player.skip_down) {
+  /* A touch request is the same edge as the key going down: one route. */
+  requested = x2_cutscene_skip_take_request();
+  if ((down && !g_player.skip_down) || requested) {
     g_player.input_edges++;
     (void)finish(cpu);
   }

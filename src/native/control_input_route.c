@@ -304,6 +304,17 @@ void control_route_controls(x2_socket_t fd) {
   /* Four different things produce an empty overlay and they send a reader to
      four different places, so the empty answer names which one it is rather
      than leaving "(none)" to mean any of them. */
+  /* A cinematic hides the gameplay controls and draws only its Skip button,
+     from its own document; the empty answer would hide it. */
+  X2Rect skip;
+  int skip_held = 0;
+  if (!count && x2_touch_runtime_skip_button(&skip, &skip_held)) {
+    control_reply_text(
+        fd, 200, "OK", "skip button %g,%g %gx%g%s\n", (double)skip.left,
+        (double)skip.top, (double)(skip.right - skip.left),
+        (double)(skip.bottom - skip.top), skip_held ? " held" : "");
+    return;
+  }
   if (!count) {
     control_reply_text(fd, 200, "OK",
                        "the overlay is drawing no control at this moment.\n"

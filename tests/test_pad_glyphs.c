@@ -45,6 +45,11 @@ int dinput8_controller_host_pad_for_slot(int controller_slot) {
 }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
 int x2_player_input_pad_is_active_source(int pad) { return pad == active_pad; }
+/* Touch play and the synthetic pad it publishes through. */
+static int touch_active = 0;
+static int virtual_slot = -1;
+int x2_touch_runtime_active(void) { return touch_active; }
+int dinput_pad_virtual_slot(void) { return virtual_slot; }
 static void guest_body_006281f0(CPU *c) {
   real_calls++;
   c->reg[kX86pEax] = 0x12345678u;
@@ -290,6 +295,35 @@ int main(int argc, char **argv) {
                       "pad selected the reordered guest slot\n");
       return 1;
     }
+    /* THE TOUCH PAD IS NOT A CONTROLLER IN HAND. In touch play the overlay
+       publishes through the synthetic pad; naming it drew an Xbox "B Back"
+       on a phone. The same pad without touch play is a stand-in controller
+       and keeps its glyph -- both answers, on the one host pad. */
+    active_pad = 1;
+    virtual_slot = 1;
+    touch_active = 1;
+    if (!reader_says(4u, &kind, &code, 1) || kind != 1u || code != 0x1cu ||
+        !check_call(3, 0x15, 0, 1)) {
+      fprintf(stderr, "pad glyph label: touch play named its own synthetic "
+                      "pad instead of the keyboard row\n");
+      return 1;
+    }
+    touch_active = 0;
+    if (!reader_says(4u, &kind, &code, 0) || kind != 3u || code != 0x15u ||
+        !check_call(3, 0x15, 0x80, 0)) {
+      fprintf(stderr, "pad glyph label: the synthetic pad lost its glyph "
+                      "with touch play off\n");
+      return 1;
+    }
+    touch_active = 1;
+    virtual_slot = 0;
+    if (!reader_says(4u, &kind, &code, 0) || kind != 3u || code != 0x15u) {
+      fprintf(stderr, "pad glyph label: touch play hid a REAL controller's "
+                      "prompt\n");
+      return 1;
+    }
+    touch_active = 0;
+    virtual_slot = -1;
     put_binding(7u, 2u, 1u, 0x1cu); /* keyboard only */
     if (!reader_says(7u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
       fprintf(stderr,

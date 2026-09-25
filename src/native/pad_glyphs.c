@@ -38,8 +38,10 @@
  */
 #include "pad_glyphs.h"
 
+#include "../input/touch_runtime.h"
 #include "dinput8_controller_slots.h"
 #include "dinput_pad.h"
+#include "dinput_pad_virtual.h"
 #include "pad_glyph_codes.h"
 #include "player_input.h"
 #include "prompt_glyphs.h"
@@ -151,6 +153,24 @@ static int host_pad_for_kind(uint32_t kind) {
   return dinput8_controller_host_pad_for_slot((int)kind - 3);
 }
 
+/*
+ * IS THIS PAD SOMETHING THE PLAYER IS HOLDING?
+ *
+ * In touch play the on-screen controls publish through the synthetic pad, an
+ * Xbox-family device as far as the game can tell, and it claims player one.
+ * Named as a pad, every prompt then drew an Xbox "B Back" on a phone: a
+ * picture of a controller nobody has, and one no finger could press, because
+ * only a KEYBOARD label is rewritten into a touch control
+ * (prompt_touch_buttons.c). So while touch play is active that pad is not a
+ * prompt device: labels fall back to the game's own keyboard rows, which touch
+ * turns into pressable words. Without touch play the same synthetic pad is a
+ * headless stand-in for a real controller and keeps its glyphs.
+ */
+static int pad_is_held(int host_pad) {
+  return !(x2_touch_runtime_active() && host_pad >= 0 &&
+           host_pad == dinput_pad_virtual_slot());
+}
+
 static uint32_t g_named_kind, g_named_code;
 static int g_named;
 
@@ -174,8 +194,8 @@ void x2_override_006281f0(CPU *C) {
   g_named = 1;
   glyph = pad_glyph_code(code);
   host_pad = host_pad_for_kind(kind);
-  if (!x2_prompt_glyphs_enabled() || host_pad < 0 || !glyph ||
-      !x2_prompt_glyph_available(glyph) ||
+  if (!x2_prompt_glyphs_enabled() || host_pad < 0 || !pad_is_held(host_pad) ||
+      !glyph || !x2_prompt_glyph_available(glyph) ||
       !dinput_pad_uses_xbox_glyphs(host_pad) || !(out = name_buffer())) {
     g_deferred++;
     x86_guest_body(C, "XMen2.exe", 0x006281f0u);
@@ -210,7 +230,7 @@ static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
     if (!input_bindings_read(object, row, slot, &k, &c))
       continue;
     host_pad = host_pad_for_kind(k);
-    if (host_pad < 0)
+    if (host_pad < 0 || !pad_is_held(host_pad))
       continue;
     if (!x2_player_input_pad_is_active_source(host_pad))
       continue;
