@@ -1,10 +1,12 @@
 #include "autosave_runtime.h"
 
+#include "../input/gameplay_control.h"
 #include "autosave_format.h"
 #include "autosave_policy.h"
 #include "autosave_storage.h"
 #include "boot_blackout.h"
 #include "campaign_snapshot.h"
+#include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "lan_session.h"
@@ -39,6 +41,7 @@ static X2AutosavePolicy g_policy;
 static uint32_t g_exe;
 static X2CampaignSnapshot *g_snapshot;
 static uint32_t g_last_manager_mode;
+static X2GameplayControl g_last_control;
 static AutosaveLastResult g_last_result;
 static int g_last_errno;
 static int g_initialized;
@@ -119,7 +122,10 @@ void x2_autosave_runtime_poll(CPU *cpu) {
   if (!cpu || !exe_base())
     return;
   g_last_manager_mode = RD32(g_exe + MANAGER_RVA + MANAGER_MODE);
-  result = x2_autosave_policy_poll(&g_policy, g_last_manager_mode, &checkpoint);
+  g_last_control = x2_gameplay_control_state(guest_clock_now_s());
+  result =
+      x2_autosave_policy_poll(&g_policy, g_last_manager_mode,
+                              g_last_control == kX2ControlActive, &checkpoint);
   if (result != X2_AUTOSAVE_POLL_FIRE)
     return;
   succeeded = publish_snapshot(cpu);
@@ -139,12 +145,14 @@ size_t x2_autosave_runtime_report(char *out, size_t capacity) {
       out, capacity,
       "autosave map-success=%" PRIu64 "/%" PRIu64 " scheduled=%" PRIu64
       " cancelled-menu=%" PRIu64
-      " idle-polls=%u manager-mode=%u deferred=%" PRIu64 " attempts=%" PRIu64
-      "/%" PRIu64 " success=%" PRIu64 "/%" PRIu64 " fail=%" PRIu64 "/%" PRIu64
+      " idle-polls=%u manager-mode=%u control=%s deferred=%" PRIu64
+      " control-deferred=%" PRIu64 " attempts=%" PRIu64 "/%" PRIu64
+      " success=%" PRIu64 "/%" PRIu64 " fail=%" PRIu64 "/%" PRIu64
       " pending=%d active=%d last=%s errno=%d\n",
       g_policy.successful_map_returns, g_policy.map_returns, g_policy.scheduled,
       g_policy.cancelled_menu, g_policy.idle_polls, g_last_manager_mode,
-      g_policy.deferred_polls, g_policy.attempts, g_policy.scheduled,
+      x2_gameplay_control_name((int)g_last_control), g_policy.deferred_polls,
+      g_policy.control_deferred_polls, g_policy.attempts, g_policy.scheduled,
       g_policy.successes, g_policy.attempts, g_policy.failures,
       g_policy.attempts, g_policy.has_pending, g_policy.has_active,
       RESULT[g_last_result], g_last_errno);

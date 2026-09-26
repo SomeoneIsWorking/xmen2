@@ -2,7 +2,7 @@
 
 /* The title policy owns an asynchronous request -> write -> completion state
    machine. Its verified checkpoint is a successful retail map load, cancelled
-   by main-menu Show. */
+   by main-menu Show, taken once the player controls a character. */
 
 void x2_autosave_policy_init(X2AutosavePolicy *policy) {
   if (policy)
@@ -33,6 +33,7 @@ void x2_autosave_policy_menu_show(X2AutosavePolicy *policy) {
 
 X2AutosavePollResult x2_autosave_policy_poll(X2AutosavePolicy *policy,
                                              uint32_t manager_mode,
+                                             int player_controls,
                                              X2AutosaveCheckpoint *checkpoint) {
   if (!policy)
     return X2_AUTOSAVE_POLL_IDLE;
@@ -43,6 +44,12 @@ X2AutosavePollResult x2_autosave_policy_poll(X2AutosavePolicy *policy,
   if (manager_mode != 0u) {
     policy->idle_polls = 0;
     policy->deferred_polls++;
+    return X2_AUTOSAVE_POLL_DEFERRED;
+  }
+  if (!player_controls) {
+    policy->idle_polls = 0;
+    policy->deferred_polls++;
+    policy->control_deferred_polls++;
     return X2_AUTOSAVE_POLL_DEFERRED;
   }
   policy->idle_polls++;

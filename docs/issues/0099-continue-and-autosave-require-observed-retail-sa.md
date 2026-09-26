@@ -75,7 +75,9 @@ implemented policy therefore depends only on observed retail transitions. A
 successful retained 0x00484ce0 map return queues MAP_LOAD; retained
 `CMenuMain::Show` cancels the pending request so the initial main-menu map can
 never write. A busy save manager resets the debounce, and the request fires
-after 64 consecutive guest input polls with manager mode zero. Each checkpoint
+after 64 consecutive guest input polls with manager mode zero and the player
+controlling a character (#191: an opening script can hold the party out of
+sight under a control lock). Each checkpoint
 is attempted once; a later successful map return is required after failure.
 
 `src/native/autosave_runtime.c` calls the exact retail serializer owner from

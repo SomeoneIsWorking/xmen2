@@ -849,7 +849,8 @@ engine while preserving its gameplay source.
 ### S015 — transactional autosave and Continue: verified
 
 Observed capability: successful map-load transactions publish an exact retail
-autosave leaf without modifying the manual slot, and persisted Boot Continue
+autosave leaf, once the player controls a character, without modifying the
+manual slot, and persisted Boot Continue
 uses the retail mode-3 save-manager/deserializer chain to restore that map and
 party without intro movies, the menu map, or user input. The retail Load Game
 screen also exposes that autosave after all ten manual slots, virtualizing its
@@ -860,7 +861,9 @@ Evidence: C246 records exact autosave size, unchanged manual-slot size/mtime,
 and a second-run retail load; C261 records the 13/13 direct-Continue live case,
 including the saved map, resolved player actor, active tutorial conversation,
 zero movie opens, and no menu-map open. Issues #99, #113, and #119 preserve the
-resolved save-authority, conversation, and first-cutscene boundary defects.
+resolved save-authority, conversation, and first-cutscene boundary defects;
+#191 records the Dead Zone autosave taken inside its opening script, whose
+Continue restored an invisible party, and the live fixed-build Continue.
 Issue #131 records the binary-grounded 11-to-10 Load Game projection and its
 windowless full-capacity live proof.
 
