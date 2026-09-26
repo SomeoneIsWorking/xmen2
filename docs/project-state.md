@@ -282,8 +282,16 @@ raw 80-bit storage through host doubles) runs Continue gameplay at about 56
 presents/s (281 per 5 s heartbeat) against about 40 before. A 20 s simpleperf
 of that build: the game thread is CPU-bound, about one third in the x87
 helpers and their ext80<->double conversion, one third in translated code, 5%
-in the Adreno driver. The next step is emitting x87 arithmetic inline in the
-ARM64 JIT on host doubles.
+in the Adreno driver. x86port `ce89082` (in v0.2.13) emits x87 arithmetic
+inline in the ARM64 JIT on host doubles: 272 -> 55 ns per operation under
+emulation, not yet measured on the phone. A census of the ARM64 translator
+over the title's 16,451 functions (x86port `tools/jit_coverage.c` under
+`qemu-aarch64`, corpus from `tools/jit_corpus.py`) then found it calling
+`x86p_cond` for 2,673 conditions where x64 called it for 428, 2,241 of them
+JP/JNP after MSVC's `fnstsw ax; test ah, imm` float compare, and still calling
+`x86p_alu` for every SHL/SHR/SAR. x86port `3013ffb` lowers parity and the
+shifts inline; the census now matches x64's 428. Not yet measured on the
+phone either.
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
