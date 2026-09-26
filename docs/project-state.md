@@ -279,7 +279,10 @@ of samples) then gave 203-217 presents/s on the same route. ARM64 has no host x8
 HONOR 600 (VKJ-NX9, Adreno 722), v0.2.10 spent about 45% of the game thread in
 binary128 `long double` softfloat; v0.2.11 (x86port `b2a7bed`, x87 helpers on
 raw 80-bit storage through host doubles) runs Continue gameplay at about 56
-presents/s (281 per 5 s heartbeat) against about 40 before. A 20 s simpleperf
+presents/s (281 per 5 s heartbeat) against about 40 before. Caveat (#191):
+on 2026-09-26 the phone's Continue restored a Dead Zone autosave taken inside
+the level's opening script, with the party undrawn; phone rates measured on
+that Continue scene exclude hero draws and need re-measuring from a fixed save. A 20 s simpleperf
 of that build: the game thread is CPU-bound, about one third in the x87
 helpers and their ext80<->double conversion, one third in translated code, 5%
 in the Adreno driver. x86port `ce89082` (in v0.2.13) emits x87 arithmetic
