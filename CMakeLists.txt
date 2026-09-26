@@ -1175,7 +1175,7 @@ add_test(NAME override_leaf COMMAND test_override_leaf)
 
 add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
                src/native/x86_import_fastpath.c src/native/guest_memory.c src/native/guest_memory_arena.c
-               src/native/guest_clock.c tests/native_stubs.c)
+               src/native/guest_clock.c src/runtime/x86_abi/x87crt.c tests/native_stubs.c)
 target_include_directories(test_x86_import_fastpath PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_x86_import_fastpath PRIVATE x86port_runtime lucent::lucent)

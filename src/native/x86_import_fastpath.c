@@ -14,6 +14,7 @@
 #include "x86_thunk_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "x87crt.h"
 
 #include "cpu.h"
 #include "x87.h"
@@ -42,13 +43,8 @@ void x86_import_fastpath_enable(int enable) {
 int x86_import_fastpath_is_enabled(void) { return s_import_fastpath_enabled; }
 
 static int import_ftol(struct X86pCpu *cpu) {
-  long double val = 0.0L;
-  x86p_x87_pop(&cpu->x87, &val);
-  const int64_t result = (int64_t)val;
-  cpu->reg[kX86pEax] = (uint32_t)(uint64_t)result;
-  cpu->reg[kX86pEdx] = (uint32_t)((uint64_t)result >> 32);
   const uint32_t ret = RD32(cpu->reg[kX86pEsp]);
-  cpu->reg[kX86pEsp] += 4u;
+  x87_crt_ftol(cpu);
   cpu->eip = ret;
   return 1;
 }

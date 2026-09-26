@@ -13,8 +13,7 @@
  * address). The in-body correction exists only to reach that result without
  * touching the x87 control word, where _ftol set RC=truncate first. So this
  * shares x87_crt_ftol, the implementation already used for the imported
- * MSVCR71!_ftol. Out-of-range inputs (|v| >= 2^63) are C-undefined here, the
- * same limitation x87_crt_ftol carries; the title's conversions are bounded.
+ * MSVCR71!_ftol, including its integer indefinite for out-of-range input.
  *
  * Every call is a direct CALL from the exe, so it is also a leaf
  * (override_leaf.h): it never needs the guest body, and an empty ST(0) is the

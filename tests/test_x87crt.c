@@ -40,6 +40,26 @@ static int positive(void) {
     return 1;
   }
   puts("x87crt positive: ftol consumed 1 operand and returned EDX:EAX");
+  /* The guest's control word rounds to nearest; _ftol still truncates. */
+  c.x87.control = (uint16_t)(c.x87.control & ~X86P_X87_RC_MASK);
+  x87_crt_push(&c, 2.75L);
+  x87_crt_ftol(&c);
+  if (c.reg[kX86pEax] != 2u || c.reg[kX86pEdx] != 0u) {
+    fprintf(stderr,
+            "x87crt positive: ftol(2.75) under RC=nearest gave %08x:%08x\n",
+            c.reg[kX86pEdx], c.reg[kX86pEax]);
+    return 1;
+  }
+  x87_crt_push(&c, 0x1p63L);
+  x87_crt_ftol(&c);
+  if (c.reg[kX86pEax] != 0u || c.reg[kX86pEdx] != 0x80000000u) {
+    fprintf(stderr,
+            "x87crt positive: ftol(2^63) gave %08x:%08x, not the indefinite\n",
+            c.reg[kX86pEdx], c.reg[kX86pEax]);
+    return 1;
+  }
+  puts("x87crt positive: ftol truncates under any RC and stores the indefinite "
+       "out of range");
   return 0;
 }
 

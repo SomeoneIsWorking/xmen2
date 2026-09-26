@@ -32,6 +32,11 @@ static uint32_t s_hit_count = 0;
 
 void winmm_timers_pump(void) {}
 
+void x87_fault(const char *what) {
+  fprintf(stderr, "test_x86_import_fastpath: x87_fault(%s)\n", what);
+  exit(1);
+}
+
 /* The pump the fast path now calls, with the instant it has already read.
    Stubbed because the multimedia timers are not what this file is about; the
    clock it reads is NOT stubbed -- guest_clock.c is linked in, so QPC here

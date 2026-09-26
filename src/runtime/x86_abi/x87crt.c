@@ -55,7 +55,14 @@ void x87_crt_ciasin(CPU *C) {
 }
 
 void x87_crt_ftol(CPU *C) {
-  int64_t result = (int64_t)x87_crt_pop(C);
+  /* _ftol is FISTP m64 under RC=truncate; a value that does not fit stores
+     the integer indefinite, as the hardware does. */
+  X86pX87Reg value;
+  int64_t result;
+  if (!x86p_x87_pop_raw(&C->x87, &value))
+    x87_fault("x87 stack underflow entering _ftol");
+  if (!x86p_x87_reg_to_int(X86P_X87_RC_TRUNCATE, value, 8, &result))
+    result = INT64_MIN;
   C->reg[kX86pEax] = (uint32_t)(uint64_t)result;
   C->reg[kX86pEdx] = (uint32_t)((uint64_t)result >> 32);
   C->reg[kX86pEsp] += 4u;
