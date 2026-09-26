@@ -73,8 +73,11 @@ same virtual pad as the gameplay controls, so the footers name that pad's
 buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
 drawn from. A finger that begins on a pad button holds it until it lifts; one
 that begins anywhere else is the retail pointer for its whole life, so a drag
-across the pad never presses it. A held button is let go when gameplay or a
-cinematic takes the screen, even if the finger never moves.
+across the pad never presses it. A held button is let go when gameplay takes
+the screen, even if the finger never moves. Conversations and cinematics
+draw the pad too, beside their Skip button: in the tutorial's opening
+conversation ten idle seconds advanced nothing and three taps on A ended it
+and started the next.
 
 The port once made the footer's words themselves tappable instead, pairing
 each prompt with the draw that placed it by glyph count. The World Map's level

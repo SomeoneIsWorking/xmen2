@@ -986,7 +986,10 @@ above each cluster, publishing through the same virtual pad as the gameplay
 controls. The retail menus are navigated with a controller exactly as on the
 Xbox, and the footers name that pad's buttons, so the prompts and the buttons
 beside them agree. A finger that begins off the pad is still the retail
-pointer. Measured by `tools/live_case.py menu-pad`, 12 of 12 on 2026-09-26:
+pointer. Conversations draw it beside their Skip button, and A advances
+their lines: in the tutorial's opening conversation ten idle seconds advanced
+nothing and three taps on A ended it. Measured by `tools/live_case.py
+menu-pad`, 12 of 12 on 2026-09-26:
 the main menu draws all ten buttons and none of the gameplay controls, five
 d-pad Downs and an A open Options, and B returns to the main menu, judged on
 the menu column's static art (11.5 from the main menu against 49.3 from

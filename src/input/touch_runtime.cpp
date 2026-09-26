@@ -99,8 +99,9 @@ public:
   // can look at until it is on a phone is a layout that ships wrong.
   static bool active();
   bool overlay_visible() const;
-  // The menu pad: touch play and a window, on a screen that is not gameplay
-  // and is not a cinematic offering its own Skip.
+  // The menu pad: touch play and a window, on any screen that is not
+  // gameplay -- a conversation's choices and a cinematic's lines are
+  // answered with the pad too, beside the cinematic's own Skip button.
   bool menu_visible() const;
 
 private:
@@ -162,8 +163,7 @@ bool TouchRuntime::overlay_visible() const {
 
 bool TouchRuntime::menu_visible() const {
   return window_ != nullptr && active() &&
-         !x2_gameplay_control_active(guest_clock_now_s()) &&
-         !SkipButton::offered();
+         !x2_gameplay_control_active(guest_clock_now_s());
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {

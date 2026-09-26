@@ -37,6 +37,7 @@
 #include <lucent/cvar.hpp>
 
 extern "C" {
+#include "cutscene_skip.h"
 #include "dinput_pad.h"
 #include "dinput_pad_virtual.h"
 #include "directinput_controller_sample.h"
@@ -661,6 +662,25 @@ int main() {
     send_finger(SDL_EVENT_FINGER_UP, 21, a_x, a_y, width, height);
     while (x2_touch_runtime_take_pointer(&drained)) {
     }
+
+    /* A conversation or cinematic offers Skip; its choices are answered with
+       the pad, so both are drawn, and neither on the other. */
+    x2_cutscene_skip_offer(1);
+    X2Rect skip{};
+    int skip_held = 0;
+    const bool skip_drawn = x2_touch_runtime_skip_button(&skip, &skip_held);
+    const auto beside = visuals();
+    bool overlap = false;
+    for (const auto &visual : beside) {
+      overlap =
+          overlap || (visual.left < skip.right && skip.left < visual.right &&
+                      visual.top < skip.bottom && skip.top < visual.bottom);
+    }
+    check(skip_drawn && find_action(beside, TouchAction::MenuA) != nullptr &&
+              !overlap,
+          "a cinematic draws its Skip and the menu pad, apart",
+          std::to_string(beside.size()) + " pad button(s) beside Skip");
+    x2_cutscene_skip_offer(0);
 
     /* A held pad button is let go when gameplay takes the screen, even if
        the finger never moves again. */
