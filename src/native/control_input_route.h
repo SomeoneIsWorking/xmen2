@@ -11,11 +11,6 @@ void control_route_pad(x2_socket_t fd, const char *query);
 void control_route_touch(x2_socket_t fd, const char *query);
 void control_route_assignment(x2_socket_t fd, const char *query);
 
-/* READ-only: the action prompts touch play has made pressable right now, and
-   where. A run driven from outside otherwise has to guess a coordinate before
-   it starts, and a guess that drifts onto the wrong screen still reports a
-   tap. */
-void control_route_prompts(x2_socket_t fd);
 void control_route_controls(x2_socket_t fd);
 
 #endif

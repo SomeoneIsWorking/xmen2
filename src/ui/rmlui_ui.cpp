@@ -240,8 +240,8 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
                 "overlay.\n");
   }
   const bool settings_visible = x2_settings_overlay_visible();
-  /* Not the gameplay overlay's own gate: a rewritten action prompt is drawn
-     on exactly the screens where that gate is deliberately false. */
+  /* Not the gameplay overlay's own gate: the menu pad is drawn on exactly
+     the screens where that gate is false. */
   const bool touch_visible =
       x2_touch_runtime_has_visuals() && !settings_visible;
   /* Its own gate: a cinematic hides the gameplay overlay. */

@@ -167,6 +167,64 @@ int main(void) {
             slots[i].right - slots[i].left >= 48.0f);
   }
 
+  /* The menu pad, over the same sweep: inside the safe region, no button on
+     another, the d-pad under the left thumb and the face buttons under the
+     right in the Xbox arrangement, each shoulder above its own cluster, and
+     every button at least a thumb wide. */
+  for (v = 0; v < sizeof kViewports / sizeof kViewports[0]; v++) {
+    X2LayoutViewport viewport = {
+        kViewports[v].width,      kViewports[v].height,
+        kViewports[v].safe_left,  kViewports[v].safe_top,
+        kViewports[v].safe_right, kViewports[v].safe_bottom};
+    X2Rect menu[kX2MenuSlotCount];
+    const char *name = kViewports[v].name;
+    const float middle =
+        (viewport.safe_left + viewport.width - viewport.safe_right) * 0.5f;
+    int i, j;
+
+    CHECK(name, x2_layout_build_menu(viewport, menu));
+    for (i = 0; i < (int)kX2MenuSlotCount; i++) {
+      const X2Rect r = menu[i];
+      CHECK(x2_menu_slot_name(i), r.left >= viewport.safe_left - 0.5f);
+      CHECK(x2_menu_slot_name(i), r.top >= viewport.safe_top - 0.5f);
+      CHECK(x2_menu_slot_name(i),
+            r.right <= viewport.width - viewport.safe_right + 0.5f);
+      CHECK(x2_menu_slot_name(i),
+            r.bottom <= viewport.height - viewport.safe_bottom + 0.5f);
+      CHECK(x2_menu_slot_name(i), r.right - r.left >= 48.0f);
+      for (j = i + 1; j < (int)kX2MenuSlotCount; j++)
+        CHECK(name, !x2_layout_rects_overlap(menu[i], menu[j]));
+    }
+    for (i = (int)kX2MenuDpadUp; i <= (int)kX2MenuDpadRight; i++)
+      CHECK(x2_menu_slot_name(i), menu[i].right <= middle);
+    for (i = (int)kX2MenuA; i <= (int)kX2MenuY; i++)
+      CHECK(x2_menu_slot_name(i), menu[i].left >= middle);
+    CHECK("up above down",
+          menu[kX2MenuDpadUp].bottom <= menu[kX2MenuDpadDown].top);
+    CHECK("left of right",
+          menu[kX2MenuDpadLeft].right <= menu[kX2MenuDpadRight].left);
+    CHECK("A below Y", menu[kX2MenuY].bottom <= menu[kX2MenuA].top);
+    CHECK("X left of B", menu[kX2MenuX].right <= menu[kX2MenuB].left);
+    CHECK("left shoulder above the d-pad",
+          menu[kX2MenuLeftShoulder].bottom <= menu[kX2MenuDpadUp].top &&
+              menu[kX2MenuLeftShoulder].right <= middle);
+    CHECK("right shoulder above the face buttons",
+          menu[kX2MenuRightShoulder].bottom <= menu[kX2MenuY].top &&
+              menu[kX2MenuRightShoulder].left >= middle);
+  }
+  {
+    X2Rect menu[kX2MenuSlotCount];
+    X2LayoutViewport inverted = {100.0f, 100.0f, 80.0f, 0, 80.0f, 0};
+    X2LayoutViewport ok = {800.0f, 600.0f, 0, 0, 0, 0};
+    int i;
+    CHECK("menu pad: no usable area", !x2_layout_build_menu(inverted, menu));
+    CHECK("menu pad: null destination", !x2_layout_build_menu(ok, NULL));
+    for (i = 0; i < (int)kX2MenuSlotCount; i++)
+      CHECK("menu slot name", x2_menu_slot_name(i)[0] != '\0');
+    CHECK("menu slot out of range",
+          x2_menu_slot_name((int)kX2MenuSlotCount)[0] != '\0');
+  }
+
   /* Refusals. A viewport with no usable area has no layout, and saying so is
      different from returning eight empty rectangles. */
   {
@@ -179,34 +237,6 @@ int main(void) {
     CHECK("safe area wider than screen", !x2_layout_build(inverted, slots));
     CHECK("non-finite dimension", !x2_layout_build(nan_size, slots));
     CHECK("null destination", !x2_layout_build(ok, NULL));
-  }
-
-  /* A prompt is one line of retail text; the control around it has to be
-     something a thumb can hit, and the same rectangle has to be the one that
-     gets drawn. The negative is a viewport with no layout at all: it must
-     hand the rectangle back untouched rather than invent a control. */
-  {
-    const X2LayoutViewport phone = {2340.0f, 1080.0f, 0, 0, 0, 0};
-    const X2Rect words = {820.0f, 1000.0f, 900.0f, 1014.0f};
-    const X2Rect target = x2_layout_touch_target(phone, words);
-    const X2Rect wide = {100.0f, 500.0f, 900.0f, 560.0f};
-    const X2Rect kept = x2_layout_touch_target(phone, wide);
-    X2LayoutViewport broken = {NAN, 100.0f, 0, 0, 0, 0};
-    X2Rect unchanged = x2_layout_touch_target(broken, words);
-
-    CHECK("a prompt control is at least a thumb tall",
-          target.bottom - target.top >= 1080.0f * 0.07f);
-    CHECK("it is wider than the words it encloses",
-          target.left < words.left && target.right > words.right);
-    CHECK("and stays centred on them",
-          fabsf((target.top + target.bottom) * 0.5f -
-                (words.top + words.bottom) * 0.5f) < 0.01f);
-    CHECK("a rectangle already tall enough is not shrunk to the minimum",
-          kept.bottom - kept.top >= wide.bottom - wide.top);
-    CHECK("no viewport, no control invented",
-          unchanged.left == words.left && unchanged.top == words.top &&
-              unchanged.right == words.right &&
-              unchanged.bottom == words.bottom);
   }
 
   /* The names are the denominator of every exhaustive check above. */

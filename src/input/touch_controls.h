@@ -52,7 +52,22 @@ enum class TouchAction : std::uint8_t {
   RetailTeamMenu,
   // The port's own RmlUi menu (F2 on a keyboard).
   PortMenu,
+  // The menu pad (MenuControls): the controller the retail menus are
+  // navigated with, drawn on every screen that is not gameplay.
+  MenuUp,
+  MenuDown,
+  MenuLeft,
+  MenuRight,
+  MenuA,
+  MenuB,
+  MenuX,
+  MenuY,
+  MenuLeftShoulder,
+  MenuRightShoulder,
 };
+
+// The action's name, for traces and the control channel; never null.
+const char *touch_action_name(TouchAction action);
 
 // True for an action that is a click on something the retail GUI drew, which
 // its own mouse handler acts on, rather than a pad button.

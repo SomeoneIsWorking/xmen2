@@ -17,7 +17,6 @@
 
 #include "gpu_prompt_glyphs.h"
 #include "prompt_glyph_quads.h"
-#include "prompt_touch_buttons.h"
 #include "ui_transform.h"
 #include "x86rt_native.h"
 
@@ -52,22 +51,6 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   g_nonindexed_depth--;
 }
 
-/* The touch prompts' view of this finalizer's transform. */
-static int batch_transform(void *owner, float mvp[16]) {
-  return x2_ui_transform_current(*(const uint32_t *)owner, mvp);
-}
-
-/* The quads this draw submits, taken out of the store. */
-static unsigned take_drawn(uint32_t context, struct X2PromptQuad *quads) {
-  uint32_t vertex_array;
-  if (!guest_memory_try_read32(context + 0x1f0u, &vertex_array)) {
-    g_unreadable_array++;
-    return 0;
-  }
-  return x2_prompt_quads_take_range(vertex_array, g_nonindexed_start,
-                                    g_nonindexed_primitives + 2u, quads);
-}
-
 /*
  * updateContextState is the only evidenced point where a batch has a
  * finalized transform. A text pass lays all of its strings out before it
@@ -81,6 +64,7 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
+  uint32_t vertex_array;
   unsigned count = 0;
 
   x86_guest_body(C, "libIGGfx.dll", 0x10034e60u);
@@ -88,18 +72,23 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   if (!g_nonindexed_depth)
     return;
   g_nested_finalizers++;
-  if (g_nonindexed_readable)
-    count = take_drawn(context, quads);
-  if (count) {
-    g_with_prompts++;
-    if (!x2_ui_transform_current(context, mvp))
-      g_transform_refused += count;
-    else if (!gpu_prompt_glyphs_render(quads, count, mvp))
-      g_gpu_refused += count;
-    else
-      g_drawn += count;
+  if (!g_nonindexed_readable)
+    return;
+  if (!guest_memory_try_read32(context + 0x1f0u, &vertex_array)) {
+    g_unreadable_array++;
+    return;
   }
-  x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
+  count = x2_prompt_quads_take_range(vertex_array, g_nonindexed_start,
+                                     g_nonindexed_primitives + 2u, quads);
+  if (!count)
+    return;
+  g_with_prompts++;
+  if (!x2_ui_transform_current(context, mvp))
+    g_transform_refused += count;
+  else if (!gpu_prompt_glyphs_render(quads, count, mvp))
+    g_gpu_refused += count;
+  else
+    g_drawn += count;
 }
 
 __attribute__((constructor)) static void x2_prompt_glyph_batch_register(void) {

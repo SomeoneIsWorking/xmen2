@@ -51,13 +51,10 @@ int x2_touch_runtime_take_menu_request(void);
  * including cancellation when no SDL event is pending. */
 int x2_touch_runtime_take_pointer(X2TouchPointer *pointer);
 
-/* What the overlay is being asked to draw. A prompt is the retail UI's own
-   footer action with its key taken off: the game still draws the words, so
-   the port draws the control around them and nothing inside. */
+/* What the overlay is being asked to draw. */
 typedef enum {
   X2_TOUCH_VISUAL_BUTTON = 0,
-  X2_TOUCH_VISUAL_STICK,
-  X2_TOUCH_VISUAL_PROMPT
+  X2_TOUCH_VISUAL_STICK
 } X2TouchVisualKind;
 
 typedef struct X2TouchVisual {
@@ -91,6 +88,9 @@ typedef struct X2TouchVisual {
 int x2_touch_runtime_viewport(X2LayoutViewport *out);
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
+
+/* The name of a visual's `action`, for the control channel's listing. */
+const char *x2_touch_runtime_action_name(int action);
 
 /* The cinematic's Skip button, in output pixels, while one is drawn: touch
    play, a window, and a skip offered by the cutscene player
@@ -133,9 +133,9 @@ void x2_touch_runtime_note_source(const union SDL_Event *event);
 int x2_touch_runtime_overlay_visible(void);
 
 /* Is there anything for the overlay document to draw at all? The gameplay
-   controls answer x2_touch_runtime_overlay_visible; a rewritten action prompt
-   is drawn on the screens where that is deliberately false, so a document
-   shown only on the first answer would draw no prompt anywhere. */
+   controls answer x2_touch_runtime_overlay_visible; the menu pad is drawn on
+   exactly the screens where that is false, so a document shown only on the
+   first answer would draw no menu pad anywhere. */
 int x2_touch_runtime_has_visuals(void);
 
 /* The atlas cell of each of the player's four RT powers, in the game's slot

@@ -16,8 +16,6 @@
 #include "keycap_labels.h"
 #include "keycap_run.h"
 #include "pad_glyph_codes.h"
-#include "pad_glyphs.h"
-#include "prompt_action_labels.h"
 #include "prompt_glyphs.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -28,8 +26,6 @@
 
 #define LABEL_BUFFER_BYTES 512u
 #define MAX_RETAIL_LABEL 127u
-/* FUN_006281f0's device kinds; see input_bindings.h. */
-#define KEYBOARD_DEVICE_KIND 1u
 
 static unsigned long g_unchanged, g_pad_labels, g_keycap_labels;
 static unsigned long g_buffer_failures;
@@ -125,8 +121,8 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
 void x2_override_00619e30(CPU *C) {
   uint8_t retail[MAX_RETAIL_LABEL + 1u];
   uint8_t styled[LABEL_BUFFER_BYTES];
-  uint32_t out, kind = 0, code = 0;
-  size_t length, name_length;
+  uint32_t out;
+  size_t length;
   enum PromptLabelStyle style;
 
   /* Before the super-call: the retail body pops its own return address. */
@@ -146,9 +142,6 @@ void x2_override_00619e30(CPU *C) {
     g_unchanged++;
     return;
   }
-  /* Kept before `length` is reused for the styled bytes: the name inside the
-     cap is what the drawn string is recognised by. */
-  name_length = length > 2u ? length - 2u : 0u;
   style = prompt_label_rewrite(retail, styled, sizeof styled);
   if (style == PROMPT_LABEL_UNCHANGED) {
     g_unchanged++;
@@ -164,17 +157,10 @@ void x2_override_00619e30(CPU *C) {
   for (size_t i = 0; i < length; i++)
     WR8(g_styled_label + (uint32_t)i, styled[i]);
   C->reg[kX86pEax] = g_styled_label;
-  if (style == PROMPT_LABEL_PAD_GLYPH) {
+  if (style == PROMPT_LABEL_PAD_GLYPH)
     g_pad_labels++;
-    return;
-  }
-  g_keycap_labels++;
-  /* A keycap is the only label a finger can be offered instead of: a pad
-     glyph already names a device the player is holding. Retained with the
-     binding the namer just used, so the drawn string can be matched back to
-     the key it describes. */
-  if (x2_pad_glyph_last_named(&kind, &code) && kind == KEYBOARD_DEVICE_KIND)
-    x2_prompt_action_label_note(retail + 1u, (unsigned)name_length, code);
+  else
+    g_keycap_labels++;
 }
 
 __attribute__((constructor)) static void

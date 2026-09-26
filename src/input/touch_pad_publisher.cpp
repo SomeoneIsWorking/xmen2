@@ -14,7 +14,8 @@ namespace x2::input {
 namespace {
 
 /* The one place an action becomes pad buttons. Derived from the Xbox release
-   bindings in src/native/xbox_defaults.c, never invented per screen. A power
+   bindings in src/native/xbox_defaults.c, never invented per screen; the
+   menu pad's buttons are the controller's own, one for one. A power
    is RT with the face button its slot pairs with (FUN_004fc970's table at
    0x006dc37c: slots 0..3 are LowAttack, HighAttack, Guard, Jump -- A, B, X,
    Y), pressed together as the retail ring teaches. */
@@ -24,7 +25,7 @@ struct ActionButtons {
   std::size_t count;
 };
 
-constexpr std::array<ActionButtons, 17> kActionButtons = {{
+constexpr std::array<ActionButtons, 27> kActionButtons = {{
     {TouchAction::LightAttack, {"a"}, 1},
     {TouchAction::HeavyAttack, {"b"}, 1},
     {TouchAction::Jump, {"y"}, 1},
@@ -42,6 +43,16 @@ constexpr std::array<ActionButtons, 17> kActionButtons = {{
     {TouchAction::MapToggle, {"rightstick"}, 1},
     {TouchAction::Pause, {"start"}, 1},
     {TouchAction::Stats, {"back"}, 1},
+    {TouchAction::MenuUp, {"up"}, 1},
+    {TouchAction::MenuDown, {"down"}, 1},
+    {TouchAction::MenuLeft, {"left"}, 1},
+    {TouchAction::MenuRight, {"right"}, 1},
+    {TouchAction::MenuA, {"a"}, 1},
+    {TouchAction::MenuB, {"b"}, 1},
+    {TouchAction::MenuX, {"x"}, 1},
+    {TouchAction::MenuY, {"y"}, 1},
+    {TouchAction::MenuLeftShoulder, {"leftshoulder"}, 1},
+    {TouchAction::MenuRightShoulder, {"rightshoulder"}, 1},
 }};
 
 } // namespace

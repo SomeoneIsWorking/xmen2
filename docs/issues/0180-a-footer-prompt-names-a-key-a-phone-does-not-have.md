@@ -1,15 +1,19 @@
 ---
 id: 180
 title: a footer action prompt names a key a phone does not have
-status: resolved
+status: superseded
 symptom: in touch play the retail footer still read "Esc Back" and "[Space] Advanced Options" -- key names, offered to a player with no keyboard and nothing to press
 state_items: S020
 tags: touch,input,menu,ui,text,user-report
 created: 2026-09-22
-updated: 2026-09-22
+updated: 2026-09-26
 ---
 
 # 0180 — a footer action prompt names a key a phone does not have
+
+SUPERSEDED 2026-09-26 by [#190](0190-a-menu-could-not-be-left-by-touch.md): the
+rewrite below is removed. Touch play now draws a controller on every menu and
+the footers name its buttons.
 
 State items: S020 (platform-neutral touch play)
 

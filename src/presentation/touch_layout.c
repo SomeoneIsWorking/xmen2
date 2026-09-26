@@ -38,8 +38,6 @@ static const float kPowerAngles[4] = {208.0F, 179.0F, 146.0F, 109.0F};
 /* The game's own menu icons are 32 units of its 384-unit screen height; the
    port menu that waits for them is that size. */
 static const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
-static const float kTouchTargetMinimum = 0.075F;   /* of the short edge */
-static const float kTouchTargetPadding = 0.012F;
 
 static const char *const kSlotNames[] = {
     "vitals",       "potions", "portraits", "stick",   "light-attack",
@@ -49,6 +47,20 @@ static const char *const kSlotNames[] = {
 _Static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                    (int)kX2SlotCount,
                "every X2LayoutSlot needs a name");
+
+static const char *const kMenuSlotNames[] = {
+    "dpad-up", "dpad-down", "dpad-left", "dpad-right",    "a",
+    "b",       "x",         "y",         "left-shoulder", "right-shoulder"};
+
+_Static_assert((int)(sizeof kMenuSlotNames / sizeof kMenuSlotNames[0]) ==
+                   (int)kX2MenuSlotCount,
+               "every X2MenuSlot needs a name");
+
+const char *x2_menu_slot_name(int slot) {
+  if (slot < 0 || slot >= (int)kX2MenuSlotCount)
+    return "invalid-slot";
+  return kMenuSlotNames[slot];
+}
 
 const char *x2_layout_slot_name(int slot) {
   if (slot < 0 || slot >= (int)kX2SlotCount)
@@ -77,28 +89,6 @@ static X2Rect centred(float x, float y, float size) {
   const float half = size * 0.5F;
   X2Rect r = {x - half, y - half, x + half, y + half};
   return r;
-}
-
-X2Rect x2_layout_touch_target(X2LayoutViewport v, X2Rect drawn) {
-  float shortest, minimum, pad_x, centre_y, half;
-  X2Rect out;
-
-  if (!finite_viewport(v) || !isfinite(drawn.left) || !isfinite(drawn.top) ||
-      !isfinite(drawn.right) || !isfinite(drawn.bottom) ||
-      drawn.right < drawn.left || drawn.bottom < drawn.top)
-    return drawn;
-  shortest = v.width < v.height ? v.width : v.height;
-  minimum = shortest * kTouchTargetMinimum;
-  pad_x = shortest * kTouchTargetPadding;
-  centre_y = (drawn.top + drawn.bottom) * 0.5F;
-  half = (drawn.bottom - drawn.top) * 0.5F + pad_x;
-  if (half * 2.0F < minimum)
-    half = minimum * 0.5F;
-  out.left = drawn.left - pad_x;
-  out.right = drawn.right + pad_x;
-  out.top = centre_y - half;
-  out.bottom = centre_y + half;
-  return out;
 }
 
 int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
@@ -231,6 +221,60 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     }
   }
 
+  return 1;
+}
+
+int x2_layout_build_menu(X2LayoutViewport v, X2Rect *out) {
+  float left, top, right, bottom, width, height, shortest;
+  float inset, button, gap, reach, extent, fit, centre_y, dpad_x, face_x;
+
+  if (!out || !finite_viewport(v))
+    return 0;
+  left = v.safe_left;
+  top = v.safe_top;
+  right = v.width - v.safe_right;
+  bottom = v.height - v.safe_bottom;
+  width = right - left;
+  height = bottom - top;
+  if (!(width > 0.0F) || !(height > 0.0F))
+    return 0;
+  shortest = width < height ? width : height;
+
+  /* Two crosses of three buttons each way, a shoulder above each: the same
+     button size as gameplay, scaled down by one factor if the two clusters
+     would meet across the width or the shoulders would leave the top. */
+  button = shortest * kButtonDiameter;
+  gap = shortest * kButtonGap;
+  inset = shortest * kEdgeInset;
+  reach = button + gap * 0.5F;
+  extent = reach + button * 0.5F;
+  {
+    const float needed_w = (inset + extent * 2.0F) * 2.0F + button;
+    const float needed_h = inset + extent * 2.0F + gap + button;
+    fit = fminf(1.0F, fminf(width / needed_w, height / needed_h));
+  }
+  button *= fit;
+  gap *= fit;
+  inset *= fit;
+  reach *= fit;
+  extent *= fit;
+
+  centre_y = bottom - inset - extent;
+  dpad_x = left + inset + extent;
+  face_x = right - inset - extent;
+  out[kX2MenuDpadUp] = centred(dpad_x, centre_y - reach, button);
+  out[kX2MenuDpadDown] = centred(dpad_x, centre_y + reach, button);
+  out[kX2MenuDpadLeft] = centred(dpad_x - reach, centre_y, button);
+  out[kX2MenuDpadRight] = centred(dpad_x + reach, centre_y, button);
+  out[kX2MenuA] = centred(face_x, centre_y + reach, button);
+  out[kX2MenuB] = centred(face_x + reach, centre_y, button);
+  out[kX2MenuX] = centred(face_x - reach, centre_y, button);
+  out[kX2MenuY] = centred(face_x, centre_y - reach, button);
+  {
+    const float shoulder_y = centre_y - extent - gap - button * 0.5F;
+    out[kX2MenuLeftShoulder] = centred(dpad_x, shoulder_y, button);
+    out[kX2MenuRightShoulder] = centred(face_x, shoulder_y, button);
+  }
   return 1;
 }
 

@@ -9,10 +9,10 @@ extern "C" {
 #include "../config/settings_store.h"
 #include "touch_census.h"
 #include "touch_controls.h"
+#include "touch_menu_controls.h"
 #include "touch_pad.h"
 #include "touch_pad_publisher.h"
 #include "touch_pointer.h"
-#include "touch_prompt_buttons.h"
 #include "touch_skip_button.h"
 #include "touch_source.h"
 #include "touch_visuals.h"
@@ -62,11 +62,12 @@ bool is_release(lucent::touch::Phase phase) {
  *
  * SDL contact acquisition on every platform -- a desktop touchscreen, a phone
  * and a browser reach this the same way -- and the one decision that follows:
- * a finger under a drawn control is a pad press, and a finger on a screen
- * that draws none is the retail GUI's pointer. The vocabulary and the layout
- * belong to TouchControls, the pad to PadPublisher, the Win32 pointer to
- * RetailPointer, and the account of what happened to the census. This
- * composes them and owns only the window, the live contacts, and the gate.
+ * a finger under a drawn control is a pad press, and any other finger outside
+ * gameplay is the retail GUI's pointer. Gameplay draws TouchControls; every
+ * other screen draws the menu pad, MenuControls. The pad belongs to
+ * PadPublisher, the Win32 pointer to RetailPointer, and the account of what
+ * happened to the census. This composes them and owns only the window, the
+ * live contacts, and the gate.
  */
 class TouchRuntime {
 public:
@@ -91,13 +92,16 @@ public:
 
   bool has_window() const { return window_ != nullptr; }
   // Is there anything for the overlay document to draw -- the gameplay
-  // controls, or a prompt button on a screen that draws none?
+  // controls, or the menu pad on a screen that is not gameplay?
   bool has_visuals() const;
   // The setting can force either end on every platform. ALWAYS is what makes
   // the layout reachable on a desktop with no touchscreen -- a layout nobody
   // can look at until it is on a phone is a layout that ships wrong.
   static bool active();
   bool overlay_visible() const;
+  // The menu pad: touch play and a window, on a screen that is not gameplay
+  // and is not a cinematic offering its own Skip.
+  bool menu_visible() const;
 
 private:
   struct Contact {
@@ -110,8 +114,10 @@ private:
   bool route_to_controls(const SDL_Event &event);
   // A finger with no drawn control under it: the retail GUI's pointer.
   bool route_to_pointer(const SDL_Event &event);
-  // A finger on a rewritten action prompt: the key that prompt named.
-  bool route_to_prompt(const SDL_TouchFingerEvent &finger);
+  // A finger that began on the menu pad: its button, until it lifts.
+  bool route_to_menu(const SDL_TouchFingerEvent &finger);
+  // Let go of every menu pad button, when the pad stops being drawn.
+  void release_menu();
   // A finger on the cinematic's skip button: the offered skip.
   bool route_to_skip(const SDL_TouchFingerEvent &finger);
   void publish(std::span<const ActionEvent> actions);
@@ -119,11 +125,15 @@ private:
   bool window_size(int &width, int &height) const;
 
   TouchControls controls_;
+  MenuControls menu_;
   PadPublisher pad_;
   PortraitPointer portraits_;
   RetailPointer pointer_;
   SkipButton skip_;
   std::map<SDL_FingerID, Contact> contacts_;
+  // Fingers the menu pad captured; every other finger outside gameplay is
+  // the pointer's.
+  std::map<SDL_FingerID, Contact> menu_contacts_;
   std::set<std::uint32_t> active_zones_;
   SDL_Window *window_ = nullptr;
   /* The one viewport both the control zones and the relocated HUD lay out
@@ -148,6 +158,12 @@ bool TouchRuntime::active() {
 bool TouchRuntime::overlay_visible() const {
   return window_ != nullptr && active() &&
          x2_gameplay_control_active(guest_clock_now_s());
+}
+
+bool TouchRuntime::menu_visible() const {
+  return window_ != nullptr && active() &&
+         !x2_gameplay_control_active(guest_clock_now_s()) &&
+         !SkipButton::offered();
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {
@@ -183,6 +199,7 @@ void TouchRuntime::publish(std::span<const ActionEvent> actions) {
 void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.cancel());
   contacts_.clear();
+  release_menu();
   publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
@@ -204,10 +221,12 @@ void TouchRuntime::set_window(SDL_Window *window) {
                static_cast<float>(safe.y),
                static_cast<float>(width - safe.x - safe.w),
                static_cast<float>(height - safe.y - safe.h)};
-  controls_.set_viewport({viewport_.width,
-                          viewport_.height,
-                          {viewport_.safe_left, viewport_.safe_top,
-                           viewport_.safe_right, viewport_.safe_bottom}});
+  const Viewport layout{viewport_.width,
+                        viewport_.height,
+                        {viewport_.safe_left, viewport_.safe_top,
+                         viewport_.safe_right, viewport_.safe_bottom}};
+  publish(controls_.set_viewport(layout));
+  publish(menu_.set_viewport(layout));
 }
 
 bool TouchRuntime::viewport(X2LayoutViewport &out) const {
@@ -236,16 +255,44 @@ void TouchRuntime::count_contact(Uint32 event_type) const {
   }
 }
 
-bool TouchRuntime::route_to_prompt(const SDL_TouchFingerEvent &finger) {
+bool TouchRuntime::route_to_menu(const SDL_TouchFingerEvent &finger) {
   int width = 0;
   int height = 0;
   if (!window_size(width, height)) {
     return false;
   }
-  return prompt_buttons().press(static_cast<std::int64_t>(finger.fingerID),
-                                finger.x * static_cast<float>(width),
-                                finger.y * static_cast<float>(height),
-                                phase_of(finger.type), guest_clock_now_s());
+  const lucent::touch::Phase phase = phase_of(finger.type);
+  const lucent::touch::Point at{finger.x * static_cast<float>(width),
+                                finger.y * static_cast<float>(height)};
+  const auto held = menu_contacts_.find(finger.fingerID);
+  /* A finger belongs to the pad only if it BEGAN on a button; one that began
+     elsewhere is the pointer's for its whole life, so a drag across the pad
+     never presses it. */
+  if (held == menu_contacts_.end() &&
+      (phase != lucent::touch::Phase::began || !menu_.hit(at))) {
+    return false;
+  }
+  Contact &contact = menu_contacts_[finger.fingerID];
+  contact = {at.x, at.y, !is_release(phase)};
+  std::vector<lucent::touch::Contact> live;
+  for (const auto &[id, value] : menu_contacts_) {
+    live.push_back(
+        {static_cast<std::int64_t>(id),
+         {value.x, value.y},
+         id == finger.fingerID ? phase : lucent::touch::Phase::moved});
+  }
+  const auto actions = menu_.route(live);
+  x2_touch_census()->zone_presses += actions.size();
+  publish(actions);
+  if (!contact.active) {
+    menu_contacts_.erase(finger.fingerID);
+  }
+  return true;
+}
+
+void TouchRuntime::release_menu() {
+  publish(menu_.cancel());
+  menu_contacts_.clear();
 }
 
 bool TouchRuntime::route_to_skip(const SDL_TouchFingerEvent &finger) {
@@ -339,14 +386,21 @@ bool TouchRuntime::handle(const SDL_Event &event) {
     if (!contacts_.empty()) {
       cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
     }
+    if (!menu_visible() && !menu_contacts_.empty()) {
+      release_menu();
+    }
     if (!finger) {
       return false;
     }
-    /* The skip button and then a prompt button first: both sit ON the
-       retail GUI, and a contact that reached the pointer as well would both
-       press the control and click whatever is drawn beneath it. */
-    return route_to_skip(event.tfinger) || route_to_prompt(event.tfinger) ||
+    /* The skip button and then the menu pad first: both sit ON the retail
+       GUI, and a contact that reached the pointer as well would both press
+       the control and click whatever is drawn beneath it. */
+    return route_to_skip(event.tfinger) ||
+           (menu_visible() && route_to_menu(event.tfinger)) ||
            route_to_pointer(event);
+  }
+  if (!menu_contacts_.empty()) {
+    release_menu();
   }
   /* Gameplay has begun under a held menu tap: retail's button must not be
      left down at a position nothing will press again. */
@@ -410,8 +464,8 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   publish(controls_.cancel());
   publish(controls_.set_hud({}));
   contacts_.clear();
+  release_menu();
   active_zones_.clear();
-  prompt_buttons().release();
   skip_.release();
 }
 
@@ -439,29 +493,26 @@ bool TouchRuntime::take_pointer(X2TouchPointer &out) {
   if (!overlay_visible() && !contacts_.empty()) {
     cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
   }
+  /* Asked every frame, so a pad button held while its screen gave way to
+     gameplay or a cinematic is let go even if the finger never moves. */
+  if (!menu_visible() && !menu_contacts_.empty()) {
+    release_menu();
+  }
   return pointer_.take(out);
 }
 
 bool TouchRuntime::has_visuals() const {
-  return overlay_visible() ||
-         prompt_buttons().live(nullptr, 0, guest_clock_now_s()) != 0;
+  return overlay_visible() || menu_visible();
 }
 
 std::size_t TouchRuntime::visuals(X2TouchVisual *out,
                                   std::size_t capacity) const {
-  std::array<PromptButton, X2_TOUCH_PROMPTS_MAX> live{};
-  const std::size_t prompts =
-      prompt_buttons().live(live.data(), live.size(), guest_clock_now_s());
-  /* The gameplay controls only where they are drawn. They used to be reported
-     always and merely hidden by the document; a prompt button now makes that
-     document visible on the menus, and the zones would have come with it. */
-  const auto zones = overlay_visible()
-                         ? controls_.zones()
+  const auto zones = overlay_visible() ? controls_.zones()
+                     : menu_visible()
+                         ? menu_.zones()
                          : std::span<const TouchControls::ZoneVisual>{};
   return overlay_visuals(zones, active_zones_, controls_.stick_deflection(),
-                         controls_.stick_ring(),
-                         std::span{live.data(), std::min(prompts, live.size())},
-                         out, capacity);
+                         controls_.stick_ring(), out, capacity);
 }
 
 } // namespace x2::input
@@ -522,6 +573,11 @@ int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
   return x2::input::runtime.visuals(out, capacity);
+}
+
+const char *x2_touch_runtime_action_name(int action) {
+  return x2::input::touch_action_name(
+      static_cast<x2::input::TouchAction>(action));
 }
 
 int x2_touch_runtime_skip_button(X2Rect *rect, int *held) {

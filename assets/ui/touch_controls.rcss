@@ -77,26 +77,17 @@ body {
     background-color: rgba(255, 255, 255, 22%);
 }
 
+/* A menu pad button: the shared Xbox glyph is the whole button, drawn with
+   no plate or outline of its own; a press lights the round behind it. */
+.touch-zone.zone-glyph {
+    border-width: 0dp;
+    background-color: rgba(0, 0, 0, 0%);
+}
+.touch-zone.zone-glyph.active {
+    background-color: rgba(255, 255, 255, 35%);
+}
+
 .touch-zone.stick.active .touch-stick-knob {
     background-color: rgba(125, 232, 255, 85%);
     border-color: #FFFFFF;
-}
-
-/*
- * A rewritten retail action prompt: "Esc Back" with the key taken off.
- *
- * The GAME still draws the words, underneath this element and in its own
- * font, so this is deliberately an empty outline -- a filled background would
- * cover the very text that says what the control does. It is drawn where the
- * words landed, grown to something a thumb can hit.
- */
-.touch-zone.prompt {
-    border: 2dp rgba(220, 238, 255, 80%);
-    border-radius: 8dp;
-    background-color: rgba(10, 18, 29, 28%);
-}
-
-.touch-zone.prompt.active {
-    border-color: rgba(112, 231, 249, 95%);
-    background-color: rgba(14, 116, 144, 45%);
 }

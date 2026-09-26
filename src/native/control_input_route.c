@@ -16,7 +16,6 @@
 
 #include "../input/gameplay_control.h"
 #include "../input/touch_inject.h"
-#include "../input/touch_prompt_buttons.h"
 #include "../input/touch_runtime.h"
 #include "control_command_bridge.h"
 #include "control_http.h"
@@ -31,13 +30,10 @@
 #include <string.h>
 
 enum { REASON_BYTES = 192 };
-/* Every prompt a screen can offer fits; the cap exists so the reply cannot be
-   written past the end of its buffer, not to hide any of them. */
-#define X2_TOUCH_PROMPT_MAX_LISTED X2_TOUCH_PROMPTS_MAX
-/* Every zone the layout can draw plus every prompt beside it. The cap bounds
-   the reply buffer; it is not a filter, and a longer overlay would be a
-   layout change, not a reason to hide controls. */
-#define X2_TOUCH_CONTROLS_MAX_LISTED (kX2SlotCount + X2_TOUCH_PROMPTS_MAX)
+/* Every zone the layout can draw. The cap bounds the reply buffer; it is not a
+   filter, and a longer overlay would be a layout change, not a reason to hide
+   controls. */
+#define X2_TOUCH_CONTROLS_MAX_LISTED kX2SlotCount
 
 /*
  * One shape of answer for every route here.
@@ -58,46 +54,6 @@ static int delivered(x2_socket_t fd, int outcome, const char *reason,
     return 0;
   }
   return 1;
-}
-
-void control_route_prompts(x2_socket_t fd) {
-  X2TouchPromptInfo prompts[X2_TOUCH_PROMPTS_MAX];
-  size_t count = x2_touch_prompts_live(prompts, X2_TOUCH_PROMPTS_MAX);
-  size_t i;
-  X2LayoutViewport viewport;
-  char body[512];
-  int at = 0;
-
-  /* The empty answer says which empty it is. "No prompt is pressable" and
-     "touch play is not on, so none ever will be" send a reader to entirely
-     different places, and a bare "(none)" sends them to neither. */
-  if (!count) {
-    control_reply_text(fd, 200, "OK",
-                       "no action prompt is pressable at this moment "
-                       "(touch play is %s). A prompt appears only while the "
-                       "screen that draws it is drawing it.\n",
-                       x2_touch_runtime_active() ? "ACTIVE" : "NOT active");
-    return;
-  }
-  /* The surface these rectangles are in, from the same owner that published
-     them. A caller that divides by a window size it learned somewhere else
-     taps a fraction of the wrong surface, which is how a tap that had to land
-     on "Back" went off the bottom of the window instead. */
-  if (x2_touch_runtime_viewport(&viewport)) {
-    at += snprintf(body + at, sizeof body - (size_t)at, "viewport %gx%g\n",
-                   viewport.width, viewport.height);
-  }
-  for (i = 0; i < count && i < X2_TOUCH_PROMPT_MAX_LISTED; i++) {
-    const char *name = dinput_system_dik_name((unsigned char)prompts[i].dik);
-    at += snprintf(body + at, sizeof body - (size_t)at, "%s %g,%g %gx%g\n",
-                   name ? name : "unnamed key", (double)prompts[i].target.left,
-                   (double)prompts[i].target.top,
-                   (double)(prompts[i].target.right - prompts[i].target.left),
-                   (double)(prompts[i].target.bottom - prompts[i].target.top));
-    if (at >= (int)sizeof body)
-      break;
-  }
-  control_reply_text(fd, 200, "OK", "%s", body);
 }
 
 void control_route_key(x2_socket_t fd, const char *query) {
@@ -297,7 +253,7 @@ void control_route_controls(x2_socket_t fd) {
                       ? count
                       : X2_TOUCH_CONTROLS_MAX_LISTED;
   X2LayoutViewport viewport;
-  char body[1024];
+  char body[2048];
   size_t i;
   int at = 0;
 
@@ -321,8 +277,9 @@ void control_route_controls(x2_socket_t fd) {
                        "  touch play: %s\n"
                        "  gameplay controls: %s\n"
                        "  overlay: %s\n"
-                       "Controls are drawn in gameplay only; a menu draws "
-                       "action prompts instead -- see /prompts.\n",
+                       "Gameplay draws its controls and every other screen "
+                       "the menu pad, both only in touch play; a cinematic "
+                       "draws only its Skip button.\n",
                        x2_touch_runtime_active() ? "ACTIVE" : "NOT active",
                        x2_gameplay_control_name(
                            x2_gameplay_control_state(guest_clock_now_s())),
@@ -337,14 +294,13 @@ void control_route_controls(x2_socket_t fd) {
   }
   for (i = 0; i < listed && at < (int)sizeof body; i++) {
     const X2TouchVisual *visual = &visuals[i];
-    at += snprintf(body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g",
+    at += snprintf(body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g %s",
                    visual->id,
-                   visual->kind == X2_TOUCH_VISUAL_STICK    ? "stick"
-                   : visual->kind == X2_TOUCH_VISUAL_PROMPT ? "prompt"
-                                                            : "button",
+                   visual->kind == X2_TOUCH_VISUAL_STICK ? "stick" : "button",
                    (double)visual->left, (double)visual->top,
                    (double)(visual->right - visual->left),
-                   (double)(visual->bottom - visual->top));
+                   (double)(visual->bottom - visual->top),
+                   x2_touch_runtime_action_name(visual->action));
     if (visual->kind == X2_TOUCH_VISUAL_STICK && at < (int)sizeof body) {
       at += snprintf(body + at, sizeof body - (size_t)at, " deflect %.3f,%.3f",
                      (double)visual->deflect_x, (double)visual->deflect_y);

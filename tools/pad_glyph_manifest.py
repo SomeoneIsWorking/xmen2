@@ -211,6 +211,9 @@ def main() -> int:
     parser.add_argument("--emit-header", type=Path)
     parser.add_argument("--print-key-font", action="store_true",
                         help="print the shared key typeface's path")
+    parser.add_argument("--print-pad-svgs", nargs="+", metavar="ICON",
+                        help="print each named manifest icon's shared SVG "
+                             "path, one per line (the touch menu pad's art)")
     args = parser.parse_args()
     if args.selftest:
         where = port_assets.set_dir(SET_NAME, start=ROOT)
@@ -232,11 +235,19 @@ def main() -> int:
     if args.print_key_font:
         print(key_font_path().resolve())
         return 0
+    if args.print_pad_svgs:
+        unknown = [name for name in args.print_pad_svgs if name not in ICONS]
+        if unknown:
+            raise SystemExit(f"pad glyph manifest: {unknown} are not icons of "
+                             f"{MANIFEST.name}; printed NOTHING")
+        for name in args.print_pad_svgs:
+            print(port_assets.path(SET_NAME, name, start=ROOT).resolve())
+        return 0
     if args.emit_header:
         emit_header(args.emit_header)
         return 0
-    parser.error("choose --selftest, --emit-header or "
-                 "--print-key-font; generated NOTHING")
+    parser.error("choose --selftest, --emit-header, --print-key-font or "
+                 "--print-pad-svgs; generated NOTHING")
     return 0
 
 

@@ -39,8 +39,6 @@
  *
  * Each override preserves the original return register and stack effect.
  */
-#include "../input/touch_runtime.h"
-#include "conversation_accept_prompt.h"
 #include "guest_body.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -906,11 +904,9 @@ void x2_override_0045d1a0(CPU *C) {
   }
 
   /* 0x0045d4b5: the "$MENU_ACCEPT" prompt -- a 32x32 icon, drawn only while
-     the conversation is visible. Decoded from the capture, not the listing.
-     Not in touch play, where the reply line is the control
-     (conversation_accept_prompt.h). */
-  if (x2_conversation_draws_accept_prompt(RD8(self + CV_FLAGS),
-                                          x2_touch_runtime_active())) {
+     the conversation is visible (flag 0x2). Decoded from the capture, not
+     the listing. */
+  if (RD8(self + CV_FLAGS) & 0x2u) {
     uint32_t sing = call0(C, FN_CONV_SINGLETON, 0);
     uint32_t target = RD32(sing + CV_DRAW_A);
     uint32_t py, px, quad, colour, args[9];

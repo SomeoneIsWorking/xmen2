@@ -123,20 +123,38 @@ int x2_layout_build(X2LayoutViewport viewport, X2Rect *out);
 X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots);
 
 /*
- * Grow a drawn rectangle to something a finger can actually hit.
+ * THE MENU PAD: what touch play draws on every screen that is not gameplay --
+ * the front end, the pause and team menus, the World Map, dialogue.
  *
- * A retail footer prompt is one line of text a few pixels tall. The port
- * makes it pressable, and a control the size of the letters is a control
- * nobody can press: a thumb covers roughly a centimetre. The minimum is a
- * fraction of the viewport rather than a pixel count, exactly as every other
- * rectangle here is, so it holds at a phone's resolution and a desktop's.
- *
- * The result is ONE rectangle, used both to test a contact and to draw the
- * control's outline -- the portraits already proved what happens when the
- * drawn thing and the touchable thing are computed separately. Returns the
- * input unchanged when the viewport has no usable area.
+ * The retail menus are navigated with a controller exactly as on the Xbox,
+ * and their footers name the pad's buttons, so the port draws that controller
+ * rather than making the menus' own narrow rows tappable: a d-pad bottom left
+ * where the movement stick sits in gameplay, the face buttons bottom right in
+ * the Xbox's arrangement (A below, B right, X left, Y above), and the
+ * shoulders above each cluster for tabbed screens. Its own slot list, because
+ * it REPLACES the gameplay controls rather than sitting beside them: the two
+ * are never drawn together, so overlapping them is not a collision.
  */
-X2Rect x2_layout_touch_target(X2LayoutViewport viewport, X2Rect drawn);
+typedef enum X2MenuSlot {
+  kX2MenuDpadUp = 0,
+  kX2MenuDpadDown,
+  kX2MenuDpadLeft,
+  kX2MenuDpadRight,
+  kX2MenuA,
+  kX2MenuB,
+  kX2MenuX,
+  kX2MenuY,
+  kX2MenuLeftShoulder,
+  kX2MenuRightShoulder,
+  kX2MenuSlotCount /* MUST stay last */
+} X2MenuSlot;
+
+const char *x2_menu_slot_name(int slot);
+
+/* Fill `out` with kX2MenuSlotCount rectangles for this viewport, sized like
+   the gameplay buttons. Returns 0 without touching `out` for a viewport with
+   no usable area, exactly as x2_layout_build does. */
+int x2_layout_build_menu(X2LayoutViewport viewport, X2Rect *out);
 
 /* Whether two placed rectangles overlap. Exposed because the invariant that
    the HUD and the controls do not sit on top of each other is worth asserting

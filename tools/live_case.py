@@ -20,7 +20,6 @@ The run is killed BY PID at the end; nothing is left running.
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import os
 import re
@@ -1143,7 +1142,10 @@ def case_selector_dialog(case: Case) -> None:
                warm_size == (width, height), "%dx%d" % warm_size)
 
 
-def png_mean_diff(a: Path, b: Path) -> float:
+def png_mean_diff(a: Path, b: Path,
+                  box: tuple[float, float, float, float] | None = None) -> float:
+    """Mean grey-level difference, over the whole frame or over `box`
+    (left, top, right, bottom as fractions of the frame)."""
     from PIL import Image  # the locked uv environment owns Pillow
     try:
         ia, ib = Image.open(a).convert("L"), Image.open(b).convert("L")
@@ -1152,6 +1154,9 @@ def png_mean_diff(a: Path, b: Path) -> float:
         return 0.0
     if ia.size != ib.size:
         ia = ia.resize(ib.size)
+    if box:
+        crop = tuple(int(f * ib.size[i % 2]) for i, f in enumerate(box))
+        ia, ib = ia.crop(crop), ib.crop(crop)
     pa, pb = list(ia.getdata()), list(ib.getdata())
     n = min(len(pa), len(pb))
     if not n:
@@ -1170,6 +1175,9 @@ MENU_OPTIONS_ROW = (0.195, 0.728)
 # tap makes -- so a pixel delta cannot answer this and the game's own first
 # open of the package can.
 OPTIONS_PACKAGE = "menus/options.pkgb"
+# The main menu's column of rows, as fractions of the frame: static art,
+# unlike the animated backdrop behind it.
+MENU_COLUMN = (0.05, 0.15, 0.42, 0.85)
 
 
 def wait_movie_end(case: Case, seen: int, timeout: float) -> float | None:
@@ -1293,7 +1301,7 @@ def case_menu_touch(case: Case) -> None:
 
 
 
-def live_viewport(case: Case, route: str = "/prompts") -> tuple[float, float] | None:
+def live_viewport(case: Case, route: str = "/controls") -> tuple[float, float] | None:
     """The surface the run published these rectangles in.
 
     Whichever route is asked reports its own, so a caller never divides a
@@ -1307,48 +1315,27 @@ def live_viewport(case: Case, route: str = "/prompts") -> tuple[float, float] | 
     return None
 
 
-def live_prompts(case: Case) -> list[tuple[str, float, float, float, float]]:
-    """What the run says is pressable right now: key, left, top, width, height.
+def live_controls(case: Case) -> dict[str, tuple[float, float, float, float]]:
+    """What the overlay draws right now, by action: left, top, width, height.
 
     Read from the run rather than decided before it: a coordinate chosen in
     advance answers whatever screen the run drifted onto, and two earlier
     measurements were read as evidence that way.
     """
-    out = []
-    for line in case.get_text("/prompts").splitlines():
+    out = {}
+    for line in case.get_text("/controls").splitlines():
         parts = line.split()
-        if len(parts) != 3 or "," not in parts[1] or "x" not in parts[2]:
+        if len(parts) < 5 or "," not in parts[2] or "x" not in parts[3]:
             continue
-        left, top = (float(v) for v in parts[1].split(","))
-        width, height = (float(v) for v in parts[2].split("x"))
-        out.append((parts[0], left, top, width, height))
+        left, top = (float(v) for v in parts[2].split(","))
+        width, height = (float(v) for v in parts[3].split("x"))
+        out[parts[4]] = (left, top, width, height)
     return out
 
 
-def prompt_row_defect(prompts) -> str:
-    """Why this set of rectangles cannot be what the screen drew, or "".
-
-    Each prompt is matched to the draw that placed it by the number of glyphs
-    that draw submits, and the way that matching fails is geometric: a prompt
-    taken to the wrong element's transform lands on another prompt or on
-    another line. A footer is one row of side-by-side actions, so overlapping
-    or stacked rectangles falsify the attribution on any run that reaches a
-    screen with two of them -- which is the check the earlier "Back drawn on
-    top of Advanced Options" defect went without.
-    """
-    rows = sorted(prompts, key=lambda p: p[1])
-    for one, two in itertools.pairwise(rows):
-        if one[1] + one[3] > two[1]:
-            return "%s and %s overlap" % (one[0], two[0])
-        if abs(one[2] - two[2]) > max(one[4], two[4]):
-            return "%s and %s are on different lines (top %g vs %g)" % (
-                one[0], two[0], one[2], two[2])
-    return ""
-
-
-def tap_prompt(case: Case, prompt, window: tuple[float, float]) -> bool:
-    """Tap the centre of a published prompt, in fractions of ITS surface."""
-    _, left, top, width, height = prompt
+def tap_control(case: Case, rect, window: tuple[float, float]) -> bool:
+    """Tap the centre of a drawn control, in fractions of ITS surface."""
+    left, top, width, height = rect
     return case.http("/touch?x=%g&y=%g" % ((left + width * 0.5) / window[0],
                                            (top + height * 0.5) / window[1])
                      )[0] == 200
@@ -1364,11 +1351,11 @@ def live_stick(case: Case) -> tuple[tuple[float, float, float, float],
     """
     for line in case.get_text("/controls").splitlines():
         parts = line.split()
-        if len(parts) < 6 or parts[1] != "stick":
+        if len(parts) < 7 or parts[1] != "stick" or parts[5] != "deflect":
             continue
         left, top = (float(v) for v in parts[2].split(","))
         width, height = (float(v) for v in parts[3].split("x"))
-        dx, dy = (float(v) for v in parts[5].split(","))
+        dx, dy = (float(v) for v in parts[6].split(","))
         return ((left, top, width, height), (dx, dy))
     return None
 
@@ -1468,17 +1455,14 @@ def case_stick_travel(case: Case) -> None:
                case.alive() and case.http("/status")[0] == 200)
 
 
-def case_prompt_touch(case: Case) -> None:
-    """The retail footer prompts, as controls a finger can press.
+def case_menu_pad(case: Case) -> None:
+    """The menu pad: the retail menus driven by the controller touch draws.
 
-    "Esc Back" names a key a phone does not have. In touch play the key comes
-    off what is drawn, the words slide into its place, and the control the
-    port draws around them presses the key the prompt named.
-
-    The discriminator is the screen the game is on, not the census: a tap on
-    Back must leave the Options screen and land back where it started, so the
-    picture after it must resemble the menu BEFORE Options was opened and not
-    the Options screen it was taken from.
+    Off gameplay, touch play draws a d-pad and the Xbox face buttons, and the
+    menus answer them as they answer a controller. The discriminator is the
+    game's own first open of the Options package, which only an A on the
+    Options row can cause, and the Back that follows must leave Options: the
+    footer's Escape-less pad prompts are the screen's own evidence.
     """
     case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
@@ -1486,77 +1470,46 @@ def case_prompt_touch(case: Case) -> None:
     case.check("the run reached the main menu",
                keyboard_past_the_intro(case, 300))
 
+    controls = live_controls(case)
+    viewport = live_viewport(case)
+    print("  menu pad: %s in %s" % (sorted(controls), viewport))
+    wanted = ("menu-down", "menu-a", "menu-b")
+    case.check("the main menu draws the menu pad",
+               viewport is not None and all(k in controls for k in wanted),
+               "drawn: %s" % sorted(controls))
+    case.check("and none of the gameplay controls", "jump" not in controls)
+    if viewport is None or not all(k in controls for k in wanted):
+        return
 
-    menu = case.shot("menu")
-    prompts = live_prompts(case)
-    print("  prompts on the menu: %s" % (prompts,))
-    # The main menu draws no action prompt -- its rows ARE the actions -- so
-    # nothing may be pressable here. This is the check that catches a control
-    # outliving the screen that drew it: the difficulty dialog's "Esc Back"
-    # was published a few seconds earlier and stays pressable for two.
-    case.check("no prompt outlives the screen that drew it",
-               not prompts, "%d still published on a menu that draws none"
-               % len(prompts))
-
+    # Main menu rows: Continue, New Game, Load Game, Danger Room, Review,
+    # Options. A is pressed on whichever row the pad left selected, so an
+    # Options open proves both the d-pad and A reached the menu.
     opened_before = case.log_text().count(OPTIONS_PACKAGE)
-    case.http("/touch?x=%g&y=%g" % MENU_OPTIONS_ROW)
-    case.check("the Options screen opened",
+    for _ in range(5):
+        case.check("a d-pad Down was tapped",
+                   tap_control(case, controls["menu-down"], viewport))
+        time.sleep(0.8)
+    menu = case.shot("menu-options-row")
+    case.check("A was tapped", tap_control(case, controls["menu-a"], viewport))
+    case.check("the Options screen opened from the pad",
                case.wait_log(OPTIONS_PACKAGE, 20) and
                case.log_text().count(OPTIONS_PACKAGE) > opened_before)
     time.sleep(2.0)
     options = case.shot("options")
-    print("  menu vs options: %.2f" % png_mean_diff(menu, options))
 
-    prompts = live_prompts(case)
-    print("  prompts on Options: %s" % (prompts,))
-    back = [p for p in prompts if p[0].lower() in ("escape", "esc")]
-    case.check("Options offers a Back prompt to press", bool(back),
-               "%d published" % len(prompts))
-    case.check("the footer's prompts are laid out as the screen drew them",
-               len(prompts) > 1 and not prompt_row_defect(prompts),
-               prompt_row_defect(prompts) if len(prompts) > 1 else
-               "only %d prompt published, so nothing was cross-checked"
-               % len(prompts))
-    if not back:
-        return
-    viewport = live_viewport(case)
-    print("  viewport: %s" % (viewport,))
-    case.check("the run says which surface its prompts are in",
-               viewport is not None)
-    case.check("the Back prompt was tapped",
-               viewport is not None and tap_prompt(case, back[0], viewport))
-    # The menu slides back in, and a prompt stays pressable for two seconds
-    # after the last frame that drew it, so a screen read too early is the
-    # transition rather than the screen.
-    time.sleep(6.0)
+    case.check("B was tapped", tap_control(case, controls["menu-b"], viewport))
+    time.sleep(4.0)
     after = case.shot("after-back")
-    print("  options vs after: %.2f; menu vs after: %.2f"
-          % (png_mean_diff(options, after), png_mean_diff(menu, after)))
-
-    # Not a pixel delta, and not the menu's own layout either: this menu
-    # animates, its idle frame-to-frame difference is the same order as the
-    # change a working tap makes (40.96 against 42.54 in a run where the tap
-    # HAD worked), and the rows it slides back in are not where they were.
-    # What the run can state exactly is which prompts the screen it is on now
-    # draws, and the Options screen's pair is Escape and Space.
-    remaining = {p[0] for p in live_prompts(case)}
-    print("  prompts after Back: %s" % (sorted(remaining) or "none",))
-    case.check("the screen that drew the Back prompt is gone",
-               "Space" not in remaining,
-               "the screen now draws %s, against Options' own Escape+Space"
-               % (sorted(remaining) or "no prompt",))
-
-    census = case.log_text()
-    presses = [int(n) for n in re.findall(
-        r"(\d+) press\(es\) on a rewritten action prompt", census)]
-    refused = [int(n) for n in re.findall(
-        r"rewritten action prompt \((\d+) refused", census)]
-    case.check("the run counted the prompt press",
-               bool(presses) and max(presses) >= 1,
-               "%d at most" % max(presses, default=0))
-    case.check("and the keyboard refused none of them",
-               bool(refused) and max(refused) == 0,
-               "%d at most" % max(refused, default=-1))
+    # Not a whole-frame delta: the menu's animated backdrop moves as much as
+    # a screen change does. The menu column is static art, and the frame
+    # after B must match the main menu's column and not the Options panel.
+    to_menu = png_mean_diff(after, menu, MENU_COLUMN)
+    to_options = png_mean_diff(after, options, MENU_COLUMN)
+    print("  after B vs main menu %.2f, vs Options %.2f" % (to_menu, to_options))
+    case.check("B went back to the main menu",
+               to_menu * 2.0 < to_options,
+               "menu column differs %.2f from the main menu and %.2f from "
+               "Options" % (to_menu, to_options))
 
 
 CASES = {
@@ -1566,7 +1519,7 @@ CASES = {
     "pad-late": case_pad_late,
     "touch-pad": case_touch_pad,
     "menu-touch": case_menu_touch,
-    "prompt-touch": case_prompt_touch,
+    "menu-pad": case_menu_pad,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

@@ -10,7 +10,6 @@
  */
 #include "dinput_fifo.h"
 
-#include "../input/touch_prompt_buttons.h"
 #include "guest_memory.h"
 
 #include "control.h"
@@ -94,7 +93,7 @@ static void fifo_open_if_due(double now) {
  * key and saw no effect must be able to tell "the game ignored it" from "it was
  * never pressed", and that distinction is the whole value of a live channel.
  */
-int dinput_inject_code(unsigned char dik, double now, double hold,
+static int inject_code(unsigned char dik, double now, double hold,
                        const char *via, char *why, int whyn) {
 #ifdef X2_WITH_SDL
   const char *name;
@@ -148,7 +147,7 @@ int dinput_inject_press(const char *name, double now, double hold,
     x2_log_error("DINPUT8: %s [%s]\n", why, via);
     return 0;
   }
-  return dinput_inject_code(dik, now, hold, via, why, whyn);
+  return inject_code(dik, now, hold, via, why, whyn);
 #else
   (void)name;
   (void)now;
@@ -159,25 +158,6 @@ int dinput_inject_press(const char *name, double now, double hold,
            "be pressed.");
   return 0;
 #endif
-}
-
-/*
- * The touch overlay's rewritten action prompts press keys through here.
- *
- * Registered rather than called: the prompt owns a rectangle and a DIK, and
- * this file owns the one injection table the game's single keyboard has.
- */
-static int touch_prompt_press(unsigned dik, double now) {
-  char why[192] = "";
-  if (dinput_inject_code((unsigned char)dik, now, 0.0, "touch", why,
-                         (int)sizeof why))
-    return 1;
-  x2_log_error("DINPUT8: a touch prompt could not be pressed: %s\n", why);
-  return 0;
-}
-
-__attribute__((constructor)) static void dinput_fifo_register_touch(void) {
-  x2_touch_prompt_key_press(touch_prompt_press);
 }
 
 static void fifo_press(const char *name, double now) {

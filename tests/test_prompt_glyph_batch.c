@@ -2,7 +2,6 @@
    the real prompt-quad store underneath it. */
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_quads.h"
-#include "prompt_touch_buttons.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -48,20 +47,6 @@ int x2_ui_transform_current(uint32_t context, float mvp[16]) {
   for (i = 0; i < 16; i++)
     mvp[i] = (float)(i + 1u);
   return 1;
-}
-
-/* The touch-prompt owner is tested separately; what matters at this boundary
-   is that the draw's own primitive count reaches it, because that is how a
-   prompt is matched to the draw that places it. */
-static unsigned long touch_publishes;
-static uint32_t touch_primitives;
-
-void x2_prompt_touch_publish(X2PromptTransform transform, void *owner,
-                             uint32_t primitives) {
-  (void)transform;
-  (void)owner;
-  touch_publishes++;
-  touch_primitives = primitives;
 }
 
 int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
@@ -143,8 +128,6 @@ static void reset_case(uint32_t primitives) {
   transform_calls = gpu_calls = super_calls = 0;
   gpu_count = 0;
   gpu_first_codepoint = 0;
-  touch_publishes = 0;
-  touch_primitives = 0;
   transform_context = 0;
   event_count = 0;
   memset(events, 0, sizeof events);
@@ -167,9 +150,6 @@ int main(void) {
         "a draw with no prompt run is an untouched super-call");
   check(transform_calls == 0 && gpu_calls == 0,
         "an empty draw does not snapshot or submit");
-  check(touch_publishes == 1 && touch_primitives == primitives_for(3),
-        "every finalized draw offers its own primitive count to the touch "
-        "prompts, whether or not it carries prompt art");
 
   /* A footer: three elements laid out one after another in the batch, THEN
      drawn one per draw. Each draw takes the element it submits and leaves
@@ -274,8 +254,8 @@ int main(void) {
   put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
   super_runs_finalizer = 0;
   draw(glyph(0), 9u, &cpu);
-  check(!strcmp(events, "D") && gpu_calls == 0 && touch_publishes == 0,
-        "a draw that never finalized places nothing and offers nothing");
+  check(!strcmp(events, "D") && gpu_calls == 0,
+        "a draw that never finalized places nothing");
 
   x2_prompt_quads_reset();
   check(pending() == 0u, "a new frame drops every undrawn quad");

@@ -16,7 +16,6 @@ then talk to it while it runs:
     tools/x2ctl.py uiclick 279,97         # ... and its pointer
     tools/x2ctl.py pad a start             # synthetic pad buttons
     tools/x2ctl.py touch 0.2,0.73          # tap the screen, as a finger does
-    tools/x2ctl.py prompts                 # what a finger can press right now
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py assignment 2 --pad 0    # session-only pad -> Player 2
     tools/x2ctl.py assignment 2 --clear    # remove that eligibility
@@ -264,19 +263,6 @@ def cmd_touch(args):
     return 1 if bad else 0
 
 
-def cmd_prompts(args):
-    """What action prompts a finger can press right now, and where.
-
-    A run driving itself would otherwise choose a coordinate before it starts,
-    and a coordinate that drifts onto another screen still reports a tap. The
-    rectangles come with the surface they are in, because a fraction of the
-    wrong surface lands somewhere else entirely.
-    """
-    code, _, body = call(args.port, "/prompts")
-    print(body.decode(errors="replace").strip())
-    return 0 if code == 200 else 1
-
-
 def cmd_assignment(args):
     """Assign one exact live pad for this process, without persisting it."""
     path = "/assignment?player=%d&" % args.player
@@ -493,10 +479,6 @@ def main():
     t.add_argument("--gap", type=float, default=0.4)
     t.set_defaults(fn=cmd_touch)
 
-    sub.add_parser(
-        "prompts",
-        help="list the action prompts a finger can press now"
-    ).set_defaults(fn=cmd_prompts)
 
     assignment = sub.add_parser(
         "assignment", help="assign a session-only live pad to a player")

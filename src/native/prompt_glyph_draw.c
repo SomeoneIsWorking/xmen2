@@ -28,7 +28,6 @@
 #include "prompt_glyph_quads.h"
 #include "prompt_glyphs.h"
 #include "prompt_string_census.h"
-#include "prompt_touch_buttons.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -78,12 +77,6 @@ static uint32_t g_cursor_string;
 static unsigned g_cursor_index;
 static uint32_t g_cursor_color;
 static unsigned long g_intercepted, g_emitted_seen, g_predicted, g_desync;
-/* The cursor is armed for one of two reasons: to swap prompt art in, or to
-   take a key off a touch prompt and slide its words over. They never overlap
-   -- a rewritten prompt draws no native glyph -- so one cursor serves both
-   and the emitter cannot be asked to do both to the same quad. */
-static int g_touch_mode;
-static unsigned g_touch_emits;
 static unsigned long g_unavailable_refused, g_color_refused, g_queue_refused;
 static unsigned long g_emitted_seen_before;
 /* The keycap run the cursor is inside: its left edge's rectangle and where
@@ -249,17 +242,6 @@ static void intercept_keycap(CPU *C, uint16_t c) {
 }
 
 void x2_override_005ee400(CPU *C) {
-  if (g_cursor_string && g_touch_mode) {
-    float corners[4];
-    (void)cursor_take();
-    g_emitted_seen++;
-    read_corners(C, corners);
-    if (x2_prompt_touch_glyph(g_touch_emits++, &corners[0], &corners[1],
-                              &corners[2], &corners[3]))
-      write_corners(C, corners);
-    x86_guest_body(C, "XMen2.exe", 0x005ee400u);
-    return;
-  }
   if (g_cursor_string) {
     uint16_t c = cursor_take();
     g_emitted_seen++;
@@ -321,25 +303,6 @@ void x2_override_005ee780(CPU *C) {
   unsigned i;
 
   x2_prompt_string_census(s);
-  /* A touch prompt is rewritten instead of decorated: its key comes off and
-     its words slide into the space, so the native keycap art it would
-     otherwise carry is exactly what must not be drawn. */
-  if (s) {
-    unsigned length = 0;
-    (void)x2_prompt_string_hash(s, &length);
-    if (x2_prompt_touch_begin(s, length)) {
-      g_cursor_string = s;
-      g_cursor_index = 0;
-      g_touch_mode = 1;
-      g_touch_emits = 0;
-      g_super_called++;
-      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
-      g_cursor_string = 0;
-      g_touch_mode = 0;
-      x2_prompt_touch_end();
-      return;
-    }
-  }
   /* The cursor is armed only for a string carrying our codepoints, so
      every other string's quads take the untouched path. */
   if (x2_prompt_glyphs_enabled() && s &&

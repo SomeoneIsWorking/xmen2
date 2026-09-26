@@ -610,6 +610,70 @@ int main() {
         "a press with no release would leave retail's button down");
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
 
+  /* THE MENU PAD. Off gameplay the overlay draws the controller the retail
+     menus are navigated with. Both classes of finger: one that begins on a
+     pad button presses that button, one that begins anywhere else is the
+     retail pointer's and presses nothing on the pad. */
+  x2_gameplay_control_reset();
+  check(!x2_touch_runtime_overlay_visible() &&
+            x2_touch_runtime_has_visuals() != 0,
+        "off gameplay the menu pad is drawn instead of the controls",
+        "no HUD heartbeat");
+  {
+    const auto menu = visuals();
+    const X2TouchVisual *menu_a = find_action(menu, TouchAction::MenuA);
+    check(menu_a != nullptr && !find_action(menu, TouchAction::Jump),
+          "the menu pad draws A and none of the gameplay controls",
+          std::to_string(menu.size()) + " visual(s)");
+    if (!menu_a) {
+      return 1;
+    }
+    const float a_x = (menu_a->left + menu_a->right) * 0.5F;
+    const float a_y = (menu_a->top + menu_a->bottom) * 0.5F;
+    X2TouchPointer drained{};
+    while (x2_touch_runtime_take_pointer(&drained)) {
+    }
+
+    send_finger(SDL_EVENT_FINGER_DOWN, 20, a_x, a_y, width, height);
+    check(zone_is_active(TouchAction::MenuA) && button_down(pad, "a"),
+          "a finger on the menu pad's A presses the pad's A",
+          "gamepad button a is down");
+    check(guest_buttons(slot) == (1 << kDirectInputButtonA),
+          "and the guest reads DirectInput button 0 and nothing else",
+          "buttons bitmap " + std::to_string(guest_buttons(slot)));
+    X2TouchPointer none{};
+    check(!x2_touch_runtime_take_pointer(&none),
+          "a menu pad press is not also a click on the retail GUI",
+          "no pointer event");
+    send_finger(SDL_EVENT_FINGER_UP, 20, a_x, a_y, width, height);
+    check(!button_down(pad, "a"), "lifting it releases A", "button a is up");
+
+    send_finger(SDL_EVENT_FINGER_DOWN, 21, empty_x, empty_y, width, height);
+    X2TouchPointer click{};
+    const bool clicked = x2_touch_runtime_take_pointer(&click);
+    check(clicked && click.button_change == 1 && !button_down(pad, "a"),
+          "a finger off the pad is the retail pointer and presses no button",
+          "centre of the screen");
+    /* Dragged over A, it stays the pointer's. */
+    send_finger(SDL_EVENT_FINGER_MOTION, 21, a_x, a_y, width, height);
+    check(!button_down(pad, "a"), "and dragging it onto A does not press A",
+          "the contact began off the pad");
+    send_finger(SDL_EVENT_FINGER_UP, 21, a_x, a_y, width, height);
+    while (x2_touch_runtime_take_pointer(&drained)) {
+    }
+
+    /* A held pad button is let go when gameplay takes the screen, even if
+       the finger never moves again. */
+    send_finger(SDL_EVENT_FINGER_DOWN, 22, a_x, a_y, width, height);
+    check(button_down(pad, "a"), "A is held again", "before gameplay");
+    x2_gameplay_control_hud_drawn(guest_clock_now_s());
+    (void)x2_touch_runtime_take_pointer(&drained);
+    check(!button_down(pad, "a"),
+          "gameplay taking the screen lets go of a held menu button",
+          "no finger event arrived");
+    send_finger(SDL_EVENT_FINGER_UP, 22, a_x, a_y, width, height);
+  }
+
   /* Runs it for real: a report that throws or prints nothing is not an
      instrument, and nothing else in the suite calls it. */
   x2_touch_runtime_report("");

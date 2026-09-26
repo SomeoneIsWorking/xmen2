@@ -321,8 +321,8 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_skip_button.cpp
                src/input/cutscene_skip.c
                src/input/touch_pad_publisher.cpp
+               src/input/touch_menu_controls.cpp
                src/input/touch_pointer.cpp
-               src/input/touch_prompt_buttons.cpp
                src/input/touch_visuals.cpp
                src/input/directinput_controller_sample.c
                src/input/touch_census.cpp
@@ -892,6 +892,37 @@ endif()
 configure_file("${X2_KEY_FONT}" "${CMAKE_BINARY_DIR}/ui/NotoSans-Bold-keys.ttf"
                COPYONLY)
 
+# The touch menu pad draws the controller's own buttons from the same shared
+# Xbox set as the prompt atlas; tools/ui_resource_files.py lists the staged
+# names for packaging.
+set(X2_MENU_PAD_ICONS dpad_up dpad_down dpad_left dpad_right face_a face_b
+                      face_x face_y lb rb)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py" --print-pad-svgs
+            ${X2_MENU_PAD_ICONS}
+    RESULT_VARIABLE X2_MENU_PAD_RESULT
+    OUTPUT_VARIABLE X2_MENU_PAD_SVGS
+    ERROR_VARIABLE X2_MENU_PAD_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+string(REPLACE "\r\n" "\n" X2_MENU_PAD_SVGS "${X2_MENU_PAD_SVGS}")
+string(REPLACE "\n" ";" X2_MENU_PAD_SVGS "${X2_MENU_PAD_SVGS}")
+list(LENGTH X2_MENU_PAD_ICONS X2_MENU_PAD_ICON_COUNT)
+list(LENGTH X2_MENU_PAD_SVGS X2_MENU_PAD_SVG_COUNT)
+if(NOT X2_MENU_PAD_RESULT EQUAL 0 OR
+   NOT X2_MENU_PAD_SVG_COUNT EQUAL X2_MENU_PAD_ICON_COUNT)
+    message(FATAL_ERROR
+        "Refusing configuration: resolved ${X2_MENU_PAD_SVG_COUNT} of "
+        "${X2_MENU_PAD_ICON_COUNT} menu pad SVGs:\n${X2_MENU_PAD_ERROR}")
+endif()
+math(EXPR X2_MENU_PAD_LAST "${X2_MENU_PAD_ICON_COUNT} - 1")
+foreach(x2_menu_pad_index RANGE ${X2_MENU_PAD_LAST})
+    list(GET X2_MENU_PAD_ICONS ${x2_menu_pad_index} x2_menu_pad_icon)
+    list(GET X2_MENU_PAD_SVGS ${x2_menu_pad_index} x2_menu_pad_svg)
+    configure_file("${x2_menu_pad_svg}"
+                   "${CMAKE_BINARY_DIR}/ui/pad_${x2_menu_pad_icon}.svg" COPYONLY)
+endforeach()
+
 set(X2_PROMPT_GLYPH_ATLAS_HEADER
     "${CMAKE_SOURCE_DIR}/src/gen/prompt_glyph_atlas.h")
 add_custom_command(
@@ -940,7 +971,7 @@ add_test(NAME directinput_controller_sample
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/pad_glyphs.c
-               src/native/prompt_action_labels.c src/native/prompt_glyphs.c
+               src/native/prompt_glyphs.c
                src/native/prompt_labels.c src/native/input_binding_sets.c
                src/native/keycap_run.c src/native/keycap_labels.c
                src/native/prompt_glyph_atlas.c src/ui/ui_resources.cpp
@@ -968,7 +999,7 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
                src/native/prompt_glyph_metrics.c
                src/native/text_put.c
                src/native/prompt_glyph_quads.c
-               src/native/prompt_action_labels.c src/native/keycap_run.c
+               src/native/keycap_run.c
                src/native/keycap_labels.c src/ui/ui_resources.cpp
                src/native/guest_memory.c src/native/guest_memory_arena.c
                tests/native_stubs.c)
@@ -982,48 +1013,6 @@ target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread x2_runtime_config
                                                      Freetype::Freetype)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
 set_tests_properties(prompt_glyph_draw PROPERTIES
-                     ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
-
-# Which drawn strings carry one of the port's composed key caps, and which do
-# not. Both classes, because the matcher's two failures in the running game
-# were both false negatives.
-add_executable(test_prompt_action_labels tests/test_prompt_action_labels.c
-               src/native/prompt_action_labels.c src/native/keycap_run.c
-               src/native/prompt_glyph_atlas.c)
-add_dependencies(test_prompt_action_labels x2_pad_glyph_header
-                 x2_prompt_glyph_atlas)
-target_include_directories(test_prompt_action_labels
-                           PRIVATE src/native src/gen ${CMAKE_BINARY_DIR})
-target_link_libraries(test_prompt_action_labels PRIVATE m)
-add_test(NAME prompt_action_labels COMMAND test_prompt_action_labels)
-
-# The rewrite itself: the key's glyphs collapse, the words slide into their
-# place, and the rectangle is published by the draw that submits that prompt
-# rather than by the next one to finalize.
-add_executable(test_prompt_touch_buttons tests/test_prompt_touch_buttons.c
-               src/native/prompt_touch_buttons.c
-               src/native/prompt_action_labels.c src/native/keycap_run.c
-               src/native/keycap_labels.c src/ui/ui_resources.cpp
-               src/native/prompt_glyph_draw.c src/native/prompt_string_census.c
-               src/native/prompt_glyphs.c
-               src/native/prompt_glyph_atlas.c
-               src/native/prompt_glyph_metrics.c
-               src/native/text_put.c
-               src/native/prompt_glyph_quads.c
-               src/presentation/aspect_fit.c
-               src/native/guest_memory.c src/native/guest_memory_arena.c
-               tests/native_stubs.c)
-add_dependencies(test_prompt_touch_buttons x2_pad_glyph_header
-                 x2_prompt_glyph_atlas)
-target_include_directories(test_prompt_touch_buttons
-                           PRIVATE src/runtime/x86_abi src/native src/gen
-                                   ${CMAKE_BINARY_DIR})
-target_compile_definitions(test_prompt_touch_buttons
-                           PRIVATE _GNU_SOURCE X86_NATIVE)
-target_link_libraries(test_prompt_touch_buttons
-                      PRIVATE m pthread x2_runtime_config Freetype::Freetype)
-add_test(NAME prompt_touch_buttons COMMAND test_prompt_touch_buttons)
-set_tests_properties(prompt_touch_buttons PROPERTIES
                      ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
@@ -1808,11 +1797,9 @@ set(X2_NATIVE_SOURCES
     src/native/prompt_glyph_batch.c
     src/native/prompt_glyph_metrics.c
     src/native/prompt_glyph_quads.c
-    src/native/prompt_action_labels.c
     src/native/keycap_run.c
     src/native/keycap_labels.c
     src/native/prompt_tokens.c
-    src/native/prompt_touch_buttons.c
     src/native/ui_transform.c
     src/input/binding_rows.c
     src/input/controller_hotplug.c
@@ -1920,8 +1907,8 @@ set(X2_NATIVE_SOURCES
     src/input/touch_skip_button.cpp
     src/input/cutscene_skip.c
     src/input/touch_pad_publisher.cpp
+    src/input/touch_menu_controls.cpp
     src/input/touch_pointer.cpp
-    src/input/touch_prompt_buttons.cpp
     src/input/touch_visuals.cpp
     src/input/touch_inject.cpp
     src/input/touch_census.cpp

@@ -70,6 +70,96 @@ void add_camera_events(std::vector<ActionEvent> &out,
 
 } // namespace
 
+const char *touch_action_name(TouchAction action) {
+  switch (action) {
+  case TouchAction::Forward:
+    return "forward";
+  case TouchAction::Backward:
+    return "backward";
+  case TouchAction::MoveLeft:
+    return "move-left";
+  case TouchAction::MoveRight:
+    return "move-right";
+  case TouchAction::LightAttack:
+    return "light-attack";
+  case TouchAction::HeavyAttack:
+    return "heavy-attack";
+  case TouchAction::Jump:
+    return "jump";
+  case TouchAction::Use:
+    return "use";
+  case TouchAction::Power1:
+    return "power-1";
+  case TouchAction::Power2:
+    return "power-2";
+  case TouchAction::Power3:
+    return "power-3";
+  case TouchAction::Power4:
+    return "power-4";
+  case TouchAction::EnergyPack:
+    return "energy-pack";
+  case TouchAction::HealthPack:
+    return "health-pack";
+  case TouchAction::NextHero:
+    return "next-hero";
+  case TouchAction::PreviousHero:
+    return "previous-hero";
+  case TouchAction::DecreaseAggr:
+    return "decrease-aggr";
+  case TouchAction::IncreaseAggr:
+    return "increase-aggr";
+  case TouchAction::MapToggle:
+    return "map-toggle";
+  case TouchAction::Pause:
+    return "pause";
+  case TouchAction::Stats:
+    return "stats";
+  case TouchAction::CameraUp:
+    return "camera-up";
+  case TouchAction::CameraDown:
+    return "camera-down";
+  case TouchAction::CameraLeft:
+    return "camera-left";
+  case TouchAction::CameraRight:
+    return "camera-right";
+  case TouchAction::SelectHero1:
+    return "select-hero-1";
+  case TouchAction::SelectHero2:
+    return "select-hero-2";
+  case TouchAction::SelectHero3:
+    return "select-hero-3";
+  case TouchAction::SelectHero4:
+    return "select-hero-4";
+  case TouchAction::RetailPauseMenu:
+    return "retail-pause-menu";
+  case TouchAction::RetailTeamMenu:
+    return "retail-team-menu";
+  case TouchAction::PortMenu:
+    return "port-menu";
+  case TouchAction::MenuUp:
+    return "menu-up";
+  case TouchAction::MenuDown:
+    return "menu-down";
+  case TouchAction::MenuLeft:
+    return "menu-left";
+  case TouchAction::MenuRight:
+    return "menu-right";
+  case TouchAction::MenuA:
+    return "menu-a";
+  case TouchAction::MenuB:
+    return "menu-b";
+  case TouchAction::MenuX:
+    return "menu-x";
+  case TouchAction::MenuY:
+    return "menu-y";
+  case TouchAction::MenuLeftShoulder:
+    return "menu-left-shoulder";
+  case TouchAction::MenuRightShoulder:
+    return "menu-right-shoulder";
+  }
+  return "unknown-action";
+}
+
 std::optional<float> touch_axis_value(std::span<const ActionEvent> events,
                                       TouchAction negative,
                                       TouchAction positive) {

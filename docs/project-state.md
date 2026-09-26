@@ -980,16 +980,20 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 `--test-map=<path>` makes the route selectable; the default is unchanged
 (issue #171).
 
-In touch play the retail footer prompts are controls. The key's glyphs are
-collapsed where the emitter writes them, the action's words slide into the
-space they left, and the rectangle they landed in is published as a control
-that presses the DirectInput code the prompt named -- so `Esc Back` reads
-`Back` and is tappable, and `[Space] Advanced Options` reads `Advanced
-Options`. Measured by `tools/live_case.py prompt-touch`, 9 of 9: the Options
-screen publishes both, a tap on Back returns to the menu it was opened from,
-and the census counts the press with no refusal from the keyboard injector
-(issue #180). The main menu draws no prompt and publishes none, which is what
-proves a control does not outlive the screen that drew it.
+Off gameplay, touch play draws the menu pad: a d-pad bottom left, the Xbox
+face buttons bottom right (A below, B right, X left, Y above), and a shoulder
+above each cluster, publishing through the same virtual pad as the gameplay
+controls. The retail menus are navigated with a controller exactly as on the
+Xbox, and the footers name that pad's buttons, so the prompts and the buttons
+beside them agree. A finger that begins off the pad is still the retail
+pointer. Measured by `tools/live_case.py menu-pad`, 12 of 12 on 2026-09-26:
+the main menu draws all ten buttons and none of the gameplay controls, five
+d-pad Downs and an A open Options, and B returns to the main menu, judged on
+the menu column's static art (11.5 from the main menu against 49.3 from
+Options). This replaced making the footer's words tappable, whose
+prompt-to-draw pairing by glyph count put the World Map's Back and Go on the
+level names that draw as many glyphs and left that screen with no way out
+(issue #190).
 
 The stick steers from the thumb, not from the ring. It measured its axes from
 the ring's geometric centre, so where the thumb happened to land was itself an
@@ -1027,15 +1031,6 @@ probe reads `joystick answer mask 0x00000000`, "NO joystick device answered
 this frame, so every pad binding reads 0 by construction", while the census
 cheerfully reports 12 axis changes published and 0 refused. Both halves are
 true and only the pair says anything: publication is not delivery.
-
-Gap: a retail dialogue's footer is drawn as TWO strings — the key cap
-`[Enter]`, and `continue...` separately — and `x2_prompt_action_label_match`
-requires words after the cap in the same string, so neither is claimed and
-`/prompts` answers "no action prompt is pressable" on a screen plainly
-drawing one. The screen is not stuck: it draws no control, so a contact goes
-to the retail pointer, and a tap anywhere advanced the Dead Zone opening
-dialogue line by line. What is missing is the button on the words the game
-named, not a way past the screen.
 
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this

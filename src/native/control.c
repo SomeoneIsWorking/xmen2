@@ -383,8 +383,6 @@ static void serve(x2_socket_t fd) {
     control_route_pad(fd, query ? query : "");
   else if (!strcmp(path, "/touch"))
     control_route_touch(fd, query ? query : "");
-  else if (!strcmp(path, "/prompts"))
-    control_route_prompts(fd);
   else if (!strcmp(path, "/controls"))
     control_route_controls(fd);
   else if (!strcmp(path, "/assignment"))
@@ -411,7 +409,6 @@ static void serve(x2_socket_t fd) {
         "  GET /key?name=X   press a key (&hold=<seconds>)\n"
         "  GET /ui/key?name=F2  press a key at the PORT's own UI\n"
         "  GET /ui/click?x=X&y=Y  click at the PORT's own UI\n"
-        "  GET /prompts      the action prompts a finger can press now\n"
         "  GET /controls     where the overlay's controls are, and the "
         "stick's deflection\n"
         "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"

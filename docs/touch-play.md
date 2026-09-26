@@ -62,23 +62,26 @@ phone player met: an intro no tap could skip and a menu no tap could press
 sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
 reach the retail world-click handler.
 
-**Where the screen offers an action by naming a key** — the footer's `Esc
-Back`, `[Space] Advanced Options` — the key is taken off what is drawn and
-what remains becomes a control. The key's glyphs are collapsed where the
-emitter writes them, the words slide into the space they left, and the
-rectangle they landed in is published; a contact inside it presses the
-DirectInput code the prompt named, retained when the cap was composed and the
-binding had just been named. The control draws no art: the words retail
-already drew ARE the button, and the port's own outline would cover them.
+**Every screen that is not gameplay draws the menu pad** -- the front end,
+the pause and team menus, the World Map, dialogue. The retail menus are
+navigated with a controller exactly as on the Xbox, so the port draws that
+controller: a d-pad bottom left where the stick sits in gameplay, the face
+buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
+above), and a shoulder above each cluster for tabbed screens
+(`x2_layout_build_menu`, `x2::input::MenuControls`). They publish through the
+same virtual pad as the gameplay controls, so the footers name that pad's
+buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
+drawn from. A finger that begins on a pad button holds it until it lifts; one
+that begins anywhere else is the retail pointer for its whole life, so a drag
+across the pad never presses it. A held button is let go when gameplay or a
+cinematic takes the screen, even if the finger never moves.
 
-The prompts name the keyboard even with the touch pad claiming player one.
-The overlay publishes through a synthetic Xbox-family pad, and naming that
-pad drew an Xbox `B Back` on a phone -- a picture of a controller nobody
-holds, and one no finger could press, because only a keyboard cap is
-rewritten into a control. So while touch play is active, `pad_glyphs.c` does
-not treat the synthetic pad as a prompt device, and the label falls back to
-the game's own keyboard rows. Without touch play the same synthetic pad is a
-headless stand-in for a controller and keeps its glyphs.
+The port once made the footer's words themselves tappable instead, pairing
+each prompt with the draw that placed it by glyph count. The World Map's level
+names draw as many glyphs as its footer, so Back and Go were published over
+`Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
+Touch-native menus that replace the retail ones are future work; until then
+the controller is the one input every retail menu is complete for.
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
@@ -89,24 +92,6 @@ document (`src/ui/skip_document.cpp`), because the gameplay overlay is hidden
 then. A tap after the offer has ended is refused rather than held, so it
 cannot skip the next cinematic. `/controls` lists it as `skip button` while
 it is drawn.
-
-Which draw places a prompt is decided by that draw's own glyph count, not by
-the order prompts arrive in. A frame lays every prompt out and only then
-draws them, one element per draw with its own world matrix; a glyph occupies
-six vertices and a draw declares two fewer primitives than vertices, so the
-draw of a 15-glyph `Back` declares 88 and the draw of a 32-glyph `Advanced
-Options` declares 190. Pairing them by arrival instead drew `Back` on top of
-`Advanced Options` (issue #180).
-
-Both numbers are the engine's: the text sink's write cursor advances six per
-emitted glyph, and consecutive draws in a text pass begin where the last one
-ended plus two. It is still a match on length rather than identity -- two
-prompts of equal length on one screen could take each other's transform --
-because the sink's cursor and the draw's start-vertex argument turn out to
-count in different spaces, and matching by vertex range put a dialog's two
-footer prompts on two lines the screen draws as one. Mis-attribution is
-geometric, so `tools/live_case.py prompt-touch` requires the footer it reads
-to be side by side on one line.
 
 Retail draws one cursor and has one button, so one contact owns it at a time:
 `x2::input::PointerOwner` is that rule, shared by the portrait tap and the
@@ -275,28 +260,14 @@ movie reports the same 312 decoded frames. A pixel delta cannot say whether a
 menu responded — the menu animates, and its idle frame-to-frame difference
 measured 11–19 against the 27 a working tap produced.
 
-### The footer prompts as controls, 2026-09-22
+### The menu pad, 2026-09-26
 
-`tools/live_case.py prompt-touch` opens Options, reads `/prompts` for what the
-run says is pressable and in which surface, taps the Back control it names,
-and requires the screen afterwards to be a different one — stated by which
-prompts it draws, Options' own pair being Escape and Space. The census must
-also count the press and report no refusal from the keyboard injector. 9 of
-9, three runs in a row.
-
-A pixel delta cannot make that call, for the same reason it could not in
-issue #179: the menu animates, and a run in which the tap HAD worked measured
-40.96 from the Options screen against 42.54 from the menu it returned to.
-
-The main-menu check is the negative one: that screen draws no action prompt,
-so nothing may be pressable on it. It is what would catch a control outliving
-the screen that drew it, the difficulty dialog's own `Esc Back` having been
-published seconds earlier and staying pressable for two.
-
-`/prompts` reports the viewport its rectangles are in, because a caller that
-divides by a window size learned somewhere else taps a fraction of the wrong
-surface: that is how a tap aimed at `Back` in a 1280x720 window went off the
-bottom of it.
+`tools/live_case.py menu-pad` reaches the main menu, reads `/controls` for the
+buttons the run is drawing and the surface they are in, taps d-pad Down five
+times and A, and requires the game's own first open of the Options package. B
+must then return to the main menu, judged on the menu column's static art
+rather than the whole frame, whose animated backdrop moves as much as a
+screen change: 11.5 from the main menu against 49.3 from Options. 12 of 12.
 
 ### Native presentation observation, 2026-09-25
 
@@ -320,11 +291,10 @@ It goes through `x2_touch_inject`, which takes the same note-source and
 routing calls the host event pump takes — a second copy of that sequence
 could only agree with the shipping one by luck.
 
-`/prompts` (`tools/x2ctl.py` reads it too) lists the action prompts that are
-pressable right now, their rectangles, and the viewport those rectangles are
-in, so a run driving itself taps what the game is drawing rather than a
-coordinate chosen before the run started. An empty answer says which empty it
-is: no prompt is on screen, or touch play is not on and none ever will be.
+`/controls` lists what the overlay draws right now, one control per line with
+its rectangle and action name (`menu-a`, `jump`, ...), and the viewport those
+rectangles are in, so a run driving itself taps what the game is drawing
+rather than a coordinate chosen before the run started.
 
 ## Not established
 
