@@ -290,8 +290,11 @@ over the title's 16,451 functions (x86port `tools/jit_coverage.c` under
 `x86p_cond` for 2,673 conditions where x64 called it for 428, 2,241 of them
 JP/JNP after MSVC's `fnstsw ax; test ah, imm` float compare, and still calling
 `x86p_alu` for every SHL/SHR/SAR. x86port `3013ffb` lowers parity and the
-shifts inline; the census now matches x64's 428. Not yet measured on the
-phone either.
+shifts inline; the census now matches x64's 428. x86port `db866fd` drops
+the per-access bounds check under the reserved arena's guard page, as x64
+already did, and keeps the mapping base in a register: one block of three
+guest accesses went from 68 to 41 host instructions. None of these is yet
+measured on the phone.
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
