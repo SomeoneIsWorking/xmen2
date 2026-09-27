@@ -6,12 +6,23 @@ files stream into origin-private storage and never leave the device. Only the
 port executable, shaders, UI and other redistributable resources enter a release.
 [Project state S021](project-state.md#s021--web-wasm--pwa-product-with-browser-side-install-partial)
 owns current capability status. The central Pages route serves the build from
-xmen2 run 34852326627 at commit 011326b, published into `~/repo/pages` as
-`2f4d21f` and verified live: `publication.json` at the route names that commit
-and run, and the served `x2native.wasm` (sha256 `5f229cf5...`) and `app.mjs`
-(sha256 `c9dfb81b...`) are byte-identical to the reviewed artifact. It remains a
+xmen2 run 36230458590 at commit 77749f4, published into `~/repo/pages` as
+`e3133ad` and verified live: `publication.json` at the route names that commit
+and run, and the served `x2native.wasm` (sha256 `f807c9f8...`), `x2native.js`
+(`2f310053...`), `x2native.data` (`5fbf2e91...`) and `app.mjs` (`cb7926a8...`)
+are byte-identical to the reviewed artifact, as is the service worker's
+per-file release hash list. It remains a
 preview: responsive, visible gameplay has not passed, and the deployable
 capability is still `partial`.
+
+A deployment that only advances provenance is a real outcome worth recording:
+the run 36228962480 artifact that the route served before was byte-identical to
+run 36230458590's. The two commits between them, `b637414` and `77749f4`, are
+one-line `bootstrap.py` x86port pin bumps measured on x86-64 hosts (`_ftol`,
+x64 IMUL inline). The WebAssembly build uses the wasm32 backend and the
+soft-float x87 path, so neither pin can change the packaged bytes. The
+service worker's release version is a digest of its file list, so it was
+unchanged and a returning player's cache stayed valid across the redeploy.
 
 ## Build and packaging owners
 
