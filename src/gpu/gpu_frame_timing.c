@@ -14,6 +14,8 @@ static unsigned long g_hist[GPU_FRAME_HISTOGRAM_BUCKETS];
 static unsigned long long g_recent[GPU_FRAME_TIMING_SAMPLE_CAPACITY];
 static unsigned long long g_sorted[GPU_FRAME_TIMING_SAMPLE_CAPACITY];
 static unsigned long g_recent_count, g_recent_next;
+/* Intervals noted since the heartbeat last took its window percentiles. */
+static unsigned long g_window_count;
 
 /* Dense below 100 ms so normal pacing and isolated stalls do not collapse
    into the same average; the final bucket is open-ended. */
@@ -63,6 +65,7 @@ void gpu_frame_timing_reset(void) {
   memset(g_hist, 0, sizeof g_hist);
   g_recent_count = 0;
   g_recent_next = 0;
+  g_window_count = 0;
 }
 
 void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame) {
@@ -81,6 +84,8 @@ void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame) {
     g_recent_next = (g_recent_next + 1u) % GPU_FRAME_TIMING_SAMPLE_CAPACITY;
     if (g_recent_count < GPU_FRAME_TIMING_SAMPLE_CAPACITY)
       g_recent_count++;
+    if (g_window_count < GPU_FRAME_TIMING_SAMPLE_CAPACITY)
+      g_window_count++;
     if (dt > SLOW_FRAME_NS) {
       if (gpu_frame_timing_slow_hook)
         gpu_frame_timing_slow_hook(frame, dt);
@@ -149,25 +154,51 @@ void gpu_frame_timing_perf(unsigned long long *frame_ns,
   *hist = g_hist;
 }
 
-void gpu_frame_timing_percentiles(unsigned long long *p50_ns,
-                                  unsigned long long *p95_ns,
-                                  unsigned long long *p99_ns,
-                                  unsigned long *samples) {
-  const unsigned long count = g_recent_count;
-  if (!p50_ns || !p95_ns || !p99_ns || !samples)
-    return;
+/* Sorts the `count` most recent intervals and reads the three quantiles. */
+static void newest_percentiles(unsigned long count, unsigned long long *p50_ns,
+                               unsigned long long *p95_ns,
+                               unsigned long long *p99_ns) {
+  unsigned long first =
+      (g_recent_next + GPU_FRAME_TIMING_SAMPLE_CAPACITY - count) %
+      GPU_FRAME_TIMING_SAMPLE_CAPACITY;
+  unsigned long head = GPU_FRAME_TIMING_SAMPLE_CAPACITY - first;
+
   *p50_ns = 0;
   *p95_ns = 0;
   *p99_ns = 0;
-  *samples = count;
-  if (!count)
+  if (!count) {
     return;
-
-  /* Status requests are rare and control_status already accepts torn
-   * diagnostic reads; sorting a copied bounded window keeps frame-end O(1). */
-  memcpy(g_sorted, g_recent, count * sizeof *g_sorted);
+  }
+  if (head > count) {
+    head = count;
+  }
+  memcpy(g_sorted, g_recent + first, head * sizeof *g_sorted);
+  memcpy(g_sorted + head, g_recent, (count - head) * sizeof *g_sorted);
   qsort(g_sorted, count, sizeof *g_sorted, compare_ns);
   *p50_ns = g_sorted[percentile_index(count, 50u)];
   *p95_ns = g_sorted[percentile_index(count, 95u)];
   *p99_ns = g_sorted[percentile_index(count, 99u)];
+}
+
+void gpu_frame_timing_percentiles(unsigned long long *p50_ns,
+                                  unsigned long long *p95_ns,
+                                  unsigned long long *p99_ns,
+                                  unsigned long *samples) {
+  if (!p50_ns || !p95_ns || !p99_ns || !samples)
+    return;
+  /* Status requests are rare and control_status already accepts torn
+   * diagnostic reads; sorting a copied bounded window keeps frame-end O(1). */
+  *samples = g_recent_count;
+  newest_percentiles(g_recent_count, p50_ns, p95_ns, p99_ns);
+}
+
+void gpu_frame_timing_window_percentiles(unsigned long long *p50_ns,
+                                         unsigned long long *p95_ns,
+                                         unsigned long long *p99_ns,
+                                         unsigned long *samples) {
+  if (!p50_ns || !p95_ns || !p99_ns || !samples)
+    return;
+  *samples = g_window_count;
+  newest_percentiles(g_window_count, p50_ns, p95_ns, p99_ns);
+  g_window_count = 0;
 }

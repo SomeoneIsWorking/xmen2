@@ -68,10 +68,12 @@ class Marionette:
         ahead of the resolve callback the page calls last.
         """
         self.command("WebDriver:SetTimeouts", {"script": timeout_ms})
-        return self.command(
+        reply = self.command(
             "WebDriver:ExecuteAsyncScript",
             {"script": body, "args": list(args), "newSandbox": False},
         )
+        # WebDriver wraps every script result as {"value": result}.
+        return reply["value"]
 
     #: The WebDriver key names this client needs, by their spec code points.
     KEYS: ClassVar[dict[str, str]] = {
@@ -111,7 +113,7 @@ class Marionette:
         )
 
     def screenshot(self) -> str:
-        return self.command("WebDriver:TakeScreenshot", {"full": True, "hash": False})
+        return self.command("WebDriver:TakeScreenshot", {"full": True, "hash": False})["value"]
 
     def _send(self, message: list[Any]) -> None:
         payload = json.dumps(message).encode()

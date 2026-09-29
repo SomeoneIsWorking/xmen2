@@ -1457,6 +1457,11 @@ set_tests_properties(web_touch_play PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     ENVIRONMENT "X2_TEST_TOUCH_RUNTIME_BINARY=$<TARGET_FILE:test_touch_runtime>")
 
+# The Zen driver's frame-time reader, against the heartbeat's window line.
+add_test(NAME zen_play
+         COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_zen_play)
+set_tests_properties(zen_play PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # Every browser recorder reads the console through cdp_console; a worker that
 # starts after it attaches, and the stack a trap carries, must both reach it.
 add_test(NAME cdp_console

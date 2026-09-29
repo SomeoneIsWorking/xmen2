@@ -44,4 +44,13 @@ void gpu_frame_timing_percentiles(unsigned long long *p50_ns,
                                   unsigned long long *p99_ns,
                                   unsigned long *samples);
 
+/* The same quantiles over only the intervals noted since the previous call,
+ * which then starts the next window: the heartbeat's per-interval tail, so a
+ * browser run that never reaches a status request still reports its p95/p99
+ * over gameplay rather than over the boot that preceded it. */
+void gpu_frame_timing_window_percentiles(unsigned long long *p50_ns,
+                                         unsigned long long *p95_ns,
+                                         unsigned long long *p99_ns,
+                                         unsigned long *samples);
+
 #endif

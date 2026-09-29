@@ -1970,6 +1970,31 @@ survive the back-off`. Frame rate is unchanged by it at about 8.4 presents/s
 wait 25.10 ms), so what bounds Firefox gameplay now is guest execution and the
 submit, not the module arena.
 
+**Zen frame-time baseline (2026-09-29).** `tools/zen_play.py` owns the Zen
+measurement end to end: it serves `build/release/web` without isolation
+headers, launches a throwaway headless Zen profile under `scratch/zen/` over
+Marionette, installs the game ZIP once, clicks `#test-play`, and reads the
+heartbeat from the browser's stdout. The heartbeat now carries the frame-time
+p50/p95/p99 over only the intervals since the previous beat
+(`gpu_frame_timing_window_percentiles`). On Zen 1.22.3b, 1280x720, Dead Zone's
+opening conversation, after a 60 s warm-up: **median p50 49.7 ms, median p95
+75.9 ms, steady 19.6 presents/s** (28 windows, 2,479 frames); swapchain wait
+4.9 ms/frame, 61,153 blocks translated into 1,908 modules, 105 evictions all
+asked for by the live-module ceiling. Later runs on the same build read 12-16
+presents/s while other sessions loaded the machine, so compare builds only on
+a quiet host.
+
+Next step: attribute the Zen worker's time. Firefox's startup profiler
+(`MOZ_PROFILER_STARTUP*` through `flatpak run --env`, written by
+`MOZ_PROFILER_SHUTDOWN` inside the profile directory, the only path the
+sandbox may write) produced a profile of the PARENT process's workers only;
+the game's pthread workers live in the content process and were not in it.
+Capture the content process (for example `MOZ_PROFILER_STARTUP_FILTERS=*` or
+starting the profiler from Marionette's chrome context and saving with
+`Services.profiler.dumpProfileToFileAsync`), resolve `x2native.wasm` frames
+with `build/web/x2native.js.symbols` as `tools/web_profile.py` does, and fix
+the heavy operations it names.
+
 Gap: build/link progress and shared synthetic tests are not browser gameplay or
 performance evidence. The acceptance contracts and current build entry point are
 in [web-release.md](web-release.md). A deployed artifact, explicit fallback denominators, representative interaction,

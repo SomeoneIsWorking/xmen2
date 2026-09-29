@@ -36,6 +36,30 @@ int main(void) {
     fprintf(stderr, "frame timing: bounded sample window failed\n");
     return 1;
   }
+  /* The window covers only what was noted since it was last read, across
+     the ring's wrap: every interval so far is one window, then ten fresh
+     1 ms intervals are the next, whatever the whole-run tail says. */
+  gpu_frame_timing_window_percentiles(&p50, &p95, &p99, &samples);
+  if (samples != GPU_FRAME_TIMING_SAMPLE_CAPACITY) {
+    fprintf(stderr, "frame timing: first window held %lu samples\n", samples);
+    return 1;
+  }
+  for (i = 0; i < 10u; ++i) {
+    now += 1000000ull;
+    gpu_frame_timing_note(now, i);
+  }
+  gpu_frame_timing_window_percentiles(&p50, &p95, &p99, &samples);
+  if (samples != 10u || p50 != 1000000ull || p99 != 1000000ull) {
+    fprintf(stderr, "frame timing: window samples=%lu p50=%llu p99=%llu\n",
+            samples, p50, p99);
+    return 1;
+  }
+  gpu_frame_timing_window_percentiles(&p50, &p95, &p99, &samples);
+  if (samples || p50 || p99) {
+    fprintf(stderr, "frame timing: an empty window reported %lu samples\n",
+            samples);
+    return 1;
+  }
   gpu_frame_timing_reset();
   gpu_frame_timing_percentiles(&p50, &p95, &p99, &samples);
   if (samples || p50 || p95 || p99) {

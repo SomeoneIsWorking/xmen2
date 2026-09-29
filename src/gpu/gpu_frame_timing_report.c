@@ -44,6 +44,8 @@ void gpu_frame_timing_report_interval(void) {
   unsigned long long dns, uns, una, unsb, tc, swns;
   unsigned long up, sb, intervals, swn, swprompt;
   unsigned long long swworst;
+  unsigned long long wp50, wp95, wp99;
+  unsigned long window;
   char host[160];
   gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
   gpu_frame_timing_swapchain_wait(&swns, &swn, &swprompt, &swworst);
@@ -74,4 +76,9 @@ void gpu_frame_timing_report_interval(void) {
                (double)swworst * 1e-6);
   (void)esub;
   (void)hist;
+  gpu_frame_timing_window_percentiles(&wp50, &wp95, &wp99, &window);
+  x2_log_error("[HB]           frame ms p50 %.2f p95 %.2f p99 %.2f over %lu "
+               "interval(s) since the last heartbeat\n",
+               (double)wp50 * 1e-6, (double)wp95 * 1e-6, (double)wp99 * 1e-6,
+               window);
 }
