@@ -74,14 +74,17 @@ TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
   const float column_left = left + 0.5F * (width - column);
   const float column_right = column_left + column;
 
+  /* A menu with no title item gets no header band. */
+  const bool titled = !view.title.empty();
   layout.title = {column_left, top + margin, column_right,
-                  top + margin + kTitleHeight * u};
+                  top + margin + (titled ? kTitleHeight * u : 0.0F)};
   const float footer_height = view.footers.empty() ? 0.0F : kFooterHeight * u;
   layout.footer = {column_left, bottom - margin - footer_height, column_right,
                    bottom - margin};
-  layout.list = {column_left, layout.title.bottom + kRowGap * u, column_right,
-                 layout.footer.top -
-                     (view.footers.empty() ? 0.0F : kRowGap * u)};
+  layout.list = {
+      column_left, layout.title.bottom + (titled ? kRowGap * u : 0.0F),
+      column_right,
+      layout.footer.top - (view.footers.empty() ? 0.0F : kRowGap * u)};
 
   const float row_height = std::max(kRowHeight * u, kMinimumTarget);
   const float gap = kRowGap * u;

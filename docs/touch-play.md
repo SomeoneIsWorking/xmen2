@@ -87,7 +87,8 @@ names draw as many glyphs as its footer, so Back and Go were published over
 **The main menu, Options, the PDA and the team menu's party screen are
 replaced by the touch menu.** While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
-built from the live retail menu model (`GET /menu`): the title, one button per
+built from the live retail menu model (`GET /menu`): the title (no header band
+when the menu has no title item), one button per
 enabled row with its value or bar, step buttons on rows with left/right, and
 one button per footer prompt. It scrolls by drag, keeps to the safe area, scales
 with the shorter screen edge, and re-reads the model every 33 ms. A tap runs
