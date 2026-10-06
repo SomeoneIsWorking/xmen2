@@ -11,7 +11,10 @@
 #include <string>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#include "ucrt_abort_status.hpp"
+#include <process.h>
+#else
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -98,47 +101,14 @@ void test_retention_and_flush(const fs::path &root) {
          "a clean run leaves no empty crash file behind");
 }
 
-#if !defined(_WIN32)
 enum class Crash { Abort, Segv };
 
-void segv_handler(int sig, siginfo_t *info, void *) {
-  CrashReport::begin("SIGSEGV", sig, info->si_code,
-                     reinterpret_cast<std::uintptr_t>(info->si_addr), 0);
-  _exit(3);
-}
+constexpr char kAbortChild[] = "--abort-child";
 
-void test_crash(const fs::path &root, Crash kind) {
-  const fs::path dir = root / (kind == Crash::Abort ? "abort" : "segv");
-  const pid_t child = fork();
-  if (child == 0) {
-    std::string error;
-    RunLog::Options options;
-    options.directory = dir / "logs";
-    if (!RunLog::start(options, error)) {
-      _exit(10);
-    }
-    CrashReport::preload_backtrace();
-    CrashReport::install_abort_handler();
-    x2_log_info("before the crash");
-    if (kind == Crash::Abort) {
-      abort();
-    }
-    struct sigaction action{};
-    action.sa_sigaction = segv_handler;
-    action.sa_flags = SA_SIGINFO;
-    sigaction(SIGSEGV, &action, nullptr);
-    raise(SIGSEGV);
-    _exit(11);
-  }
-  int status = 0;
-  waitpid(child, &status, 0);
-  if (kind == Crash::Abort) {
-    expect(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
-           "abort keeps its SIGABRT death after the report");
-  } else {
-    expect(WIFEXITED(status) && WEXITSTATUS(status) == 3,
-           "segv handler ran and exited 3");
-  }
+/* The crashing process: a run log, the abort handler, one line, the crash. */
+[[noreturn]] void crash_child(const fs::path &dir, Crash kind);
+
+void expect_crash_record(const fs::path &dir, Crash kind) {
   const fs::path logs = dir / "logs";
   const std::vector<std::string> crashes = names_with_suffix(logs, ".txt");
   const std::vector<std::string> run_logs = names_with_suffix(logs, ".log");
@@ -152,7 +122,7 @@ void test_crash(const fs::path &root, Crash kind) {
   const std::string name = kind == Crash::Abort ? "SIGABRT" : "SIGSEGV";
   expect(crash.find("*** CRASH " + name) == 0, "crash file opens with " + name);
   expect(crash.find("pc=0x") != std::string::npos, "crash file has the pc");
-#if !defined(__ANDROID__)
+#if !defined(__ANDROID__) && !defined(_WIN32)
   expect(crash.find("[HOST STACK]") != std::string::npos,
          "crash file has the host backtrace");
 #endif
@@ -160,11 +130,83 @@ void test_crash(const fs::path &root, Crash kind) {
              log.find("*** CRASH " + name) != std::string::npos,
          "run log holds the lines before the crash and the record");
 }
+
+#if defined(_WIN32)
+void crash_child(const fs::path &dir, Crash) {
+  std::string error;
+  RunLog::Options options;
+  options.directory = dir / "logs";
+  if (!RunLog::start(options, error)) {
+    _exit(10);
+  }
+  CrashReport::install_abort_handler();
+  x2_log_info("before the crash");
+  abort();
+}
+
+void test_crash(const char *self, const fs::path &root) {
+  const fs::path dir = root / "abort";
+  const std::string quoted = "\"" + dir.string() + "\"";
+  const intptr_t status =
+      _spawnl(_P_WAIT, self, self, kAbortChild, quoted.c_str(), nullptr);
+  expect(x2::test::is_ucrt_abort_status(status),
+         "abort keeps the UCRT's abort status after the report");
+  expect_crash_record(dir, Crash::Abort);
+}
+#else
+
+void segv_handler(int sig, siginfo_t *info, void *) {
+  CrashReport::begin("SIGSEGV", sig, info->si_code,
+                     reinterpret_cast<std::uintptr_t>(info->si_addr), 0);
+  _exit(3);
+}
+
+void crash_child(const fs::path &dir, Crash kind) {
+  std::string error;
+  RunLog::Options options;
+  options.directory = dir / "logs";
+  if (!RunLog::start(options, error)) {
+    _exit(10);
+  }
+  CrashReport::preload_backtrace();
+  CrashReport::install_abort_handler();
+  x2_log_info("before the crash");
+  if (kind == Crash::Abort) {
+    abort();
+  }
+  struct sigaction action{};
+  action.sa_sigaction = segv_handler;
+  action.sa_flags = SA_SIGINFO;
+  sigaction(SIGSEGV, &action, nullptr);
+  raise(SIGSEGV);
+  _exit(11);
+}
+
+void test_crash(const fs::path &root, Crash kind) {
+  const fs::path dir = root / (kind == Crash::Abort ? "abort" : "segv");
+  const pid_t child = fork();
+  if (child == 0) {
+    crash_child(dir, kind);
+  }
+  int status = 0;
+  waitpid(child, &status, 0);
+  if (kind == Crash::Abort) {
+    expect(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
+           "abort keeps its SIGABRT death after the report");
+  } else {
+    expect(WIFEXITED(status) && WEXITSTATUS(status) == 3,
+           "segv handler ran and exited 3");
+  }
+  expect_crash_record(dir, kind);
+}
 #endif
 
 } // namespace
 
 int main(int argc, char **argv) {
+  if (argc == 3 && std::string(argv[1]) == kAbortChild) {
+    crash_child(argv[2], Crash::Abort);
+  }
   if (argc != 2) {
     std::fprintf(stderr, "usage: test_run_log <scratch directory>\n");
     return 2;
@@ -174,7 +216,9 @@ int main(int argc, char **argv) {
   fs::remove_all(root, ec);
   fs::create_directories(root);
   test_retention_and_flush(root / "retention");
-#if !defined(_WIN32)
+#if defined(_WIN32)
+  test_crash(argv[0], root);
+#else
   test_crash(root, Crash::Abort);
   test_crash(root, Crash::Segv);
 #endif

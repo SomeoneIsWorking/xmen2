@@ -125,7 +125,7 @@ JIT_TARGETS = (
 )
 
 # The Windows halves of the host boundaries: VM, sockets, files, processes and
-# the vectored fault reporter (x2native --fault-selftest).
+# the vectored fault reporter (x2native --fault-selftest) and the abort record.
 WINDOWS_HOST_TARGETS = (
     "test_platform_mman",
     "test_winsock_host",
@@ -134,6 +134,7 @@ WINDOWS_HOST_TARGETS = (
     "test_env_file",
     "test_install_picker",
     "test_override_leaf",
+    "test_run_log",
     "x2native",
 )
 
@@ -167,6 +168,7 @@ WINDOWS_HOST_TESTS = (
     "env_file_executable_precedence",
     "install_picker",
     "override_leaf",
+    "run_log",
     "fault_reporter",
 )
 

@@ -3,8 +3,8 @@
 ## Finding
 
 `x2native.exe` cross-compiles for Windows x86-64 with llvm-mingw and boots the
-retail game under Wine. There is still no Windows package. The JIT runs about
-12x slower under Wine than on Linux, and no run on real Windows has been made.
+retail game under Wine. There is still no Windows package, and no run on real
+Windows has been made.
 
 ## Host boundary
 
@@ -41,9 +41,11 @@ with `cmake/toolchains/llvm-mingw-x86_64.cmake`.
   and every test with no warnings.
 - Under Wine, `x2native.exe --fault-selftest` reports all five fault kinds.
   `--selftest` against the retail install fails 0 of 92 checks.
-- The boot `--no-window --d3d8 --control=<port>` reaches `/status`. The renderer
-  is ready on Vulkan through winevulkan by 15 s. It has presented 1 frame at
-  25 s and 702 at 60 s. Linux presents 85 frames by 5 s and 15108 by 60 s.
+- The boot `--no-window --d3d8 --control=<port>` reaches `/status`. With
+  jit-common `e28ccdf` (dual-mapped code section) it presents 17 frames by 5 s
+  and 2027 by 60 s on a warm prefix; the whole-region `VirtualProtect` build
+  presented 0 and 1260. `perf` of the boot is now flat: no `mprotect_range`.
+- An `abort()` writes the `*** CRASH SIGABRT` record (`run_log` under Wine).
 - CTest with `CMAKE_CROSSCOMPILING_EMULATOR=wine` passes every host-boundary
   test. Three tests fail because of the cross host, not the product:
   - `control_png` calls the Linux Python.
@@ -52,22 +54,14 @@ with `cmake/toolchains/llvm-mingw-x86_64.cmake`.
 
 ## Open work
 
-1. **JIT throughput.** In jit-common, `jc_code_publish`/`jc_code_begin_write`
-   on Windows call `VirtualProtect` over the whole 64 MiB code region on every
-   publish. `perf` puts 78.6% of the boot in Wine's `mprotect_range`; the JIT
-   ran 5.8M blocks in 5 s, against 71M on Linux. The fix belongs in jit-common:
-   flip only the written range, or dual-map the region through
-   `CreateFileMapping` with an RX and an RW view, as the POSIX dual-mapped memfd does.
-   It has to land in the jit-common dev checkout and then be pinned here.
-2. **Windows CI.** The `windows-x86_64` job in `asset-free.yml` runs
+1. **Windows CI.** The `windows-x86_64` job in `asset-free.yml` runs
    `tools/ci.py native-components --target windows-x86_64`. It installs MSYS2
    `make`, `pkgconf` and `shaderc`, builds FFmpeg with MSYS2's `sh`, and runs
-   the host-boundary tests natively. actionlint passes it; it has not run on a
-   runner yet.
-3. **A native Windows run.** Nothing has been tested on a real Windows host:
-   the window path, input, audio and the speed of `VirtualProtect` on real
-   Windows.
-4. **Package.** After 1 to 3, add a portable ZIP to `release.yml` and record
+   the host-boundary tests natively. On the runner the UCRT's `abort()`
+   fast-fails with `0xC0000409` where Wine exits 3; the tests accept both.
+2. **A native Windows run.** Nothing has been tested on a real Windows host:
+   the window path, input, audio and JIT speed on real Windows.
+3. **Package.** After 1 and 2, add a portable ZIP to `release.yml` and record
    the release in S022.
 
 The falsifier is a Windows runner that builds the ZIP and whose `x2native.exe`

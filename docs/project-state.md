@@ -20,9 +20,8 @@ States: `verified` means the stated outcome was observed with durable evidence;
 ## Current focus
 
 **S022 — native Windows host package and CI release.** `x2native.exe` builds
-with llvm-mingw and boots under Wine. The active work is the jit-common
-Windows code-publish cost, the first Windows runner job, and a native Windows
-run before a release artifact.
+with llvm-mingw and boots under Wine. The active work is the Windows runner
+job's tests and a native Windows run before a release artifact.
 
 ## Capability inventory
 
@@ -2062,14 +2061,15 @@ toolchain and static SDL3, SDL3_image, FreeType, zlib and FFmpeg.
 every test with no warnings. Under Wine 11:
 - `--fault-selftest` reports all five fault kinds.
 - `--selftest` against the retail install fails 0 of 92 checks.
-- A headless boot reaches `/status` with the Vulkan renderer ready by 15 s and
-  presents 702 frames by 60 s.
+- A headless boot presents 17 frames by 5 s and 2027 by 60 s. jit-common's
+  Windows code regions are a dual-mapped section, so publishing never calls
+  `VirtualProtect`.
+- An `abort()` writes the crash record.
 - CTest through `wine` passes every host-boundary test.
 
 Gap:
-- The same boot on Linux presents 15108 frames by 60 s. 78.6% of the Wine boot
-  is in `VirtualProtect` over jit-common's whole code region on each publish.
-- The `windows-x86_64` CI job passes actionlint but has not run.
+- The `windows-x86_64` CI job builds on the runner; its host-boundary tests
+  are the open step.
 - No native Windows run has been made, and there is no release ZIP.
 
 Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
