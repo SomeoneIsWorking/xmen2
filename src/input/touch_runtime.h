@@ -43,6 +43,11 @@ void x2_touch_runtime_cancel_because(X2TouchCancelCause cause);
  * Visibility/layout changes release captured HUD contacts, never the stick or
  * the action buttons. */
 void x2_touch_runtime_hud_regions(const X2HudRegions *regions);
+
+/* Where the HUD owner placed the relocated HUD this frame; the control zones
+ * lay out around it. NULL means nothing placed. Gated on the gameplay overlay
+ * like the tap regions. */
+void x2_touch_runtime_hud_placement(const X2HudPlacement *placement);
 /* 1 once per tap of the port menu button, for the UI that owns the menu. */
 int x2_touch_runtime_take_menu_request(void);
 /* The window event owner drains all portrait transitions in FIFO order,

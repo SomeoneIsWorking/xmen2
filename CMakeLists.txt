@@ -465,7 +465,12 @@ target_link_libraries(test_touch_source PRIVATE ${X2_SDL})
 add_test(NAME touch_source COMMAND test_touch_source)
 
 add_executable(test_touch_layout tests/test_touch_layout.cpp
-               src/presentation/touch_layout.cpp)
+               src/presentation/touch_layout.cpp
+               src/presentation/hud_layout.cpp
+               src/config/hud_settings.cpp)
+target_include_directories(test_touch_layout PRIVATE src/presentation
+                                                    src/config)
+target_link_libraries(test_touch_layout PRIVATE m)
 add_test(NAME touch_layout COMMAND test_touch_layout)
 
 add_executable(test_hud_layout tests/test_hud_layout.cpp

@@ -22,12 +22,6 @@ static const float kStickDiameter = 0.38F; /* of the short edge */
 static const float kButtonDiameter = 0.165F;
 static const float kButtonGap = 0.025F;
 static const float kEdgeInset = 0.06F;
-static const float kHudVitalsWidth = 0.30F;  /* of the WIDTH */
-static const float kHudVitalsHeight = 0.14F; /* of the HEIGHT */
-static const float kHudPotionsHeight = 0.17F;
-static const float kHudPortraitsWidth = 0.24F;
-static const float kHudPortraitsHeight = 0.22F;
-static const float kHudGap = 0.02F;
 /* The powers ring the action diamond on its open side, inboard and up, where
    the right thumb reaches from the attacks without crossing them. Degrees
    from the cluster's right, counter-clockwise, in slot order. The angles are
@@ -91,7 +85,20 @@ static X2Rect centred(float x, float y, float size) {
   return r;
 }
 
-int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
+/* The smallest rectangle holding all `count` rectangles. */
+static X2Rect bounds(const X2Rect *rects, unsigned count) {
+  X2Rect r = rects[0];
+  for (unsigned i = 1; i < count; ++i) {
+    r.left = fminf(r.left, rects[i].left);
+    r.top = fminf(r.top, rects[i].top);
+    r.right = fmaxf(r.right, rects[i].right);
+    r.bottom = fmaxf(r.bottom, rects[i].bottom);
+  }
+  return r;
+}
+
+int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
+                    X2Rect *out) {
   float left, top, right, bottom, width, height, shortest;
   float inset, stick, button, gap, cluster_x, cluster_y;
 
@@ -113,29 +120,14 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
   button = shortest * kButtonDiameter;
   gap = shortest * kButtonGap;
 
-  /* --- The retail HUD, top edge -------------------------------------- */
-  /* Vitals and potions stack down the top-left corner; the party portraits
-     take the top-right. Both are pinned to the safe edges rather than
-     centred on a fraction of the screen, so a cutout moves them instead of
-     cropping them. */
-  {
-    /* Widths span the WIDTH and heights the HEIGHT -- the axis each actually
-       occupies. Taking both from the short or long edge is what put the
-       top-left vitals underneath the top-right portraits at 1080x2400: on a
-       portrait viewport the long edge is the one they do NOT share. */
-    const float vitals_w = width * kHudVitalsWidth;
-    const float vitals_h = height * kHudVitalsHeight;
-    const float potions_h = height * kHudPotionsHeight;
-    const float hud_gap = height * kHudGap;
-    const X2Rect vitals = {left, top, left + vitals_w, top + vitals_h};
-    const X2Rect potions = {left, vitals.bottom + hud_gap, left + vitals_w,
-                            vitals.bottom + hud_gap + potions_h};
-    const X2Rect portraits = {right - width * kHudPortraitsWidth, top, right,
-                              top + height * kHudPortraitsHeight};
-    out[kX2SlotVitals] = vitals;
-    out[kX2SlotPotions] = potions;
-    out[kX2SlotPortraits] = portraits;
-  }
+  /* --- The retail HUD: copied from its owner, never re-guessed ------- */
+  /* No placement means empty bands: the controls lay out as if the HUD were
+     not on screen. */
+  out[kX2SlotVitals] = hud ? hud->vitals : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kX2SlotPotions] = hud ? bounds(hud->potions, X2_HUD_POTIONS)
+                            : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kX2SlotPortraits] =
+      hud ? bounds(hud->portraits, 4) : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
 
   /*
    * THE TWO THUMB CLUSTERS SHARE ONE BAND, so their natural sizes are only a
@@ -168,7 +160,11 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     }
     const float needed_h = inset + extent + fmaxf(extent, arc_rise) + gap;
     const float room_h = bottom - out[kX2SlotPortraits].bottom;
-    const float fit = fminf(1.0F, fminf(width / needed, room_h / needed_h));
+    /* The stick sits under the potions, so it must fit the room left there. */
+    const float room_stick = bottom - out[kX2SlotPotions].bottom;
+    const float fit =
+        fminf(1.0F, fminf(fminf(width / needed, room_h / needed_h),
+                          room_stick / (inset + stick)));
     const float s_stick = stick * fit;
     const float s_button = button * fit;
     const float s_inset = inset * fit;
@@ -216,8 +212,23 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
      * just right of that pair, at their size. */
     {
       const float icon = shortest * kMenuIconSize;
-      out[kX2SlotPortMenu] = centred((left + right) * 0.5F + icon * 1.5F + gap,
-                                     top + gap + icon * 0.5F, icon);
+      const float mid = (left + right) * 0.5F;
+      const float y = top + gap + icon * 0.5F;
+      /* Right of the game's icon pair, shrunk to fit short of the portraits;
+         under the portraits when the HUD leaves no room there. */
+      const float menu_left = mid + icon + gap * 0.25F;
+      const float room = out[kX2SlotPortraits].left - gap * 0.25F - menu_left;
+      const float size = hud ? fminf(icon, room) : icon;
+      X2Rect menu = {menu_left, top + gap, menu_left + size, top + gap + size};
+      for (int i = kX2SlotVitals; i <= kX2SlotPortraits; ++i) {
+        if (size < icon * 0.5F || x2_layout_rects_overlap(menu, out[i])) {
+          menu = centred(
+              menu_left + icon * 0.5F,
+              out[kX2SlotPortraits].bottom + gap * 0.25F + icon * 0.5F, icon);
+          break;
+        }
+      }
+      out[kX2SlotPortMenu] = menu;
     }
   }
 

@@ -155,6 +155,9 @@ public:
   // that is not a real on-screen area is dropped whole rather than routed
   // to; a change releases only HUD captures, never the stick or buttons.
   std::vector<ActionEvent> set_hud(const X2HudRegions &regions);
+  // The HUD owner's placement; the zones lay out around it. A change
+  // releases captured contacts, as a layout change does. Null withdraws it.
+  std::vector<ActionEvent> set_hud_placement(const X2HudPlacement *placement);
   // The atlas cell of each power slot, or -1 when the hero has no power
   // there; only slots with a power get a zone. A change releases captured
   // contacts, as a layout change does, so a power that vanishes under a
@@ -187,6 +190,8 @@ private:
   Viewport viewport_;
   std::array<int, 4> power_icons_{-1, -1, -1, -1};
   X2HudRegions hud_{};
+  X2HudPlacement hud_placement_{};
+  bool hud_placed_ = false;
   std::vector<ZoneVisual> zones_;
   lucent::touch::Router router_;
   lucent::touch::Router hud_router_;
