@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include "env_file.h"
 
 #include "platform_posix.h"
