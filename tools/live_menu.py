@@ -192,6 +192,33 @@ def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
     return menu
 
 
+def keyboard_into_gameplay(case: Case, timeout: float) -> dict:
+    """From a Continue boot, into the PDA and Escape out of it to gameplay."""
+    menu = keyboard_into_the_pda(case, timeout)
+    if menu.get("menu") != "pda":
+        return menu
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and menu.get("active") is not False:
+        case.http("/key?name=Escape&hold=0.2")
+        menu = wait_game_menu(case, lambda m: m.get("active") is False, 3)
+    return menu
+
+
+def drag_touch(case: Case, shown: dict, x: float, y_from: float,
+               y_to: float) -> None:
+    """One finger from (x, y_from) to (x, y_to), in the touch menu's own
+    viewport pixels, through the routed contact phases."""
+    width = shown["viewport_width"]
+    height = shown["viewport_height"]
+    steps = 4
+    case.http("/touch?x=%g&y=%g&phase=down" % (x / width, y_from / height))
+    for i in range(1, steps + 1):
+        y = y_from + (y_to - y_from) * i / steps
+        time.sleep(0.15)
+        case.http("/touch?x=%g&y=%g&phase=motion" % (x / width, y / height))
+    case.http("/touch?x=%g&y=%g&phase=up" % (x / width, y_to / height))
+
+
 def wait_game_menu(case: Case, done, timeout: float) -> dict:
     deadline = time.monotonic() + timeout
     menu = read_menu(case)
@@ -201,8 +228,9 @@ def wait_game_menu(case: Case, done, timeout: float) -> dict:
     return menu
 
 
-def shop_list(case: Case) -> dict:
-    """The shop's list box as GET /menu?items=all reads it."""
+def menu_list(case: Case) -> dict:
+    """The list box of the menu's `list` item, as GET /menu?items=all reads
+    it (the shop's and the codex's)."""
     code, body = case.http("/menu?items=all")
     if code != 200:
         return {}

@@ -1016,10 +1016,16 @@ the tab bar with training lit, the training list, the money and the
 description, a tap on the buy tab opened the game's buy tab, a tap on Health
 Pack selected it at the game's price of 100, a second tap bought one (money
 2000 -> 1900, health packs 3 -> 4) and the touch menu showed 1900, and Accept
-closed the shop. Gap: the team roster and detail tabs keep the retail screen;
+closed the shop. The codex follows: measured by `tools/live_case.py
+touch-codex`, 12 of 12 on 2026-10-06: `openmenu codex` from gameplay showed
+its 15 heroes with Back and Details, a tap on Wolverine selected it in the game,
+Details switched the game to the description with Wolverine loaded and the
+touch menu showed its name and lines, a drag scrolled them, Details returned
+to the list on Wolverine, and Back closed the codex. Gap: the team roster and detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
-stash, codex, worldmap, danger room,
+the codex does not show the hero model the retail screen turns; stash,
+worldmap, danger room,
 review, region, automap, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 

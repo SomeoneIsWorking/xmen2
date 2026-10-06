@@ -14,13 +14,15 @@ from live_menu import (
     MAIN_MENU_LABELS,
     OPTIONS_MENU_LABELS,
     MenuTimeline,
+    drag_touch,
+    keyboard_into_gameplay,
     keyboard_into_the_pda,
     keyboard_past_the_intro,
     menu_labels,
+    menu_list,
     open_options,
     read_menu,
     row_labels,
-    shop_list,
     tap_touch_button,
     touch_button,
     touch_menu,
@@ -575,15 +577,8 @@ def case_touch_shop(case: Case) -> None:
     case.seed_save("autosave.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
-    pda = keyboard_into_the_pda(case, 300)
-    case.check("the run reached the PDA", pda.get("menu") == "pda",
-               str(pda.get("menu")))
-    menu = pda
-    deadline = time.monotonic() + 20
-    while time.monotonic() < deadline and menu.get("active") is not False:
-        case.http("/key?name=Escape&hold=0.2")
-        menu = wait_game_menu(case, lambda m: m.get("active") is False, 3)
-    case.check("Escape closed the PDA into gameplay",
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
                menu.get("active") is False, str(menu.get("menu")))
     case.http("/console?command=runscript%20act1/genosha/genosha1/temp_addmoney")
     case.http("/console?command=openmenu%20shop")
@@ -599,7 +594,7 @@ def case_touch_shop(case: Case) -> None:
                str(tabs))
     case.check("and its rows are the list's entries",
                [r["label"] for r in shop.get("rows", [])]
-               == shop_list(case).get("entries"),
+               == menu_list(case).get("entries"),
                str([r["label"] for r in shop.get("rows", [])]))
     money = menu_labels(case).get("money_value")
     case.check("the money the script gave is shown as the game shows it",
@@ -645,8 +640,8 @@ def case_touch_shop(case: Case) -> None:
     labels = menu_labels(case)
     cost = labels.get("item_cost_value", "")
     case.check("a tap on Health Pack selected it in the game",
-               row["focused"] and shop_list(case).get("selected")
-               == health["index"], "selected %s" % shop_list(case).get("selected"))
+               row["focused"] and menu_list(case).get("selected")
+               == health["index"], "selected %s" % menu_list(case).get("selected"))
     case.check("and it shows the cost the game priced it at",
                row["value"] != "" and cost.endswith(row["value"]),
                "row %r, item_cost_value %r" % (row["value"], cost))
@@ -689,3 +684,98 @@ def case_touch_shop(case: Case) -> None:
                left.get("menu") != "shop", "now %r" % left.get("menu"))
     case.shot("after-accept")
     case.check("and the game is still running", case.alive())
+
+
+def case_touch_codex(case: Case) -> None:
+    """The touch menu over CMenuCodex, opened by the console from gameplay.
+
+    A tap on an entry walks the game's selection to it and accepts it, which
+    loads it (0x005b1780); the Details footer opens its description. Each tap
+    is judged by the game's own state: the list's selection, the codex mode
+    and the loaded entry's name item.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=openmenu%20codex")
+    codex = wait_touch_menu(case, "codex", 20)
+    (case.dir / "codex.json").write_text(json.dumps(codex, indent=1) + "\n")
+    game = read_menu(case)
+    case.check("the touch menu is shown over the game's codex list",
+               codex.get("visible") is True
+               and game.get("class") == "CMenuCodex" and game.get("mode") == 0,
+               "%s mode %s" % (game.get("class"), game.get("mode")))
+    entries = menu_list(case).get("entries", [])
+    case.check("its rows are the list's entries",
+               [r["label"] for r in codex.get("rows", [])] == entries
+               and len(entries) > 4, str(entries))
+    footers = [b["label"] for b in codex.get("buttons", [])
+               if b["part"] == "footer"]
+    case.check("and its footers are the game's Back and Details",
+               footers == ["Back", "Details"], str(footers))
+    if codex.get("visible") is not True or len(entries) <= 4:
+        return
+    case.shot("codex")
+
+    target = entries[3]
+    selected = menu_list(case).get("selected")
+    case.check("the codex opened on another entry",
+               selected != 3, "selected %s" % selected)
+    tap_touch_button(case, codex, touch_button(codex, "row", target.lower()))
+    wait_game_menu(case, lambda m: m.get("touch_menu", {}).get("focused_row")
+                   == 3, 10)
+    case.check("a tap on %s selected it in the game" % target,
+               menu_list(case).get("selected") == 3,
+               "selected %s" % menu_list(case).get("selected"))
+    time.sleep(1.0)
+
+    codex = touch_menu(case)
+    tap_touch_button(case, codex, touch_button(codex, "footer", "details"))
+    game = wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
+    reading = wait_game_menu(
+        case, lambda m: m.get("touch_menu", {}).get("detail"),
+        5).get("touch_menu", {})
+    name = menu_labels(case).get("name", "")
+    desc = menu_labels(case).get("desc", "")
+    case.check("Details opened the description in the game",
+               game.get("mode") == 1, "mode %s" % game.get("mode"))
+    case.check("and the game loaded the tapped entry",
+               name.endswith(target), "name %r" % name)
+    case.check("the touch menu reads that entry's name and description",
+               reading.get("title") == target and bool(reading.get("detail"))
+               and reading["detail"][0] in desc,
+               "title %r, first line %r" % (
+                   reading.get("title"), (reading.get("detail") or [""])[0]))
+    case.shot("reading")
+
+    middle = reading["viewport_width"] * 0.5
+    bottom = reading["viewport_height"] * 0.7
+    drag_touch(case, reading, middle, bottom, bottom - 300.0)
+    scrolled = wait_game_menu(
+        case, lambda m: m.get("touch_menu", {}).get("scroll", 0) > 0,
+        5).get("touch_menu", {})
+    case.check("a drag scrolls the description and leaves the game's mode",
+               scrolled.get("scroll", 0) > 0 and read_menu(case).get("mode") == 1,
+               "scroll %s" % scrolled.get("scroll"))
+    case.shot("scrolled")
+
+    tap_touch_button(case, scrolled, touch_button(scrolled, "footer", "details"))
+    game = wait_game_menu(case, lambda m: m.get("mode") == 0, 10)
+    listed = wait_touch_menu(case, "codex", 5)
+    case.check("Details again returned to the list on the same entry",
+               game.get("mode") == 0 and listed.get("focused_row") == 3,
+               "mode %s, focus %s" % (game.get("mode"), listed.get("focused_row")))
+
+    back = touch_button(listed, "footer", "back")
+    if back is None:
+        case.check("the list offers Back", False)
+        return
+    tap_touch_button(case, listed, back)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "codex", 10)
+    case.check("Back left the codex",
+               left.get("menu") != "codex", "now %r" % left.get("menu"))
+    case.shot("after-back")

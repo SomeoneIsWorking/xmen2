@@ -1,5 +1,6 @@
 #include "touch_menu_view.hpp"
 
+#include "touch_menu_codex.hpp"
 #include "touch_menu_parts.hpp"
 #include "touch_menu_shop.hpp"
 #include "touch_menu_team.hpp"
@@ -49,7 +50,7 @@ std::string close_letter_spacing(std::string_view text) {
 } // namespace
 
 bool TouchMenuView::same_screen(const TouchMenuView &other) const {
-  if (address != other.address || menu != other.menu ||
+  if (address != other.address || menu != other.menu || title != other.title ||
       rows.size() != other.rows.size()) {
     return false;
   }
@@ -111,12 +112,13 @@ struct ReplacedClass {
   ViewBuilder build;
 };
 
-constexpr std::array<ReplacedClass, 5> kReplacedClasses = {{
+constexpr std::array<ReplacedClass, 6> kReplacedClasses = {{
     {"CMenuMain", build_row_menu_view},
     {"CMenuOptions", build_row_menu_view},
     {"CMenuPDA", build_row_menu_view},
     {"CMenuTeam", build_team_view},
     {"CMenuShop", build_shop_view},
+    {"CMenuCodex", build_codex_view},
 }};
 
 } // namespace

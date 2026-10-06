@@ -39,8 +39,14 @@ struct TouchMenuLayout {
   X2Rect tabs{};
   /* The scrolling area the rows live in. */
   X2Rect list{};
-  /* The facts and detail text, pinned below the list; empty without them. */
+  /* The facts and detail text, pinned below the list; empty without them.
+     When reading (a view with no rows) it is the list's own place. */
   X2Rect detail{};
+  bool reading = false;
+  /* Where the first detail line's top is, scroll applied when reading, and
+     each line's height; lines outside `detail` are not drawn. */
+  float detail_text_top = 0.0F;
+  float detail_line_height = 0.0F;
   X2Rect footer{};
   std::vector<TouchMenuButton> buttons;
   float scroll = 0.0F;

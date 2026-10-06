@@ -96,7 +96,7 @@ struct MenuItem {
   bool navigable = false;
   /* CMenuItemBar's drawn level, item+0x40. */
   std::optional<float> fill;
-  /* A list box's entries; set for ItemClass::list_box only. */
+  /* A list box's entries; set for ItemClass::list_box and list_codex. */
   std::optional<ListBoxState> list_box;
   /* The item showing the game variable this row's command changes. */
   int value_item = -1;
@@ -129,7 +129,7 @@ struct MenuSnapshot {
   bool popup_up = false;
   /* The class's own screen state, for the classes that keep one. CMenuTeam:
      0 the party, 1 the roster, 2..6 a hero's detail tabs. CMenuShop: bit 0
-     set for the stash. */
+     set for the stash. CMenuCodex: 1 while the description is shown. */
   std::optional<std::uint32_t> mode;
 };
 

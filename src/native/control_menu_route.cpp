@@ -240,7 +240,16 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
     out.pop_back();
   }
   out.append("],");
-  put_text(&out, "detail", state.view.detail);
+  put_key(&out, "detail");
+  out.push_back('[');
+  for (const std::string &line : state.view.detail) {
+    put_string(&out, line);
+    out.push_back(',');
+  }
+  if (out.back() == ',') {
+    out.pop_back();
+  }
+  out.append("],");
   put_key(&out, "buttons");
   out.push_back('[');
   for (const input::TouchMenuButton &button : state.layout.buttons) {

@@ -5,6 +5,7 @@
 
 #include <string>
 #include <string_view>
+#include <vector>
 
 /* What every class's touch menu view is built from. */
 namespace x2::input {
@@ -13,6 +14,10 @@ namespace x2::input {
 presentation::ClientPoint
 menu_item_centre(const menu::SceneRect &rect,
                  const presentation::RetailScenePlane &plane);
+
+/* Retail text split at the game's own line breaks, each line as
+   touch_menu_text reads it; empty lines are dropped. */
+std::vector<std::string> menu_text_lines(std::string_view raw);
 
 /* The item named `name`, or null. */
 const menu::MenuItem *find_menu_item(const menu::MenuSnapshot &menu,
@@ -28,6 +33,21 @@ std::string menu_title(const menu::MenuSnapshot &menu);
 void append_menu_footers(const menu::MenuSnapshot &menu,
                          const presentation::RetailScenePlane &plane,
                          TouchMenuView *view);
+
+/* What a tap on a list entry asks of the game. */
+enum class ListTap {
+  /* Select it: a click on its row (0x005c0e10) where the window shows it,
+     else a menu-pad walk. A click on the selected entry accepts it. */
+  select,
+  /* Select it and accept it: a menu-pad walk to it, then A. */
+  accept,
+};
+
+/* One row per entry of a list box (CMenuItemListBox or ListCodex). The
+   list's Up/Down does not wrap. */
+void append_list_entries(const menu::MenuItem &list,
+                         const presentation::RetailScenePlane &plane,
+                         ListTap tap, TouchMenuView *view);
 
 /* A view for `menu` with no rows yet. */
 TouchMenuView start_menu_view(const menu::MenuSnapshot &menu);

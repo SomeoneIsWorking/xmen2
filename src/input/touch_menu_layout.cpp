@@ -13,8 +13,11 @@ constexpr float kMargin = 24.0F;
 constexpr float kTitleHeight = 72.0F;
 constexpr float kFooterHeight = 96.0F;
 constexpr float kTabHeight = 64.0F;
-/* One line of facts and three of detail text. */
+/* The detail band: padding, one line of facts and three of text. */
 constexpr float kDetailHeight = 176.0F;
+constexpr float kDetailPad = 13.0F;
+constexpr float kFactsHeight = 44.0F;
+constexpr float kDetailLineHeight = 32.0F;
 constexpr float kFooterButtonHeight = 68.0F;
 constexpr float kFooterButtonWidth = 300.0F;
 constexpr float kRowHeight = 72.0F;
@@ -93,24 +96,39 @@ TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
       view.tabs.empty() ? 0.0F : std::max(kTabHeight * u, kMinimumTarget);
   layout.tabs = {column_left, tabs_top, column_right, tabs_top + tab_height};
   const bool detailed = !view.facts.empty() || !view.detail.empty();
+  layout.reading = view.rows.empty() && !view.detail.empty();
   const float detail_bottom =
       layout.footer.top - (view.footers.empty() ? 0.0F : kRowGap * u);
-  layout.detail = {column_left,
-                   detail_bottom - (detailed ? kDetailHeight * u : 0.0F),
-                   column_right, detail_bottom};
-  layout.list = {column_left,
-                 layout.tabs.bottom + (view.tabs.empty() ? 0.0F : kRowGap * u),
-                 column_right,
-                 layout.detail.top - (detailed ? kRowGap * u : 0.0F)};
+  const float body_top =
+      layout.tabs.bottom + (view.tabs.empty() ? 0.0F : kRowGap * u);
+  const float band = layout.reading ? detail_bottom - body_top
+                     : detailed     ? kDetailHeight * u
+                                    : 0.0F;
+  layout.detail = {column_left, detail_bottom - band, column_right,
+                   detail_bottom};
+  layout.list = {column_left, body_top, column_right,
+                 layout.reading
+                     ? detail_bottom
+                     : layout.detail.top - (detailed ? kRowGap * u : 0.0F)};
+  layout.detail_line_height = kDetailLineHeight * u;
+  layout.detail_text_top = layout.detail.top + kDetailPad * u +
+                           (view.facts.empty() ? 0.0F : kFactsHeight * u);
 
   const float row_height = std::max(kRowHeight * u, kMinimumTarget);
   const float gap = kRowGap * u;
+  /* Read text scrolls in the list's place; rows scroll in the list. */
   const float content =
-      static_cast<float>(view.rows.size()) * (row_height + gap) - gap;
+      layout.reading
+          ? static_cast<float>(view.detail.size()) * layout.detail_line_height +
+                2.0F * kDetailPad * u
+          : static_cast<float>(view.rows.size()) * (row_height + gap) - gap;
   layout.max_scroll =
       std::max(content - (layout.list.bottom - layout.list.top), 0.0F);
   layout.scroll = std::clamp(std::isfinite(scroll) ? scroll : 0.0F, 0.0F,
                              layout.max_scroll);
+  if (layout.reading) {
+    layout.detail_text_top -= layout.scroll;
+  }
 
   const float step = std::max(kStepWidth * u, kMinimumTarget);
   const float step_gap = kStepGap * u;
