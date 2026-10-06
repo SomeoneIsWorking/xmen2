@@ -62,6 +62,83 @@ static void check_hud_configuration(const char *path) {
   CHECK(memcmp(&original.hud, &settings.hud, sizeof settings.hud) == 0);
 }
 
+/* Changing one controller's seat never turns another controller off. */
+static void check_controller_change_keeps_other_controller(void) {
+  X2Settings settings;
+  x2_settings_defaults(&settings);
+  CHECK(x2_settings_assign_controller(&settings, "pad-a", 0));
+  CHECK(x2_settings_assign_controller(&settings, "pad-b", 1));
+
+  CHECK(x2_settings_assign_controller(&settings, "pad-a", 2));
+  CHECK(x2_settings_controller_player(&settings, "pad-a") == 2);
+  CHECK(x2_settings_controller_player(&settings, "pad-b") == 1);
+
+  CHECK(x2_settings_assign_controller(&settings, "pad-a", 1));
+  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+  CHECK(x2_settings_controller_player(&settings, "pad-b") == 2);
+
+  CHECK(x2_settings_assign_controller(&settings, "pad-b", 0));
+  CHECK(x2_settings_controller_player(&settings, "pad-b") == 0);
+  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+
+  CHECK(x2_settings_assign_controller(&settings, "pad-a",
+                                      X2_SETTINGS_UNASSIGNED));
+  CHECK(x2_settings_controller_player(&settings, "pad-b") == 0);
+}
+
+/* A device displaced across kinds takes the seat the mover left when that
+   seat can hold it, and only otherwise goes off. */
+static void check_displaced_device_takes_vacated_seat(void) {
+  X2Settings settings;
+  x2_settings_defaults(&settings);
+  CHECK(x2_settings_assign_keyboard(&settings, 1, 1));
+  CHECK(x2_settings_assign_controller(&settings, "pad-a", 2));
+
+  CHECK(x2_settings_assign_controller(&settings, "pad-a", 1));
+  CHECK(x2_settings_player_keyboard(&settings, 2) == 1);
+  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+
+  /* The only P1 keyboard can move: the displaced keyboard takes P1. */
+  CHECK(x2_settings_assign_keyboard(&settings, 0, 2));
+  CHECK(x2_settings_player_keyboard(&settings, 0) == 1);
+  CHECK(x2_settings_player_keyboard(&settings, 2) == 0);
+
+  /* P1 already holds a keyboard, so a controller-displaced keyboard cannot
+     return there and goes off. */
+  CHECK(x2_settings_assign_controller(&settings, "pad-b", 0));
+  CHECK(x2_settings_assign_controller(&settings, "pad-b", 2));
+  CHECK(x2_settings_player_keyboard(&settings, 0) == 1);
+  CHECK(x2_settings_player_keyboard(&settings, 2) == -1);
+  CHECK(settings.keyboard_player[0] == X2_SETTINGS_UNASSIGNED);
+  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+}
+
+static void check_keyboard_profile_restore(const char *path) {
+  X2Settings settings, loaded;
+  char why[256];
+  x2_settings_defaults(&settings);
+  settings.keyboard_profile[1].keyboard_set[4] = 1;
+  settings.keyboard_profile[1].keyboard[4] = 30;
+  settings.keyboard_profile[1].keyboard_set[5] = 1;
+  settings.keyboard_profile[1].keyboard[5] = 0;
+  settings.keyboard_profile[2].keyboard_set[6] = 1;
+  settings.keyboard_profile[2].keyboard[6] = 31;
+
+  x2_keyboard_profile_restore_row(&settings.keyboard_profile[1], 4);
+  CHECK(!settings.keyboard_profile[1].keyboard_set[4]);
+  CHECK(settings.keyboard_profile[1].keyboard_set[5]);
+  CHECK(x2_settings_save(&settings, path, why, sizeof why));
+  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(memcmp(&settings, &loaded, sizeof settings) == 0);
+
+  x2_keyboard_profile_restore_all(&settings.keyboard_profile[1]);
+  CHECK(!settings.keyboard_profile[1].keyboard_set[5]);
+  CHECK(settings.keyboard_profile[2].keyboard_set[6]);
+  CHECK(x2_settings_save(&settings, path, why, sizeof why));
+  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(memcmp(&settings, &loaded, sizeof settings) == 0);
+}
+
 int main(void) {
   const char *path = X2_TEST_SETTINGS_PATH;
   X2Settings saved, loaded, untouched;
@@ -189,6 +266,9 @@ int main(void) {
   CHECK(memcmp(&loaded, &untouched, sizeof loaded) == 0);
   CHECK(strstr(why, ":1") != NULL);
   check_hud_configuration(path);
+  check_controller_change_keeps_other_controller();
+  check_displaced_device_takes_vacated_seat();
+  check_keyboard_profile_restore(path);
   remove(path);
 
   printf("test_settings: %d checks passed\n", checks);

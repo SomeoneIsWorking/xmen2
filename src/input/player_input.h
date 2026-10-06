@@ -1,6 +1,8 @@
 #ifndef X2_PLAYER_INPUT_H
 #define X2_PLAYER_INPUT_H
 
+#include <stdint.h>
+
 struct X86pCpu;
 
 /* Publish persisted player/device ownership and mappings into the game's
@@ -17,5 +19,10 @@ void x2_player_input_note_gamepad_activity(int pad);
 void x2_player_input_note_gamepad_state(int pad, const unsigned char *state,
                                         unsigned bytes);
 int x2_player_input_pad_is_active_source(int pad);
+
+/* The game's own slot-0 binding for `row`, read from its master set before
+   any profile override is published. 0 until the guest has built that set. */
+int x2_player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
+                                          uint32_t *code);
 
 #endif

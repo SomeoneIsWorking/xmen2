@@ -32,10 +32,14 @@ typedef enum {
 
 const char *x2_touch_controls_label(unsigned mode);
 
+/* A row with keyboard_set clear follows the game's own binding. */
 typedef struct {
   uint16_t keyboard[X2_SETTINGS_ROWS];
   uint8_t keyboard_set[X2_SETTINGS_ROWS];
 } X2KeyboardProfile;
+
+void x2_keyboard_profile_restore_row(X2KeyboardProfile *profile, unsigned row);
+void x2_keyboard_profile_restore_all(X2KeyboardProfile *profile);
 
 typedef struct {
   unsigned width;

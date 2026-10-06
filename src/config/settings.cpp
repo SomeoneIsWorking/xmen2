@@ -44,6 +44,18 @@ const char *x2_touch_controls_label(unsigned mode) {
   }
 }
 
+void x2_keyboard_profile_restore_row(X2KeyboardProfile *profile, unsigned row) {
+  if (!profile || row >= X2_SETTINGS_ROWS)
+    return;
+  profile->keyboard[row] = 0;
+  profile->keyboard_set[row] = 0;
+}
+
+void x2_keyboard_profile_restore_all(X2KeyboardProfile *profile) {
+  if (profile)
+    memset(profile, 0, sizeof *profile);
+}
+
 void x2_settings_defaults(X2Settings *settings) {
   unsigned i;
   memset(settings, 0, sizeof *settings);

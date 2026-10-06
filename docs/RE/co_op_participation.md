@@ -44,6 +44,10 @@ when opened because it reads the same owner.
 - Only P1 may own keyboard plus controller. P2–P4 own one effective device,
   keyboard or controller. A process-lifetime transient controller temporarily
   suppresses their persisted source without destroying it.
+- Assigning a device to a seat another device holds moves the displaced
+  device to the seat the assigned device left, when that seat can hold it;
+  only a device displaced by one that had no seat goes off. Session-only pads
+  follow the same rule.
 
 ### Seats are not game players in a network session
 

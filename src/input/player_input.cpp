@@ -325,6 +325,15 @@ int x2_player_input_pad_is_active_source(int pad) {
   return 0;
 }
 
+int x2_player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
+                                          uint32_t *code) {
+  if (!g_have_base || row >= INPUT_BINDING_ROWS || !kind || !code)
+    return 0;
+  *kind = g_keyboard_base[row].kind;
+  *code = g_keyboard_base[row].code;
+  return 1;
+}
+
 int x2_player_input_resolved_pad(unsigned player) {
   return g_have_last && player < INPUT_PLAYERS ? g_last_pad[player] : -1;
 }
