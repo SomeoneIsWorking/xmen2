@@ -172,5 +172,12 @@ shadow resource/pass failures. The 800x600 captured frame contains 81,795
 colours. This is positive title-scene coverage; it is not evidence that the
 generic policy matches unobserved authored shadow intent.
 
+The run report's `gpu shadow: last map spans` line gives the last map's world
+extent, its world units per texel and the camera view depth. A tutorial run
+(`stick-travel`, 2026-10-06) reported 7016 x 4893 units, 6.85 x 4.78 per
+texel, over a 4032-unit-deep view: fitting one 1024 map to the whole frustum
+leaves a hero's shadow about a dozen texels wide, which the binary 3x3 PCF
+draws as visible squares.
+
 Retail decal parity still needs same-scene object-to-draw identity plus matching
 six-vertex bytes. That check remains separate from this enhancement.

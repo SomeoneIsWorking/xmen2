@@ -88,6 +88,7 @@ static int g_frame_policy_valid;
 static ShadowPipe g_pipelines[48];
 static unsigned g_pipeline_count;
 static unsigned long g_frames, g_frames_with_light, g_frames_submitted;
+static float g_last_extent[2], g_last_view_depth;
 static unsigned long g_casters, g_receivers, g_programmable_casters;
 static unsigned long g_programmable_receivers, g_resource_failures;
 
@@ -342,6 +343,9 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   if (!g_frame_policy_valid && gpu_shadow_frame_policy(draw, &g_frame_policy)) {
     g_frame_policy_valid = 1;
     g_frames_with_light++;
+    g_last_extent[0] = g_frame_policy.extent[0];
+    g_last_extent[1] = g_frame_policy.extent[1];
+    g_last_view_depth = g_frame_policy.view_depth;
   }
   if (!(roles & GPU_SHADOW_CASTER) || !g_frame_policy_valid)
     return;
@@ -444,6 +448,13 @@ void gpu_shadow_report(void) {
               g_resource_failures, g_binds.pipelines_kept,
               g_binds.vertices_kept, g_binds.indices_kept,
               g_binds.samplers_kept);
+  if (g_frames_with_light) {
+    x2_log_info("  gpu shadow: last map spans %.0f x %.0f world units (%.2f x "
+                "%.2f per texel) over a %.0f-unit-deep camera view\n",
+                g_last_extent[0], g_last_extent[1],
+                g_last_extent[0] / (float)g_resolution,
+                g_last_extent[1] / (float)g_resolution, g_last_view_depth);
+  }
 }
 
 void gpu_shadow_shutdown(void) {

@@ -9,6 +9,10 @@ typedef struct {
   float light_view_projection[16];
   float inverse_view_projection[16];
   float light_direction[3];
+  /* World units the map spans across and up, and the camera's near-to-far
+   * depth. */
+  float extent[2];
+  float view_depth;
 } GpuShadowFramePolicy;
 
 /* Enhancement policy, deliberately independent of SDL resource mechanics. */
