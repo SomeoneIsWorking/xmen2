@@ -172,6 +172,19 @@ int gpu_shadow_frame_policy(const GpuDraw *draw, GpuShadowFramePolicy *out) {
     float center_x = (minv[0] + maxv[0]) * 0.5f;
     float center_y = (minv[1] + maxv[1]) * 0.5f;
     float depth = maxv[2] - minv[2];
+    float near_centre[3] = {0.0f, 0.0f, 0.0f},
+          far_centre[3] = {0.0f, 0.0f, 0.0f};
+    int axis;
+    for (i = 0; i < 4; i++)
+      for (axis = 0; axis < 3; axis++) {
+        near_centre[axis] += corners[i][axis] * 0.25f;
+        far_centre[axis] += corners[i + 4][axis] * 0.25f;
+      }
+    for (axis = 0; axis < 3; axis++)
+      far_centre[axis] -= near_centre[axis];
+    out->view_depth = sqrtf(vector_dot(far_centre, far_centre));
+    out->extent[0] = half_x * 2.0f;
+    out->extent[1] = half_y * 2.0f;
     out->light_view_projection[0] = right[0] / half_x;
     out->light_view_projection[4] = right[1] / half_x;
     out->light_view_projection[8] = right[2] / half_x;
