@@ -35,16 +35,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-try:
-    from tools import process_status
-except ImportError:
-    import process_status
-
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "build" / "native" / "x2native"
 SELECTED = {"path": BINARY}
 CASES_DIR = ROOT / "scratch" / "run" / "cases"
-LIVE_JSON = ROOT / "scratch" / "run" / "live.json"
 DEFAULT_PORT = 8461
 PACING = "fast"
 TUTORIAL_MAP = "act0/tutorial/tutorial1"
@@ -53,8 +47,6 @@ TUTORIAL_MAP = "act0/tutorial/tutorial1"
 def refuse(message: str) -> None:
     raise SystemExit("live_case: %s" % message)
 
-
-pid_alive = process_status.pid_is_alive
 
 
 class Case:
@@ -68,13 +60,17 @@ class Case:
         self.proc: subprocess.Popen | None = None
         self.log_file = None
         self.checks: list[tuple[str, bool]] = []
-        self.published_snapshot = None
+        self.runtime_settings: list[str] = []
 
     # -- lifecycle -----------------------------------------------------------
 
     def prepare_profile(self, conf_lines: list[str]) -> None:
         if CASES_DIR.exists():
             shutil.rmtree(self.dir, ignore_errors=True)
+        # Concurrent cases on one host must not find each other's games, and
+        # each publishes its live.json beside its own artifacts.
+        self.runtime_settings = ["lan.presence=0",
+                                 "live.directory=%s" % self.dir]
         save_leaf = self.profile / "Activision" / "X-Men Legends 2" / "Save"
         save_leaf.mkdir(parents=True)
         self.shot_dir.mkdir(parents=True)
@@ -97,17 +93,6 @@ class Case:
         binary = SELECTED["path"]
         if not binary.is_file():
             refuse("%s does not exist; build x2native first" % binary)
-        if LIVE_JSON.is_file():
-            try:
-                self.published_snapshot = json.loads(LIVE_JSON.read_text())
-            except ValueError:
-                self.published_snapshot = None
-        if self.published_snapshot and self.published_snapshot.get("running") \
-                and pid_alive(self.published_snapshot.get("pid", -1)):
-            refuse("scratch/run/live.json names a RUNNING pid %s; refusing to "
-                   "clobber another live run's discovery record"
-                   % self.published_snapshot.get("pid"))
-
         env = dict(os.environ)
         env["X2_SAVE_DIR"] = str(self.profile)
         env["X2_LOG_DIR"] = str(self.profile / "logs")
@@ -117,7 +102,7 @@ class Case:
         # x2native-runtime.conf and the X2_* environment. It is NOT the same
         # file as the profile's x2native.conf, which is the player settings
         # store and ignores a runtime cvar written into it.
-        for setting in EXTRA_SETTINGS:
+        for setting in self.runtime_settings + EXTRA_SETTINGS:
             cmd.append("--set")
             cmd.append(setting)
         if not visible:
@@ -147,9 +132,6 @@ class Case:
         if self.log_file:
             self.log_file.close()
             self.log_file = None
-        if self.published_snapshot is not None:
-            LIVE_JSON.write_text(json.dumps(self.published_snapshot,
-                                            indent=2) + "\n")
 
     # -- driving and reading --------------------------------------------------
 
@@ -1876,9 +1858,13 @@ def case_touch_team(case: Case) -> None:
     case.check("a second tap opened that hero's details",
                details.get("menu") == "team" and details.get("mode", 0) >= 2,
                "mode %s" % details.get("mode"))
+    deadline = time.monotonic() + 5
     controls = live_controls(case)
+    while time.monotonic() < deadline and "menu-b" not in controls:
+        time.sleep(0.2)
+        controls = live_controls(case)
     case.check("where the touch menu stands aside for the menu pad",
-               details.get("touch_menu", {}).get("visible") is False
+               touch_menu(case).get("visible") is False
                and "menu-b" in controls, "drawn: %s" % sorted(controls))
     case.shot("details")
     viewport = live_viewport(case)

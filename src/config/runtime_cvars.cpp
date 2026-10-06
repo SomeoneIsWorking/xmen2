@@ -163,6 +163,12 @@ lucent::cvar::Var<std::string> g_jit_map{"jit.map", ""};
  * runtime conf the JIT diagnostics use. `--control=N` still outranks it. It is
  * OFF by default and the product never turns it on -- see control_start. */
 lucent::cvar::Var<long> g_control_port{"control.port", 0};
+/* off: the LAN coordinator neither announces this run nor hears others on
+   UDP 5166, so concurrent maintainer runs on one host stay independent. */
+lucent::cvar::Var<bool> g_lan_presence{"lan.presence", true};
+/* Where this run publishes live.json; empty keeps scratch/run (or a package's
+   user-data run/). A test run publishes beside its own artifacts. */
+lucent::cvar::Var<std::string> g_live_directory{"live.directory", ""};
 lucent::cvar::Var<long> g_jit_peek{"jit.peek", 0};
 lucent::cvar::Var<long> g_jit_peek_words{"jit.peekn", 16};
 lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
@@ -306,6 +312,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_watch_reports);
   lucent::cvar::register_var(g_jit_map);
   lucent::cvar::register_var(g_control_port);
+  lucent::cvar::register_var(g_lan_presence);
+  lucent::cvar::register_var(g_live_directory);
   lucent::cvar::register_var(g_jit_peek);
   lucent::cvar::register_var(g_jit_peek_words);
   lucent::cvar::register_var(g_x87_census);
