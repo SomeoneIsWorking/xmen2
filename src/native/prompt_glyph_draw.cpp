@@ -78,6 +78,7 @@ static unsigned g_cursor_index;
 static uint32_t g_cursor_color;
 static unsigned long g_intercepted, g_emitted_seen, g_predicted, g_desync;
 static unsigned long g_unavailable_refused, g_color_refused, g_queue_refused;
+static unsigned long g_sink_refused;
 static unsigned long g_emitted_seen_before;
 /* The keycap run the cursor is inside: its left edge's rectangle and where
    its name starts. */
@@ -298,6 +299,20 @@ static struct PromptStringPlan plan_string(uint32_t s) {
   return plan;
 }
 
+/* The text batch's vtable (+0xc = FUN_005840a0, the vertex appender); the
+   PC settings GUI writes through FUN_005f64f0's 2D list, which no
+   drawNonIndexed finalizer places, so only this sink can be intercepted. */
+constexpr uint32_t kTextBatchVtable = 0x0069c904u;
+constexpr uint32_t kLinkedBase = 0x00400000u;
+
+static int writes_text_batch(uint32_t writer) {
+  uint32_t sink, vtable;
+  return guest_memory_try_read32(writer, &sink) &&
+         guest_memory_try_read32(sink, &vtable) &&
+         vtable ==
+             kTextBatchVtable - kLinkedBase + x86_module_base("XMen2.exe");
+}
+
 void x2_override_005ee780(CPU *C) {
   uint32_t s = glyph_loop_string(C);
   unsigned i;
@@ -317,6 +332,12 @@ void x2_override_005ee780(CPU *C) {
        every precondition first, including the one-glyph case. */
     if (plan.unavailable || !plan.native) {
       g_unavailable_refused++;
+      g_super_called++;
+      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      return;
+    }
+    if (!writes_text_batch(batch)) {
+      g_sink_refused++;
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
@@ -371,9 +392,11 @@ void x2_prompt_draw_report(void) {
                "%lu desync(s); %lu whole string(s) kept stock because a "
                "codepoint was not private, %lu because the engine batch color "
                "was unreadable, %lu because "
-               "the frame queue lacked capacity\n",
+               "the frame queue lacked capacity, %lu because the writer "
+               "was not the text batch\n",
                g_intercepted, g_emitted_seen, g_predicted, g_desync,
-               g_unavailable_refused, g_color_refused, g_queue_refused);
+               g_unavailable_refused, g_color_refused, g_queue_refused,
+               g_sink_refused);
   x2_log_error("PROMPT DRAW: %lu keyboard key(s) drawn whole from shared "
                "art\n",
                g_keys_drawn);
