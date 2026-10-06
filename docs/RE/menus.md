@@ -655,6 +655,66 @@ selected Bishop and then Details showed Bishop. The menu pad's Down walked the
 selection to Scarlet Witch (entry 14), moving the window's top to 4, and A then
 Details showed her description. Wolverine's description is 21 lines.
 
+## The world map (`CMenuWorldMap`)
+
+`CMenuWorldMap` (vtable `0x69ece4`) is the extraction-point travel screen;
+the script command `extractionPoint` (`0x004a6b50`) opens it with
+`openmenu('worldmap')`, and the console's `openmenu worldmap` opens the same.
+Its items: `title` `World Map`, the act tabs `option01_text..option05_text`
+(`act 1`..`act 5`), `map_title` (a `CMenuItemListCycle` holding the open act's
+region, `Genosha`, `Antarctica`, ...), `extract_description` (text box), the
+point rows `list01_01..list01_07` (`list01_01` is a `CMenuItemListItems`
+owning the seven; the rest are text items it fills), the `map` model and the
+footers `desctext1` `$MENU_BACK Back`, `desctext2` `$MENU_BACK back` and
+`desctext4` `$MENU_ACCEPT go`.
+
+`menu+0x18d8` is the open act (1..5) and `menu+0x18dc` the point list. Init
+(`FUN_005e8c40`) opens the party's current act (`FUN_0046dce0` vfunc `+0x274`)
+through `FUN_005e8a70`, which enables each act tab whose act has an unlocked
+point (`FUN_005e7d70`, `FUN_005ade70`), lights the open one and selects the
+act's region in `map_title`. The list's refresh (`FUN_005c4620`) enables the
+rows of unlocked points and focuses the first enabled one. The list's
+selection is not a field: `FUN_005c45b0` returns the row that is the menu's
+focused item (`menu+0x324`). Axis 0 steps the act (`FUN_005e8ff0` ->
+`FUN_005e8d20`, skipping acts with nothing unlocked).
+
+The update (`FUN_005e8d90`) first spends the queued steps `menu+0x18cc`
+(acts, axis 0) and `menu+0x18d0` (points, axis 1), one per tick of the timer
+at `menu+0x18d4`. On `MENU_ACCEPT` (`FUN_005d4d60`) it looks the focused
+point up in the act (`FUN_00468530` vfunc `+8`); when it is unlocked (vfunc
+`+0x1c`) and its map is not the current map (`_stricmp` against
+`FUN_00484990` vfunc `+0x5c`), it writes `loadextraction <map> extract` to the
+console buffer at `0x8b1380` and closes the menus (vfunc `+0x74`); otherwise
+it refuses (input manager vfunc `+0xe8` with 7). Each update also writes the
+focused point's description into `extract_description` (`FUN_005e7c90`).
+
+Its `onMouse` (`FUN_005e7f10`) tests raw boxes (`top = [0x72] - [0x76] - 1`):
+
+- on `WM_LBUTTONUP` over an enabled act tab other than the lit one, it
+  publishes one axis 0 step toward it (-1.0 left, +1.0 right) and queues the
+  rest at `menu+0x18cc`;
+- on any message over an enabled point row other than the focused one, it
+  publishes one axis 1 step toward it (+1.0 up) and queues the rest at
+  `menu+0x18d0`: a pointer moving over the rows moves the selection;
+- on `WM_LBUTTONUP` over the focused row (or an enabled row whose item flags
+  carry `0x04` or `0x10`), it publishes `MENU_ACCEPT`, which travels;
+- otherwise it runs the base `CMenu::onMouse`, where the footers' text items
+  publish their prompt.
+
+Which points are unlocked lives in `CExtractionPointSystem` (see
+[extraction](extraction.md)); a map's load script unlocks its own point with
+`extractionUnlock("")` (`act2/savage/savage1.py`), and the in-world pad's
+`common/extraction/exp_activate.py` does the same.
+
+Measured (Continue into `act2/jungle/jungle1`): `openmenu worldmap` opened on
+act 2 with no act tab and no point enabled. After the console's
+`loadmap act2/savage/savage1`, act 2 and `Avalon` were enabled, `Avalon`
+focused; after `loadmap act1/sanctuary/sanctuary1`, the map opened on act 1
+with `Sanctuary` focused and acts 1 and 2 enabled. A click on `act 2` opened
+it with `Avalon` focused; go on the point the party stood on kept the world
+map; A on `Avalon` closed it, loaded savage1 and put the party at its
+extraction point, and the world map then reopened on act 2.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
@@ -671,10 +731,17 @@ Details showed her description. Wolverine's description is 21 lines.
   the branch at `FUN_005f9eb0`, not a member this document has read. The reader
   does not use it -- it reads the active menu field directly -- so nothing
   depends on it.
-- **The `list01_*` and `roster_*` rows of `worldmap` and `team` are marked
-  `neverfocus` in the shipped XMLB.** Their boxes exist and are hit-testable, but
-  nothing in the game's own item walk offers them, so they are correctly not
-  targets for a contact either.
+- **The `roster_*` rows of `team` are marked `neverfocus` in the shipped
+  XMLB.** Their boxes exist and are hit-testable, but nothing in the game's own
+  item walk offers them, so they are correctly not targets for a contact
+  either. The world map's `list01_*` rows are offered once the list's refresh
+  enables them (`FUN_005c4620`).
+- **The world map's pad walk between points.** Only one point per act was
+  unlocked in the measured run, so the menu pad's Up/Down between two enabled
+  points is unit-tested only. `CMenuItemListItems`'s own stepping (vfunc
+  `+0x58`, `0x5c4090`) and its `+0x2a4` flags are not read, nor are
+  `FUN_005e7d70`, `FUN_00468530`'s point object beyond `+0xc`, `+0x10`, `+0x1c`,
+  and the region map's marker (`FUN_005e8590`).
 - **Orphan regions.** A previous pass found ~161 disassembled regions in
   `XMen2.exe` that Ghidra never made into functions (`FUN_005d83d0`,
   `FUN_005ae0a0`'s neighbours and `FUN_005d6220` are three of them, recovered by

@@ -779,3 +779,117 @@ def case_touch_codex(case: Case) -> None:
     case.check("Back left the codex",
                left.get("menu") != "codex", "now %r" % left.get("menu"))
     case.shot("after-back")
+
+
+def world_map_acts(case: Case) -> dict[str, bool]:
+    """The game's act tabs that are unlocked, each with whether it is lit."""
+    code, body = case.http("/menu?items=all")
+    if code != 200:
+        return {}
+    acts = {}
+    for item in json.loads(body).get("items", []):
+        if re.fullmatch(r"option0\d_text", item["name"]) \
+                and item["flags"] & 0x08:
+            acts[item["label"]] = bool(item["flags"] & 0x01)
+    return acts
+
+
+def case_touch_worldmap(case: Case) -> None:
+    """The touch menu over CMenuWorldMap, opened by the console from gameplay.
+
+    Visiting a map with an extraction point unlocks it through its own load
+    script (extractionUnlock), so the console's loadmap of savage1 and then
+    sanctuary1 leaves one point open in each of acts 1 and 2. Each tap is
+    judged by the game's own state: the lit act, the focused point, the menu
+    it has open and the act the world map reopens on after travelling.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    for map_name in ("act2/savage/savage1", "act1/sanctuary/sanctuary1"):
+        case.http("/console?command=loadmap%20" + map_name)
+        time.sleep(5)
+        menu = keyboard_into_gameplay(case, 300)
+        case.check("loadmap %s reached gameplay" % map_name,
+                   menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=openmenu%20worldmap")
+    shown = wait_touch_menu(case, "worldmap", 20)
+    (case.dir / "worldmap.json").write_text(json.dumps(shown, indent=1) + "\n")
+    case.check("the touch menu is shown over the game's world map",
+               shown.get("visible") is True
+               and read_menu(case).get("class") == "CMenuWorldMap",
+               str(read_menu(case).get("class")))
+    acts = world_map_acts(case)
+    case.check("the game opened on act 1 with acts 1 and 2 unlocked",
+               acts == {"act 1": True, "act 2": False}, str(acts))
+    tabs = [(t["label"], t["lit"]) for t in shown.get("tabs", [])]
+    case.check("its tabs are the unlocked acts with act 1 lit",
+               tabs == [("act 1", True), ("act 2", False)], str(tabs))
+    rows = [(r["label"], r["focused"]) for r in shown.get("rows", [])]
+    case.check("its rows are act 1's unlocked point, focused",
+               rows == [("Sanctuary", True)], str(rows))
+    footers = [b["label"] for b in shown.get("buttons", [])
+               if b["part"] == "footer"]
+    case.check("its footers are one Back and go", footers == ["Back", "go"],
+               str(footers))
+    case.check("and the point's region and description",
+               bool(shown.get("facts")) and bool(shown.get("detail")),
+               "facts %s, detail %s" % (shown.get("facts"), shown.get("detail")))
+    if shown.get("visible") is not True or len(tabs) != 2:
+        return
+    case.shot("worldmap")
+
+    tap_touch_button(case, shown, touch_button(shown, "footer", "go"))
+    time.sleep(3)
+    case.check("go on the map the party is on stays in the world map",
+               read_menu(case).get("menu") == "worldmap",
+               str(read_menu(case).get("menu")))
+
+    shown = touch_menu(case)
+    tap_touch_button(case, shown, touch_button(shown, "tab", "act 2"))
+    wait_game_menu(case, lambda m: any(
+        t["lit"] and t["label"] == "act 2"
+        for t in m.get("touch_menu", {}).get("tabs", [])), 10)
+    acts = world_map_acts(case)
+    shown = touch_menu(case)
+    rows = [(r["label"], r["focused"]) for r in shown.get("rows", [])]
+    case.check("a tap on act 2 opened it in the game",
+               acts == {"act 1": False, "act 2": True}, str(acts))
+    case.check("and the rows became act 2's point, focused",
+               rows == [("Avalon", True)], str(rows))
+    case.shot("act2")
+
+    avalon = touch_button(shown, "row", "avalon")
+    if avalon is None:
+        return
+    loading = 'front end menu "" -> "loading"'
+    loads = case.log_text().count(loading)
+    tap_touch_button(case, shown, avalon)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
+    case.check("a tap on the focused Avalon left the world map",
+               left.get("menu") != "worldmap", str(left.get("menu")))
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline \
+            and case.log_text().count(loading) == loads:
+        time.sleep(0.5)
+    case.check("and the game loaded a map",
+               case.log_text().count(loading) > loads)
+    time.sleep(10)
+    case.shot("travelled")
+    case.http("/console?command=openmenu%20worldmap")
+    shown = wait_touch_menu(case, "worldmap", 20)
+    acts = world_map_acts(case)
+    case.check("the world map reopens on act 2, the party's new act",
+               acts == {"act 1": False, "act 2": True}, str(acts))
+    back = touch_button(shown, "footer", "back")
+    if back is None:
+        case.check("the world map offers Back", False)
+        return
+    tap_touch_button(case, shown, back)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
+    case.check("Back left the world map",
+               left.get("menu") != "worldmap", str(left.get("menu")))

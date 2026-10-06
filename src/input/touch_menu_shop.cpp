@@ -35,23 +35,6 @@ constexpr std::array<FactItems, 4> kFacts = {{
    the money does not cover it. */
 constexpr std::string_view kWarnStyle = "~06";
 
-void append_tabs(const menu::MenuSnapshot &menu,
-                 const presentation::RetailScenePlane &plane,
-                 TouchMenuView *view) {
-  for (const std::string_view name : kShopTabs) {
-    const menu::MenuItem *tab = find_menu_item(menu, name);
-    if (tab == nullptr || !menu_item_shown(*tab)) {
-      continue;
-    }
-    TouchMenuTab out;
-    out.label = touch_menu_text(tab->label);
-    /* The open tab is lit (item+0x54 bit 0). */
-    out.lit = (tab->flags & menu::kItemFocusLit) != 0u;
-    out.click = menu_item_centre(tab->rect, plane);
-    view->tabs.push_back(std::move(out));
-  }
-}
-
 void append_facts(const menu::MenuSnapshot &menu, TouchMenuView *view) {
   for (const FactItems &fact : kFacts) {
     const menu::MenuItem *value = find_menu_item(menu, fact.value);
@@ -90,7 +73,7 @@ build_shop_view(const menu::MenuSnapshot &menu,
     return std::nullopt;
   }
   TouchMenuView view = start_menu_view(menu);
-  append_tabs(menu, plane, &view);
+  append_menu_tabs(menu, plane, kShopTabs, &view);
   append_list_entries(*list, plane, ListTap::select, &view);
   append_facts(menu, &view);
   /* The game prices only the selected entry. */

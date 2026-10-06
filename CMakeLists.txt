@@ -358,6 +358,7 @@ add_executable(test_touch_menu tests/test_touch_menu.cpp
                src/input/touch_menu_team.cpp
                src/input/touch_menu_shop.cpp
                src/input/touch_menu_codex.cpp
+               src/input/touch_menu_worldmap.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
                src/presentation/touch_layout.cpp
@@ -406,6 +407,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_menu_team.cpp
                src/input/touch_menu_shop.cpp
                src/input/touch_menu_codex.cpp
+               src/input/touch_menu_worldmap.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
                src/input/touch_visuals.cpp
@@ -2073,6 +2075,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_team.cpp
     src/input/touch_menu_shop.cpp
     src/input/touch_menu_codex.cpp
+    src/input/touch_menu_worldmap.cpp
     src/input/touch_inject.cpp
     src/input/touch_census.cpp
     src/input/touch_pad.cpp
