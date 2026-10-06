@@ -12,6 +12,9 @@ constexpr float kMinimumUnit = 0.75F;
 constexpr float kMargin = 24.0F;
 constexpr float kTitleHeight = 72.0F;
 constexpr float kFooterHeight = 96.0F;
+constexpr float kTabHeight = 64.0F;
+/* One line of facts and three of detail text. */
+constexpr float kDetailHeight = 176.0F;
 constexpr float kFooterButtonHeight = 68.0F;
 constexpr float kFooterButtonWidth = 300.0F;
 constexpr float kRowHeight = 72.0F;
@@ -38,6 +41,8 @@ const char *touch_menu_part_name(TouchMenuPart part) {
     return "step-right";
   case TouchMenuPart::footer:
     return "footer";
+  case TouchMenuPart::tab:
+    return "tab";
   }
   return "row";
 }
@@ -45,7 +50,9 @@ const char *touch_menu_part_name(TouchMenuPart part) {
 std::optional<std::size_t> TouchMenuLayout::hit(float x, float y) const {
   for (std::size_t i = 0; i < buttons.size(); ++i) {
     const TouchMenuButton &button = buttons[i];
-    if (button.part != TouchMenuPart::footer && !inside(list, x, y)) {
+    const bool pinned = button.part == TouchMenuPart::footer ||
+                        button.part == TouchMenuPart::tab;
+    if (!pinned && !inside(list, x, y)) {
       continue;
     }
     if (inside(button.rect, x, y)) {
@@ -81,10 +88,20 @@ TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
   const float footer_height = view.footers.empty() ? 0.0F : kFooterHeight * u;
   layout.footer = {column_left, bottom - margin - footer_height, column_right,
                    bottom - margin};
-  layout.list = {
-      column_left, layout.title.bottom + (titled ? kRowGap * u : 0.0F),
-      column_right,
-      layout.footer.top - (view.footers.empty() ? 0.0F : kRowGap * u)};
+  const float tabs_top = layout.title.bottom + (titled ? kRowGap * u : 0.0F);
+  const float tab_height =
+      view.tabs.empty() ? 0.0F : std::max(kTabHeight * u, kMinimumTarget);
+  layout.tabs = {column_left, tabs_top, column_right, tabs_top + tab_height};
+  const bool detailed = !view.facts.empty() || !view.detail.empty();
+  const float detail_bottom =
+      layout.footer.top - (view.footers.empty() ? 0.0F : kRowGap * u);
+  layout.detail = {column_left,
+                   detail_bottom - (detailed ? kDetailHeight * u : 0.0F),
+                   column_right, detail_bottom};
+  layout.list = {column_left,
+                 layout.tabs.bottom + (view.tabs.empty() ? 0.0F : kRowGap * u),
+                 column_right,
+                 layout.detail.top - (detailed ? kRowGap * u : 0.0F)};
 
   const float row_height = std::max(kRowHeight * u, kMinimumTarget);
   const float gap = kRowGap * u;
@@ -120,6 +137,18 @@ TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
           {TouchMenuPart::row,
            index,
            {column_left, row_top, column_right, row_bottom}});
+    }
+  }
+
+  const std::size_t tabs = view.tabs.size();
+  if (tabs > 0u) {
+    const float each = column / static_cast<float>(tabs);
+    for (std::size_t i = 0; i < tabs; ++i) {
+      const float x = column_left + each * static_cast<float>(i);
+      layout.buttons.push_back(
+          {TouchMenuPart::tab,
+           static_cast<int>(i),
+           {x, layout.tabs.top, x + each, layout.tabs.bottom}});
     }
   }
 

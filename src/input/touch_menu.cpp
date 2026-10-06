@@ -130,6 +130,10 @@ TouchMenu::activate(const TouchMenuButton &button, std::uint64_t now_ms) {
   if (button.part == TouchMenuPart::footer) {
     return {click(view_->footers[index].click)};
   }
+  if (button.part == TouchMenuPart::tab) {
+    walk_.reset();
+    return {click(view_->tabs[index].click)};
+  }
   const TouchMenuRow &row = view_->rows[index];
   if (button.part == TouchMenuPart::row && row.clicks) {
     walk_.reset();

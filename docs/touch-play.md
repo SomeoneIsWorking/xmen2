@@ -106,8 +106,12 @@ main menu, Options and the PDA list their up/down rows; the team menu lists the
 four hero summaries, where a tap selects a hero and a tap on the selected hero
 opens its details through the game's own click (`touch_menu_team`). The team
 roster and a hero's detail tabs keep the retail screen and the menu pad. The
-shop lists its buy/sell/training tabs, then its list box's entries
-(`touch_menu_shop`): a tab is a click on the game's tab, an entry the game's
+shop (`touch_menu_shop`) pins the game's buy/sell/training tabs as a tab bar
+with the open one lit, lists its list box's entries, and pins below them the
+game's own cost, money, gear count and limit and the selected entry's
+description. The game prices only the selected entry, so only that row shows
+a cost, in red when the money does not cover it. A tab is a click on the
+game's tab, an entry the game's
 list window shows is a click on its row (a click selects, a click on the
 selected entry buys), and an entry outside that window is reached with the menu
 pad's Up/Down, the game's own list stepping, and only selected. The stash keeps

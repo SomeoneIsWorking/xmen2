@@ -214,3 +214,15 @@ def shop_list(case: Case) -> dict:
         if item.get("name") == "list" and "list_box" in item:
             return item["list_box"]
     return {}
+
+
+def menu_labels(case: Case) -> dict[str, str]:
+    """Every item's displayed text by name, as GET /menu?items=all reads it."""
+    code, body = case.http("/menu?items=all")
+    if code != 200:
+        return {}
+    try:
+        menu = json.loads(body)
+    except ValueError:
+        return {}
+    return {item["name"]: item["label"] for item in menu.get("items", [])}

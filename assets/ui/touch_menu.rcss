@@ -124,3 +124,59 @@ body {
     flex: 0 1 auto;
     text-align: center;
 }
+
+.tm-tab {
+    justify-content: center;
+    padding: 0 0.6em;
+    border-radius: 0.55em 0.55em 0 0;
+    border-bottom: 0.1em #92875B;
+    background-color: rgba(217, 217, 217, 4%);
+    color: #A39C86;
+}
+
+.tm-tab .tm-label {
+    flex: 0 1 auto;
+    text-align: center;
+}
+
+.tm-tab.lit {
+    border: 0.1em #C2A42D;
+    border-bottom: 0.1em #151610;
+    background-color: rgba(194, 164, 45, 22%);
+    color: #FFFFFF;
+}
+
+#tm-detail {
+    position: absolute;
+    padding: 0.5em 0.8em;
+    border-radius: 0.55em;
+    border: 0.06em rgba(146, 135, 91, 55%);
+    background-color: rgba(217, 217, 217, 4%);
+}
+
+.tm-facts {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.4em;
+}
+
+.tm-fact-label {
+    margin-right: 0.4em;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #A39C86;
+}
+
+.tm-fact-value {
+    font-weight: bold;
+    color: #C2A42D;
+}
+
+.tm-fact-value.warn {
+    color: #E0573A;
+}
+
+.tm-text {
+    font-size: 0.95em;
+    line-height: 1.3em;
+}

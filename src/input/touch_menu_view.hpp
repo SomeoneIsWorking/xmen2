@@ -44,6 +44,22 @@ struct TouchMenuFooter {
   presentation::ClientPoint click;
 };
 
+/* A tab of a class with tabs: a click on its own item opens it. */
+struct TouchMenuTab {
+  std::string label;
+  /* The game's open tab. */
+  bool lit = false;
+  presentation::ClientPoint click;
+};
+
+/* A value the game shows beside its list, as its own label and text. */
+struct TouchMenuFact {
+  std::string label;
+  std::string value;
+  /* The game draws the value in its warning style. */
+  bool warn = false;
+};
+
 struct TouchMenuView {
   std::uint32_t address = 0;
   std::string menu;
@@ -51,6 +67,11 @@ struct TouchMenuView {
   std::string title;
   std::vector<TouchMenuRow> rows;
   std::vector<TouchMenuFooter> footers;
+  /* Pinned above the rows; they do not scroll. */
+  std::vector<TouchMenuTab> tabs;
+  /* Pinned below the rows: the game's text about the focused row. */
+  std::vector<TouchMenuFact> facts;
+  std::string detail;
   /* Index into `rows` of the menu's own focus, or -1. */
   int focused_row = -1;
   /* The game's Up/Down wraps from the last row to the first. */

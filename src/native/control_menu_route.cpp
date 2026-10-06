@@ -169,6 +169,8 @@ void put_button(std::string *out, const input::TouchMenuState &state,
   if (button.part == input::TouchMenuPart::footer) {
     put_text(out, "label", state.view.footers[index].label);
     put_text(out, "token", state.view.footers[index].token);
+  } else if (button.part == input::TouchMenuPart::tab) {
+    put_text(out, "label", state.view.tabs[index].label);
   } else {
     put_text(out, "label", state.view.rows[index].label);
   }
@@ -211,6 +213,34 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
     out.pop_back();
   }
   out.append("],");
+  put_key(&out, "tabs");
+  out.push_back('[');
+  for (const input::TouchMenuTab &tab : state.view.tabs) {
+    out.push_back('{');
+    put_text(&out, "label", tab.label);
+    put_bool(&out, "lit", tab.lit);
+    close_object(&out);
+    out.push_back(',');
+  }
+  if (out.back() == ',') {
+    out.pop_back();
+  }
+  out.append("],");
+  put_key(&out, "facts");
+  out.push_back('[');
+  for (const input::TouchMenuFact &fact : state.view.facts) {
+    out.push_back('{');
+    put_text(&out, "label", fact.label);
+    put_text(&out, "value", fact.value);
+    put_bool(&out, "warn", fact.warn);
+    close_object(&out);
+    out.push_back(',');
+  }
+  if (out.back() == ',') {
+    out.pop_back();
+  }
+  out.append("],");
+  put_text(&out, "detail", state.view.detail);
   put_key(&out, "buttons");
   out.push_back('[');
   for (const input::TouchMenuButton &button : state.layout.buttons) {
