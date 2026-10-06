@@ -1,0 +1,118 @@
+#include "runtime_cvars.h"
+#include "win_path.h"
+
+#include "host_dir_cache.h"
+#include "platform_posix.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+#ifndef X2_TEST_WIN_PATH_ROOT
+#define X2_TEST_WIN_PATH_ROOT "scratch/test-win-path"
+#endif
+
+static int g_save_notes;
+
+const char *x2_save_dir(void) { return X2_TEST_WIN_PATH_ROOT "/saves"; }
+
+void x2_save_trace_asset_open(const char *guest_path, int succeeded) {
+  if (guest_path && succeeded)
+    g_save_notes++;
+}
+
+static void make_file(const char *path) {
+  FILE *file = fopen(path, "wb");
+  if (file) {
+    fputc('x', file);
+    fclose(file);
+  }
+}
+
+int main(void) {
+  const char *root = X2_TEST_WIN_PATH_ROOT;
+  char expected[1024];
+  char actual[1024];
+  int failures = 0;
+  /* win_path reads the `files` trace CVar; registering the runtime set is
+     what makes this test exercise the shipping resolver rather than a
+     variant with the trace compiled out. */
+  x2_runtime_config_init(0, NULL);
+  unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
+  unlink(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/Data");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/pack/movies");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/pack");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/saves");
+  rmdir(X2_TEST_WIN_PATH_ROOT);
+  failures += mkdir(root, 0700) != 0;
+  failures += mkdir(X2_TEST_WIN_PATH_ROOT "/Data", 0700) != 0;
+  failures += mkdir(X2_TEST_WIN_PATH_ROOT "/pack", 0700) != 0;
+  failures += mkdir(X2_TEST_WIN_PATH_ROOT "/pack/movies", 0700) != 0;
+  failures += mkdir(X2_TEST_WIN_PATH_ROOT "/saves", 0700) != 0;
+  make_file(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
+  make_file(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
+  setenv("GAME_PC_DIR", root, 1);
+  setenv("X2_ASSETS", X2_TEST_WIN_PATH_ROOT "/pack", 1);
+  setenv("X2_SHOT_AFTER_FILE", "cine01", 1);
+  snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\foo.sfd"));
+  failures += access(actual, F_OK) != 0;
+  failures += strstr(actual, "/Data/Foo.SFD") == NULL;
+  failures += !k32_open_replaced("Movies\\CINE01.SFD", 0);
+  snprintf(expected, sizeof(expected), "%s/pack/movies/cine01.sfd", root);
+  snprintf(actual, sizeof(actual), "%s",
+           k32_open_path("Movies\\CINE01.SFD", 0));
+  failures += strcmp(actual, expected) != 0;
+  failures += k32_file_gate_open();
+  k32_open_note("Movies\\CINE01.SFD", 1, 1, actual);
+  failures += !k32_file_gate_open() || g_save_notes != 1;
+  snprintf(expected, sizeof(expected), "%s/saves/slot.dat", root);
+  snprintf(actual, sizeof(actual), "%s", win_path("S:\\slot.dat"));
+  failures += strcmp(actual, expected) != 0;
+  /*
+   * The directory cache, in the only two states that matter.
+   *
+   * Repeating a resolve must not enumerate again -- that is the entire point
+   * of the cache, and a timing cannot tell a cache that works from one that
+   * re-lists every time. And a name created behind its back must be invisible
+   * UNTIL the creator forgets the directory, because that is what makes the
+   * invalidation contract in host_dir_cache.h a requirement on callers rather
+   * than a comment.
+   */
+  {
+    unsigned long enumerated_before = 0, enumerated_after = 0;
+    unsigned long hits_before = 0, hits_after = 0;
+    int repeat;
+    host_dir_cache_stats(&enumerated_before, &hits_before, NULL);
+    for (repeat = 0; repeat < 5; ++repeat)
+      win_path("C:\\data\\foo.sfd");
+    host_dir_cache_stats(&enumerated_after, &hits_after, NULL);
+    failures += enumerated_after != enumerated_before;
+    failures += hits_after <= hits_before;
+
+    make_file(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\bar.sfd"));
+    /* Unresolved, so the guest's own spelling survives. Checked by spelling
+       rather than by access(), which a case-insensitive host would satisfy
+       for the wrong reason. */
+    failures += strstr(actual, "/Data/Bar.SFD") != NULL;
+    host_dir_forget_for(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\bar.sfd"));
+    failures += access(actual, F_OK) != 0;
+    failures += strstr(actual, "/Data/Bar.SFD") == NULL;
+    unlink(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    host_dir_clear();
+  }
+  unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
+  unlink(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/Data");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/pack/movies");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/pack");
+  rmdir(X2_TEST_WIN_PATH_ROOT "/saves");
+  rmdir(X2_TEST_WIN_PATH_ROOT);
+  printf("Win32 path owner: %s -- case folding, replacement, save drive, "
+         "open evidence, scene gate, and the directory cache with its "
+         "invalidation share one production module\n",
+         failures ? "FAILED" : "PASSED");
+  return failures != 0;
+}

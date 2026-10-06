@@ -1,0 +1,122 @@
+/*
+ * Native prompt art at the exact Alchemy text-batch boundary.
+ *
+ * The live D3D callsite probe separated two draws made while prompt quads were
+ * pending: the 57-primitive draw returns into drawIndexed at 0x10035666, while
+ * the stock text plane returns into drawNonIndexed at 0x10035489. Ghidra names
+ * the owner Gap::Gfx::igDxVisualContext::drawNonIndexed at libIGGfx
+ * 0x100352d0. That body calls updateContextState at 0x10034e60 before it
+ * submits to D3D. The outer override brackets the semantic non-indexed batch;
+ * the nested override super-calls the engine finalizer, then draws the SVG
+ * with the now-final world/view/projection matrices. Control returns to
+ * drawNonIndexed, which draws the ordinary text around the prompts.
+ */
+#include "prompt_glyph_batch.h"
+#include "guest_memory.h"
+#include "x2_log.h"
+
+#include "gpu_prompt_glyphs.h"
+#include "prompt_glyph_quads.h"
+#include "ui_transform.h"
+#include "x86rt_native.h"
+
+#include "guest_body.h"
+#include <stdio.h>
+
+static unsigned g_nonindexed_depth;
+static uint32_t g_nonindexed_primitives;
+static uint32_t g_nonindexed_start;
+static int g_nonindexed_readable;
+static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
+static unsigned long g_with_prompts, g_drawn;
+static unsigned long g_transform_refused, g_gpu_refused;
+static unsigned long g_unreadable_count, g_unreadable_array;
+
+void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
+  g_calls++;
+  g_nonindexed_depth++;
+  /* drawNonIndexed(type, primitiveCount, startVertex), RET 0xc. CHECKED,
+     not dereferenced: these decide which retained prompt a draw places, and
+     a draw whose arguments cannot be read places none rather than placing
+     the wrong one. */
+  g_nonindexed_readable =
+      guest_memory_try_read32(C->reg[kX86pEsp] + 8u,
+                              &g_nonindexed_primitives) &&
+      guest_memory_try_read32(C->reg[kX86pEsp] + 0xcu, &g_nonindexed_start);
+  if (!g_nonindexed_readable) {
+    g_nonindexed_primitives = 0;
+    g_unreadable_count++;
+  }
+  x86_guest_body(C, "libIGGfx.dll", 0x100352d0u);
+  g_nonindexed_depth--;
+}
+
+/*
+ * updateContextState is the only evidenced point where a batch has a
+ * finalized transform. A text pass lays all of its strings out before it
+ * draws any, so what is pending here may belong to later draws: this draw
+ * takes only the quads whose collapsed glyphs lie in the vertex range it
+ * submits -- the context's current vertex array at VC+0x1f0, a strip of
+ * primitiveCount + 2 vertices from startVertex -- and the rest wait for their
+ * own draws (issue #184).
+ */
+void x2_prompt_glyph_batch_update_context_state(CPU *C) {
+  struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+  uint32_t context = C->reg[kX86pEcx];
+  float mvp[16];
+  uint32_t vertex_array;
+  unsigned count = 0;
+
+  x86_guest_body(C, "libIGGfx.dll", 0x10034e60u);
+  g_finalizer_calls++;
+  if (!g_nonindexed_depth)
+    return;
+  g_nested_finalizers++;
+  if (!g_nonindexed_readable)
+    return;
+  if (!guest_memory_try_read32(context + 0x1f0u, &vertex_array)) {
+    g_unreadable_array++;
+    return;
+  }
+  count = x2_prompt_quads_take_range(vertex_array, g_nonindexed_start,
+                                     g_nonindexed_primitives + 2u, quads);
+  if (!count)
+    return;
+  g_with_prompts++;
+  if (!x2_ui_transform_current(context, mvp))
+    g_transform_refused += count;
+  else if (!gpu_prompt_glyphs_render(quads, count, mvp))
+    g_gpu_refused += count;
+  else
+    g_drawn += count;
+}
+
+__attribute__((constructor)) static void x2_prompt_glyph_batch_register(void) {
+  x86_register_override("libIGGfx.dll", 0x100352d0u,
+                        x2_prompt_glyph_batch_draw_nonindexed);
+  x86_register_override("libIGGfx.dll", 0x10034e60u,
+                        x2_prompt_glyph_batch_update_context_state);
+}
+
+void x2_prompt_glyph_batch_report(void) {
+  x2_log_info("  Alchemy non-indexed text boundary: %lu draw call(s), %lu "
+              "state finalizer call(s) total and %lu nested in this boundary; "
+              "%lu nested finalizer(s) carried prompt quads; %lu glyph quad(s) "
+              "submitted, %lu refused because the matching engine transform "
+              "was unavailable, "
+              "%lu refused by the GPU path\n",
+              g_calls, g_finalizer_calls, g_nested_finalizers, g_with_prompts,
+              g_drawn, g_transform_refused, g_gpu_refused);
+  if (g_unreadable_count)
+    x2_log_info("        %lu draw(s) had an unreadable primitive count or "
+                "start vertex -- no retained prompt could be attributed to "
+                "them\n",
+                g_unreadable_count);
+  if (g_unreadable_array)
+    x2_log_info("        %lu draw(s) had no readable vertex array at "
+                "VC+0x1f0 -- their prompts stayed undrawn\n",
+                g_unreadable_array);
+  if (!g_calls)
+    x2_log_info("        ZERO calls at libIGGfx.dll 0x100352d0 -- the "
+                "engine's non-indexed draw boundary was not reached.\n");
+}

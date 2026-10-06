@@ -1,0 +1,56 @@
+#ifndef X2_GPU_FRAME_TIMING_H
+#define X2_GPU_FRAME_TIMING_H
+
+#define GPU_FRAME_HISTOGRAM_BUCKETS 13
+/* Enough for a 20-minute qualification run at 120 fps, with headroom. */
+#define GPU_FRAME_TIMING_SAMPLE_CAPACITY 262144
+
+/* Fold one present-to-present interval in. The FIRST frame has no
+   predecessor; it seeds the baseline rather than measuring an
+   intervals-prior frame. `frame` (the presented count) and the interval
+   itself ride along only for the slow-frame report. The hook is the
+   device's slow-frame printer -- a function pointer so this file does not
+   need the host-share internals. */
+extern void (*gpu_frame_timing_slow_hook)(unsigned long frame,
+                                          unsigned long long dt_ns);
+void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame);
+void gpu_frame_timing_reset(void);
+
+/* The heartbeat's view of the same numbers. */
+/* One gpu_frame_begin swapchain acquisition and how long it blocked. A frame
+   limited by the GPU or the compositor waits here, not in draw or upload. */
+void gpu_frame_timing_note_swapchain_wait(unsigned long long wait_ns);
+/* `prompt` counts the acquisitions that returned in under a millisecond --
+   too short for a browser turn, so they waited on nothing -- and `worst_ns` is
+   the longest single one. A mean alone cannot tell a fixed per-frame round
+   trip from a handful of stalls. */
+void gpu_frame_timing_swapchain_wait(unsigned long long *wait_ns,
+                                     unsigned long *waits,
+                                     unsigned long *prompt,
+                                     unsigned long long *worst_ns);
+
+void gpu_frame_timing_perf(unsigned long long *frame_ns,
+                           unsigned long long *frame_ns_min,
+                           unsigned long long *frame_ns_max,
+                           unsigned long *intervals,
+                           const unsigned long **hist);
+
+/* Exact percentiles over the most recent bounded presentation intervals.
+ * This is deliberately separate from the all-run accumulator above: an Android
+ * qualification session needs p50/p95/p99 for its sustained window, while a
+ * run that lives for hours must not grow unbounded telemetry state. */
+void gpu_frame_timing_percentiles(unsigned long long *p50_ns,
+                                  unsigned long long *p95_ns,
+                                  unsigned long long *p99_ns,
+                                  unsigned long *samples);
+
+/* The same quantiles over only the intervals noted since the previous call,
+ * which then starts the next window: the heartbeat's per-interval tail, so a
+ * browser run that never reaches a status request still reports its p95/p99
+ * over gameplay rather than over the boot that preceded it. */
+void gpu_frame_timing_window_percentiles(unsigned long long *p50_ns,
+                                         unsigned long long *p95_ns,
+                                         unsigned long long *p99_ns,
+                                         unsigned long *samples);
+
+#endif

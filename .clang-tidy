@@ -1,0 +1,16 @@
+---
+Checks: >-
+  -*,
+  bugprone-suspicious-string-compare,
+  bugprone-swapped-arguments,
+  bugprone-sizeof-expression,
+  bugprone-use-after-move,
+  performance-inefficient-string-concatenation,
+  performance-move-const-arg,
+  performance-unnecessary-copy-initialization,
+  performance-unnecessary-value-param
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*/(?:src|tests)/.*'
+ExcludeHeaderFilterRegex: '.*/(?:build|src/gen|vendor)/.*'
+SystemHeaders: false
+...

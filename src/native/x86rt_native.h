@@ -1,0 +1,305 @@
+/*
+ * The title-native runtime keeps one module inventory over the player's
+ * mapped images. Every
+ * libIG*.dll in this game is linked for 0x10000000, so guest entry points
+ * COLLIDE across modules. A table keyed on entry point would happily answer
+ * libIGCore's 0x10002c00 with libIGDisplay's function.
+ *
+ * So each module registers its own base, span and table, and dispatch resolves
+ * by mapped ADDRESS -- which is unique, because pe_map gives each module a
+ * distinct place to live.
+ */
+#ifndef X86RT_NATIVE_H
+#define X86RT_NATIVE_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct X86pCpu;
+
+typedef struct X86Module {
+  const char *name;
+  /* POINTER TO where it actually got mapped -- the inventory owns the
+     variable and the loader fills it in, so this is `*m->base`, never
+     `m->base`. Reading the pointer as the base gives a host address that can
+     look plausible; it cost two crashes in a shutdown diagnostic. */
+  uint32_t *base;
+  uint32_t preferred; /* what it was linked for */
+  uint32_t size;      /* SizeOfImage */
+  struct X86Module *next;
+} X86Module;
+
+/* Called once per mapped module during inventory initialization. */
+void x86_module_register(X86Module *m);
+
+/* Which module owns a mapped address, or NULL. */
+X86Module *x86_module_for(uint32_t addr);
+
+/* Where a module landed, by image file name, or 0 if it is not mapped. */
+uint32_t x86_module_base(const char *image);
+
+/* Run a title-native interception at a mapped address. Returns 0 if there is
+   none -- the caller must say so rather than treating a miss as a no-op. */
+int x86_native_call_at(uint32_t addr, struct X86pCpu *C);
+/* Whether x86_native_call_at would find something to run at `addr`, WITHOUT
+   running it or touching any of its bookkeeping. The execution engine asks
+   this at every instruction: an import thunk or native override is HOST code
+   it must hand back to the title boundary. */
+int x86_native_body_at(uint32_t addr);
+#define THUNK_BASE 0x000C0000u
+#define THUNK_MAX 2048
+
+static inline int x86_is_thunk(uint32_t addr) {
+  return (uint32_t)(addr - THUNK_BASE) < ((uint32_t)THUNK_MAX * 16u);
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+#define X2_INTERNAL __attribute__((visibility("hidden")))
+#else
+#define X2_INTERNAL
+#endif
+
+X2_INTERNAL extern uint32_t g_override_bloom[64];
+
+static inline void x86_override_bloom_add(uint32_t a) {
+  g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] |=
+      (1u << (((a >> 2) * 2654435761u) & 31u));
+}
+
+static inline int x86_override_bloom_has(uint32_t a) {
+  return (g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] &
+          (1u << (((a >> 2) * 2654435761u) & 31u))) != 0;
+}
+/* The mapped entry point of a resolved override, by index, or 0 past the end.
+   An address x86_native_body_at must answer yes for, so that predicate can be
+   checked against both answers rather than only the one it gives most often. */
+uint32_t x86_override_mapped_ep(int index);
+
+/* Name of the function that STARTS at a mapped address, or NULL. Only exported
+   entry points have a name; NULL is the common and honest answer. */
+const char *x86_native_name_at(uint32_t addr);
+
+/* The MAPPED entry point of the function containing `addr`, and its name.
+   An approximation -- the export table has entry points, not sizes, and names
+   only what the image exports -- so check the name before acting on it. See
+   the note in x86rt_native.c. */
+uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out);
+
+/* A guest-callable address for a native C function, so engine code can call
+   back into the host -- ARK hooks and the slots of a native class's vtable.
+   `owner`/`name` appear in ring lines and fault reports; both are required. */
+uint32_t x86_native_callback(void (*fn)(struct X86pCpu *), const char *owner,
+                             const char *name, void *ctx);
+
+/* Inside a callback: the `ctx` it was registered with. One C function can then
+   serve many objects, told apart by which synthetic address the guest called.
+ */
+void *x86_callback_ctx(void);
+
+/* Host->guest call with an explicit stdcall/thiscall cleanup contract. The
+   zero-argument/cdecl wrapper remains declared by x86rt.h. */
+void x86_guest_call_args(struct X86pCpu *C, uint32_t target,
+                         uint32_t callee_pop_bytes);
+
+/*
+ * Publish an entry point of a module this host implements but nothing
+ * statically imports, so a run-time LoadLibraryA + GetProcAddress can find it.
+ *
+ * x86_native_thunk resolves through the mapped modules' import tables, which
+ * cannot see a symbol the guest looks up by name at run time -- and that is how
+ * XMen2.exe reaches dinput8.dll (issue #32). Registering here is the single
+ * source of truth for BOTH questions: which entry points exist, and therefore
+ * which modules LoadLibraryA may honestly hand back a handle for.
+ */
+void x86_native_export(const char *mod, const char *sym,
+                       void (*fn)(struct X86pCpu *));
+uint32_t x86_native_export_addr(const char *mod, const char *sym);
+int x86_native_module_implemented(const char *mod);
+void x86_native_export_report(void);
+
+/* Head of the registered-module list. */
+X86Module *x86_modules(void);
+
+/* Lookup helpers for diagnostics. A thunk is a bound native import; poison is
+ * an intentionally unmapped placeholder for an import that could not bind. */
+const char *x86_thunk_name(uint32_t addr, const char **module_out);
+const char *x86_poison_name(uint32_t addr, const char **module_out);
+/* Run the thunk at `addr` as the dispatcher does -- its stub pops its own
+   arguments and the return address. 0 when `addr` is no bound thunk. */
+int x86_native_thunk_call(uint32_t addr, struct X86pCpu *C);
+
+/* Run `fn` when the guest calls `addr`, before the body, RETRYING on every
+   call until it returns non-zero. Used to act at a moment during the run --
+   engine startup completes long after module init, and some host work (ARK
+   registration) is only legal once the subsystem it touches has registered,
+   which is a state the handler must test rather than a call site we can name.
+ */
+void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why);
+
+/* Complain about every armed trigger that never fired; returns how many. */
+int x86_triggers_report(void);
+
+/* The registered module and linked entry point of the override that owns the
+   mapped entry point `addr`, or 0 when none does -- or when a first-call
+   trigger is armed there, whose handler must see every call. */
+int x86_override_at(uint32_t addr, const char **module, uint32_t *linked_ep);
+
+/*
+ * Register a NATIVE implementation of a guest entry point, declared in C where
+ * the override belongs (src/native/startup.c, movie.c, reportbox.c, ...) --
+ * The dispatcher consults this table before ordinary guest execution, so
+ * direct, vtable, and callback dispatch all reach the native function.
+ *
+ * `module` is the module that owns the entry point and `linked_ep` is the
+ * address at that module's PREFERRED base -- the address the disassembly
+ * shows. A bare entry point is NOT a key: every libIG*.dll is linked for
+ * 0x10000000, so one linked address names a different function in each of
+ * them, while the dispatcher works in mapped addresses. x86_overrides_resolve
+ * turns each pair into the mapped address once the modules are in place.
+ */
+/* x86_override_fn lives in x86rt.h so the ABI has one declaration. */
+#include "x86rt.h"
+void x86_register_override(const char *module, uint32_t linked_ep,
+                           x86_override_fn fn);
+int x86_override_is_bound(const char *module, uint32_t linked_ep,
+                          x86_override_fn fn);
+
+/*
+ * Resolve every registration to a mapped address. Call once, after all modules
+ * are mapped and before any guest code runs -- registration happens in
+ * constructors, long before pe_map has placed anything. Aborts if a module is
+ * missing or an entry point names no executable guest body, because an override
+ * that does not resolve never fires and the run still looks healthy.
+ */
+void x86_overrides_resolve(void);
+
+/*
+ * Resolve one (module, linked_ep) the way x86_overrides_resolve does, but
+ * report instead of aborting: 0 and *mapped_out on success, non-zero with the
+ * reason in `why`. Exists so --override-selftest can show the resolver
+ * ACCEPTING a real override and REJECTING an unmapped module, an address
+ * outside the image and a mid-function address -- a resolver only ever seen
+ * accepting is not known to reject anything.
+ */
+int x86_override_resolve_check(const char *module, uint32_t linked_ep,
+                               uint32_t *mapped_out, char *why, size_t whyn);
+
+/* Count of registered native overrides (0 is a measurement, not silence). */
+int x86_override_count(void);
+
+/*
+ * Sampling profiler (X2_PROFILE=<period-ms>): a thread samples the running
+ * guest body every period and histograms the samples, so a body that runs a
+ * lot is sampled a lot. This is the instrument that CAN name a load-window
+ * hotspot -- the hotep hash cannot, because the level build dispatches ~460k
+ * distinct entry points and a fixed hash refuses most of them. The report
+ * prints at the end of the run through x2_interrupt_reports.
+ */
+void x86_profiler_start(const char *arg);
+void x86_profiler_report(void);
+
+/*
+ * write_watch=<guest-addr>: report the running body the instant any guest
+ * WR32 touches the address (the definitive catch for a stack overrun whose
+ * writer is a DIRECT call, invisible to the dispatch-boundary ring). WR32
+ * checks x2_write_watch_addr; unarmed it is one predictable compare.
+ */
+void x86_write_watch_arm(const char *arg);
+/* Writes the watch saw, so a report can carry its denominator. */
+unsigned long x86_write_watch_hits(void);
+
+/*
+ * X2_STACKCHECK=<file>: while armed, record every dispatched call's esp delta
+ * so tools/stackcheck.py can check it against the callee's own RET immediate.
+ * A delta is only wrong relative to an expectation, and that expectation is in
+ * the guest binary, not in this runtime.
+ */
+void x86_stackcheck_arm(int on);
+extern volatile uint32_t x2_write_watch_addr;
+extern void x2_write_watch_fire(uint32_t a, uint32_t v);
+
+/* Bind an IAT slot to a callable address when the import is implemented
+   natively but is not another guest module: the guest sometimes takes an
+   import's address and calls through it, bypassing the named stub. Returns 0
+   if there is no native implementation for that slot. */
+uint32_t x86_native_thunk(const char *mod, const char *sym);
+/* The same, for a slot imported BY ORDINAL: pass sym NULL and the ordinal. */
+uint32_t x86_native_thunk_at(const char *mod, const char *sym,
+                             uint32_t ordinal);
+
+/* Dump guest memory named by the `peek` setting (see the definition for the
+   format). Safe from a signal handler: reads via process_vm_readv, so an
+   unmapped address reports itself instead of faulting again. */
+void x86_peek_report(void);
+
+/*
+ * Read guest memory from a SIGNAL HANDLER: process_vm_readv returns an error
+ * for an unmapped address instead of raising a second signal, and takes no
+ * lock the interrupted thread might hold. It is a system call per read, so
+ * ordinary host code uses guest_memory_try_read instead -- per-frame overrides
+ * reading through this were measured at 23% of a gameplay frame.
+ */
+int x86_peek(uint32_t addr, void *dst, size_t n);
+int x86_peek32(uint32_t addr, uint32_t *out);
+
+/* Guest registers at a fault: the file of the last body to cross the host
+   boundary, which guest-to-guest calls share. */
+void x86_regs_dump(void);
+
+/* Peek + reached + args + ring, in one call. Every stop path uses this, because
+   abort() does not run atexit handlers and the reports registered there were
+   silent on exactly the failures worth reporting. */
+void x86_diag_dump(void);
+
+/*
+ * A monotonic count of everything the ring records, for the heartbeat: it is
+ * the cheapest proof that the guest is still executing. x86_crossings_what()
+ * says what it counts, so the heartbeat prints that rather than letting a
+ * reader assume.
+ */
+unsigned long x86_crossings(void);
+const char *x86_crossings_what(void);
+
+/*
+ * Tell the thread table what this thread just crossed into.
+ *
+ * The ring is one shared record, and on a wedged run it is filled by whichever
+ * thread is still busy -- a 60 Hz timer thread produced 3,582 crossings per
+ * five seconds while the thread that was actually stuck had not crossed in
+ * minutes, so its last act was long gone from the ring (issue #158). Per
+ * thread, the answer survives. Implemented by threads.c, which owns the
+ * records the heartbeat walks.
+ */
+void guest_thread_note_crossing(const char *what, uint32_t guest_addr,
+                                double at);
+
+/* How many thunk slots the table has claimed so far. Which imports an
+   interval spent its calls and its time in is x86_thunk_probe.h's question. */
+unsigned int x86_thunk_count(void);
+
+/* The hot-guest-body probe has its own owner: see x86_hotep.h. Whoever runs a
+   guest body brackets it with these when the probe is armed, so the exclusive
+   time is attributed to the entry point that spent it. */
+void x86_probe_span_push(void);
+void x86_probe_guest_body_end(uint32_t ep);
+
+/* Wall-time split between host import stubs and guest bodies per interval
+   (see x86_probe_time_delta). Armed with X2_HOTEP; otherwise zeroes. */
+void x86_probe_time_delta(unsigned long long *host_import_ns,
+                          unsigned long long *guest_body_ns);
+
+/* Every registered module, for reporting. */
+X86Module *x86_modules(void);
+
+/* X2_EPCOUNT: how often a dispatched body is entered. Reports at zero. */
+void x86_epcount_report(void);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* X86RT_NATIVE_H */

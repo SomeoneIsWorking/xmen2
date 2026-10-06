@@ -1,0 +1,195 @@
+---
+id: 149
+title: Browser level frames are spent waiting, not executing: WaitForSingleObject and SuspendThread cost 178-361 ms per call
+status: resolved
+symptom: browser level run presents 10-59 frames in 150 s; wall-time split attributes 100% of measured time to KERNEL32 waits, not guest bodies
+tags: web,browser,wasm,threads,synchronization,performance
+created: 2026-09-14
+updated: 2026-09-15
+---
+
+## Symptom
+
+A headless Chromium run of the packaged browser build (real 2.37 GiB install,
+Dead Zone diagnostic boot, 150 s) presents 10-59 frames. With x86port's
+hot-entry-point probe armed from the page (`?arg=--set&arg=hotep=4096`) the
+heartbeat states where the measured time goes:
+
+    [HB] top imports by TIME:
+    [HB]   KERNEL32.dll!WaitForSingleObject: 3377.9 ms in 19 call(s)
+    [HB]   KERNEL32.dll!SuspendThread:       1806.4 ms in 5 call(s)
+    [HB]   KERNEL32.dll!QueryPerformanceCounter: 0.1 ms in 14 call(s)
+    [HB] wall-time split this interval: host imports 5184.5 ms (100%),
+          guest bodies 4.8 ms (0%)
+    [HB] 145.2s crossings 289806 (+147)
+          scenes 9 (+0)  clears 42 (+0)  draws 117 (+0)  presents 10 (+0)
+
+That is 178 ms per `WaitForSingleObject` and 361 ms per `SuspendThread` while
+the guest body time in the same window is 4.8 ms. The frame is not executing
+slowly: it is waiting for a wake-up that arrives late, or never.
+
+An unarmed run of the same route presents 59 frames in 150 s with
+`perf: frame wall avg 2125.7 ms min 237.5 max 61997.3 (of 55 intervals) -- host
+draw 0.39 ms/frame`, `JIT: 113258811 blocks entered, 1144722 translated
+(5966096 instructions); 2038874 native hand-backs; 0 refusals`, `MAIN tid 999
+... running guest code for 145.2s`, `0 preemption(s)`.
+
+## Measured exclusions
+
+* `requestAnimationFrame` in the same headless browser runs at 60.7 fps, so the
+  page is not presentation-throttled.
+* ~~One wasm module per translated block is not the cost~~ — **RETRACTED
+  2026-09-19, see #153.** The exclusion was measured on a route with 1.14M
+  translations and with modules that were not shaped like real ones. Both
+  halves were wrong for the route that mattered. The per-module figure (3.2 us
+  empty, 4.2-4.7 us for 154 B to 4 KB) left out the shared memory and the
+  twelve function imports a translated block actually links, which raise it to
+  13.7 us; and the Dead Zone route retranslated at **7,244 blocks per second**,
+  not 8k over 140 s, because the storage held a fixed 1,024 modules whatever
+  cache the engine was given. A CPU profile of the busy worker put 42.7% of its
+  samples in `new WebAssembly.Module`/`Instance` and the host glue. Translation
+  was the largest single cost in the browser, and this bullet is why nobody
+  looked at it for four days.
+* Import-call volume is small in a level interval (top by CALLS:
+  `ReleaseSemaphore` 2689, `TlsGetValue` 2688, `WaitForMultipleObjects` 2688,
+  `strstr` 1461), so this is not call volume.
+* `host draw 0.39 ms/frame` over 9 draws per scene: not the renderer.
+* The probe refuses keys past its cap and prints the refusal, so a small arm
+  under-reports: an earlier 24-entry arm said "82% guest bodies" in a load
+  window and admitted 16 refusals. 4096 was used here.
+
+## Repro
+
+    ./run.sh                                  # or the deployed page
+    tools/x2ctl.py ...                        # local: see docs/web-release.md
+    # browser: open the page with
+    #   ?arg=--set&arg=hotep=4096
+    # then Start Dead Zone gameplay test; the next heartbeat prints the split.
+
+Negative control: the same route with no `?arg=` prints
+`wall-time split: probe unarmed (X2_HOTEP)`.
+
+## Next step
+
+Find what those waits wait for, and whether the browser arm of the wake-up
+(winmm timer fire, `PulseEvent`, the condition variable `kernel32_wait.c` parks
+on, `SuspendThread`'s self-park in `threads.c`) arrives late or never. This is
+the same class as issue #140, which the desktop path fixed with a winmm pump
+point and per-thread call stacks.
+
+### Note (2026-09-14)
+Eliminated: the port's own pacing. The same route with pacing off (?arg=--unbounded&arg=--set&arg=unpaced=1) is WORSE, not better: 10 presents in 150 s, perf: frame wall avg 9428.9 ms min 471.9 max 63337.0 (of 8 intervals), winmm 62 fire(s) (+5) with 292877 pump(s) (+5). So the frame is not waiting on the port's frame limiter. What remains is the wait/pump cycle itself: the guest's winmm timer callbacks are pumped from inside guest wait calls (src/native/winmm.c has no host timer thread), the timer fires 1-5 times/s instead of 60, the main thread is inside a host import for 99% of the interval (WaitForSingleObject 178 ms/call, SuspendThread 361 ms/call), and the guest executes almost nothing (crossings +147 in a 5 s interval). Next instrument: report the wait loop's live state in the heartbeat -- what timeout it computed, which object it is waiting on, and whether the guest lock is held while it does -- since the current numbers cannot say which of those is late.
+
+### Note (2026-09-14)
+Two phases, measured separately. The browser stall is not one thing.
+
+**Phase A -- asset load / boot: EXECUTION-bound, no blocking waits at all.**
+The wait counters added for this issue (heartbeat line `wait sleeps N, asked X ms,
+slept Y ms, worst oversleep Z ms`) report nothing in this phase, which means the
+line's guard is honest: no wait blocked. In the same 45 s window:
+
+    [HB] JIT: 33465787 blocks entered, 379506 translated
+    [HB] winmm 0 fire(s) (+0), 629 pump(s) (+141), 0 timer(s) live
+    [HB] 45.1s  crossings 113449 (+6846)
+         scenes 1 (+0)  clears 3 (+0)  draws 1 (+0)  presents 1 (+0)
+    [HB] ... and NO frame was presented in that time (still 1)
+    [HB] MSVCR71.dll!_stricmp: 0.0 ms in 28515 call(s)
+
+So the guest is running hard (0.74M block entries/s) and getting nowhere: one
+scene, one draw, one present in 45 s, while parsing (`_stricmp` 28.5k calls,
+`sscanf` 1118).
+
+**The block rate is the number, and it is 20x off native.** Same counters, same
+engine, same phase (boot), on this machine:
+
+    native (scratch/touch-design/game.log, heartbeats 5.0 s apart):
+      0 -> 77,710,687 blocks entered in 5 s      = 15.5M blocks/s
+      77,710,687 -> 184,327,410 in 5.0 s         = 21.3M blocks/s
+      184,327,410 -> 284,543,017 in 5.03 s       = 19.9M blocks/s
+    browser (this issue): 33,465,787 blocks in 45.1 s = 0.74M blocks/s
+
+That is ~21-27x, i.e. ~1.3 us per block entry against ~65 ns, with 0 refusals on
+both sides -- the browser JIT translates and then *executes* slowly. Everything
+else measured so far is rules out: one wasm module per translated block is ~5%
+of the run (3.2-4.7 us per instantiate), import-call volume is small, `host draw`
+is 0.39 ms/frame, and rAF runs at 60.7 fps in the same browser.
+
+**Phase B -- menu/movie/idle: WAIT-bound** (the original symptom of this issue):
+main thread inside a host import for 99% of the interval, `WaitForSingleObject`
+178 ms/call, `SuspendThread` 361 ms/call, winmm firing 1-5 times/s against a
+60 Hz expectation, guest executing almost nothing (`crossings +147` in 5 s).
+Pacing is excluded: `--unbounded` with `unpaced=1` is worse, not better.
+
+## Next
+
+One probe decides the execution cost: measure a translated block's entry and
+body cost in isolation, wasm against native. What that probe does NOT need to
+look at, because it is already checked and wrong:
+
+* **Per-entry JS bridging.** `x86p_jit_enter` casts the published entry to a
+  function pointer and calls it (`src/x86port/jit_wasm.c`), and on wasm32 that
+  index-into-the-table value compiles to a plain `call_indirect`. No JS runs per
+  entry.
+* **Optimization level.** The web tree configures `CMAKE_BUILD_TYPE=Release`
+  (`-O3 -DNDEBUG`, checked in `build/web/CMakeCache.txt`), and the link has no
+  `-sSAFE_HEAP`/`-sASSERTIONS=2`. `cmake/WebTarget.cmake` does carry
+  `-sASYNCIFY=1` and `-pthread` with `ALLOW_MEMORY_GROWTH`, which are worth
+  measuring but are a small multiple, not 21x.
+* **Translation cost.** 379,506 translations in 45 s is 8.4k/s, and one
+  instantiate measured 3.2-4.7 us.
+* **Block size.** Both sides average 5.1 guest instructions per translated
+  block (browser 379,506/1,930,219; native 850,639/4,307,070), so the browser is
+  not dispatching smaller units.
+
+So the cost is inside executing the emitted body or the engine's dispatch around
+it, and `shared/x86port` owns both -- its Node/Emscripten test harness can time
+them without a browser and against the native build. The number to reproduce is
+1.3 us per block entry against 65 ns.
+
+Both phases matter for playability; Phase A dominates loading, Phase B dominates
+the menus.
+
+### Note (2026-09-14)
+The owner-side probe needed to explain the 21-27x has no working measurement either. x86port's tools/jit_bench.c, built for Emscripten and run under node, reports `jit 0.000 s` at 0.03 ns/insn and '10127.50x faster than the interpreter' (x86port d2136ac). Both are impossible: the JIT loop discards x86p_jit_enter's exit status, so a block that refuses immediately is timed as the fastest possible execution; the native-C column's only sink is an unreachable 0xDEADBEEF branch a wasm build can drop; and no engine's result is compared with any other's. It is now a distrusted instrument in x86port's ledger with the fix named (fail on any exit other than kX86pJitExitBlockEnd, sink every engine's result, require the engines to agree). So the next step is not a profile but repairing that bench: until it verifies its own work, no wasm-vs-native number may be quoted, and the only trustworthy measurement remains this issue's negative one -- 0.74M guest block entries/s in the browser against 15.5-21.3M natively for the same counters.
+
+### Note (2026-09-14)
+The owner's bench is repaired and it changes the picture. Three defects are gone from x86port/tools/jit_bench.c (d2136ac recorded them): the timed loop now refuses on any exit other than kX86pJitExitBlockEnd, the native columns run on the cache-aligned global the other columns use and fold into a printed sink, and one kernel is run through the interpreter and the JIT from the same seed and compared with x86p_cpu_diff before anything is timed. Natively it prints 'agreement: interpreter and jit leave identical state after one kernel' with plausible columns (native+flags 0.95 ns/insn, jit 0.39, interpreter 466.74). Under node it now REFUSES: 'the jit column stopped at unsupported instruction (exit 1) running the kernel once'. Two consequences. (1) Translation success is not a runnable block: the wasm translator covered all 64 kernel instructions and executing the result still exited unsupported, so this bench's kernel must be made one the wasm backend runs before any ratio is quoted. (2) The most worrying explanation of the 21-27x is dead, by check rather than argument: a block that cannot be JIT'd is a refusal in this product (x86_engine.c treats any status other than kX86pRunIntercept/kX86pRunBudget as refuse()), the gameplay binary links no interpreter at all, and the browser run reports 0 refusals of 379506 translation attempts. The browser is not interpreting; it is executing translated code 21-27x slower. Suspects that survive: the emitted body's efficiency under wasm and the engine's per-entry dispatch.
+
+### Note (2026-09-14)
+The wasm JIT body/entry cost is measured, and it is not the problem. x86port's bench now goes through x86p_jit_storage_* (the host-neutral publication path the engine ships) instead of mapping its own pages and calling the raw translator -- that NULL-entry bug was why every wasm column refused, and with it fixed the same harness runs on both hosts and passes 'agreement: interpreter and jit leave identical state after one kernel' on each. Per guest instruction: jit 0.39 ns native vs 1.11 ns wasm (2.9x); native+flags 0.95 vs 1.28 (1.35x); interpreter 454 vs 284; the tool's own SCORE (jit against the native+flags control) 0.41 vs 0.87. So a translated block costs ~2.9x more to run under wasm, and that is all. The product's per-block-entry cost is 65 ns native and ~1300 ns wasm (20-27x), and its blocks hold 5.1 instructions against this kernel's 64, so the JIT body explains a small part of the gap and something the kernel does not exercise explains the rest. The kernel is register-only by construction: no loads or stores, so no guest-arena addressing, no bounds check, no imported memory helper. That is the surviving suspect and the next instrument -- a memory-access kernel measured the same way on both hosts. Also visible in these numbers: the interpreter is FASTER under wasm than native (284 vs 454 ns/insn), which is its own curiosity (a JIT'd decode loop is exactly what V8 is good at) and not a path this product links.
+
+### Note (2026-09-14)
+Guest memory is ruled out too, by measurement rather than argument. x86port's bench kernel now performs 16 memory operations inside its 64 instructions (absolute addresses in the guest arena, mirrored in both native controls and in the interpreter the agreement check compares against), and the wasm/native ratio does not move: register-only 0.39 vs 1.11 ns/insn, with memory 0.39 vs 1.05, agreement verified on both hosts. So the translated body is ~2.7x more expensive under wasm with or without memory access, and neither the emitted code nor the memory path inside it explains the 20-27x. What remains is the engine around the entry, which that benchmark cannot see: it calls x86p_jit_enter once per iteration (one call_indirect, 64 instructions, ~67 ns of wasm) while the product runs a block lookup plus boundary/override policy, statistics and slice accounting for every block, at 5.1 instructions per block -- that fixed cost is paid 12x as often per instruction. Next instrument: a per-entry measurement inside x86p_jit_engine_run (sampled, since a timer call in wasm costs more than the entry) split into body vs the engine's own work, run in the browser and against the native block rate already recorded.
+
+### Note (2026-09-14)
+Correction, from this issue's own probe run (the 09:16 series, re-read rather than assumed): the browser's block rate is phase-dependent, and the 0.74M/s figure I generalised from was the ASSET/FILE phase, not steady state. The same run's heartbeat goes 34,920,857 -> 344,534,636 blocks entered in 60 s = 5.16M blocks/s while only 40 files were opened and presents stayed at 10. Against the recorded native 15.5-21.3M/s that is a 3-4x gap, which is exactly what the repaired benchmark measures for the translated body (2.7x). So the conclusion recorded here as 'the engine around the entry explains it' is wrong as stated and is corrected here: steady state is 3-4x and consistent with the measured body, while the 20-27x belongs to the boot/asset phase -- the work that phase does per guest block (file opens through the multi-path resolver, archive reads, parse loops) is what to measure next, not a fixed per-entry engine cost. The eliminations stand (body 2.7x with or without memory access, no interpreter in the product); what changes is where the remaining factor lives.
+
+### Note (2026-09-14)
+A long browser run's own log (iter-batch) reports JIT 14,526,155,144 blocks entered with presents 10 (+0) and frame wall avg 9663.0 ms: ~1.45 BILLION guest block entries per presented frame, against roughly 0.3-0.7M per frame natively (15.5-21.3M blocks/s at 30-60 fps). Two things follow. First, the browser's cost is not per-instruction at all in that state -- it is spinning: a poll/wait loop re-entering blocks ~2000x more often per frame than the native build, which is the wait-bound behaviour Phase B already records (WaitForSingleObject 178 ms/call, SuspendThread 361 ms/call, winmm 1-5 fires/s, and the TlsGetValue/WaitForMultipleObjects/ReleaseSemaphore + strstr/_stricmp/sscanf spin signature from the baseline run). Second, it quantifies why frame rate is the wrong headline for this build: the run presented 10 frames in hours and never aborted, so what to fix is the spin/wait path (the port's cond-wait/winmm pump composition), not the translated code -- which the benchmark separately measures at 2.7x native. Together with the phase-dependent rates now recorded (0.74M/s asset phase, 5.16M/s hot, ~2.2M/s sustained) this closes the 'the JIT is 20x slow' reading of this issue: the body is 2.7x, and the per-frame cost is dominated by re-entering blocks in wait loops.
+
+### Note (2026-09-14)
+Root cause of the slow phases, from two independent measurements that agree. (1) The repaired bench times the SHIPPING translation path on both hosts: x86p_jit_storage_translate of the identical 64-instruction block takes 2.040 ms under wasm and 0.209 ms natively -- ~10x, about 32 us per guest instruction. (2) One heartbeat's own deltas: +34819 blocks translated and +1164611 blocks executed in 5.1 s, and the port's blocks average 5.15 instructions. At the bench's measured cost a 5.15-instruction block costs ~165 us to translate, so those 34819 translations alone account for the whole 5.1 s interval; natively the same translations would cost ~0.57 s (11%). The phase is therefore COMPILE-bound, not execution-bound: the browser is spending its time building WebAssembly modules, and the translated code it produces runs fine (body 2.7x native, agreement verified). This supersedes the two earlier conclusions recorded here: the pump-spin reading (this interval shows 70 pumps and 0 live timers, not 40000/s) and the per-entry engine cost. Fix direction, and it is inside the execution engine rather than the title: stop paying whole-module cost per ~5-instruction block. jit_wasm_module.h already defines X86P_WASM_MAX_BODIES 64 with per-body names b0..b63 and rejects a caller passing more than 64, so batching bodies into one module is a designed-for path that the shipping publish does not use; amortising module construction and instantiation across bodies, and/or translating larger blocks, attacks exactly the measured 32 us per instruction. Gates: the wasm test suite, the agreement check the bench now runs on both hosts, and the translate-time columns it prints.
+
+### Note (2026-09-14)
+I implemented the designed fix and MEASURED THAT IT DOES NOT PAY, then reverted it (x86port 6b2fbd9 implemented, eb9028e reverted; gates were green: native 43/43, wasm 3/3, threaded wasm 7/7). The model it was built on was wrong: the 0.601 ms publication figure I derived was the FIRST module in the process (cold), and warm publication is ~0.094 ms on top of ~0.081 ms emission, i.e. ~0.175 ms per block. With the chain measuring 0.128 ms/block against 0.175 ms/block for one block at a time, batching buys 1.37x in the bench, not the 3-60x claimed -- the cost is PER BLOCK (emission plus a per-module compile), not per module, so there is almost nothing for module-level amortization to win. The title agreed: in the same boot phase the batched build ran 0.32-0.43M blocks/s against 0.47-0.72M for the unbatched build, while misses fell 3.5-13x (1.6k/s against 5.4-22k/s) -- so the batching did what it said and still made nothing faster, and chaining through a taken branch also translated dead fall-through that the run then paid for. Two facts worth keeping: (1) a translation-heavy phase is a few thousand to twenty-two thousand translations per second, each costing ~0.1-0.2 ms, which alone accounts for the interval, and natively the same work is ~10x cheaper -- that remains the real gap; (2) the per-module cost is fixed per module SHAPE, so if it is to be amortized at all it has to be by FEWER, LARGER BLOCKS (raise instructions per block in the boundary policy), not by packing small ones. Reverted rather than kept: an engine change that does not pay is worse than no change.
+
+### Note (2026-09-14)
+MEASURED: the translation cost has a per-block FLOOR, and that is the thing to attack. Same bench, same call, two kernel sizes on the wasm host: a 4-instruction block costs 0.035 ms (8.8 us/instruction) and a 64-instruction block 0.165 ms (2.6 us/instruction). Fitting cost = F + n*v gives F ~ 26 us per block and v ~ 2.2 us per instruction, so for real code at 5.15 instructions per block about 70% of every translation is the floor, not the instructions. The native host shows no floor: 1.8 us/instruction at both sizes. The floor is per BODY (its function, export and indirect-table entry), not per module, which is exactly why batching 32 bodies into one module measured 128 us/block -- WORSE than a fresh one-body module at 35 us; packing bodies keeps the body count and the whole module compiles at instantiation. So the fix is FEWER BLOCKS IN TOTAL -- longer runs/traces -- not tighter packaging of the same small blocks: at 16 instructions per block expect ~3.8 us/instruction and at 64 ~2.6, a 2.3-3.4x cut in translation, with dispatch also falling with the block count. The feature this implies is real block formation that continues past a conditional into its fall-through and target, consulting the boundary policy at every address it covers (interior intercepts must still cut) and keeping invalidation range-based. Natively the same change is roughly neutral, so it is a wasm-host win.
+
+### Note (2026-09-14)
+FIXED (the wasm translation floor), and measured in the real title. A block now continues past a conditional instead of ending at every branch: a conditional already writes the taken path's own exit, so the fall-through just carries on and whatever ends the run later (the instruction cap, a boundary, an unconditional exit) closes the body. x86port 75b2cec adds x86p_wasm_continue_lower() (jcc/jecxz only; NULL for unconditional exits) and rewrites x86p_wasm_jcc_lower()/x86p_wasm_jecxz_lower() as the continue form plus the fall-through epilogue, so a block that ends at a branch emits exactly the bytes it always did. The instruction cap still bounds a run and the boundary predicate is still consulted at every address, so an intercept inside a run still cuts it, and the native backend is deliberately untouched (no floor there to amortize). MEASURED, wasm host, same bench: a 5-instruction kernel containing a branch is 5 instructions in ONE block where it used to be 2, and the same five instructions cost 0.050 ms as one block against 0.124 ms as two. MEASURED, the title, identical 300 s driven browser route at equal wall duration (287 s vs 282 s): frame wall avg 1063.1 -> 666.6 ms (-37%), frame wall min 240.6 -> 149.8 ms, frames presented 245 -> 405 (+65%), guest instructions executed 11.87M -> 20.97M (+77%), blocks translated 2196676 -> 2153157, instructions per translated block 5.4 -> 9.7, and zero refusals and zero aborts on both arms. The counter is exact; the end-to-end timing is one run per arm, so it is consistent with the mechanism rather than independent of it. Still not playable: 667 ms/frame is dominated by the wait-bound menu/movie phase below, which this does not touch.
+
+### Note (2026-09-14)
+SECOND SAMPLE of the fixed engine confirms the timing, so the end-to-end figure is not one lucky run: frame wall avg 666.6 ms (405 presented, 300 s route) and 681.7 ms (367 presented, same 300 s route), i.e. within 2% of each other, against the branch-ending baseline's 1063.1 ms (245 presented). So the change is -35% +- 1% on average frame time and +50-65% frames presented, measured twice on the new engine and once on the old. The exact counter agrees: instructions per translated block 5.4 -> 9.7.
+
+### Note (2026-09-14)
+CORRECTED FIGURES: the second run of the new engine went on past the point I first read it, so its final numbers are frame wall avg 671.5 ms over 402 presented frames and 20.67M executed instructions with 0 refusals -- not the 681.7 ms / 367 frames intermediate I quoted earlier. Final pair for the two new-engine runs is therefore 666.6 and 671.5 ms (within 1%, not 2%) against the old engine's 1063.1 ms, i.e. about -37%.
+
+### Resolution (2026-09-15)
+Phase B (WAIT-bound) root-caused and FIXED (title-owned). The park in guest_cond_wait_ms (src/native/threads.c) was bounded, but the hand-off that returns the lock to it was not: guest_quantum() and Sleep(0) did `guest_unlock(); sched_yield(); guest_lock()`, and under Emscripten sched_yield() is NOT a yield (musl routes it to _emscripten_yield, a no-op for a worker), while guest_lock()'s pthread_mutex_trylock fast path let the releasing worker re-win the lock within microseconds of every one of the ~7k/s quantum releases. Woken waiters therefore advanced only when the holder genuinely parked, which is the 178 ms/call WaitForSingleObject and 361 ms/call SuspendThread that made the menu/movie phase unplayable. On native the same code is fine because sched_yield() really deschedules.
+
+Fix: src/native/threads_yield.c turns the voluntary release into a PROMISE, not a race -- guest_yield_turn() unlocks, then will not re-take the lock until guest_yield_turn_taken() reports that some OTHER thread newly acquired it (every hand-off point now calls it: guest_lock, both condition re-acquisitions, the SuspendThread self-park), bounded by a 10 ms turn so a vanished waiter can never strand a yielder. scheduler_has_waiter() is exported as the shared "is anyone else able to run" test. guest_yield_note_park() records whether each timed park ended on its deadline or a signal so the remaining overage cannot be misattributed.
+
+MEASURED, real browser run of the packaged build on the 300 s Dead Zone route (scratch/web/iter-plainfix.log): winmm now fires at 60/s (was 1-5/s), the heartbeat `wait sleeps` line reads `worst oversleep 118 ms` (was seconds), `hand-offs waited` advances with the run and `longest 15 ms`, and the run advances scenes/draws/presents steadily (396 scenes / 395 presents) with no abort. Native control (scratch/web/native-control.log) confirms preemption is unaffected: 53k preemptions, worst oversleep 57 ms, hand-off longest 83 ms; 153/153 ctest green.
+
+What this does NOT close and where it now lives: the residual `frame wall avg ~686 ms` is the boot/asset-load phase plus the 2.7x-per-instruction wasm body (present-counters rise monotonically, host draw 0.30 ms/frame -- not a convoy), and the browser canvas still captures black (see S021/W2). The wait convoy named in this issue's title is gone.

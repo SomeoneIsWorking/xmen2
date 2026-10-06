@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Port-authored touch button art (not a game asset): neon line art in the
+     style of the retail mouse-overlay icons, drawn without filters so
+     SDL_image rasterizes it the same on every platform. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="384" viewBox="0 0 128 128">
+<g transform="translate(64 64) scale(0.88) translate(-64 -64)">
+<g fill="none" stroke="#ff6a00" stroke-width="23.75" stroke-opacity="0.16" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M100.7 54.2 L113.4 56.2 L113.4 71.8 L100.7 73.8 L96.9 83.0 L104.5 93.4 L93.4 104.5 L83.0 96.9 L73.8 100.7 L71.8 113.4 L56.2 113.4 L54.2 100.7 L45.0 96.9 L34.6 104.5 L23.5 93.4 L31.1 83.0 L27.3 73.8 L14.6 71.8 L14.6 56.2 L27.3 54.2 L31.1 45.0 L23.5 34.6 L34.6 23.5 L45.0 31.1 L54.2 27.3 L56.2 14.6 L71.8 14.6 L73.8 27.3 L83.0 31.1 L93.4 23.5 L104.5 34.6 L96.9 45.0 Z"/>
+  <circle cx="64" cy="64" r="15"/>
+</g>
+<g fill="none" stroke="#ff6a00" stroke-width="16.25" stroke-opacity="0.34" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M100.7 54.2 L113.4 56.2 L113.4 71.8 L100.7 73.8 L96.9 83.0 L104.5 93.4 L93.4 104.5 L83.0 96.9 L73.8 100.7 L71.8 113.4 L56.2 113.4 L54.2 100.7 L45.0 96.9 L34.6 104.5 L23.5 93.4 L31.1 83.0 L27.3 73.8 L14.6 71.8 L14.6 56.2 L27.3 54.2 L31.1 45.0 L23.5 34.6 L34.6 23.5 L45.0 31.1 L54.2 27.3 L56.2 14.6 L71.8 14.6 L73.8 27.3 L83.0 31.1 L93.4 23.5 L104.5 34.6 L96.9 45.0 Z"/>
+  <circle cx="64" cy="64" r="15"/>
+</g>
+<g fill="none" stroke="#ff6a00" stroke-width="10.62" stroke-opacity="1.0" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M100.7 54.2 L113.4 56.2 L113.4 71.8 L100.7 73.8 L96.9 83.0 L104.5 93.4 L93.4 104.5 L83.0 96.9 L73.8 100.7 L71.8 113.4 L56.2 113.4 L54.2 100.7 L45.0 96.9 L34.6 104.5 L23.5 93.4 L31.1 83.0 L27.3 73.8 L14.6 71.8 L14.6 56.2 L27.3 54.2 L31.1 45.0 L23.5 34.6 L34.6 23.5 L45.0 31.1 L54.2 27.3 L56.2 14.6 L71.8 14.6 L73.8 27.3 L83.0 31.1 L93.4 23.5 L104.5 34.6 L96.9 45.0 Z"/>
+  <circle cx="64" cy="64" r="15"/>
+</g>
+<g fill="none" stroke="#ffd6a8" stroke-width="4.25" stroke-opacity="1.0" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M100.7 54.2 L113.4 56.2 L113.4 71.8 L100.7 73.8 L96.9 83.0 L104.5 93.4 L93.4 104.5 L83.0 96.9 L73.8 100.7 L71.8 113.4 L56.2 113.4 L54.2 100.7 L45.0 96.9 L34.6 104.5 L23.5 93.4 L31.1 83.0 L27.3 73.8 L14.6 71.8 L14.6 56.2 L27.3 54.2 L31.1 45.0 L23.5 34.6 L34.6 23.5 L45.0 31.1 L54.2 27.3 L56.2 14.6 L71.8 14.6 L73.8 27.3 L83.0 31.1 L93.4 23.5 L104.5 34.6 L96.9 45.0 Z"/>
+  <circle cx="64" cy="64" r="15"/>
+</g>
+</g>
+</svg>

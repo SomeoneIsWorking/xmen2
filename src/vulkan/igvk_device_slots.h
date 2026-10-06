@@ -1,0 +1,63 @@
+/* DERIVED by tools/device_slots.py from the retail image -- do not edit.
+ *
+ * Regenerate with:
+ *   python3 tools/device_slots.py scratch/analysis/libIGGfx.json \
+ *       scratch/analysis/libIGGfx.vtab.json --class igDx8VisualContext \
+ *       --header src/vulkan/igvk_device_slots.h
+ *
+ * The slots of igDx8VisualContext's vtable that reach the DirectX device fields
+ * (this+0x140/0x144/0x148/0x14c), following DIRECT calls to depth 6.
+ * Everything NOT listed here is platform-neutral engine bookkeeping and is
+ * inherited verbatim (C119).
+ *
+ * 98 of 334 slots, 0 of which could not be scanned at
+ * all (no translated instructions) and are therefore NOT in the list.
+ *
+ * LOWER BOUND, three ways: direct calls only, so a slot reaching the device
+ * through a function pointer or a vtable dispatch is absent; the match is on
+ * the offset constant, so an access off an already-advanced base is invisible;
+ * and the unscanned functions above were never looked at. A slot missing from
+ * this list is inherited, and an inherited device-touching slot calls through
+ * a device this host never made.
+ */
+/*
+ * How many STACK ARGUMENTS each slot's function pops, from its own RET N.
+ * -1 where the body has no RET of its own (a tail jump) or its RETs disagree
+ * -- those cannot be answered from the binary and must not be guessed, so a
+ * consumer has to refuse rather than pick a number.
+ *
+ * This exists so a slot can be answered without being implemented: popping
+ * the right count is the difference between "did nothing" and "corrupted the
+ * guest stack".
+ */
+static const signed char IGVK_SLOT_ARGS[334] = {
+    -1, -1, -1, -1, -1, -1, -1, 1, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, 0,  -1, -1, -1, -1, 1,  2, 1, 3,  0,  1,  0,  0,  -1, 0,  1,  1,  0,
+    1,  0,  1,  0,  1,  0,  1,  1, 3, 2,  0,  1,  3,  3,  1,  1,  1,  1,  1,
+    2,  1,  1,  1,  0,  0,  1,  0, 1, 1,  0,  1,  1,  1,  3,  5,  3,  4,  1,
+    0,  1,  1,  2,  1,  1,  2,  2, 2, 2,  2,  2,  2,  2,  2,  2,  2,  1,  2,
+    1,  2,  2,  1,  0,  1,  0,  1, 1, 1,  1,  1,  1,  1,  1,  1,  0,  5,  1,
+    0,  1,  1,  2,  1,  5,  6,  6, 6, 5,  7,  4,  6,  2,  1,  1,  1,  1,  2,
+    2,  3,  2,  1,  3,  3,  2,  1, 2, 1,  -1, 1,  0,  1,  1,  0,  2,  1,  3,
+    3,  1,  0,  1,  0,  1,  0,  2, 1, 0,  1,  0,  1,  0,  3,  3,  1,  0,  1,
+    0,  8,  6,  0,  0,  0,  1,  1, 1, 0,  1,  1,  0,  1,  0,  6,  6,  4,  4,
+    4,  1,  0,  0,  1,  1,  0,  1, 2, 0,  2,  1,  1,  1,  2,  2,  2,  2,  2,
+    2,  2,  1,  1,  0,  1,  1,  1, 1, 1,  0,  1,  0,  1,  0,  1,  0,  4,  4,
+    1,  0,  1,  0,  1,  0,  1,  0, 1, 0,  1,  0,  1,  0,  1,  0,  1,  0,  1,
+    0,  1,  1,  1,  0,  1,  0,  2, 1, 2,  0,  -1, 1,  1,  1,  4,  4,  3,  2,
+    2,  0,  1,  1,  1,  1,  8,  3, 0, 1,  0,  1,  1,  2,  1,  1,  0,  2,  1,
+    7,  6,  2,  -1, 3,  2,  3,  2, 5, 5,  3,  3,  8,  3,  1,  1,  -1, 1,  1,
+    1,  1,  6,  6,  4,  1,  -1, 0, 1, 0,  3,  -1, 3,  -1, 6,  8,  5,  8,  8,
+    1,  -1, 0,  1,  0,  3,  3,  0, 1, 4,  4,
+};
+
+#define IGVK_DEVICE_SLOT_COUNT 98
+static const short IGVK_DEVICE_SLOTS[IGVK_DEVICE_SLOT_COUNT] = {
+    7,   8,   25,  30,  34,  35,  36,  38,  46,  47,  50,  72,  73,  79,
+    82,  84,  86,  88,  90,  92,  94,  96,  100, 113, 115, 117, 127, 128,
+    130, 133, 137, 139, 141, 143, 146, 147, 151, 153, 155, 157, 159, 160,
+    162, 164, 166, 168, 170, 172, 173, 174, 175, 177, 186, 196, 203, 204,
+    205, 206, 207, 208, 210, 218, 220, 222, 224, 226, 228, 230, 232, 234,
+    236, 238, 240, 242, 244, 246, 248, 250, 252, 254, 273, 275, 276, 281,
+    283, 297, 302, 303, 308, 309, 314, 316, 321, 323, 328, 329, 331, 333,
+};

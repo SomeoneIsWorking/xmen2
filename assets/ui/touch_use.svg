@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Port-authored touch button art (not a game asset): neon line art in the
+     style of the retail mouse-overlay icons, drawn without filters so
+     SDL_image rasterizes it the same on every platform. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="384" viewBox="0 0 128 128">
+<g transform="translate(64 64) scale(0.88) translate(-64 -64)">
+<g fill="none" stroke="#0c8cff" stroke-width="19.00" stroke-opacity="0.16" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="34" y="26" width="13" height="44" rx="6.5"/>
+  <rect x="49" y="16" width="13" height="54" rx="6.5"/>
+  <rect x="64" y="18" width="13" height="52" rx="6.5"/>
+  <rect x="79" y="28" width="13" height="42" rx="6.5"/>
+  <rect x="84" y="56" width="13" height="36" rx="6.5" transform="rotate(38 90 74)"/>
+  <path d="M34 66 L34 90 Q34 112 58 112 L70 112 Q88 112 94 94"/>
+</g>
+<g fill="none" stroke="#0c8cff" stroke-width="13.00" stroke-opacity="0.34" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="34" y="26" width="13" height="44" rx="6.5"/>
+  <rect x="49" y="16" width="13" height="54" rx="6.5"/>
+  <rect x="64" y="18" width="13" height="52" rx="6.5"/>
+  <rect x="79" y="28" width="13" height="42" rx="6.5"/>
+  <rect x="84" y="56" width="13" height="36" rx="6.5" transform="rotate(38 90 74)"/>
+  <path d="M34 66 L34 90 Q34 112 58 112 L70 112 Q88 112 94 94"/>
+</g>
+<g fill="none" stroke="#0c8cff" stroke-width="8.50" stroke-opacity="1.0" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="34" y="26" width="13" height="44" rx="6.5"/>
+  <rect x="49" y="16" width="13" height="54" rx="6.5"/>
+  <rect x="64" y="18" width="13" height="52" rx="6.5"/>
+  <rect x="79" y="28" width="13" height="42" rx="6.5"/>
+  <rect x="84" y="56" width="13" height="36" rx="6.5" transform="rotate(38 90 74)"/>
+  <path d="M34 66 L34 90 Q34 112 58 112 L70 112 Q88 112 94 94"/>
+</g>
+<g fill="none" stroke="#c4ecff" stroke-width="3.40" stroke-opacity="1.0" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="34" y="26" width="13" height="44" rx="6.5"/>
+  <rect x="49" y="16" width="13" height="54" rx="6.5"/>
+  <rect x="64" y="18" width="13" height="52" rx="6.5"/>
+  <rect x="79" y="28" width="13" height="42" rx="6.5"/>
+  <rect x="84" y="56" width="13" height="36" rx="6.5" transform="rotate(38 90 74)"/>
+  <path d="M34 66 L34 90 Q34 112 58 112 L70 112 Q88 112 94 94"/>
+</g>
+</g>
+</svg>

@@ -1,0 +1,326 @@
+# AGENTS.md
+
+This is the project-specific authority; `CLAUDE.md` points here.
+
+## What this is
+
+A native port of **X-Men Legends II: Rise of Apocalypse** (2005 PC build). The
+x86-32 machine code of `XMen2.exe` + the `libIG*.dll` Alchemy engine DLLs is
+executed at runtime by `shared/x86port`'s engine, read from the player's own
+images, so the game runs from the start; then subsystems are replaced with
+hand-written native code while the rest keeps working.
+`docs/project-goals.md` owns the durable outcomes, `docs/project-state.md` owns
+factual capability coverage, and `docs/strategy.md` states why the guest is run
+at runtime and why the PC build is the conformance target.
+
+## Start here, before touching anything
+
+```sh
+uv run --frozen python tools/info.py brief <words>
+```
+
+`docs/project-goals.md`, `docs/project-state.md`, `docs/codemap.md`,
+`docs/issues/`, and `docs/re-frontier.md` hold the corresponding project
+authorities. Keep title evidence and exact guest bindings in `docs/RE/`;
+`docs/prior-art.md` records attribution for material actually reused.
+
+## Setup
+
+For the default product, put the matching PC install at `./game/` or set
+`GAME_PC_DIR` in `.env` (gitignored), then use `./run.sh`. `XBOX_ISO` and
+`WINE_PREFIX` are needed only by their purpose-specific RE/oracle tools.
+
+The Linux AppImage is a desktop-first path: it does not require a terminal or
+`GAME_PC_DIR`. Its first launch passes `--appimage` to the native runner, which
+shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
+containing exactly one copy at any depth, and remembers the resulting install
+under the OS user configuration directory. The AppImage contains no game
+files. The Android APK has a separate setup Activity: it uses SAF to stage a
+ZIP into package OBB storage, validates the loader and
+title content sentinels, then starts SDL only after the native bridge has
+supplied the shared Android framework's user-data root.
+The remaining mobile release gate is measured device performance; see
+`docs/android-release.md`.
+
+**Touch play is not an Android feature.** The on-screen pad and the mobile HUD
+placement are decided by the device the player is touching RIGHT NOW, never by
+the platform the binary was built for: an Android player holding a controller
+wants neither, and a desktop player on a touchscreen wants both. The answer is
+observed from the host event stream (`src/input/touch_source.c`) and forced at
+either end by one setting (`input.touch_controls`: OFF / AUTO / ALWAYS), on
+every platform. A contact under a drawn control feeds the same virtual
+DirectInput pad as every other controller path; a contact with no drawn
+control under it -- the intro, the menus, every cutscene -- is the retail
+GUI's own mouse pointer, because those screens are the retail GUI. Nothing
+about the feature may be compiled out, gated on `__ANDROID__`, or documented
+as belonging to a package.
+
+## Build and run
+
+`build/native/` is the one native build tree. `./run.sh` maintains it, and
+the live harnesses (`tools/live_case.py`, `tools/x2ctl.py`) use its binary.
+Do not configure a second native tree by hand.
+
+```sh
+./run.sh                         # provision, build and launch the one default product
+cmake --build build/native -j$(nproc)          # build without launching
+ctest --test-dir build/native --output-on-failure
+ctest --test-dir build/native -R controller    # one test
+uv run --frozen python tools/provision.py  # provision-only maintainer/cold-path check
+build/native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
+build/native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
+build/native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
+```
+
+`run.sh` launches the native-overrides + x86port-JIT gameplay product. The
+Wine control and maintainer diagnostics remain separate tools.
+
+Build a Linux AppImage from the verified native build with
+`uv run --frozen python tools/package_appimage.py`. The packager stages only
+the native binary, UI resources, desktop metadata, and libraries discovered by
+`linuxdeploy`. It injects a `patchelf` 0.19+ binary into the deployer's
+temporary AppImage payload, because older patchers corrupt `DT_INIT` in current
+Fedora ELFs; `appimagetool` writes the result to
+`build/release/X-Men-Legends-II-x86_64.AppImage`.
+
+Build the ARM64 APK from a selected Android SDK/NDK with
+`uv run --frozen python tools/build_android.py`. The dependency step consumes
+the pinned `shared/android-port` prefix under `build/deps/android/`; Android
+CMake never consults host `pkg-config` or fetches title-local SDL/FFmpeg
+sources. The Gradle project consumes the generated
+`x2-android.properties` contract and stages only native code, UI resources,
+and SDL's Java shell, never game files.
+
+**Published APKs use the existing CI signing identity.** The key is stored as
+repository secrets (`X2_ANDROID_KEYSTORE_BASE64`,
+`X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, `X2_ANDROID_KEY_PASSWORD`)
+and the release workflow owns publication. Local `build_android.py` builds are
+debug builds. `publish_apk` refuses a certificate that differs from
+`android/published-release.json`, preserving update compatibility.
+
+**Drive a run instead of scripting it.** The default product opens an HTTP
+channel on loopback, records the exact post-merge DirectInput states returned to
+the game, and publishes its PID, port and recording in `scratch/run/live.json`.
+Commands are applied on the guest's own input poll, never from the server
+thread:
+
+```sh
+./run.sh
+tools/x2ctl.py probe                  # status + input + frame when capturable
+tools/x2ctl.py status                 # frames, guest time, frame timing
+tools/x2ctl.py key Return --hold 0.4  # press keys, in order
+tools/x2ctl.py shot scratch/screenshots/now.png
+tools/x2ctl.py watch --for 30         # /status once a second
+tools/x2ctl.py recording --events 20  # tail the automatic JSONL trace
+```
+
+Every refusal is an answer: 409 says the key has no DirectInput mapping or the
+run has no frame to capture, 504 says the guest never polled -- which is a fact
+about the run, not a transport failure. `--unbounded` skips the scheduler's
+idle waits; `X2_UNPACED=1` removes the game's own frame cap; `X2_BOOT_MAP=<map>`
+starts in a level instead of through the menus while still running the retail
+`startFirstMission` party initializer.
+
+The browser build has no environment and cannot bind that socket, so its
+command line is the page's repeated `?arg=` query: `?arg=--set&arg=hotep=4096`
+reaches the same option parser these flags do.
+
+JIT diagnostics must report translated blocks, native hand-backs, refusals,
+and denominators while the product runs.
+
+**Wine oracle.** The unmodified PC release under Wine remains an independent
+behavioral control and may be instrumented to observe the retail boundary.
+
+**Ask the control for independent evidence, not only a similar-looking
+picture.** The retained stock-oracle path currently owns cached driven frames
+and proxy observations. A CPU, memory, timing, or device comparison is not
+available merely because an older probe once existed; add a bounded instrument
+with image identity, denominators, and both-answer controls before making that
+claim. Bisecting frames by eye is not representative conformance evidence.
+
+**Reuse the stock-oracle cache for identical driven captures:**
+
+```sh
+X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
+  uv run --frozen python tools/oracle.py run stock 540
+uv run --frozen python tools/oracle.py list
+```
+
+The key covers the driving script, duration, sample count, and run-directory
+fingerprint; report a cache hit as cached evidence, never a fresh observation.
+
+`X2_WRITE_WATCH=<guest-address>` and the in-process crash reporter provide live
+runtime evidence.
+
+Xbox-derived controller observations remain evidence for the PC target; Xbox is
+not a second product or an implementation surface.
+
+## Architecture
+
+Guest x86-32 is read from the user's authenticated PE images and translated on
+demand into host instructions by `shared/x86port`'s JIT:
+
+- **`src/native/guest_modules.c` + `pe_map.c`** discover the required images at
+  runtime, map/relocate them, and bind their IAT slots.
+- **`shared/x86port`** owns x86 decode, semantics, host-code emission, and its
+  runtime block cache. This repository pins and consumes the canonical shared
+  implementation; title-specific CPU semantics do not belong here.
+- **`src/native/x86_engine*.c` + `x86_dispatch.c`** compose bounded JIT runs,
+  thread/call context, native hand-back predicates, import thunks, diagnostics,
+  and scoped calls to an override's original guest body.
+- **`src/native/`** owns title-specific native overrides and host services.
+  Overrides are keyed by module identity plus linked address because the
+  `libIG*.dll` images reuse linked bases. `guest_heap.c` provides the guest's
+  32-bit-addressable arena; the DLL-named owners implement the Win32/CRT/SDL
+  boundaries.
+- **Test-only interpretation** belongs in an independently linked x86port test
+  target. The gameplay binary neither links it nor selects it.
+- **The shared Alchemy engine is a partial gameplay dependency.**
+  `shared/alchemy` builds neutral `alchemy` and `alchemy::input` targets plus an
+  optional SDL transport. `x2native` links the neutral input owner beside
+  x86port and feeds it through the title-owned `igControllerManager`
+  conformance adapter specified by `shared/alchemy/docs/input.md`; exact guest
+  bindings remain here. Retain DirectInput until real-game lifecycle, callback,
+  and state A/B evidence passes. Do not start MUA engine migration
+  until every X-Men 2 project goal is verified; then migrate MUA to the proven
+  shared boundary without rewriting its gameplay.
+
+### Project-owned host composition
+
+The host is governed by this repository's cohesive-owner boundaries and
+`docs/codemap.md`. `src/config/` owns persistent data and storage location;
+`src/presentation/` owns window-mode transitions; `src/input/` resolves player
+assignments and publishes them into guest binding sets; `src/ui/` owns only the
+RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
+owners at the SDL event and render boundaries; they do not absorb their policy.
+New behavior goes to the smallest existing owner, or establishes a narrow new
+owner and updates the codemap in the same change. External projects may provide
+attributed provenance, but never substitute for a local contract or regression.
+
+Save paths keep the same split: `shell32.c` owns the writable profile root used
+by config and registry storage, while `src/save/save_directory.{c,h}` owns the
+one title-specific retail leaf directory below it. Catalog, Continue, boot and
+autosave consume that authority; none rebuilds `Activision/X-Men Legends 2/Save`.
+`src/config/config_directory.{c,h}` resolves and creates the OS user
+configuration directory. It is also the persistence owner for the AppImage
+install selection; `X2_SAVE_DIR` remains an explicit portable/diagnostic
+override.
+
+The AppImage setup boundary is locally owned: SDL3 dialog/file-picker mechanics
+live in `src/native/install_picker.cpp`, resource location lives in
+`src/ui/ui_resources.cpp`, and release staging lives in
+`tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
+setup result into the existing asset mapping path.
+
+The Android setup boundary follows the same pattern: `shared/android-port`
+owns Activity lifecycle, SAF URI permissions, resumable import, notifications,
+raw contact capture, and app-private staging. `android/` owns the X-Men setup UI,
+package identity, and publication after title validation;
+`src/native/android_bridge.cpp` transfers the absolute storage/source contract.
+`install_picker.cpp` owns title validation, using Lucent's platform-neutral safe
+ZIP extraction helper.
+
+The touch boundary is platform-neutral and owned here, not by any package. It
+keeps the title's safe-area-aware action vocabulary and virtual layout in
+`src/input/touch_controls.cpp`; platform SDL/Activity event acquisition, visual
+feedback, and guest input publication remain outside that owner.
+`src/input/touch_source.c` owns the which-device-is-in-use classification and is
+exercised without a window, a pad or a running game. `lucent::touch::Router` owns contact capture,
+multi-touch, and cancellation. `src/presentation/touch_hud_layout.c` owns the
+pure edge-relocation policy and `src/native/touch_hud_runtime.c` scopes it
+around the retained CHud bodies; portrait taps re-enter the existing retail
+mouse handler. `touch_document.cpp` owns action labels and pressed feedback,
+drawn with the shared gamepad prompt glyphs and, for powers, the game's own
+icons (`power_slots_runtime.c` publishes them; `igb_textures.cpp` loads them).
+
+Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
+persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
+Normal/Menu/Continue decision, `boot_mode_runtime.{c,h}` owns the one boot
+request and latest-save leaf, `boot_menu_transition.{c,h}` owns the exact
+retail main-menu call, and `startup.c` only composes those owners.
+
+Exact input capture belongs to `src/input/input_record.{c,h}` and runs only
+after physical, scripted, control-channel and modal-UI policy produce the state
+the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
+`x2native.c` only composes those owners.
+
+In-game cutscene skipping belongs to `src/native/cutscene_player.{c,h}`. It
+owns the control-lock epoch, composes exact steps from the ported BehavEd
+player (`behaved_player`) and title timed-event player
+(`cutscene_event_player`), and treats `conversation_player` as a deterministic
+payload adapter only. `cutscene_dialogue` owns the synchronous player's scoped
+suppression of the exact retail response-voice and line-voice presenters and
+cancels the current handle before advancing. It also composes the generic
+`audio_play_policy` scope, which refuses every new DirectSound start caused by
+synchronous cutscene work without pausing existing ambient/gameplay voices.
+Ordinary event/fiber pumps retain retail deadline rules; the synchronous skip
+never runs a world update or changes the guest clock.
+See `docs/RE/cutscene_player.md`.
+
+Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`
+owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
+`fmv_audio_decode.{c,h}` owns ADX receive/resampling, while
+`fmv_decoder_drain.{c,h}` owns the shared flush/backpressure/EOF contract.
+`src/audio/movie_audio.{c,h}` owns the single streaming voice mixed by
+DirectSound. `src/native/movie.c`
+only bridges the evidenced `igCriMovieCodec` methods and writes the guest
+runtime `igImage`, leaving libMovie's scene, texture upload, lifetime, and
+callback behavior intact. See `docs/RE/fmv.md`; no media asset belongs in git.
+`src/media/fmv_probe.{c,h}` owns opt-in decoded-to-padded-to-upload row
+verification; `src/d3d8/d3d8_texture_luma.{c,h}` owns the independent texture
+luma diagnostic rather than growing the D3D8 resource implementation.
+
+Shadow ownership follows the title evidence in `docs/RE/shadows.md`.
+`CShadowMgr` owns per-entity procedural floor-decal selection and the GPU renders
+the resulting ordinary scene packets. `DetailedShadow` is dead persisted
+configuration, not a renderer switch or an exposed retail control. The separate
+native enhancement keeps generic packet classification/matrices in
+`src/gpu/shadow_policy`, sampleable resources/pass lifetime in `gpu_shadow`, and
+its Video toggle in settings/RmlUi. It reconstructs skinned world positions from
+the exact VS output and runs before aspect-fit composition and RmlUi. It does not
+claim the title's monster-spawner `shadow` or power-effect `no_shadow` metadata
+is authored caster policy; that future seam belongs at Alchemy scene traversal.
+
+The shipped settings UI uses the exact pinned RmlUi revision and maintained
+SDL3/SDL_GPU backends named in `CMakeLists.txt`. Exact stylesheet provenance is
+recorded in `docs/prior-art.md` and the adapted asset itself. The UI uses an
+opaque window and dimmed backdrop because the SDL_GPU backend renders its
+compositor-only blur and shadow effects incorrectly. Keyboard mappings belong
+to four reusable profiles; players reference profiles, while controllers are
+assigned by persistent identity and always use the canonical Xbox/PS2 layout.
+This paragraph records source provenance only; the local UI/config/input owners
+and their tests define the current architecture.
+
+`tools/check_structure.py` is the normal mechanical boundary: new host source
+files are capped at 1,200 lines and the listed legacy files are frozen at their
+measured size. Extract a cohesive owner and lower a legacy limit; never raise
+one to land a feature. New host code is C++: focused classes in `x2::`
+namespaces, with an `extern "C"` shim only where a C translation unit calls in.
+
+## Required repository guardrails
+
+- **Product configuration cannot choose the execution architecture.** The
+  gameplay target always uses the x86port JIT. `lucent::cvar` owns layered
+  optional diagnostics and title tuning; it must not expose an interpreter,
+  backend/fallback selector, or required product component as a mutable CVar.
+  Test-oracle controls belong to a separately built test target.
+- **An override must reproduce the original's RETURN VALUE, not just its stack
+  effect.** Check the call site, not only the decompiler's signature: the
+  DirectX check was typed `void`, but its caller tests `AL` (issue #54, C158).
+- **A counter that only prints at shutdown cannot measure this program.**
+  Runs end by timeout, so report live values in the heartbeat, including zero
+  and a denominator; the signal-handler shutdown report is not reliable.
+- **Overrides are registered beside their subsystem implementation** with
+  `x86_register_override("<module>.dll", 0x…, fn)`; `x86_guest_body` scopes a
+  call to the original through the JIT. Module identity is required because
+  `libIG*.dll` images reuse linked base `0x10000000` (C212).
+- **Automated and agent-driven runs are silent and fast by default.** Use the
+  timed silent device for `--no-window`, or SDL's dummy audio backend when a
+  real window is required for presentation/capture verification. Pass
+  `--unbounded` and `X2_UNPACED=1` unless real-time pacing is the subject of the
+  test. Never open the host playback device or run paced just because a test
+  needs a window. Where silence would change behaviour -- the game advances
+  cutscenes off DirectSound play cursors -- preserve advancing play cursors;
+  do not merely disable audio (`dsound.c`).
+- **One clock the guest can see** (`guest_clock.c`). `--unbounded` skips only
+  scheduler idle waits; it never scales guest time.

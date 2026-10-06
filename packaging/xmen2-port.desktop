@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=X-Men Legends II
+Comment=Native X-Men Legends II port
+Exec=xmen2-port %U
+Icon=xmen2-port
+Categories=Game;
+Terminal=false
+StartupNotify=true

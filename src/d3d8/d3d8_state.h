@@ -1,0 +1,133 @@
+/*
+ * The device's render state, as D3D8 defines it.
+ *
+ * A D3D8 device is a big state machine that draw calls read: the engine sets
+ * eighty-odd render states, eight texture stages, four transforms and a
+ * material long before it asks for a triangle. So the setters do not program
+ * the GPU -- they record here, and the DRAW path reads this and builds the
+ * pipeline it needs. That is not an optimisation; it is the only order that
+ * works, because SDL_GPU (like Vulkan under it) bakes state into a pipeline
+ * object at draw time, not at set time.
+ *
+ * Everything here is plain host data. Nothing in this file knows what a guest
+ * pointer is, which is what lets the draw path be read and tested on its own.
+ */
+#ifndef D3D8_STATE_H
+#define D3D8_STATE_H
+
+#include <stdint.h>
+
+/* D3D8's render-state enum tops out below 210; 256 covers it with room for
+   the driver-specific ones a title may set. An index past this is refused by
+   name rather than clamped -- a clamp would silently merge two states. */
+#define D3D8_MAX_RENDER_STATES 256
+#define D3D8_MAX_STAGES 8
+#define D3D8_MAX_STAGE_STATES 32
+#define D3D8_MAX_TRANSFORMS 260 /* world matrices run to 255 + 4 */
+/*
+ * D3D8 puts NO limit on a light's index. SetLight's first argument is a DWORD
+ * naming a slot in a list the runtime grows on demand; what is capped is how
+ * many may be ENABLED at once (D3DCAPS8::MaxActiveLights), and that is a
+ * separate limit enforced at the draw.
+ *
+ * This was 16, and the engine uses up to 51: measured at the D3D8 boundary of
+ * the STOCK game under Wine with tools/proxy_d3d8, over a run driven into
+ * gameplay -- 259,960 of 411,873 SetLight calls (63.1%) and 129,980 of 225,800
+ * LightEnable calls (57.6%) name an index of 16 or more. Every one of them was
+ * refused with D3DERR_INVALIDCALL, so the lights they carried never reached a
+ * draw and the engine, which does not check the HRESULT, had no way to know.
+ *
+ * 256 follows D3D8_MAX_RENDER_STATES above and for the same reason: a fixed
+ * table generous enough for what the API is used with, and an index past it
+ * REFUSED BY NAME rather than dropped. The refusal is counted and reported
+ * with its denominator (d3d8_light_report) -- a light silently discarded is
+ * what made this cost a whole investigation.
+ */
+#define D3D8_MAX_LIGHTS 256
+#define D3D8_MAX_STREAMS 16
+/*
+ * 256, not 96.
+ *
+ * 96 is the bare MINIMUM vs_1_1 requires, and it was what this host declared
+ * in D3DCAPS8::MaxVertexShaderConst. The real driver the stock game runs on
+ * reports 256 (measured, C201), and so did the 2005 hardware this profile
+ * claims to model. It matters because bone matrices for a skinning shader
+ * live in these registers: 96 constants is roughly twenty bones, and an
+ * engine that needs more has to give up on the shader path entirely -- which
+ * is what this port's engine does (C204: it never asks D3D8 for a vertex
+ * shader, while the control binds one for two draws of every frame).
+ *
+ * The array and the declared cap are raised together on purpose. Declaring
+ * 256 while storing 96 would refuse the engine's writes by index -- loudly,
+ * but after it had already chosen the path on the promise.
+ */
+#define D3D8_MAX_VS_CONSTANTS 256
+
+typedef struct {
+  float m[16];
+} D3D8Matrix;
+
+typedef struct {
+  uint32_t set; /* has the guest ever set it */
+  uint32_t value;
+} D3D8StateSlot;
+
+typedef struct {
+  uint32_t guest_ptr; /* the IDirect3D*8 the guest bound */
+  uint32_t stride;
+} D3D8StreamBinding;
+
+typedef struct {
+  D3D8StateSlot render[D3D8_MAX_RENDER_STATES];
+  D3D8StateSlot stage[D3D8_MAX_STAGES][D3D8_MAX_STAGE_STATES];
+
+  D3D8Matrix transform[D3D8_MAX_TRANSFORMS];
+  uint32_t transform_set[D3D8_MAX_TRANSFORMS];
+
+  float material[17]; /* D3DMATERIAL8 is 17 floats */
+  uint32_t material_set;
+
+  float light[D3D8_MAX_LIGHTS][26]; /* D3DLIGHT8 is 26 dwords */
+  uint32_t light_set[D3D8_MAX_LIGHTS];
+  uint32_t light_on[D3D8_MAX_LIGHTS];
+
+  uint32_t texture[D3D8_MAX_STAGES]; /* guest IDirect3DBaseTexture8* */
+
+  D3D8StreamBinding stream[D3D8_MAX_STREAMS];
+  uint32_t indices; /* guest IDirect3DIndexBuffer8* */
+  uint32_t base_vertex_index;
+
+  uint32_t vertex_shader; /* an FVF code or a shader handle */
+  float vertex_shader_constant[D3D8_MAX_VS_CONSTANTS][4];
+  uint32_t pixel_shader;
+
+  int32_t viewport_x, viewport_y;
+  int32_t viewport_w, viewport_h;
+  float viewport_minz, viewport_maxz;
+  uint32_t viewport_set;
+} D3D8State;
+
+void d3d8_state_reset(D3D8State *s);
+
+/*
+ * Set/get, refusing an out-of-range index by name.
+ *
+ * Returns 0 and reports if the index is out of range -- rather than growing
+ * the array or wrapping, either of which turns a guest bug (or a wrong ABI
+ * table) into corrupted state that draws wrong much later.
+ */
+int d3d8_state_set_render(D3D8State *s, uint32_t which, uint32_t value);
+int d3d8_state_get_render(const D3D8State *s, uint32_t which, uint32_t *out);
+int d3d8_state_set_stage(D3D8State *s, uint32_t stage, uint32_t which,
+                         uint32_t value);
+int d3d8_state_get_stage(const D3D8State *s, uint32_t stage, uint32_t which,
+                         uint32_t *out);
+
+/* What the engine has actually touched, printed at shutdown. A draw path that
+   consumes three states out of ninety is a draw path that is ignoring most of
+   what the engine asked for, and this is what makes that visible. */
+void d3d8_state_report(const D3D8State *s);
+/* D3DRENDERSTATETYPE by number; an unnamed one prints as "D3DRS #<n>". */
+const char *d3d8_render_state_name(int id);
+
+#endif /* D3D8_STATE_H */

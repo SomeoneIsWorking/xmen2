@@ -1,0 +1,84 @@
+#include "gpu_frame_timing_report.h"
+#include "../native/x2_log.h"
+
+#include "gpu_device.h"
+#include "gpu_draw.h"
+#include "gpu_frame_timing.h"
+#include "gpu_host_timer.h"
+#include "gpu_internal.h"
+
+#include <stdio.h>
+
+static void slow_frame_report(unsigned long frame, unsigned long long dt_ns) {
+  GpuHostTimes host = gpu_host_timer_frame();
+  if (!gpu_host_timer_armed()) {
+    x2_log_error("gpu: frame %lu took %.0f ms; its host draw and upload share "
+                 "was not timed (gpu.host_timing=1 times it)\n",
+                 frame, (double)dt_ns * 1e-6);
+    return;
+  }
+  x2_log_error("gpu: frame %lu took %.0f ms; host draw %.1f ms + "
+               "upload %.1f ms, the rest is guest logic and the submit\n",
+               frame, (double)dt_ns * 1e-6, (double)host.draw_ns * 1e-6,
+               (double)host.upload_ns * 1e-6);
+}
+
+void gpu_frame_timing_report_install(void) {
+  gpu_frame_timing_slow_hook = slow_frame_report;
+}
+
+void gpu_frame_timing_report_interval(void) {
+  /*
+   * Frame-phase profiling, live.
+   *
+   * Two reads, one line: the DEVICE's present-to-present wall time
+   * and the DRAW side's host share (gpu_draw + uploads). The line
+   * the frame is paced to 60 fps at reads zero draw time and the
+   * wall time is the vsync wait; an UNPACED gameplay run reads the
+   * frame cost and the host's share of it, which is where a hotspot
+   * has to show up before anything gets "fixed". Printed at zero as
+   * a baseline like everything else here, not only once non-zero.
+   */
+  unsigned long long fns, fmin, fmax, esub;
+  const unsigned long *hist;
+  unsigned long long dns, uns, una, unsb, tc, swns;
+  unsigned long up, sb, intervals, swn, swprompt;
+  unsigned long long swworst;
+  unsigned long long wp50, wp95, wp99;
+  unsigned long window;
+  char host[160];
+  gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
+  gpu_frame_timing_swapchain_wait(&swns, &swn, &swprompt, &swworst);
+  gpu_draw_perf(&dns, &uns, &una, &unsb, &tc, &up, &sb);
+  if (!gpu_host_timer_armed()) {
+    snprintf(host, sizeof host,
+             "host draw and upload not timed "
+             "(gpu.host_timing=1 times them)");
+  } else {
+    snprintf(host, sizeof host,
+             "host draw %.2f ms/frame, host upload %.2f "
+             "ms/frame (alloc %.2f + record %.2f)",
+             intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
+             intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0);
+  }
+  x2_log_error("[HB]           perf: frame wall avg %.1f ms "
+               "min %.1f max %.1f (of %lu intervals) -- %s, %lu "
+               "uploads and %lu transfer-buffer alloc(s) batched into %lu copy "
+               "command buffer(s), swapchain wait %.2f ms/frame over %lu "
+               "acquisition(s), %lu of which returned in under 1 ms and the "
+               "longest took %.1f ms\n",
+               fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
+               fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6, intervals,
+               host, (unsigned long)up, (unsigned long)tc, sb,
+               swn ? (double)swns * 1e-6 / (double)swn : 0.0, swn, swprompt,
+               (double)swworst * 1e-6);
+  (void)esub;
+  (void)hist;
+  gpu_frame_timing_window_percentiles(&wp50, &wp95, &wp99, &window);
+  x2_log_error("[HB]           frame ms p50 %.2f p95 %.2f p99 %.2f over %lu "
+               "interval(s) since the last heartbeat\n",
+               (double)wp50 * 1e-6, (double)wp95 * 1e-6, (double)wp99 * 1e-6,
+               window);
+}

@@ -1,0 +1,7 @@
+# The upstream LLVM style, unmodified.
+#
+# Deliberately not tuned: a hand-maintained style is a second thing to argue
+# about in review and to drift, and the value of a formatter is that nobody
+# decides. Files this does not own are excluded by the checker
+# (tools/check_format.py), not by opting out here.
+BasedOnStyle: LLVM

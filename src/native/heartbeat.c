@@ -1,0 +1,429 @@
+#include "../config/environment.h"
+#include "x2_log.h"
+/* See heartbeat.h. */
+#include "heartbeat.h"
+#include "heartbeat_reports.h"
+#include "heartbeat_stall.h"
+#include "kernel32_handles.h"
+#include "threads.h"
+#include "threads_yield.h"
+
+#include "d3d8_device.h"
+#include "d3d8_resource.h"
+#include "d3d8_vertex_shader.h"
+#include "gpu_device.h"
+#include "gpu_draw.h"
+#include "gpu_frame_timing_report.h"
+#include "x86_engine_report.h"
+#include "x86_hotep.h"
+#include "x86_thunk_probe.h"
+#include "x86rt.h"
+#include "x86rt_native.h"
+
+#include "platform_posix.h"
+#include "platform_threads.h"
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+static double now_s(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+static int g_silent; /* X2_HEARTBEAT=0: no beat, but still the reporter */
+static double g_period = 5.0;
+static double g_t0;
+
+/*
+ * Set by the SIGTERM/SIGINT handler, read here.
+ *
+ * The run used to always END -- on a fault, an abort or an unimplemented
+ * import -- so every report in this project is an atexit handler. Now that it
+ * reaches a frame loop and keeps going, the ONLY way it stops is a kill, and a
+ * signal handler cannot run those reports: they are stdio, and stdio in a
+ * handler deadlocks against whatever the interrupted code was holding (issue
+ * #34). This thread is ordinary context, so it can. The handler hands the job
+ * over and arms an alarm in case this thread never gets there.
+ */
+volatile sig_atomic_t x2_report_now;
+
+/* Whether there is a thread to hand that job to. */
+static int g_running;
+int heartbeat_running(void) { return g_running; }
+
+/*
+ * Its own thread, deliberately.
+ *
+ * Driving this from Present would tie the one instrument that answers "is the
+ * loop alive" to the loop reaching Present -- so a run stuck BEFORE the
+ * present would go silent, which is the case it exists for. A thread of its
+ * own reports the same line whether the guest is running, spinning or blocked.
+ * Legacy counters are approximate unlocked snapshots. The JIT snapshot is
+ * requested atomically and produced by the guest-lock owner at its boundary.
+ */
+static void *heartbeat_thread(void *arg) {
+  unsigned long p_cross = 0, p_scenes = 0, p_presents = 0, p_clears = 0,
+                p_draws = 0, p_gpu = 0, p_ref = 0;
+  int first = 1;
+  (void)arg;
+  for (;;) {
+    struct timespec req;
+    unsigned long cross, scenes = 0, presents = 0, clears = 0, draws = 0;
+    unsigned long gpu_draws = 0, gpu_refused = 0;
+    int have_dev;
+    double t;
+
+    /* Slept in slices, not in one go: an interrupt has to be noticed in
+       a quarter of a second, not at the end of a five-second period. */
+    double slept = 0.0;
+    while (slept < g_period && !x2_report_now && !gpu_frame_limit_reached()) {
+      req.tv_sec = 0;
+      req.tv_nsec = 250000000L;
+      while (nanosleep(&req, &req) != 0 && errno == EINTR)
+        ;
+      slept += 0.25;
+    }
+    /* 2 = a clean stop on the frame counter, 1 = a signal. Both take this
+       path; only the second wants the ring. */
+    if (!x2_report_now && gpu_frame_limit_reached())
+      x2_report_now = 2;
+    if (x2_report_now) {
+      int killed = (x2_report_now == 1);
+      x2_log_error(
+          killed ? "\n[HB] interrupted -- the shutdown reports follow, "
+                   "taken while the guest is STILL RUNNING, so every count "
+                   "is a snapshot rather than a final total.\n"
+                 : "\n[HB] the frame limit was reached -- the shutdown "
+                   "reports follow. The guest is still running, so every "
+                   "count is a snapshot rather than a final total.\n");
+      x2_interrupt_reports(killed);
+      _exit(killed ? 4 : 0);
+    }
+
+    /* Silenced: the thread exists only to carry the shutdown report. */
+    if (g_silent)
+      continue;
+
+    if (x86_engine_report_request())
+      x2_log_info("[HB] JIT snapshot pending: no guest boundary since the "
+                  "previous request");
+    t = now_s() - g_t0;
+    cross = x86_crossings();
+    have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);
+    gpu_draw_counts(&gpu_draws, &gpu_refused);
+    heartbeat_winmm_report();
+    heartbeat_wait_report();
+    {
+      /*
+       * Preemptions, HERE and not only at shutdown.
+       *
+       * Every run of this game is killed by a timeout, and the shutdown
+       * report is written from a signal handler that may be cut short --
+       * the first measurement of the quantum was lost exactly that way.
+       * A counter that can only be read on a clean exit cannot measure a
+       * program that never has one.
+       */
+      static unsigned long p_ps, p_pl;
+      unsigned long ps, pl;
+      extern void kernel32_pulse_counts(unsigned long *, unsigned long *);
+      kernel32_pulse_counts(&ps, &pl);
+      if (ps)
+        x2_log_error("[HB]           PulseEvent %lu sent (+%lu), "
+                     "%lu LOST with no waiter (+%lu)\n",
+                     ps, ps - p_ps, pl, pl - p_pl);
+      p_ps = ps;
+      p_pl = pl;
+    }
+    {
+      guest_thread_state_report();
+    }
+    {
+      static unsigned long p_q;
+      unsigned long q = guest_quantum_count();
+      x2_log_error("[HB]           %lu preemption(s) (+%lu); a stretch "
+                   "that crosses nothing is cut at %lu JIT step(s)\n",
+                   q, q - p_q, guest_quantum_size());
+      p_q = q;
+    }
+
+    {
+      /* WHICH host imports did this interval spend itself in. The ring
+         collapses tight loops, so it could not say; this counts every call
+         and, when the time probe is armed, times it too. */
+      static X86ThunkProbe *probe;
+      static int refused;
+      const char *mods[5], *syms[5];
+      unsigned long calls[5];
+      unsigned long long ns[5];
+      unsigned int i, n;
+      int by_time = 0;
+      if (!probe && !refused) {
+        probe = x86_thunk_probe_create();
+        if (!probe) {
+          refused = 1;
+          x2_log_error("[HB] import probe: allocation failed, disabled\n");
+        }
+      }
+      n = probe ? x86_thunk_probe_top(probe, mods, syms, calls, ns, 5, &by_time)
+                : 0;
+      if (n)
+        x2_log_error("[HB]           top imports by %s:\n",
+                     by_time ? "TIME"
+                             : "CALLS -- arm X2_HOTEP to rank by time");
+      for (i = 0; i < n; i++)
+        x2_log_error("[HB]             %s!%s: %.1f ms in %lu call(s)\n",
+                     mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?",
+                     (double)ns[i] * 1e-6, calls[i]);
+    }
+    {
+      /* The hot guest bodies, decoded from raw dispatch counts. Armed by
+         X2_HOTEP=<n>; unarmed, this prints nothing -- a deliberate
+         silence, not a missing line, because the probe has zero meaning
+         if it never counted. */
+      uint32_t eps[5];
+      unsigned long long nss[5];
+      unsigned long hns[5];
+      unsigned int i, n = x86_hotep_sorted(eps, nss, hns, 5);
+      for (i = 0; i < n; i++) {
+        uint32_t ep = eps[i];
+        const char *nm = x86_native_name_at(ep);
+        X86Module *m = x86_module_for(ep);
+        x2_log_error("[HB]           HOT body %s0x%08x (%s%s): "
+                     "%.1f ms in %lu dispatch(es)\n",
+                     nm ? "" : "unresolved ", ep,
+                     nm ? nm : (m ? m->name : "???"),
+                     nm || !m ? "" : " +offset", (double)nss[i] * 1e-6, hns[i]);
+      }
+      if (n && x86_hotep_collisions())
+        x2_log_error("[HB]           HOTEP: %u hash collision(s) -- "
+                     "new keys refused, probe may miss the top\n",
+                     x86_hotep_collisions());
+      {
+        /* WHERE the interval's wall time went: host import stubs vs
+           guest bodies. This is the number the crossing count cannot
+           give -- a frame with 500k crossings could be slow either
+           way, and only the split says which. Printed at zeroes too:
+           "the probe was unarmed" must not read as "the guest cost
+           nothing". */
+        extern void x86_probe_time_delta(unsigned long long *,
+                                         unsigned long long *);
+        unsigned long long hn, gn;
+        unsigned long long total;
+        x86_probe_time_delta(&hn, &gn);
+        total = hn + gn;
+        if (!total)
+          x2_log_error("[HB]           wall-time split: probe "
+                       "unarmed (X2_HOTEP) -- set it to attribute "
+                       "where frame time goes\n");
+        else
+          x2_log_error("[HB]           wall-time split this interval: "
+                       "host imports %.1f ms (%.0f%%), guest bodies "
+                       "%.1f ms (%.0f%%)\n",
+                       (double)hn * 1e-6, 100.0 * (double)hn / total,
+                       (double)gn * 1e-6, 100.0 * (double)gn / total);
+      }
+    }
+    /* Before any branch that can end this beat early: a stopped guest is
+       the case whose subsystem accounts matter most, and the stall
+       branch's `continue` used to silence every one of them. */
+    heartbeat_subsystem_reports();
+
+    if (first) {
+      first = 0;
+      p_cross = cross;
+      p_scenes = scenes;
+      p_presents = presents;
+      p_clears = clears;
+      p_draws = draws;
+      p_gpu = gpu_draws;
+      p_ref = gpu_refused;
+      x2_log_error("[HB] %6.1fs  the first line is a baseline; the "
+                   "deltas below are per %.1fs.\n",
+                   t, g_period);
+      x2_log_error("[HB] %6.1fs  crossings %lu (%s)%s\n", t, cross,
+                   x86_crossings_what(),
+                   have_dev ? "" : "  -- no D3D8 device exists yet");
+      continue;
+    }
+
+    if (heartbeat_stall_observe(t, g_period, cross, cross != p_cross, have_dev,
+                                presents != p_presents)) {
+      p_presents = presents;
+      continue;
+    }
+
+    x2_log_error("[HB] %6.1fs  crossings %lu (+%lu)", t, cross,
+                 cross - p_cross);
+    if (!have_dev) {
+      x2_log_error("  -- no D3D8 device exists, so there are no frame "
+                   "counters to show yet.\n");
+    } else {
+      x2_log_error("  scenes %lu (+%lu)  clears %lu (+%lu)  "
+                   "draws %lu (+%lu)  presents %lu (+%lu)\n",
+                   scenes, scenes - p_scenes, clears, clears - p_clears, draws,
+                   draws - p_draws, presents, presents - p_presents);
+      /* Each zero delta gets its own sentence. A row of numbers with a
+         0 in it reads as noise; "no frame was presented" reads as the
+         finding it is. */
+      if (presents == p_presents)
+        x2_log_error("[HB]           ... and NO frame was presented "
+                     "in that time (still %lu) -- the guest is "
+                     "running, but not reaching Present.\n",
+                     presents);
+      if (draws == p_draws)
+        x2_log_error("[HB]           ... and NOTHING was drawn in "
+                     "that time (still %lu) -- whatever frames ran "
+                     "submitted no geometry.\n",
+                     draws);
+      /* The engine's draw count and the GPU's are different claims: the
+         first is what was asked for, the second what was rasterised. A
+         black screen with both rising is a shading problem; a black
+         screen with the second flat is a backend that refused every
+         draw, and only these two numbers side by side say which. */
+      {
+        extern void d3d8_drawcall_multistage(unsigned long *, int *);
+        static unsigned long p_ms;
+        unsigned long ms;
+        int most;
+        d3d8_drawcall_multistage(&ms, &most);
+        /* Printed even at ZERO, next to the draw total. "No draw
+           wanted a second stage" is a real finding about this route and
+           is worth as much as a large number; a line that appears only
+           when non-zero cannot be told from a check nobody ran. */
+        x2_log_error("[HB]           %lu of %lu draw(s) (+%lu) "
+                     "wanted a texture stage beyond 0 (up to %d "
+                     "extra); stage 1 is implemented and stage 2+ "
+                     "is refused\n",
+                     ms, draws, ms - p_ms, most);
+        p_ms = ms;
+      }
+      {
+        extern void d3d8_drawcall_combiner_args(unsigned long *,
+                                                unsigned long *, uint32_t[4]);
+        unsigned long dflt, other;
+        uint32_t f[4];
+        d3d8_drawcall_combiner_args(&dflt, &other, f);
+        /* Printed at zero as well: the shader ASSUMES the default
+           arguments, and "no draw disagreed" is the measurement that
+           licenses the assumption. */
+        x2_log_error("[HB]           combiner args: %lu default, "
+                     "%lu other%s\n",
+                     dflt, other,
+                     other ? "" : " -- the shader's assumption holds");
+        if (other)
+          x2_log_error("[HB]             first non-default: "
+                       "COLORARG1 %u COLORARG2 %u ALPHAARG1 %u "
+                       "ALPHAARG2 %u\n",
+                       f[0], f[1], f[2], f[3]);
+      }
+      x2_log_error("[HB]           gpu draws %lu (+%lu)  refused %lu "
+                   "(+%lu)%s\n",
+                   gpu_draws, gpu_draws - p_gpu, gpu_refused,
+                   gpu_refused - p_ref,
+                   gpu_draws == p_gpu && draws != p_draws
+                       ? "  -- the engine asked and the BACKEND drew none"
+                       : "");
+      gpu_frame_timing_report_interval();
+      /*
+       * Dynamic buffers, live, including the write-after-draw case that
+       * requires SDL_GPU to cycle to a new backing generation. The
+       * first counter (relocked in one frame) does NOT answer this: a
+       * buffer may be drawn once and rewritten once without two
+       * unlocks. Printed at zero so the path's denominator is visible.
+       */
+      {
+        char vsl[256];
+        d3d8_vertex_shader_binding_line(vsl, sizeof vsl);
+        x2_log_error("[HB]           %s\n", vsl);
+      }
+      /* The oracle probes. Live, and printed whether armed or not: a
+         capture that recorded nothing must be visible DURING the run,
+         not discovered afterwards when the stream is compared and its
+         emptiness reads as agreement. */
+      {
+        char pl[192];
+        d3d8_vsconst_caller_line(pl, sizeof pl);
+        x2_log_error("[HB]           %s\n", pl);
+      }
+      {
+        static unsigned long p_unl, p_byt, p_rel, p_gen;
+        unsigned long lk, dis, noov, unl, byt, rel, gen;
+        d3d8_buffer_lock_counts(&lk, &dis, &noov, &unl, &byt, &rel, &gen);
+        x2_log_error("[HB]           buffer locks %lu (%lu DISCARD, "
+                     "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
+                     "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
+                     "frame\n",
+                     lk, dis, noov, unl, unl - p_unl, byt >> 20,
+                     (byt - p_byt) >> 20, rel, rel - p_rel);
+        x2_log_error("[HB]           of those unlocks, %lu (+%lu) "
+                     "needed a NEW BUFFER GENERATION after an "
+                     "earlier draw -- SDL_GPU cycling preserves "
+                     "both\n",
+                     gen, gen - p_gen);
+        p_unl = unl;
+        p_byt = byt;
+        p_rel = rel;
+        p_gen = gen;
+      }
+    }
+
+    p_cross = cross;
+    p_scenes = scenes;
+    p_presents = presents;
+    p_clears = clears;
+    p_draws = draws;
+    p_gpu = gpu_draws;
+    p_ref = gpu_refused;
+  }
+  return NULL;
+}
+
+void heartbeat_start(void) {
+  const char *e = x2_config_override_get(kX2ConfigHeartbeat);
+  pthread_t th;
+  int rc;
+
+  heartbeat_stall_reset();
+
+  if (e && *e)
+    g_period = strtod(e, NULL);
+  /*
+   * X2_HEARTBEAT=0 silences the beat -- it does NOT stop the thread.
+   *
+   * The end-of-run reports are handed to this thread on purpose (they are
+   * stdio, and a signal handler deadlocks against whatever the interrupted
+   * code was holding), so returning here took the shutdown report away with
+   * the liveness line. Turning down one diagnostic silently removed a
+   * different one, and the way that presented was a run that simply printed
+   * no report at all -- which reads as the run having produced nothing.
+   */
+  if (g_period <= 0.0) {
+    g_silent = 1;
+    x2_log_error("[HB] the liveness line is off (X2_HEARTBEAT=%s). The "
+                 "thread still runs, because the END-OF-RUN report is "
+                 "printed from it; a run that stops producing output "
+                 "will say nothing about whether it is alive.\n",
+                 e ? e : "0");
+    g_period = 5.0; /* it still has to wake to notice a signal */
+  }
+  g_t0 = now_s();
+  g_running = 1;
+  rc = pthread_create(&th, NULL, heartbeat_thread, NULL);
+  if (rc != 0) {
+    x2_log_error("[HB] could not start the heartbeat thread (%s) -- "
+                 "this run has NO liveness reporting.\n",
+                 strerror(rc));
+    g_running = 0;
+    return;
+  }
+  pthread_detach(th);
+  x2_log_error("[HB] a liveness line every %.1fs, counting guest %s and "
+               "the D3D8 frame counters (X2_HEARTBEAT=<seconds>, 0 to "
+               "disable).\n",
+               g_period, x86_crossings_what());
+}
