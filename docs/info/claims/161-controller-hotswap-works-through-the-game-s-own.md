@@ -6,7 +6,7 @@ created: 2026-08-12
 tags: input,controller,hotswap
 reconfirmed: 2026-09-22
 verified_at: 2026-08-22 13:15:12
-depends: src/native/dinput8_hotplug.c#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.c#dinput8_hotplug_pump, src/input/controller_hotplug.c#x2_controller_hotplug_needs_admission, tests/test_controller_hotplug.c#main
+depends: src/native/dinput8_hotplug.cpp#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.cpp#dinput8_hotplug_pump, src/input/controller_hotplug.cpp#x2_controller_hotplug_needs_admission, tests/test_controller_hotplug.cpp#main
 ---
 
 ## Claim
@@ -27,7 +27,7 @@ The original late-attach/detach live run remains the production observation. The
 
 ## Restored 2026-09-22
 
-The routine is no longer discovered through a symbol table. `dinput8_hotplug.c`
+The routine is no longer discovered through a symbol table. `dinput8_hotplug.cpp`
 declares FUN_00628e20 and its EnumDevices(GAMECTRL) call site 0x00628e57 as
 recovered metadata and admits the entry only when the game's own call is seen
 returning to that site; any other caller is refused by name. `tools/live_case.py

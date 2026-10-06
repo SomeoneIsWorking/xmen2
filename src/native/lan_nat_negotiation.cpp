@@ -3,11 +3,9 @@
 #include "guest_call.hpp"
 #include "lan_coordinator.hpp"
 
-extern "C" {
 #include "winsock_posix.h"
 #include "winsock_resolve.h"
 #include "x2_log.h"
-}
 
 #include "x86rt_native.h"
 

@@ -87,7 +87,7 @@ not an empty listing).
 
 `x2_touch_hud_character_draw` reads its target vector from `RD32(C->esp + 8u)`.
 Every override in this port reads its first guest stack argument at `esp + 4`
-(`crt.c`, `gdi32.c`, `advapi32.c` all spell it `A(i) = RD32(esp + 4 + i*4)`),
+(`crt.cpp`, `gdi32.cpp`, `advapi32.cpp` all spell it `A(i) = RD32(esp + 4 + i*4)`),
 so `esp + 8` is the SECOND argument.
 
 The call site, decompiled, is
@@ -122,7 +122,7 @@ and every touch zone from one viewport, so the two cannot disagree. Slots:
 vitals, potions, portraits (retail elements this port moves) and stick,
 light-attack, heavy-attack, use, powers (controls it draws).
 
-`tests/test_touch_layout.c` asserts, over seven viewport shapes including a
+`tests/test_touch_layout.cpp` asserts, over seven viewport shapes including a
 cutout, a square and a portrait orientation: every rectangle inside the safe
 area on all four edges, no two rectangles overlapping, the requested corners,
 and that the stick and the action cluster stay on opposite sides. 616 checks.
@@ -157,9 +157,9 @@ with the shift and one without.
 That falsifies the module's founding claim -- that `this+8` is "the origin
 every element is laid out from". It is the origin of SOME of them.
 
-The shift and the per-character hook are removed. `touch_hud_runtime.c` now
+The shift and the per-character hook are removed. `touch_hud_runtime.cpp` now
 only publishes the gameplay-HUD heartbeat to the control gate, and the retail
-HUD draws exactly as authored. `touch_layout.c` still owns the three HUD
+HUD draws exactly as authored. `touch_layout.cpp` still owns the three HUD
 slots -- where the elements are MEANT to go is decided and tested; what is
 missing is per-element placement, which needs the scene-graph structure under
 CHud element by element.
@@ -172,9 +172,9 @@ The scene-graph structure under CHud is recovered and documented in
 1. **Composition and draw entries.** `005a62c0` invokes `005a43d0` (party
    selector/cross), `005a3320` (vitals panel), `005a5170` (inventory/potions),
    and `005a1ab0` (portrait presenter) under their retail conditions.
-2. **Scoped submission transformation.** `src/native/hud_draw_runtime.c`
+2. **Scoped submission transformation.** `src/native/hud_draw_runtime.cpp`
    intercepts those four entries and activates a scoped affine transform
-   (`x2_hud_fit` in `src/presentation/hud_layout.c`). During an active scope,
+   (`x2_hud_fit` in `src/presentation/hud_layout.cpp`). During an active scope,
    2D sprite submissions (`0059a140`), 2D text submissions (`005f11b0`), and
    3D scene node matrices (`00570970`) are scaled and translated into their
    layout slot without fracturing element hierarchies or modifying assets.
@@ -186,7 +186,7 @@ The scene-graph structure under CHud is recovered and documented in
    portrait tapping and its directional beams point away from the horizontal
    portrait row.
 4. **Portrait position getter and hit selection.** `005a1650` is natively
-   implemented in `src/native/hud_portrait_position.c` and verified against
+   implemented in `src/native/hud_portrait_position.cpp` and verified against
    the guest body under `hud.verify`. `capture_portrait` positions each face
    into its slot and writes the transformed scene center to `PORTRAIT_CENTERS`
    (`0x00a0a0cc + slot*12`). Touch contacts in the published portrait regions
@@ -216,7 +216,7 @@ being connected says nothing.
 
 `x2_touch_runtime_active()` is the one answer both consumers ask --
 `x2_touch_runtime_overlay_visible()` for the drawn controls (with a window and
-gameplay control on top of it) and `hud_draw_runtime.c` for the mobile HUD
+gameplay control on top of it) and `hud_draw_runtime.cpp` for the mobile HUD
 placement. They are one feature, so a HUD that relocates while no pad is drawn
 would be the HUD making room for nothing.
 
@@ -224,5 +224,5 @@ would be the HUD making room for nothing.
 Automatic the default on every platform; existing files keep their meaning (0
 stays Off, 1 becomes Automatic). Always keeps the layout reachable on a desktop
 with no touchscreen, which is the only place it can be iterated on.
-`tests/test_touch_source.c` covers both answers and the two events that must
-not flip it; `tests/test_settings.c` covers the tri-state and its labels.
+`tests/test_touch_source.cpp` covers both answers and the two events that must
+not flip it; `tests/test_settings.cpp` covers the tri-state and its labels.

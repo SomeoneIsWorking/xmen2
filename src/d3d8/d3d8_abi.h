@@ -42,7 +42,7 @@
  * One X-macro per interface: X(slot, Name, args-excluding-this).
  *
  * The slot is written out rather than implied by position so that a
- * mis-ordered or dropped line is a compile-time contradiction (d3d8_com.c
+ * mis-ordered or dropped line is a compile-time contradiction (d3d8_com.cpp
  * checks each entry lands at its declared index) instead of a silent shift.
  */
 

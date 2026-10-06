@@ -5,10 +5,10 @@
  * One physical thumbstick's dead zone, over the stick as a VECTOR.
  *
  * The retail game had no stick dead zone of its own: its gameplay resolver
- * (0x0061a4c0, see stick_axis_override.c) dropped every axis below 0.75, which
- * hid a worn stick's drift and also every direction but the eight a key pad
- * can make. With that threshold gone, drift needs an owner, and it is this: a
- * circle, so every direction has the same threshold and a diagonal is not cut
+ * (0x0061a4c0, see stick_axis_override.cpp) dropped every axis below 0.75,
+ * which hid a worn stick's drift and also every direction but the eight a key
+ * pad can make. With that threshold gone, drift needs an owner, and it is this:
+ * a circle, so every direction has the same threshold and a diagonal is not cut
  * off on one axis first. Past the circle the output restarts from zero and
  * still reaches 1 at full deflection, so a gentle push is a gentle push
  * rather than a step to the dead zone's own size.

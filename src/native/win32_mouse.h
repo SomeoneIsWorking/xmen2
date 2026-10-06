@@ -4,10 +4,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* The subset of USER32 messages produced by the SDL host. Keep the Win32
    values here so translation and its tests share one vocabulary. */
 #define X2_WM_ACTIVATE 0x0006u
@@ -108,9 +104,5 @@ int x2_win32_mouse_os_cursor_visible(const X2Win32Mouse *mouse);
 /* Preserve USER32's process-wide display counter and return value without
    letting it override the one-cursor product policy above. */
 int x2_win32_mouse_guest_show_cursor(X2Win32Mouse *mouse, int show);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

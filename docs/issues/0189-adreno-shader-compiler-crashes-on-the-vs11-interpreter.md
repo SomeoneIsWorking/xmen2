@@ -15,7 +15,7 @@ updated: 2026-09-25
 
 On an HONOR 600 (VKJ-NX9, Android 16, Adreno 722, Vulkan driver
 `0x8032004a`), v0.2.8 exited during New Game's loading screen. The phone
-recorded `EXIT_SELF status=3`, which is `fault_report.c`'s `_exit(3)`. The
+recorded `EXIT_SELF status=3`, which is `fault_report.cpp`'s `_exit(3)`. The
 fault report named the host PC as `libllvm-qgl.so+0x4c0a34`. That library is
 Qualcomm's LLVM-based shader compiler. The fault came right after the first
 `CreateVertexShader` (104 bytecode dwords), when the pipeline for the first

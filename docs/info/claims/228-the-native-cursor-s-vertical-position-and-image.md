@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-20
 tags: graphics,d3d8,cursor,mouse
-depends: src/gpu/shaders/d3d8_fixed.vert#main, src/gpu/gpu_draw.c#pipeline_for, src/d3d8/d3d8_report.c#d3d8_draw_selftest, src/d3d8/d3d8_screen_space_test.c#d3d8_screen_space_pixels_check
+depends: src/gpu/shaders/d3d8_fixed.vert#main, src/gpu/gpu_draw.cpp#pipeline_for, src/d3d8/d3d8_report.cpp#d3d8_draw_selftest, src/d3d8/d3d8_screen_space_test.cpp#d3d8_screen_space_pixels_check
 ---
 
 ## Claim

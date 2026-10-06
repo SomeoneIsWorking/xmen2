@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-03
 tags: 
-depends: src/native/audio_adpcm.c, src/native/audio_adpcm_verify.c
+depends: src/native/audio_adpcm.cpp, src/native/audio_adpcm_verify.cpp
 ---
 
 ## Claim

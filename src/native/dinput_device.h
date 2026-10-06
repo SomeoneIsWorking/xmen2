@@ -1,7 +1,7 @@
 /*
- * The devices DirectInput hands out. See dinput_device.c.
+ * The devices DirectInput hands out. See dinput_device.cpp.
  *
- * Kept separate from dinput.c (DirectInput 7) and dinput8.c (DirectInput 8)
+ * Kept separate from dinput.cpp (DirectInput 7) and dinput8.cpp (DirectInput 8)
  * because BOTH create devices and the device interface is the same one: the
  * engine's controller manager goes through DirectInput 7 and the exe's
  * keyboard/mouse through DirectInput 8, and two copies of the same vtable is
@@ -40,7 +40,7 @@ const unsigned char *dinput_guid_of(int kind);
 void dinput_device_report(void);
 
 /*
- * Start the X2_INPUT_SCRIPT clock (see dinput_script.c). Called once when the
+ * Start the X2_INPUT_SCRIPT clock (see dinput_script.cpp). Called once when the
  * guest is about to run, so a script's times are seconds from the start of the
  * run rather than from whenever the game first polled the keyboard.
  */

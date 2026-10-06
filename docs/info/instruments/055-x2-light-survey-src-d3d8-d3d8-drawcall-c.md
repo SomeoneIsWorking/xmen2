@@ -7,7 +7,7 @@ created: 2026-08-15
 
 ## Instrument
 
-X2_LIGHT_SURVEY (src/d3d8/d3d8_drawcall.c)
+X2_LIGHT_SURVEY (src/d3d8/d3d8_drawcall.cpp)
 
 ## Validated by
 

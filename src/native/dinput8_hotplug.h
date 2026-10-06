@@ -6,7 +6,7 @@
    WM_DEVICECHANGE, so a pad that arrives later is admitted by calling the
    game's OWN enumeration routine again; the same routine re-derives the
    table after a save payload deserializes identities this session cannot
-   have. See dinput8.c for the IDirectInput8 object it belongs to. */
+   have. See dinput8.cpp for the IDirectInput8 object it belongs to. */
 
 struct X86pCpu;
 

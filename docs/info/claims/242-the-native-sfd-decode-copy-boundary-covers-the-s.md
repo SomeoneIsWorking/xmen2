@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: pc,fmv,media
-depends: src/media/fmv_player.c#x2_fmv_copy_bgra, tests/test_fmv_decode.c#main
+depends: src/media/fmv_player.cpp#x2_fmv_copy_bgra, tests/test_fmv_decode.cpp#main
 ---
 
 ## Claim

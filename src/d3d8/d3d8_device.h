@@ -12,10 +12,6 @@
 #include "d3d8_state.h"
 #include "d3d8_types.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Install the device's method table. Called once, from Direct3DCreate8, so
    that a build which never creates a Direct3D never builds a device vtable
    either. */
@@ -50,7 +46,7 @@ int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
 void d3d8_device_trace_texture_factor(int enabled);
 
 /*
- * The same counters, live, for the heartbeat (src/native/heartbeat.c).
+ * The same counters, live, for the heartbeat (src/native/heartbeat.cpp).
  *
  * Returns 0 and leaves the outputs at zero when no device has ever been
  * created -- "no device" and "a device that has drawn nothing" are different
@@ -64,10 +60,6 @@ int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
    "no call site identified" and "this never ran" are different findings. */
 int d3d8_vsconst_caller_line(char *buf, int n);
 void d3d8_vsconst_caller_report(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 /*
  * The device's own state mirror.

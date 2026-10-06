@@ -9,10 +9,6 @@
 union SDL_Event;
 struct SDL_Window;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* SDL contact acquisition and publication into the existing virtual DirectInput
  * pad, on every platform: a desktop touchscreen and a phone reach this the same
  * way. Title layout remains owned by TouchControls. */
@@ -143,9 +139,5 @@ int x2_touch_runtime_has_visuals(void);
    Changing the set releases a held control, as a layout change does. */
 #define X2_POWER_SLOTS 4
 void x2_touch_runtime_power_slots(const int icons[X2_POWER_SLOTS]);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_TOUCH_RUNTIME_H */

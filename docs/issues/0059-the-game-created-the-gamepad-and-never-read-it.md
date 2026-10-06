@@ -8,8 +8,8 @@ status: resolved
 
 ## What happened
 
-With gamepad enumeration finally implemented (`src/native/dinput_pad.c`,
-`dinput8.c`), the game did everything right and then read nothing:
+With gamepad enumeration finally implemented (`src/native/dinput_pad.cpp`,
+`dinput8.cpp`), the game did everything right and then read nothing:
 
 * `EnumDevices(class=4 GAMECTRL)` offered it one device;
 * it called `CreateDevice` on the instance GUID;
@@ -52,7 +52,7 @@ work was never made.
 ## Fix
 
 `m_Poll` returns `DIERR_NOTACQUIRED` when the device is not acquired
-(`src/native/dinput_device.c`). Afterwards: `gamepad 272 byte state, acquired,
+(`src/native/dinput_device.cpp`). Afterwards: `gamepad 272 byte state, acquired,
 6253 state read(s), 6254 Poll(s), 1 Acquire(s)` -- the same read count as the
 keyboard and the mouse.
 

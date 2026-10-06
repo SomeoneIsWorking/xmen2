@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: pc,fmv,integration
-depends: src/native/movie.c#x2_movie_next_frame, src/native/movie_image_layout.c#x2_movie_image_pitch
+depends: src/native/movie.cpp#x2_movie_next_frame, src/native/movie_image_layout.cpp#x2_movie_image_pitch
 ---
 
 ## Claim

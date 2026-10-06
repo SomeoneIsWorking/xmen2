@@ -11,7 +11,7 @@ updated: 2026-08-26
 ## Resolution
 
 Apple Silicon now runs the native arm64 build with the normal 4 GB
-`__PAGEZERO`. `src/native/guest_memory.c` reserves a separate 4 GB host arena;
+`__PAGEZERO`. `src/native/guest_memory.cpp` reserves a separate 4 GB host arena;
 every logical 32-bit guest address is translated through its base, and every
 host/guest boundary uses the same helpers. PE images, the heap, file mappings,
 stacks, D3D8 buffers, strings and diagnostics no longer require identity maps.
@@ -43,7 +43,7 @@ with it.
 
 ## The collision
 
-The original `src/native/pe_map.c` mapped the PE at its preferred host address,
+The original `src/native/pe_map.cpp` mapped the PE at its preferred host address,
 because guest/native helpers dereferenced guest addresses directly (`RD32(a)` was
 `*(uint32_t *)a`). Those bases are 0x00400000 for XMen2.exe and 0x10000000 for
 the DLLs -- all inside the low 4 GB.

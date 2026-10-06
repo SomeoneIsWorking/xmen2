@@ -27,10 +27,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define SKIN_MATRIX_FLOATS 16u
 #define SKIN_POSITION_FLOATS 4u
 
@@ -43,9 +39,5 @@ void skin_blend_vertex(float out[3], const float position[4],
 /* One vertex of 0x10022e80 through the matrix `index` names. */
 void skin_rigid_vertex(float out[3], const float position[4], uint8_t index,
                        const float *matrices);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_SKIN_H */

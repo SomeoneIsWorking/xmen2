@@ -6,9 +6,7 @@
 #include "../config/settings.h"
 #include "../config/settings_store.h"
 
-extern "C" {
 #include "../native/guest_clock.h"
-}
 
 #include <lucent/log_c.h>
 

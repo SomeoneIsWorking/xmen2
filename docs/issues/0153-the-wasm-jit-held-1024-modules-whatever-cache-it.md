@@ -27,7 +27,7 @@ A warm JIT translates nothing.
 `X86P_WASM_MAX_LIVE_MODULES` in x86port's `jit_wasm_arena.h` was a fixed 1024.
 `x86p_jit_storage_create()` took only a byte capacity, so the module cap was
 invisible to the caller and never agreed with the block cache the engine was
-given. `src/native/x86_engine_jit_pool.c` asks for `kCacheBlocks = 8192`, so
+given. `src/native/x86_engine_jit_pool.cpp` asks for `kCacheBlocks = 8192`, so
 the browser ran with 8,192 cache entries backed by room for 1,024 translations:
 seven eighths of the cache could not hold anything, and past the thousandth
 block every translation released a module the cache still named — a cache hit
@@ -70,7 +70,7 @@ list instead of scanning from zero (O(capacity) per translated block), and the
 lowering scratch buffer is one worst-case module rather than the whole byte
 budget.
 
-Consumer: `src/native/x86_engine_jit_pool.c` raised `kCodeBytes` from 8 MiB to
+Consumer: `src/native/x86_engine_jit_pool.cpp` raised `kCodeBytes` from 8 MiB to
 32 MiB, because 8,192 blocks at the measured ~1.4 KB mean need ~12 MB and the
 bytes must not quietly become the binding limit in the cap's place.
 

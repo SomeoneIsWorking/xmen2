@@ -12,7 +12,7 @@ This document owns the touch-play contract. `docs/codemap.md` places the files.
 
 ## What decides that touch is in use
 
-`src/input/touch_source.c` classifies every host event into touch / not-touch
+`src/input/touch_source.cpp` classifies every host event into touch / not-touch
 and nothing else, because exactly one decision depends on it: whether the pad
 and the HUD placement that comes with it are on screen. It becomes yes at the
 first contact and no again at the next real keyboard, mouse or controller
@@ -29,7 +29,7 @@ window and no game:
 - Events from every other device kind are ignored, not counted as not-touch. A
   controller being plugged in is not the player picking it up.
 
-`src/config/settings.c` forces either end on every platform through
+`src/config/settings.cpp` forces either end on every platform through
 `input.touch_controls`: `OFF`, `AUTO` (observe the device — the default), or
 `ALWAYS`. `ALWAYS` is what makes the layout reachable on a desktop with no
 touchscreen at all; a layout nobody can look at until it is on a phone is a
@@ -58,7 +58,7 @@ the loop), so a tap is a click on what the player can see.
 
 Contacts there used to be counted and discarded, which is the whole of what a
 phone player met: an intro no tap could skip and a menu no tap could press
-(issue #179). They had no second route either, deliberately — `x2native.c`
+(issue #179). They had no second route either, deliberately — `x2native.cpp`
 sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
 reach the retail world-click handler.
 
@@ -115,8 +115,8 @@ SDL and publishes releases on cancellation, rotation, or lifecycle loss.
 
 The landscape layout uses these zones and the existing Xbox-derived action
 rows. Internal retail storage names are not player-facing labels: the touch
-document uses the action meanings proven by `binding_rows.c` and
-`xbox_defaults.c`.
+document uses the action meanings proven by `binding_rows.cpp` and
+`xbox_defaults.cpp`.
 
 | Zone | Action mapping |
 |---|---|
@@ -169,7 +169,7 @@ The layout must leave an inset for cutouts/navigation bars, support at least the
 left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
-[`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen. Every
+[`xbox_defaults.cpp`](../src/native/xbox_defaults.cpp), not invented per screen. Every
 button is a round icon filling a dark circle with a light ring. A power shows
 its own icon from the hero's atlas. Attack, Smash, Use, Jump and the port menu
 show the port's own art, `assets/ui/touch_{punch,smash,use,jump,menu}.svg`:
@@ -196,7 +196,7 @@ actor's power styles, and empty when it does not resolve. The cast side
 X, Y. The touch layout drops the separate held Powers modifier and offers each
 slot as its own button instead.
 
-`src/native/power_slots_runtime.c` overrides that update, runs the game's body,
+`src/native/power_slots_runtime.cpp` overrides that update, runs the game's body,
 and then -- only while touch is the input, and only when the actor or its four
 slot names changed -- asks the same functions the ring asks. A move's `icon`
 is the byte at `+0x13c`; its style (`move->vfunc 0xe0`) keeps the `iconfile`

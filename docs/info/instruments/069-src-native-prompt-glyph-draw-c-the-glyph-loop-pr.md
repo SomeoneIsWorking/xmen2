@@ -7,7 +7,7 @@ created: 2026-08-26
 
 ## Instrument
 
-src/native/prompt_glyph_draw.c -- the glyph-loop prompt detector (override on XMen2.exe FUN_005ee780), with tests/test_prompt_glyph_draw.c
+src/native/prompt_glyph_draw.cpp -- the glyph-loop prompt detector (override on XMen2.exe FUN_005ee780), with tests/test_prompt_glyph_draw.cpp
 
 ## Validated by
 
@@ -32,7 +32,7 @@ The discriminator has been run against BOTH classes: the test feeds a composed
 keycap label and both range boundaries and requires a positive, and the live
 run distinguishes our 0x0090..0x0093 from the engine's own above-256 control
 words (9d28, 01f2, 08e2) and the legal screen's 0x00bd. Corroborated
-independently by the token-resolver census in prompt_labels.c: 1142 consumed
+independently by the token-resolver census in prompt_labels.cpp: 1142 consumed
 at 0x005ef757 equals 1142 strings detected.
 
 LESSON FOR ANY DETECTOR ON A GUEST BODY: read the argument out of the

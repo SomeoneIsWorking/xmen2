@@ -7,7 +7,7 @@ created: 2026-08-22
 
 ## Instrument
 
-`src/native/autosave_runtime.c`: production autosave transition and result
+`src/native/autosave_runtime.cpp`: production autosave transition and result
 counters in the live `/save` report
 
 ## Mechanism validation

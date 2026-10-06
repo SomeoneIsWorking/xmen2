@@ -43,9 +43,9 @@ static int copy_string(char *destination, size_t capacity, const char *source) {
   return 1;
 }
 
-extern "C" int x2_install_picker_directory_from_executable(const char *path,
-                                                           char *directory,
-                                                           unsigned capacity) {
+int x2_install_picker_directory_from_executable(const char *path,
+                                                char *directory,
+                                                unsigned capacity) {
   const char *slash;
   struct stat info;
   size_t length;
@@ -282,9 +282,11 @@ static int directory_from_selection(const char *selection, char *directory,
   return 1;
 }
 
-extern "C" int x2_install_picker_resolve_selection(
-    const char *selection, const char *archive_destination, char *directory,
-    unsigned capacity, char *reason, unsigned reason_capacity) {
+int x2_install_picker_resolve_selection(const char *selection,
+                                        const char *archive_destination,
+                                        char *directory, unsigned capacity,
+                                        char *reason,
+                                        unsigned reason_capacity) {
   if (!directory || capacity < 2 || !reason || reason_capacity < 2)
     return 0;
   directory[0] = 0;
@@ -293,17 +295,17 @@ extern "C" int x2_install_picker_resolve_selection(
                                   reason_capacity, archive_destination);
 }
 
-extern "C" int
-x2_install_picker_prepare_selection(const char *selection,
-                                    const char *archive_destination,
-                                    char *reason, unsigned reason_capacity) {
+int x2_install_picker_prepare_selection(const char *selection,
+                                        const char *archive_destination,
+                                        char *reason,
+                                        unsigned reason_capacity) {
   char directory[X2_INSTALL_PATH_SIZE];
   return x2_install_picker_resolve_selection(selection, archive_destination,
                                              directory, sizeof directory,
                                              reason, reason_capacity);
 }
 
-extern "C" int x2_install_picker_choose(const char **directory) {
+int x2_install_picker_choose(const char **directory) {
   SDL_Window *window;
   char candidate[X2_INSTALL_PATH_SIZE];
   char reason[512];
@@ -390,8 +392,7 @@ extern "C" int x2_install_picker_choose(const char **directory) {
 #endif
 }
 
-extern "C" int x2_install_picker_resolve_env(int appimage_product,
-                                             int have_install_dir) {
+int x2_install_picker_resolve_env(int appimage_product, int have_install_dir) {
   const char *current = x2_config_override_get(kX2ConfigGamePcDir);
   if (!appimage_product || have_install_dir || (current && current[0]))
     return 0;

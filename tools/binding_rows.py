@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Re-read the game's binding rows and cutscene-skip actions, and diff the port.
 
-`src/input/binding_rows.c` ships each executable persistence key beside its PC
+`src/input/binding_rows.cpp` ships each executable persistence key beside its PC
 English display label. Constants read from shipped data have to be checked
 against that data BY CODE: "SreenGrab" is a typo the registry ABI depends on,
 while showing that key instead of igct.bnx's "Screenshot" was a UI defect.
@@ -294,7 +294,7 @@ def main():
 
     check = args.check
     if args.selftest:
-        check = os.path.join(root, "src", "input", "binding_rows.c")
+        check = os.path.join(root, "src", "input", "binding_rows.cpp")
 
     game = load_env(root)
     exe = os.path.join(game, "XMen2.exe") if game else None

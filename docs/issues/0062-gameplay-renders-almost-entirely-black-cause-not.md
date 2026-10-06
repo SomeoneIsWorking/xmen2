@@ -28,7 +28,7 @@ was wrong here the stored explanation was wrong twice over.
 * NOT a missing combiner stage: 0 draws enable a texture stage beyond stage 0.
 * NOT dropped draws: 0 refused, of 134,906 submitted.
 * NOT the 8-light limit. The state report says 16 lights SET, but the
-  more-than-8-enabled message in d3d8_drawcall.c never fires, so no draw ever
+  more-than-8-enabled message in d3d8_drawcall.cpp never fires, so no draw ever
   had a ninth enabled.
 * NOT missing vertex colour. The level draws are stride 32 with col -1, and
   12+12+8 is exactly position, normal and one UV set -- the format HAS no

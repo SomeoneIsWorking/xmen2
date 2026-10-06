@@ -9,7 +9,7 @@
  *
  * A method belongs here only when its implementation, and everything it
  * reaches, never runs guest code and never releases the guest lock. Present
- * and Reset do not qualify. The runtime guard in override_leaf.c aborts,
+ * and Reset do not qualify. The runtime guard in override_leaf.cpp aborts,
  * naming the method, if one named here ever does.
  */
 #ifndef X2_D3D8_LEAF_METHODS_H

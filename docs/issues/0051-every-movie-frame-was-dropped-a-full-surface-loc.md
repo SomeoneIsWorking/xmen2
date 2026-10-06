@@ -33,8 +33,8 @@ re-checked against a run.
 
 ## Fix
 
-The offset arithmetic, in `src/d3d8/d3d8_surface.c` and the same shape in
-`d3d8_resource.c`'s texture LockRect: the pointer is the first pixel inside
+The offset arithmetic, in `src/d3d8/d3d8_surface.cpp` and the same shape in
+`d3d8_resource.cpp`'s texture LockRect: the pointer is the first pixel inside
 the rectangle, the pitch is unchanged. Block-compressed formats require a
 4x4-aligned origin and recover the block size from the pitch. A rectangle
 that is empty or outside the surface is still refused, by name.

@@ -39,7 +39,7 @@ boundary, so the crossing counter cannot see it.
 
 `adb shell input tap` was dispatched 25 times over the canvas. Not one contact
 reached the port. SDL is pumped only from `imp_USER32_PeekMessageA` /
-`imp_USER32_GetMessageA` (`src/native/win32_events.c:249,263`), which the guest
+`imp_USER32_GetMessageA` (`src/native/win32_events.cpp:249,263`), which the guest
 calls from its message loop. A guest that never leaves a spin never calls
 either, so every finger event stays in SDL's queue.
 

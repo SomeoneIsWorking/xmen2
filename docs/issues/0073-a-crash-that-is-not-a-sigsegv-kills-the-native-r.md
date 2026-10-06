@@ -19,7 +19,7 @@ something'.
 
 ## Fix
 
-`src/native/x2native.c`: the SIGSEGV handler became `fault_report` and is
+`src/native/x2native.cpp`: the SIGSEGV handler became `fault_report` and is
 installed for SIGILL/SIGFPE/SIGBUS/SIGTRAP as well. The import-slot analysis
 stays SIGSEGV's alone -- `si_addr` means something different for the others,
 and reading it as an import slot would invent an explanation. What they share

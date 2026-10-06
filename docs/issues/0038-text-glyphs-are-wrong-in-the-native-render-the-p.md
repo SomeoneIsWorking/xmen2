@@ -43,7 +43,7 @@ other way.
 ## Narrowed: it is ONE draw, and it runs off the end of its index buffer
 
 Not a glyph-atlas or format problem. The Vulkan validation layer flagged it and
-`src/gpu/gpu_draw.c` now refuses it by name, once per frame:
+`src/gpu/gpu_draw.cpp` now refuses it by name, once per frame:
 
     gpu: draw REFUSED -- the index range runs off the end of the bound index buffer.
       204 index/indices of 2 byte(s) from index 0 needs 408 byte(s); the buffer is 152.

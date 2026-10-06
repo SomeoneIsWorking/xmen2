@@ -173,7 +173,7 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
 
 } // namespace
 
-extern "C" int x2_ui_handle_event(SDL_Event *event) {
+int x2_ui_handle_event(SDL_Event *event) {
   if (!event)
     return 0;
   /* F2 toggles this overlay from any state, so it sits ahead of both the
@@ -216,14 +216,11 @@ extern "C" int x2_ui_handle_event(SDL_Event *event) {
   return 1;
 }
 
-extern "C" int x2_ui_captures_input(void) {
-  return x2_settings_overlay_visible();
-}
+int x2_ui_captures_input(void) { return x2_settings_overlay_visible(); }
 
-extern "C" void x2_ui_render(SDL_GPUDevice *device,
-                             SDL_GPUCommandBuffer *command_buffer,
-                             SDL_GPUTexture *swapchain, uint32_t width,
-                             uint32_t height, SDL_Window *window) {
+void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
+                  SDL_GPUTexture *swapchain, uint32_t width, uint32_t height,
+                  SDL_Window *window) {
   static bool environment_checked;
   if (!environment_checked) {
     const char *open = x2_config_override_get(kX2ConfigSettingsOpen);
@@ -270,7 +267,7 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
   render_interface->EndFrame();
 }
 
-extern "C" void x2_ui_gpu_shutdown(void) {
+void x2_ui_gpu_shutdown(void) {
   if (!initialized)
     return;
   skip_document.shutdown();

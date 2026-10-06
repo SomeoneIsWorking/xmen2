@@ -10,7 +10,7 @@
 /*
  * The host has exactly one active D3D8 device. Bind its presentation state
  * after CreateDevice has made the default surfaces, and unbind it before the
- * device is torn down. The pointers remain owned by d3d8_device.c.
+ * device is torn down. The pointers remain owned by d3d8_device.cpp.
  */
 void d3d8_live_resolution_bind(D3DPRESENT_PARAMETERS *parameters,
                                D3D8Surface *backbuffer, D3D8Surface *depth,

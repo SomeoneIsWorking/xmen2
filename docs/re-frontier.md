@@ -70,7 +70,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-partial
 - deps: native-overrides
 - evidence: XMen2.exe 004d9640/004d8b30 BehavEd scheduler/context player; 004b2b40 insertion and 004b2d70 timed-event player; 00458700 response-voice, 0045a170 line-voice, and 004a7130 BehavEd sound presenters; C247/C263/C274; test_behaved_context; test_behaved_player_heap; test_cutscene_event_player; test_cutscene_dialogue; test_cutscene_script_audio; visible 11/11 and camera-only 10/10 live gates with zero dialogue leaks and both authored sound commands silent
-- where: src/native/cutscene_player.c; src/native/behaved_context.c; src/native/behaved_player.c; src/native/cutscene_event_player.c; src/native/cutscene_dialogue.c; src/native/cutscene_script_audio.c; docs/RE/cutscene_player.md
+- where: src/native/cutscene_player.cpp; src/native/behaved_context.cpp; src/native/behaved_player.cpp; src/native/cutscene_event_player.cpp; src/native/cutscene_dialogue.cpp; src/native/cutscene_script_audio.cpp; docs/RE/cutscene_player.md
 - gap: The tutorial control-lock epoch is verified end to end. Other maps may compose additional local players or branching payloads and must refuse until their binary ownership is recovered; no global world update or clock advance is an allowed fallback.
 - notes: Ordinary pumps retain strict deadline<now. The native 004d8b30 context interpreter is shared by ordinary and synchronous scheduling. Exact skip steps only insertion-tagged script events and BehavEd contexts inherited from owned script, event-callback, or deterministic-payload scopes; the epoch alone does not adopt work. Conversation is a deterministic payload. The synchronous player stops the active voice and suppresses the two RE-grounded dialogue presenters plus the exact BehavEd sound handler for its owned current context; DirectSound remains ordinary. CHud's separate briefing/caption cinematic surface is not the gameplay control-return owner.
 
@@ -88,15 +88,15 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-partial
 - deps: native-overrides
 - evidence: DirectInput 7/8 are implemented over SDL3 and driven end to end. Issue #82 fixed background button delivery; C215 publishes bindings into the master, working and menu banks the game actually evaluates; C222/C224 prove full-scale triggers and RT+A power casting; C227 proves the RB health-item row. Keyboard and synthetic-pad input reach gameplay through the shipping x2ctl.py probe.
-- where: `src/native/dinput*.c`, `src/input/player_input.c`, `tools/x2ctl.py`
+- where: `src/native/dinput*.c`, `src/input/player_input.cpp`, `tools/x2ctl.py`
 - gap: The synthetic pad verifies enumeration, axes, buttons, triggers, action publication, hotswap source switching and gameplay input. No physical controller has been attached on this machine, so real-device hotplug, stable identity and reconnect behavior still require hardware validation; do not promote this step to re-verified from synthetic evidence alone.
-- notes: The host owns SDL/DirectInput transport in `src/native/dinput*.c`; player assignment and binding publication live in `src/input/player_input.c`. The shared Alchemy controller abstraction remains in the alchemy repository.
+- notes: The host owns SDL/DirectInput transport in `src/native/dinput*.c`; player assignment and binding publication live in `src/input/player_input.cpp`. The shared Alchemy controller abstraction remains in the alchemy repository.
 
 ### xbox-defaults — Recover and port the Xbox build's controller defaults into the PC mapping UI
 - status: re-partial
 - deps:
 - evidence: C160 proves the PC game opens/reads a pad; C184 parses the Xbox options package; C187/C227 record the 22 verified assignments. Xbox `sub_00162240` directly associates each d-pad name with NEXT/PREV/INC_AGGR/DEC_AGGR; PC `FUN_00619c40`, `FUN_0061b030`, and `FUN_006281f0` recover the action rows, 42-row object, and physical codes. The retained PC defaults and shipped PS2 potion tutorial establish `TargetLock` as the health-item control; the Xbox options package assigns health to Black, whose modern position is RB. Live input reports row 10 as `pad3:0x1a` and RB drives player physical action slot 13 to `+1.000`. `test_xbox_defaults` pins every tuple and `test_player_input` proves the sole publisher writes them to the assigned player's master, working, and menu sets. C225 corrects the former Black/White float-index model: the Xbox poller writes only four axes to its 30-float array and carries buttons in a separate digital mask. `tools/xbe_query.py` (I053) now distinguishes class-agnostic slot scans from accessor-preserving `chain`/`aftercall` queries and selftests both answers.
-- where: docs/features/controller-mapping-defaults.md; src/native/xbox_defaults.c; src/input/player_input.c; tests/test_xbox_defaults.c; tests/test_player_input.c; tools/extract_fb.py; Xbox default.xbe and controller-options FB
+- where: docs/features/controller-mapping-defaults.md; src/native/xbox_defaults.cpp; src/input/player_input.cpp; tests/test_xbox_defaults.cpp; tests/test_player_input.cpp; tools/extract_fb.py; Xbox default.xbe and controller-options FB
 - gap: Identify the retained PC action that corresponds to Xbox White / Use Energy Pack, add it only when the PC and console evidence join as they do for health, and validate device identity/assignment on physical hardware.
 - notes: Health is implemented through `TargetLock`; no native inventory or healing behavior was invented. Energy remains deliberately omitted rather than aliased to `QuickPower`.
 
@@ -132,7 +132,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: in-progress
 - deps: abi
 - evidence: `tools/runtime_boundary.py --source` and `--binary build/native/x2native` prove that the gameplay source and linked product use `x86port_runtime` and expose no interpreter selector or verification mode. A real bounded run against x86port `ca52e377040d83534f9cd9f5a976526078fa2343` maps all twenty retail images, passes the six-instruction shipping selftest, enters guest startup, reaches 356 tracked title/host crossings, executes the shared memory-form `FCOMP m64` emitter at mapped guest `0x103c05ec`, `FNSTSW AX` at `0x103c05ef`, and `FNCLEX` at `0x103b9fed`, then refuses `PUSHFD` (`9c`) at `0x103c30d2`.
-- where: src/native/x86_engine.c; src/native/x86_dispatch.c; shared/x86port
+- where: src/native/x86_engine.cpp; src/native/x86_dispatch.cpp; shared/x86port
 - gap: Implement and differentially verify the reached `PUSHFD` flag-stack emitter in shared/x86port, then continue the bounded product run until representative gameplay. If shared/x86port gains the permitted bounded fallback, the product audit must prove that only failed/unsupported compilation or unsafe execution can enter it, every interval is counted, and no fallback-backed interval is used as gameplay or performance evidence.
 - notes: Native imports and overrides hand back through the title dispatcher; all other guest addresses enter the runtime JIT.
 
@@ -158,7 +158,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-partial
 - deps: vk-substitute
 - evidence: The engine's frame boundary is RE'd from its own bodies: beginDraw at libIGGfx 0x1002eb30 is getLastError-then-BeginScene, endDraw at 0x1002eb70 is EndScene + Present with a D3DERR_DEVICELOST check and a 64-bit frame counter at 0x101895b0, clearRenderDestination at 0x1002ee90 reads its colour from this+0x190..0x19c and its flags from a byte mask, setViewport at 0x1002ec70 clamps against the render destination and is super-called. All four slots implemented against SDL_GPU. THE HOST HALF IS VERIFIED TO PRESENT: x2native --vk-selftest, wired in as the vk_frame_path ctest, drives acquire/clear/present with no engine and reports '3 frame(s) presented, 0 skipped'. It is a real discriminator -- it FAILED on its first run (0 of 3, because the window was created hidden and so had no swapchain image) before the setup was corrected.
-- where: src/vulkan/igvk_device.c, src/vulkan/igvk_slots_frame.c
+- where: src/vulkan/igvk_device.c, src/vulkan/igvk_slots_frame.cpp
 - gap: 0 frames presented, and --vk-permissive now shows exactly how far the engine gets: 34 distinct render-state slots deep, stopping in Gap::Gfx::igDx8DecalExt::setDecalOffset -- which is NOT a slot of igVisualContext's vtable. It belongs to a DIFFERENT ARK class.
 - notes: SUPERSEDED as the live renderer path by d3d8-host, and the reason is measured (C129) rather than a preference. The gap above said the remaining work was either a host IDirect3DDevice8 or nine more ARK substitutions; the host device turned out not to need the ARK substitution AT ALL, because the engine builds its own igDx8VisualContext and installs the device itself once Direct3DCreate8 answers. src/vulkan/ is kept and still runs under --vk: it is the only thing that has driven the engine's frame boundary end to end, and its GPU half is now src/gpu/, which the D3D8 device draws through.
 
@@ -176,7 +176,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-verified
 - deps:
 - evidence: libIGGfx 0x10048500 calls the real D3D8 CreateVertexShader; scratch/logs/create-vs-dump.log captures the five-token declaration and 104-DWORD VS 1.1 program. scratch/logs/vs-execute-3350.log records 50 programmable draws / 3250 vertex invocations through frame 3350 with zero GPU refusals; d3d8_vs_selftest proves relative DP4 execution and unsupported-opcode refusal.
-- where: src/d3d8/d3d8_vertex_shader.c; src/d3d8/d3d8_device.c; src/d3d8/d3d8_drawcall.c
+- where: src/d3d8/d3d8_vertex_shader.cpp; src/d3d8/d3d8_device.cpp; src/d3d8/d3d8_drawcall.cpp
 - gap: Observed program is implemented and verified; any unobserved declaration form, modifier, or VS 1.1 opcode still refuses by token until reached and implemented.
 - notes: The interpreter preserves the engine program and constants. It does not map programmable shaders back to fixed-function FVF.
 
@@ -184,7 +184,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-verified
 - deps: d3d8-host
 - evidence: C271; XMen2 FUN_005ee780 preflights each string and FUN_005ee400 retains the retail emitter/finalizer event with collapsed geometry; libIGGfx igDxVisualContext::drawNonIndexed 0x100352d0 brackets the batch and nested updateContextState 0x10034e60 finalizes it before DrawPrimitive; computeMatrix_Dx 0x1003ec10 publishes context-keyed engine W/V/P. scratch/logs/svg-final-unbounded.log plus scratch/screenshots/svg-final-unbounded.png verify the ENTER keycap. scratch/logs/svg-pad-final-unbounded.log records 1,073 pure one-codepoint controller strings through 1,073 matching nested finalizers/submissions with zero atomicity, transform, GPU or orphan refusals; scratch/screenshots/svg-pad-unbounded.png shows the aligned A icon.
-- where: src/native/prompt_glyph_draw.c; src/native/prompt_glyph_batch.c; src/native/ui_transform.c; src/gpu/gpu_prompt_glyphs.c; docs/RE/text.md
+- where: src/native/prompt_glyph_draw.cpp; src/native/prompt_glyph_batch.cpp; src/native/ui_transform.cpp; src/gpu/gpu_prompt_glyphs.cpp; docs/RE/text.md
 - gap:
 - notes: This is the first native 2D/UI draw slice. It bypasses D3D8 for port-owned prompt art but retains the stock ASCII batch; it does not claim the rest of Alchemy 2D is ported.
 

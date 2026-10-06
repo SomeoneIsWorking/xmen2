@@ -6,7 +6,7 @@ Both sides write the SAME format:
   the control  tools/proxy_d3d8   a logging d3d8.dll the real game loads under
                                   Wine; build_stocklog.py stages it, run_shim.py
                                   runs it, and it writes d3d8_lightlog.txt
-  the port     X2_LIGHTLOG=<path> (src/d3d8/d3d8_device.c)
+  the port     X2_LIGHTLOG=<path> (src/d3d8/d3d8_device.cpp)
 
 so "does the original engine set the same lights" is a diff rather than an
 argument. C199 established that the port's D3D8 layer faithfully reports what

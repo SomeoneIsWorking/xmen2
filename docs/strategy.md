@@ -33,7 +33,7 @@ recursion. No player-facing execution-engine selector exists.
   translates the guest's own bytes, read from the player's images at run time.
   Zydis is decode-only; semantics and host-code emission belong to x86port.
   There is no gameplay engine selector.
-- **The loader** (`src/native/pe_map.c`, `guest_modules.c`): maps each image,
+- **The loader** (`src/native/pe_map.cpp`, `guest_modules.cpp`): maps each image,
   applies base relocations when it has to relocate, and binds the IAT.
 - **The host surface** (`src/native/host_imports*.c`, and the modules behind
   it): what this port implements of Win32, the CRT, D3D8, DirectInput and

@@ -125,7 +125,7 @@ errors.
 `GetCursorPos` -> `SDL_GetGlobalMouseState` -> `Emscripten_GetGlobalMouseState`,
 a synchronous proxy to the browser's main thread on every call. SDL documents
 the function as main-thread-only, and the guest thread was calling it.
-`win32_pointer.c` now answers from `SDL_GetMouseState`: the state the guest
+`win32_pointer.cpp` now answers from `SDL_GetMouseState`: the state the guest
 thread's own message pump keeps, mapped exactly as `WM_MOUSEMOVE` maps it.
 `test_win32_pointer` holds the two equal through a dummy-driver window. It
 failed against the old code by hundreds of pixels, (448,216) against (832,504),
@@ -141,7 +141,7 @@ cap in this scene, so the gain here is headroom, not frames.
 and waits for, so the fix belongs in how the install is read, not in this
 issue.
 
-**The file layer no longer splits guest reads.** `guest_file_io.c` copied every
+**The file layer no longer splits guest reads.** `guest_file_io.cpp` copied every
 guest `fread`/`fwrite`/`read`/`write` through a 16 KB stack buffer. That was
 left over from when guest pages were separate host allocations. The guest is
 now one linear window, so the transfer goes straight through
@@ -159,7 +159,7 @@ guest read is what changed.
 
 The defect was an unarmed heartbeat table that ranked imports by calls and
 could be read as a time ranking. Unarmed, the table now heads itself "top
-imports by CALLS -- arm X2_HOTEP to rank by time" (`heartbeat.c`). Armed, it
+imports by CALLS -- arm X2_HOTEP to rank by time" (`heartbeat.cpp`). Armed, it
 ranks by exclusive host time. The costs that ranking exposed are fixed and
 recorded above: `GetCursorPos`'s main-thread proxy, split guest file reads,
 and redundant uniform bind-group sets. The remaining `DrawIndexedPrimitive`

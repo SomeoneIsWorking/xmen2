@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-24
 tags: resolution,rmlui
-depends: src/ui/rmlui_ui.cpp#sync_surface_metrics, src/presentation/aspect_fit.c#x2_aspect_fit
+depends: src/ui/rmlui_ui.cpp#sync_surface_metrics, src/presentation/aspect_fit.cpp#x2_aspect_fit
 ---
 
 ## Claim

@@ -20,7 +20,7 @@ streams are MPEG-1 video and ADX audio.
 The title FMV owner bounds MPEG-PS probing to one MiB and two seconds before
 stream discovery, and labels the title's stable `0x1e0`/`0x1c0` stream ids when
 the demuxer has already created them. When the video probe still lacks codec
-metadata, `fmv_sfd.c` replays the stream from byte zero, captures the MPEG
+metadata, `fmv_sfd.cpp` replays the stream from byte zero, captures the MPEG
 sequence dimensions, retains the first audio/video packets, and feeds raw
 MPEG chunks through an explicit parser. The audio owner trims only an
 incomplete trailing ADX block before sending a packet to FFmpeg. This keeps

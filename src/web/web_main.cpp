@@ -13,7 +13,7 @@
 #include <lucent/platform_c.h>
 #include <web_port/storage.h>
 
-extern "C" int x2native_main(int argc, char **argv);
+int x2native_main(int argc, char **argv);
 
 namespace {
 constexpr char ready_path[] = "/opfs/install.ready";

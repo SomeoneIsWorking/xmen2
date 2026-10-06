@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-21
 tags: x87,clang,abi
-depends: src/runtime/x86_abi/x87host.c#x87_host_end, tests/test_x87host.c
+depends: src/runtime/x86_abi/x87host.cpp#x87_host_end, tests/test_x87host.cpp
 ---
 
 ## Claim

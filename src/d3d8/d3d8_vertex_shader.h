@@ -10,10 +10,6 @@
 
 #define D3D8_VS_CONSTANTS 96
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct D3D8VertexShader D3D8VertexShader;
 
 uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
@@ -57,15 +53,11 @@ void d3d8_vs_beat_report(void);
 int d3d8_vs_selftest(void);
 
 /* Every distinct value SetVertexShader received, with counts -- defined in
-   d3d8_device.c, where the call lives. D3D8 overloads the argument as an FVF
+   d3d8_device.cpp, where the call lives. D3D8 overloads the argument as an FVF
    code OR a shader handle, told apart by bit 0 (D3DFVF_RESERVED0). */
 void d3d8_vertex_shader_binding_report(void);
 
 /* The same census as one heartbeat line; a '*' marks a shader handle. */
 void d3d8_vertex_shader_binding_line(char *buf, size_t n);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -6,8 +6,8 @@
  * they all make: a named pixel holds an exact BGRA value.
  *
  * Shared rather than copied because the two owners -- the frame path in
- * gpu_selftest.c and the texture/combiner tests in gpu_texture_selftest.c --
- * must read back at the SAME size. A test that quietly used a different
+ * gpu_selftest.cpp and the texture/combiner tests in gpu_texture_selftest.cpp
+ * -- must read back at the SAME size. A test that quietly used a different
  * off-screen size would compare coordinates that mean different things.
  *
  * A failing check PRINTS what it got against what it wanted, so a failure

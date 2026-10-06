@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-22
 tags: input,cutscene,movie
-depends: tools/binding_rows.py#action_rows_from_exe, src/input/player_input.c#publish_player, src/native/input_binding_sets.c#input_binding_sets_for_player, src/native/cutscene_skip_publication.c#cutscene_skip_publication_classify, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report
+depends: tools/binding_rows.py#action_rows_from_exe, src/input/player_input.cpp#publish_player, src/native/input_binding_sets.cpp#input_binding_sets_for_player, src/native/cutscene_skip_publication.cpp#cutscene_skip_publication_classify, src/native/cutscene_skip_probe.cpp#cutscene_skip_probe_report
 falsified_on: 2026-08-22
 ---
 

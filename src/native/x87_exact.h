@@ -21,10 +21,6 @@
 
 #include "x87.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #if X86P_EXACT_LONG_DOUBLE
 typedef long double x87_real;
 #else
@@ -48,9 +44,5 @@ int x87_exact_for_guest(const X86pX87 *x87, unsigned pushes);
    it would then abort on the first last-bit difference as if it were a
    defect. */
 int x87_verify_requested(const char *cvar);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_X87_EXACT_H */

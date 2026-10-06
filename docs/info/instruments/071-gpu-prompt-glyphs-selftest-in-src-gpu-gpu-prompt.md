@@ -7,7 +7,7 @@ created: 2026-08-26
 
 ## Instrument
 
-gpu_prompt_glyphs_selftest in src/gpu/gpu_prompt_glyphs.c
+gpu_prompt_glyphs_selftest in src/gpu/gpu_prompt_glyphs.cpp
 
 ## Validated by
 

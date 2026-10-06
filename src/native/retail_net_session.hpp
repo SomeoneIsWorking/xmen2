@@ -20,9 +20,7 @@
  * cleared on leaving it for the main menu (FUN_005f27a0).
  */
 
-extern "C" {
 #include "x86rt.h"
-}
 
 #include <cstdint>
 

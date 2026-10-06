@@ -12,7 +12,7 @@ The native gameplay black-character silhouettes were caused by applying the XYZR
 
 ## Evidence
 
-src/gpu/gpu_draw.c PipeKey.pretransformed and pipeline_for cull mapping; src/d3d8/d3d8_report.c d3d8_draw_selftest. --d3d8-selftest passes both position conventions; deliberate old model-space mapping fails with centre 0xff00ff00. scratch/screenshots/cull-fixed-full.png shows textured/lit characters and scratch/logs/cull-fixed-full.log records 110188 submitted, 0 refused.
+src/gpu/gpu_draw.cpp PipeKey.pretransformed and pipeline_for cull mapping; src/d3d8/d3d8_report.cpp d3d8_draw_selftest. --d3d8-selftest passes both position conventions; deliberate old model-space mapping fails with centre 0xff00ff00. scratch/screenshots/cull-fixed-full.png shows textured/lit characters and scratch/logs/cull-fixed-full.log records 110188 submitted, 0 refused.
 
 ## What would falsify it
 

@@ -39,14 +39,14 @@ KNOWN_UNPORTABLE: dict[str, str] = {}
 # measured one at a time because they have no wasm CMake project yet; the point
 # is to know that the platform-neutral half of the host is already portable.
 PORT_OWNERS = (
-    "src/presentation/touch_layout.c",
-    "src/presentation/hud_layout.c",
-    "src/config/boot_mode.c",
-    "src/config/settings.c",
-    "src/config/hud_settings.c",
-    "src/native/boot_mode_policy.c",
-    "src/input/gameplay_control.c",
-    "src/save/save_directory.c",
+    "src/presentation/touch_layout.cpp",
+    "src/presentation/hud_layout.cpp",
+    "src/config/boot_mode.cpp",
+    "src/config/settings.cpp",
+    "src/config/hud_settings.cpp",
+    "src/native/boot_mode_policy.cpp",
+    "src/input/gameplay_control.cpp",
+    "src/save/save_directory.cpp",
 )
 PORT_OWNER_INCLUDES = (
     "src",

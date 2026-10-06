@@ -13,7 +13,7 @@ Xbox prompt bytes are delivered through the game's original physical-input name 
 ## Evidence
 
 `FUN_00619e30 -> FUN_006281f0` was decompiled and its device-kind/code tables
-were read from XMen2.exe. `tests/test_pad_glyphs.c` calls the shipping native
+were read from XMen2.exe. `tests/test_pad_glyphs.cpp` calls the shipping native
 override at 0x006281f0: A, Z+/LT, Z-/RT, and POV return the authored font
 codepoints with `RET 8` balance; a non-Xbox slot, LS without authored art, and
 a disabled pack call the original retail body through `x86_guest_body`.

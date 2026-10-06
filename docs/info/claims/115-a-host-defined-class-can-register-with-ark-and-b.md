@@ -12,7 +12,7 @@ A HOST-defined class can register with ARK and be constructed by libIGCore: C008
 
 ## Evidence
 
-scratch/build-native/x2native --no-window --ark-probe against the real install. The boundary ring shows retrieveVTablePointer and arkRegisterInitialize each crossing +4 (balanced), then Gap::Core::igArkRegister returning +4, then igArenaMemoryPool::malloc, then a dispatch landing in the host class's own vtable. src/vulkan/igvk_probe.c checks the meta is non-NULL, that meta+0x48 holds the instance size we passed and meta+0x1a is 0, and that the constructed object's vptr equals the exact vtable address handed over -- not merely that nothing crashed.
+scratch/build-native/x2native --no-window --ark-probe against the real install. The boundary ring shows retrieveVTablePointer and arkRegisterInitialize each crossing +4 (balanced), then Gap::Core::igArkRegister returning +4, then igArenaMemoryPool::malloc, then a dispatch landing in the host class's own vtable. src/vulkan/igvk_probe.cpp checks the meta is non-NULL, that meta+0x48 holds the instance size we passed and meta+0x1a is 0, and that the constructed object's vptr equals the exact vtable address handed over -- not merely that nothing crashed.
 
 ## What would falsify it
 

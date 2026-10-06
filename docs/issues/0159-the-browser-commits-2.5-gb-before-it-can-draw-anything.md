@@ -80,7 +80,7 @@ high-water marks are what settles it.
 
 `guest_layout_report` now prints, with the shutdown reports, how far a run
 ever reached into each region, from a "mapped before" byte per page that
-`guest_memory.c` already kept for zeroing reused pages. A native Dead Zone run
+`guest_memory.cpp` already kept for zeroing reused pages. A native Dead Zone run
 (`X2_BOOT_MAP=act1/deadzone/deadzone1`, 90 s in the level):
 
 | region | size | reached | ever mapped |
@@ -108,7 +108,7 @@ Packing needed one fix first. VirtualQuery called any page it could not
 attribute to a module, a guest reservation or the heap FREE, including the
 runtime's own stack and TIB; that is how the game's arena walk once ran into
 the stack at 0x30000000, and why the runtime had been kept at 0x70000000. The
-virtual-memory imports moved out of `kernel32.c` into `kernel32_virtual.c`
+virtual-memory imports moved out of `kernel32.cpp` into `kernel32_virtual.cpp`
 (the legacy ratchet went from 3624 to 3087 lines). Their free spans now come
 from the page table (`guest_memory_run`): a mapped page nobody else claims
 reads MEM_RESERVE with no access, and nothing at or above the layout is ever

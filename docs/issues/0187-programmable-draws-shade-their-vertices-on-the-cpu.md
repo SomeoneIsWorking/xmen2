@@ -54,9 +54,9 @@ translated shader is differentially tested against.
 ## Resolution
 
 VS 1.1 runs on the GPU. `d3d8_vs_gpu.cpp` packs the decoded program once per
-shader into `GpuVsProgram` (`src/gpu/gpu_vs_program.h`). `d3d8_vs_draw.c`
+shader into `GpuVsProgram` (`src/gpu/gpu_vs_program.h`). `d3d8_vs_draw.cpp`
 binds the guest's vertex buffer and hands the program and the device's
-constant file to the draw. `gpu_vertex_uniforms.c` and `gpu_shadow.c` push
+constant file to the draw. `gpu_vertex_uniforms.cpp` and `gpu_shadow.cpp` push
 them to `vs11_program.glsl`, which is included by `d3d8_vs11.vert` (the scene)
 and `shadow_vs11.vert` (the caster). It interprets the program as uniform
 data, so no shader is compiled at run time. Programs with an input past v15 or
@@ -64,11 +64,11 @@ a SHORT2/SHORT4 input keep the CPU executor, and the log names them once.
 
 Differential proof:
 
-- `d3d8_vs_gpu_selftest.c` (`--d3d8-selftest`) draws one program through the
+- `d3d8_vs_gpu_selftest.cpp` (`--d3d8-selftest`) draws one program through the
   production draw builder on each executor and needs identical pixels. The
   program covers relative addressing from a UBYTE4, every opcode, negation,
   swizzles, partial masks and all three outputs. Ten shader mutants fail it.
-- `gpu_shadow_selftest.c` needs a programmable caster to shadow the same
+- `gpu_shadow_selftest.cpp` needs a programmable caster to shadow the same
   pixels as a fixed one. Two mutants of `shadow_vs11.vert` fail it.
 
 On `#test-play` (10,068,268-byte wasm) the heartbeat shows 20,118

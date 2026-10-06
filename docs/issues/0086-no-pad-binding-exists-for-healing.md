@@ -28,7 +28,7 @@ mask separately. C188, C189, and C192 were falsified and replaced by C225/C226.
 
 ## Resolution
 
-`src/native/xbox_defaults.c` now maps `TargetLock` row 10 to RB DirectInput
+`src/native/xbox_defaults.cpp` now maps `TargetLock` row 10 to RB DirectInput
 code `0x1a`, making the preset 22 assignments. In a live initialized boot-map
 run, `tools/x2ctl.py input` reported row 10 as `pad3:0x1a`; holding RB delivered
 raw code `0x1a` at `+1.000` and drove player 0's corresponding physical action

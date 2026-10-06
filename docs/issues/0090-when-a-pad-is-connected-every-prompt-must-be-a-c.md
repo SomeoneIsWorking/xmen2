@@ -42,7 +42,7 @@ Four independent paths all have to hold:
    was not an uncovered `$ACTION` caller. `CPopupDialog::create`
    (`FUN_005ebbc0`) replaced eight localized dialog assets with PC-only
    `igct.bnx` strings containing mouse and shortcut-key prose. The localized
-   assets already carry the controller-authored text. `dialog_prompts.c` now
+   assets already carry the controller-authored text. `dialog_prompts.cpp` now
    retains that asset text only for this exact localization call when a
    controller is present, while retaining the PC string on keyboard.
 
@@ -52,7 +52,7 @@ The direct caller census remains complete: localized `$ACTION` tokens enter
 through `FUN_004bd720 -> FUN_00619e30`, and `FUN_006281f0` has no third gameplay
 naming caller. The popup investigation additionally enumerated all eight
 hardcoded PC tutorial replacements in `FUN_005ebbc0`; they share the one scoped
-localization boundary now covered by `dialog_prompts.c`.
+localization boundary now covered by `dialog_prompts.cpp`.
 
 A natural, windowless `switching_hint` run ended with 7,259 of 7,259 prompt
 labels selecting pad bindings, 7,259 glyph names, zero original names and zero

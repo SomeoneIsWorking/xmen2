@@ -83,7 +83,7 @@ split above is the one to trust.
    than inside emitted code: `g_fsbase`/`g_gsbase` are copied into
    `cpu->fs_base` once per native-to-guest entry, not per FS-relative access.
    The cost is concentrated in the per-thread guest call stack
-   (`x86_guest_call_stack.c`: `x86_guest_call_top` is a further 44 samples) and
+   (`x86_guest_call_stack.cpp`: `x86_guest_call_top` is a further 44 samples) and
    the `guest_thread_*` bookkeeping, where push/pop/top each repeat the lookup.
    The root-cause fix is to thread the call-stack top through the engine's
    existing per-call state so one lookup serves a whole guest call, which works

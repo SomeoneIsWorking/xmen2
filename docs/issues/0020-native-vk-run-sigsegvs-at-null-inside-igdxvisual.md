@@ -25,7 +25,7 @@ manager at `this+0x53c` -- never runs. Those two fields stay zero, and the
 teardown dereferences `this+0x53c` unguarded.
 
 This is recorded as C121 with the field-by-field evidence. A field report was
-added to slot 7 (`report_fields` in `src/vulkan/igvk_slots_lifecycle.c`) that
+added to slot 7 (`report_fields` in `src/vulkan/igvk_slots_lifecycle.cpp`) that
 prints the twelve fields construction is supposed to produce; on a real run it
 shows `+0x534 = 0` and `+0x53c = 0` while everything the hand-written helper
 list does produce is non-zero. That report is the diagnosis, printed where it

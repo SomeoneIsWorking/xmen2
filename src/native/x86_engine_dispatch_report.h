@@ -12,10 +12,6 @@
 
 #include "jit_profile.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Issue #166: of the dispatches actually paid, how many a chaining backend
    would have removed. Silent unless jit.chain armed the census. */
 void x86_engine_report_chain_census(const X86EngineJitPool *jit,
@@ -52,9 +48,5 @@ void x86_engine_report_hot_blocks(const X86EngineJitPool *jit, const char *tag);
  */
 void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
                                        const char *tag);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

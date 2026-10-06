@@ -43,7 +43,7 @@ int fail(const char *what, std::size_t got) {
 
 } // namespace
 
-extern "C" void x86_diag_dump(void) { ++g_dumps; }
+void x86_diag_dump(void) { ++g_dumps; }
 
 int main() {
   lucent::set_sink([](lucent::Level, std::string_view line) {

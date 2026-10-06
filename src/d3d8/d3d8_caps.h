@@ -1,5 +1,5 @@
 /*
- * The adapter's capability block. See d3d8_caps.c for what the numbers mean
+ * The adapter's capability block. See d3d8_caps.cpp for what the numbers mean
  * and why declaring one wrong is worse than declaring it small.
  */
 #ifndef D3D8_CAPS_H

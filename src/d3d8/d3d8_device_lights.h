@@ -4,8 +4,8 @@
 /*
  * The three IDirect3DDevice8 light methods, for the device vtable.
  *
- * Declared rather than static because the vtable is built in d3d8_device.c and
- * these live beside the light diagnostics they feed.
+ * Declared rather than static because the vtable is built in d3d8_device.cpp
+ * and these live beside the light diagnostics they feed.
  */
 #include "d3d8_com.h"
 

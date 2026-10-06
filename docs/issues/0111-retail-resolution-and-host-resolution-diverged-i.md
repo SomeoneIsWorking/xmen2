@@ -20,7 +20,7 @@ one authority.
 ## Resolution
 
 Removed `registry_view`, its shipping-boundary test, and all ADVAPI coupling,
-restoring `src/native/advapi32.c` to its prior persistent retail behavior. Host
+restoring `src/native/advapi32.cpp` to its prior persistent retail behavior. Host
 window/swapchain dimensions remain presentation policy and must scale or
 compose the retail logical backbuffer externally; they must not rewrite the
 guest registry value. C255 records the rejected shared-authority design and

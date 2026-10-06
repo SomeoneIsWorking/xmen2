@@ -19,10 +19,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "x86rt.h"
 
 enum {
@@ -37,9 +33,5 @@ X2CampaignSnapshot *x2_campaign_snapshot_create(void);
 int x2_campaign_snapshot_capture(X2CampaignSnapshot *snapshot, const CPU *cpu);
 /* The guest address of the save object, 0 before a capture. */
 uint32_t x2_campaign_snapshot_address(const X2CampaignSnapshot *snapshot);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

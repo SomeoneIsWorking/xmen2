@@ -18,9 +18,9 @@ Every `libIG*.dll` is linked for `0x10000000`, and `pe_map` relocates all but
 one of them, while the dispatcher works in MAPPED addresses. So a table keyed
 on the linked address is wrong in both directions, and both were real:
 
-- `movie.c` registered `0x10002520` for libCriMovie's decoder-rendezvous
+- `movie.cpp` registered `0x10002520` for libCriMovie's decoder-rendezvous
   override, but libCriMovie maps at `0x25000000`, so the dispatcher compared
-  `0x25002520` and never matched. `reportbox.c`'s `0x10069c70` (libIGCore, at
+  `0x25002520` and never matched. `reportbox.cpp`'s `0x10069c70` (libIGCore, at
   `0x2f000000`) was dead the same way. Both were silently inert: a missing
   override means the runtime-translated retail body answers, and the run can
   look healthy.

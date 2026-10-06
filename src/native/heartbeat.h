@@ -40,7 +40,7 @@ int heartbeat_running(void);
 extern volatile sig_atomic_t x2_report_now;
 
 /* Everything a normal exit would print, callable from ordinary context.
-   Defined in x2native.c, which is what knows the full list. */
+   Defined in x2native.cpp, which is what knows the full list. */
 void x2_interrupt_reports(int killed);
 
 #endif /* X2_HEARTBEAT_H */

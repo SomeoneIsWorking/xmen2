@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-21
 tags: input,prompts,gameplay
-depends: src/native/dialog_prompts.c#x2_override_00629bf0, src/native/pad_glyphs.c, src/native/prompt_labels.c
+depends: src/native/dialog_prompts.cpp#x2_override_00629bf0, src/native/pad_glyphs.cpp, src/native/prompt_labels.cpp
 falsified_on: 2026-08-22
 ---
 
@@ -14,7 +14,7 @@ A connected controller makes all eight hardcoded PC tutorial popups retain their
 
 ## Evidence
 
-Windowless natural act0/tutorial/tutorial1 switching_hint run: Tutorial dialog text 1 controller asset, 0 PC override, 8 unrelated lookups; Xbox prompt rows 7259/7259 pad; docs/issues/0087 and tests/test_dialog_prompts.c record the trace and ABI checks
+Windowless natural act0/tutorial/tutorial1 switching_hint run: Tutorial dialog text 1 controller asset, 0 PC override, 8 unrelated lookups; Xbox prompt rows 7259/7259 pad; docs/issues/0087 and tests/test_dialog_prompts.cpp record the trace and ABI checks
 
 ## What would falsify it
 

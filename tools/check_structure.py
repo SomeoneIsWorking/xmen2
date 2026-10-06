@@ -22,28 +22,28 @@ DEFAULT_LIMIT = 1200
 # would have failed 26 files that nobody touched. Each entry records what it
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
-    "src/native/kernel32.c": 3087,            # was 3624; virtual memory -> kernel32_virtual.c
-    "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
-    "src/native/x2native.c": 2152,            # was 2329
-    "src/d3d8/d3d8_drawcall.c": 1650,         # was 1695; VS source -> d3d8_vs_draw.c
-    "src/d3d8/d3d8_device.c": 1633,           # bindings -> d3d8_device_bindings.c
-    "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
-    "src/gpu/gpu_draw.c": 1016,               # was 1123; uniforms -> gpu_vertex_uniforms.c
-    "src/d3d8/d3d8_report.c": 1433,           # was 1514; gamma -> d3d8_gamma_selftest.c
-    "src/native/threads.c": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.c
-    "src/gpu/gpu_device.c": 758,              # pass attachments -> gpu_pass_attachments.c
-    "src/d3d8/d3d8_resource.c": 1050,         # was 924
-    "src/native/dinput_pad.c": 378,           # sampler split into dinput_pad_sample.c
-    "src/native/win32_sdl.c": 1025,           # was 930
-    "src/native/conversation.c": 968,         # was 958
-    "src/native/dsound.c": 745,               # was 1097 before the mixer split
-    "src/gpu/gpu_selftest.c": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.c
-    "src/native/input_probe.c": 597,          # was 606
-    "src/native/dinput_device.c": 611,        # was 524
-    "src/native/advapi32.c": 710,             # was 599
-    "src/d3d8/d3d8_com.c": 620,               # was 609
-    "src/native/dinput8.c": 533,              # was 516
-    "src/native/heartbeat.c": 429,            # JIT snapshot policy stays in x86_engine.c
+    "src/native/kernel32.cpp": 3087,            # was 3624; virtual memory -> kernel32_virtual.cpp
+    "src/native/x86rt_native.cpp": 1865,        # checked memory probes extracted
+    "src/native/x2native.cpp": 2152,            # was 2329
+    "src/d3d8/d3d8_drawcall.cpp": 1650,         # was 1695; VS source -> d3d8_vs_draw.cpp
+    "src/d3d8/d3d8_device.cpp": 1633,           # bindings -> d3d8_device_bindings.cpp
+    "src/native/crt.cpp": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.cpp
+    "src/gpu/gpu_draw.cpp": 1016,               # was 1123; uniforms -> gpu_vertex_uniforms.cpp
+    "src/d3d8/d3d8_report.cpp": 1433,           # was 1514; gamma -> d3d8_gamma_selftest.cpp
+    "src/native/threads.cpp": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.cpp
+    "src/gpu/gpu_device.cpp": 758,              # pass attachments -> gpu_pass_attachments.cpp
+    "src/d3d8/d3d8_resource.cpp": 1050,         # was 924
+    "src/native/dinput_pad.cpp": 378,           # sampler split into dinput_pad_sample.cpp
+    "src/native/win32_sdl.cpp": 1025,           # was 930
+    "src/native/conversation.cpp": 968,         # was 958
+    "src/native/dsound.cpp": 745,               # was 1097 before the mixer split
+    "src/gpu/gpu_selftest.cpp": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.cpp
+    "src/native/input_probe.cpp": 597,          # was 606
+    "src/native/dinput_device.cpp": 611,        # was 524
+    "src/native/advapi32.cpp": 710,             # was 599
+    "src/d3d8/d3d8_com.cpp": 620,               # was 609
+    "src/native/dinput8.cpp": 533,              # was 516
+    "src/native/heartbeat.cpp": 429,            # JIT snapshot policy stays in x86_engine.cpp
 }
 
 
@@ -76,9 +76,9 @@ def source_counts(root: Path) -> dict[str, int]:
 def selftest() -> int:
     # Read the legacy limit rather than repeating it: a ratchet then moves
     # both the rule and its selftest, instead of failing the selftest.
-    legacy = LEGACY_LIMITS["src/native/kernel32.c"]
-    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.c": legacy}
-    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.c": legacy + 1}
+    legacy = LEGACY_LIMITS["src/native/kernel32.cpp"]
+    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.cpp": legacy}
+    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.cpp": legacy + 1}
     if violations(good):
         print("check_structure selftest: valid source was rejected", file=sys.stderr)
         return 1

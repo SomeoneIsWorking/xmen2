@@ -13,7 +13,7 @@ updated: 2026-08-27
 
 The autosave and the retail Load Game screen use two different catalogs.
 `x2_autosave_storage_publish` commits the transactional result as
-`autosave.save`; `src/save/save_catalog.c` includes that leaf, which is why the
+`autosave.save`; `src/save/save_catalog.cpp` includes that leaf, which is why the
 native Continue path can load it. The retail scanner at XMen2.exe `0x0055f2f0`
 never consults that catalog: it hardcodes `saveslot*.save`, parses the digit
 after the eight-character prefix as slot 0..9, and fills ten fixed 0xa8-byte

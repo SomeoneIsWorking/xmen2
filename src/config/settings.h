@@ -6,10 +6,6 @@
 #include "boot_mode.h"
 #include "hud_settings.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define X2_SETTINGS_PLAYERS 4u
 #define X2_SETTINGS_KEYBOARD_PROFILES 4u
 #define X2_SETTINGS_ROWS 42u
@@ -48,7 +44,7 @@ typedef struct {
   uint8_t dynamic_shadows;
   uint16_t shadow_resolution;
   /* Multiplier on every glyph the engine loads. 0 means AUTO: hold the
-     share of the screen the text has at 800x600. See ui_text_scale.c. */
+     share of the screen the text has at 800x600. See ui_text_scale.cpp. */
   float text_scale;
   X2BootMode boot_mode;
   /* Whether the on-screen touch pad and the mobile HUD placement it comes
@@ -82,9 +78,5 @@ int x2_settings_controller_player(const X2Settings *settings, const char *id);
 const char *x2_settings_player_controller(const X2Settings *settings,
                                           unsigned player);
 int x2_settings_player_keyboard(const X2Settings *settings, unsigned player);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-19
 tags: scripts,re
-depends: tools/script_commands.py, src/native/script_trace.c
+depends: tools/script_commands.py, src/native/script_trace.cpp
 ---
 
 ## Claim

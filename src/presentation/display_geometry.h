@@ -18,7 +18,7 @@
  * resolution ladder falls back to 16:9. Those are three policies over one
  * measurement.
  *
- * Window rects are NOT this measurement. src/native/win32_sdl.c answers
+ * Window rects are NOT this measurement. src/native/win32_sdl.cpp answers
  * GetWindowRect/GetClientRect for the desktop HWND in window coordinates --
  * points -- because the rects it returns for the game's own window come from
  * SDL_GetWindowSize in the same space, and a desktop rect in pixels beside a

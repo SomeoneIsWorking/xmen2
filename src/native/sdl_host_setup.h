@@ -28,7 +28,7 @@
  *
  * VIDEO, for a windowed run, starts here too and stays started: the display's
  * shape decides the width of the configured resolution, and that is published
- * to the game (display_mode_seed.c) before any window exists.
+ * to the game (display_mode_seed.cpp) before any window exists.
  */
 #ifndef X2_SDL_HOST_SETUP_H
 #define X2_SDL_HOST_SETUP_H

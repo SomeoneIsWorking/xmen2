@@ -48,7 +48,7 @@ Meanwhile the main thread is inside `FUN_10002910` (reached from
 ## The hypothesis, NOT yet confirmed
 
 This host runs one guest thread at a time under a global lock released only at
-Sleep and at waits (`src/native/threads.c` says so in its own header). The
+Sleep and at waits (`src/native/threads.cpp` says so in its own header). The
 decoder therefore does not run CONCURRENTLY with the main thread: it takes the
 lock as soon as the creator yields, runs its loop to the park, and only then
 does the main thread continue -- and by then the thing it waits for was
@@ -81,4 +81,4 @@ treated as diagnosed.
    reach gameplay.
 
 ### Resolution (2026-08-11)
-NOT the threading model. The rendezvous works: the cause was a stale thread-handle association (issue #50) -- kernel32 reuses handle numbers and threads.c kept the old one, so every ResumeThread aimed at a new decoder woke the previous movie's dead thread. With that fixed, six movies play through in sequence at ~50 presents/s and the run continues into the exe's own code. Three things were built while chasing this and all three are keepers: the multimedia timers are pumped from inside a blocking WAIT (a thread blocked there reaches no other pump point, so a wait for something a timer callback produces waited forever), the wait sleeps until the next timer is DUE rather than a flat second (which alone took the movie from 1.3 to 40 fps), and PulseEvent is implemented -- exactly, including the manual-reset case as a pulse GENERATION so it releases every thread waiting at that instant and no later one.
+NOT the threading model. The rendezvous works: the cause was a stale thread-handle association (issue #50) -- kernel32 reuses handle numbers and threads.cpp kept the old one, so every ResumeThread aimed at a new decoder woke the previous movie's dead thread. With that fixed, six movies play through in sequence at ~50 presents/s and the run continues into the exe's own code. Three things were built while chasing this and all three are keepers: the multimedia timers are pumped from inside a blocking WAIT (a thread blocked there reaches no other pump point, so a wait for something a timer callback produces waited forever), the wait sleeps until the next timer is DUE rather than a flat second (which alone took the movie from 1.3 to 40 fps), and PulseEvent is implemented -- exactly, including the manual-reset case as a pulse GENERATION so it releases every thread waiting at that instant and no later one.

@@ -13,7 +13,7 @@ The movie player's threads and the main thread rendezvous correctly under one gl
 
 ## Evidence
 
-18 guest threads created, 18 exited, 18 reaped across six movies played in sequence, ~50 presents/s sustained, and the run continues past the movies into XMen2.exe. The threading model is unchanged -- one guest thread runs at a time -- so the caveat in threads.c's header (a decoder cannot keep up with a main thread that never yields) was NOT what this was. Three supporting mechanisms were needed and are verified by the same run: timers pumped from inside a blocking wait, the wait's timeout taken from the next timer's due time (1.3 fps -> 40 fps), and PulseEvent with a pulse generation for the manual-reset case.
+18 guest threads created, 18 exited, 18 reaped across six movies played in sequence, ~50 presents/s sustained, and the run continues past the movies into XMen2.exe. The threading model is unchanged -- one guest thread runs at a time -- so the caveat in threads.cpp's header (a decoder cannot keep up with a main thread that never yields) was NOT what this was. Three supporting mechanisms were needed and are verified by the same run: timers pumped from inside a blocking wait, the wait's timeout taken from the next timer's due time (1.3 fps -> 40 fps), and PulseEvent with a pulse generation for the manual-reset case.
 
 ## What would falsify it
 

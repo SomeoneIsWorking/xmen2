@@ -7,7 +7,7 @@ created: 2026-08-22
 
 ## Instrument
 
-src/save/save_trace.c bounded retail save evidence collector + X2_SAVE_TRACE live /save report
+src/save/save_trace.cpp bounded retail save evidence collector + X2_SAVE_TRACE live /save report
 
 ## Validated by
 

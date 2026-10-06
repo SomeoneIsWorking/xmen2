@@ -4,7 +4,7 @@
 /*
  * The vertex stage's uniforms for one draw.
  *
- * Split from gpu_draw.c, which decides whether and how a draw is recorded:
+ * Split from gpu_draw.cpp, which decides whether and how a draw is recorded:
  * this owns the VertexState block's C layout, which must match
  * src/gpu/shaders/d3d8_vertex_stage.glsl field for field, and fills it from
  * the draw. A draw the GPU runs a VS 1.1 program for also gets that

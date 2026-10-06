@@ -89,7 +89,7 @@ what C161's own falsifier warns about.
 
 ## Resolution
 
-Option 2. `dinput8_hotplug.c` declares the routine (XMen2.exe FUN_00628e20)
+Option 2. `dinput8_hotplug.cpp` declares the routine (XMen2.exe FUN_00628e20)
 and its EnumDevices(GAMECTRL) call site (0x00628e57) as recovered metadata,
 maps both through the module's actual base, and admits the entry only when the
 game's own enumeration is observed returning to that site. A GAMECTRL

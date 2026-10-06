@@ -2,7 +2,7 @@
  * CAN THE CINEMATIC ON SCREEN BE SKIPPED, AND HAS A FINGER ASKED?
  *
  * A keyboard skips an authored cutscene with Escape: the cutscene player
- * (src/native/cutscene_player.c) sees the retail skip action go down and runs
+ * (src/native/cutscene_player.cpp) sees the retail skip action go down and runs
  * the owned sequence to its release. A phone has no Escape, so touch play
  * offers a Skip button -- and it must appear exactly while that route can
  * run, and pressing it must take exactly that route.
@@ -19,10 +19,6 @@
  */
 #ifndef X2_CUTSCENE_SKIP_H
 #define X2_CUTSCENE_SKIP_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* The cutscene player, once per input poll: can a skip run now? Withdrawing
    the offer also drops a request nobody took. */
@@ -48,9 +44,5 @@ X2CutsceneSkipCounts x2_cutscene_skip_counts(void);
 
 /* Testing: forget everything. */
 void x2_cutscene_skip_reset(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_CUTSCENE_SKIP_H */

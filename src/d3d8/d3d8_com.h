@@ -10,9 +10,9 @@
  * The split of concerns is deliberate and matches src/vulkan's:
  *
  *   d3d8_abi.h    what the interfaces ARE (slot order, argument counts)
- *   d3d8_com.c    the guest-ABI grubbiness -- vtables, this-pointers, who pops
- *   d3d8_*.c      one interface each, written in plain C values
- *   src/gpu       what actually draws, knowing nothing about the guest
+ *   d3d8_com.cpp    the guest-ABI grubbiness -- vtables, this-pointers, who
+ * pops d3d8_*.c      one interface each, written in plain C values src/gpu what
+ * actually draws, knowing nothing about the guest
  *
  * An interface method that is not implemented is the EXPECTED state, not an
  * error -- there are 97 on the device alone. What matters is that reaching one

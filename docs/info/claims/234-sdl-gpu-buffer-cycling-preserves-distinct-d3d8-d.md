@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: d3d8,gpu,characters
-depends: src/gpu/gpu_draw.c#upload_bytes, src/gpu/gpu_upload_selftest.c#gpu_upload_order_selftest, src/d3d8/d3d8_resource.c#buf_Unlock
+depends: src/gpu/gpu_draw.cpp#upload_bytes, src/gpu/gpu_upload_selftest.cpp#gpu_upload_order_selftest, src/d3d8/d3d8_resource.cpp#buf_Unlock
 ---
 
 ## Claim

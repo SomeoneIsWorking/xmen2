@@ -1,7 +1,7 @@
 /*
  * What the rest of the host may know about the Win32/SDL layer.
  *
- * win32_sdl.c backs the guest's single HWND with one SDL_Window. The renderer
+ * win32_sdl.cpp backs the guest's single HWND with one SDL_Window. The renderer
  * needs that window to put a swapchain on, and reaching into the file's static
  * would be the alternative -- so this is the one thing it exports.
  *
@@ -33,7 +33,7 @@ int win32_sdl_windows_hidden(void);
 
 /*
  * A modal dialog with buttons, on SDL -- the replacement for USER32's dialog
- * family, which this port does not implement (see the note in win32_sdl.c).
+ * family, which this port does not implement (see the note in win32_sdl.cpp).
  * `ids` are the values the guest's own dialog would have returned, and one of
  * them comes back. `fallback` is answered, and reported as this host's choice
  * rather than a user's, when there is no screen to show a modal on.

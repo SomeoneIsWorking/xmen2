@@ -73,10 +73,10 @@ So the empty controller table and the missing dinput8 are the same fact, one bra
 
 `dinput8.dll` is now a module this host answers for, which needed two things that were each independently fatal:
 
-* **`x86_native_export`** (`src/native/x86rt_native.c`) publishes an entry point that NOTHING statically imports. `x86_native_thunk` resolves by searching the mapped modules' import tables, which can never see a symbol the guest looks up by name at run time.
-* **`module_leaf`** in `kernel32.c`: `LoadLibraryA`/`GetModuleHandleA` now compare the FILE NAME. The game passes `C:\Windows\System32\dinput8.dll`, so a comparison against a bare module name never matched.
+* **`x86_native_export`** (`src/native/x86rt_native.cpp`) publishes an entry point that NOTHING statically imports. `x86_native_thunk` resolves by searching the mapped modules' import tables, which can never see a symbol the guest looks up by name at run time.
+* **`module_leaf`** in `kernel32.cpp`: `LoadLibraryA`/`GetModuleHandleA` now compare the FILE NAME. The game passes `C:\Windows\System32\dinput8.dll`, so a comparison against a bare module name never matched.
 
-`src/native/dinput8.c` implements `DirectInput8Create` and the `IDirectInput8` object -- QueryInterface/AddRef/Release/EnumDevices/GetDeviceStatus/RunControlPanel/Initialize. Four battery checks (`case_runtime_module`) cover the loader path in both directions, proved by mutation.
+`src/native/dinput8.cpp` implements `DirectInput8Create` and the `IDirectInput8` object -- QueryInterface/AddRef/Release/EnumDevices/GetDeviceStatus/RunControlPanel/Initialize. Four battery checks (`case_runtime_module`) cover the loader path in both directions, proved by mutation.
 
 ## Where the run stops NOW
 
@@ -94,12 +94,12 @@ Input is no longer disabled wholesale, and the game asks for devices by FIXED GU
 
 ## Resolved
 
-`src/native/dinput_device.c` implements `IDirectInputDevice8` for both, backed by SDL3, and the run now completes input initialisation. C138.
+`src/native/dinput_device.cpp` implements `IDirectInputDevice8` for both, backed by SDL3, and the run now completes input initialisation. C138.
 
 * `CreateDevice` recognises the two GUIDs by all sixteen bytes -- they differ only in the first dword, so a four-byte match would make every GUID in that family look like a keyboard.
 * **The state layout is not assumed.** `SetDataFormat` is handed the game's own `DIDATAFORMAT` and `dwDataSize` is read out of it, which is how the mouse turned out to be **20 bytes over 11 objects** -- `DIMOUSESTATE2`, with 8 buttons, not the 16-byte `DIMOUSESTATE` the name `c_dfDIMouse` implies. A hardcoded 16 would have written short and left four buttons as whatever was on the stack.
 * The keyboard maps SDL scancodes to `DIK_*` (PS/2 set 1) through an explicit table -- the two numberings are unrelated, so a key missing from that table is a key the game can never see.
-* `USER32!MapVirtualKeyA` was needed immediately after: the exe queries all 256 scancodes at init (`VSC_TO_VK` then `VK_TO_CHAR`) to build its key-name table. Implemented in `win32_sdl.c` for a **US layout**, which is a stated choice -- the game's own fixup of the result `0xb4` to an apostrophe assumes it.
+* `USER32!MapVirtualKeyA` was needed immediately after: the exe queries all 256 scancodes at init (`VSC_TO_VK` then `VK_TO_CHAR`) to build its key-name table. Implemented in `win32_sdl.cpp` for a **US layout**, which is a stated choice -- the game's own fixup of the result `0xb4` to an apostrophe assumes it.
 * Reading a device with no SDL video subsystem up says so once and is counted, because 256 zero bytes is also what a working keyboard nobody is touching returns.
 
 13 battery checks (`case_dinput`) drive the device through its own vtable, and the three that matter are refusals: a state read before `Acquire`, an `Acquire` before `SetDataFormat`, and a `cbData` the caller's own format did not declare. Dropping two of them fails exactly two checks.
@@ -109,6 +109,6 @@ Input is no longer disabled wholesale, and the game asks for devices by FIXED GU
 Past input entirely. The next historical refusal was at guest address
 0x0057b02c and was not an input defect.
 
-Joysticks are a SEPARATE path through DirectInput 7 (`src/native/dinput.c`): `igWin32ControllerManager::initializeControllers` enumerates class 4 with `createControllers` (0x100052a0), which reads `guidProduct` at `+0x14` of the `DIDEVICEINSTANCE` and then drives the same device interface. `igWin32Window::enumerateMouseAndKeyboard` (0x10005660) only sets a presence flag and returns DIENUM_STOP -- it never reads the instance.
+Joysticks are a SEPARATE path through DirectInput 7 (`src/native/dinput.cpp`): `igWin32ControllerManager::initializeControllers` enumerates class 4 with `createControllers` (0x100052a0), which reads `guidProduct` at `+0x14` of the `DIDEVICEINSTANCE` and then drives the same device interface. `igWin32Window::enumerateMouseAndKeyboard` (0x10005660) only sets a presence flag and returns DIENUM_STOP -- it never reads the instance.
 
 Every unimplemented device method aborts by NAME, so the engine will keep saying which one it needs.

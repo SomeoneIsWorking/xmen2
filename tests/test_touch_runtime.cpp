@@ -36,7 +36,6 @@
 
 #include <lucent/cvar.hpp>
 
-extern "C" {
 #include "cutscene_skip.h"
 #include "dinput_pad.h"
 #include "dinput_pad_virtual.h"
@@ -49,7 +48,6 @@ extern "C" {
 #include "touch_runtime.h"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
-}
 
 #include "touch_controls.h"
 
@@ -58,7 +56,7 @@ extern "C" {
  * stored touch_controls value or a stored controller reservation would decide
  * what it observes -- the reservation especially, since the player-one claim
  * below is exactly what it is checking. */
-extern "C" const char *x2_save_dir(void) { return X2_TEST_TOUCH_RUNTIME_ROOT; }
+const char *x2_save_dir(void) { return X2_TEST_TOUCH_RUNTIME_ROOT; }
 
 namespace {
 
@@ -160,7 +158,7 @@ bool button_down(SDL_Gamepad *pad, const char *name) {
 constexpr int32_t kAxisLo = -32768;
 constexpr int32_t kAxisHi = 32767;
 /* DIJOYSTATE2 puts the button array at +48, one byte each, 0x80 for down.
-   BTN[] in dinput_pad.c fixes the order: 3 is Y, which is what Jump
+   BTN[] in dinput_pad.cpp fixes the order: 3 is Y, which is what Jump
    publishes. */
 constexpr uint32_t kButtonsOffset = 48;
 constexpr int kDirectInputButtonY = 3;

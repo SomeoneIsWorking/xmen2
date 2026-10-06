@@ -9,13 +9,13 @@
 struct x2_keycap_art;
 
 /*
- * prompt_labels.c turns the retail "[NAME]" into
+ * prompt_labels.cpp turns the retail "[NAME]" into
  *
  *   left edge, NAME, right edge
  *
  * The edges are private codepoints that carry layout only -- the margin either
  * side of the name -- so the game's own text layout reserves the key's width
- * and spaces the words after it. prompt_glyph_draw.c then draws the whole key
+ * and spaces the words after it. prompt_glyph_draw.cpp then draws the whole key
  * over that span from shared port-assets art: the blank cap stretched to it
  * and the name lettered in the shared key typeface (keycap_labels.h). The
  * game's letters inside the span draw nothing.

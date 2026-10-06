@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: text,glyphs,fonts,renderer,overrides
-depends: src/native/text_caller_probe.c#x2_probe_005972a0, docs/RE/text.md
+depends: src/native/text_caller_probe.cpp#x2_probe_005972a0, docs/RE/text.md
 ---
 
 ## Claim

@@ -36,7 +36,7 @@ the legal splash, the intro movies, the main menu, the load and save screens
 and every cutscene, every finger event was counted into
 `ignored_overlay_hidden` and thrown away.
 
-It had no second route either, and deliberately so: `x2native.c` sets
+It had no second route either, and deliberately so: `x2native.cpp` sets
 `SDL_HINT_TOUCH_MOUSE_EVENTS=0` before SDL creates its event sources, so that
 an action-pad tap cannot also reach the retail world-click handler. Correct
 for gameplay, and it meant a tap outside gameplay produced nothing at all.

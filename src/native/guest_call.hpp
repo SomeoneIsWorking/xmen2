@@ -10,10 +10,8 @@
  * caller writes the retail signature and nothing else.
  */
 
-extern "C" {
 #include "guest_heap.h"
 #include "x86rt.h"
-}
 
 #include "guest_memory.h"
 #include "x86rt_native.h"

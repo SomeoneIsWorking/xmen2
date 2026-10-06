@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: pc,native,macos,arm64,memory,kernel32
-depends: src/native/guest_memory.c#apply_host_protection, src/native/x2native.c#case_guest_page_granularity
+depends: src/native/guest_memory.cpp#apply_host_protection, src/native/x2native.cpp#case_guest_page_granularity
 ---
 
 ## Claim

@@ -82,7 +82,7 @@ level, alongside the PC `x2f_hud` for comparison, and the four PC
 in the atlas.
 
 **The historical mechanism.** `X2_ASSETS=<dir>` redirects any file open whose
-relative path exists under `<dir>` (`src/native/kernel32.c`). It is general on
+relative path exists under `<dir>` (`src/native/kernel32.cpp`). It is general on
 purpose -- a texture pack, a translation or a debugging swap all want the same
 thing, and a special case for four files would have to be replaced by this the
 first time anyone wanted one of those. The install is never written and never
@@ -502,9 +502,9 @@ renderer by making `GREENLAND` render as `G`). The delivery was:
    SVGs and builder, and the launcher formerly cached the derived pack. It now
    prepares only the pause-menu asset pack; prompt generation belongs to
    `tools/render_prompt_glyphs.py` and the native atlas.
-3. `src/native/pad_glyphs.c` overrides `FUN_006281f0` at its measured
+3. `src/native/pad_glyphs.cpp` overrides `FUN_006281f0` at its measured
    `__thiscall`, `RET 0x8` contract. It maps the physical DirectInput codes
-   already established by `dinput_pad.c`: buttons `0x15..0x1c`, Z+/Z- (`5/6`)
+   already established by `dinput_pad.cpp`: buttons `0x15..0x1c`, Z+/Z- (`5/6`)
    to LT/RT, and POV `0x11..0x14` to d-pad. Back/Start follow the game's button
    order, not the font's order.
 4. The hook fires only for the gamepad slot named by `devkind 3..0xc` when SDL
@@ -515,7 +515,7 @@ renderer by making `GREENLAND` render as `G`). The delivery was:
 
 The selection hook remains current. Pixel delivery does not: prompt quads now
 leave the game's text pipeline at its evidenced batch boundary and are drawn by
-the native GPU atlas. `tests/test_pad_glyphs.c` still exercises the shipping
+the native GPU atlas. `tests/test_pad_glyphs.cpp` still exercises the shipping
 selection wrapper; font-pack loading is no longer part of the contract.
 
 The action-assignment prerequisite is also closed. A fresh profile installs the
@@ -553,7 +553,7 @@ the shipped tutorial tokens `$POWER`, `$GUARD`, `$MOVE`, `$ATTACK`, `$SMASH`,
 This corrects the old conclusion that another label caller was missing. The
 natural gameplay follow-up on 2026-08-21 closed #87 and #90: the remaining
 keyboard wording came from `CPopupDialog::create` replacing eight localized
-dialog assets with PC-only `igct.bnx` strings. `dialog_prompts.c` scopes the
+dialog assets with PC-only `igct.bnx` strings. `dialog_prompts.cpp` scopes the
 shared localization lookup to that exact call and, for the player's active
 assigned controller source,
 asks the already-loaded dialog parser for its own controller-authored `text`.
@@ -566,7 +566,7 @@ and A glyphs with no `[LEFT CLICK]` or `[???]`; shutdown measured 7,259/7,259
 pad labels, zero original names, one controller asset, zero PC overrides and
 eight unrelated localization calls. The scoped wrapper's mapped addresses,
 parser ABI, return value, stack effect and live controller/no-controller choice
-are independently covered by `tests/test_dialog_prompts.c`.
+are independently covered by `tests/test_dialog_prompts.cpp`.
 
 The `FUN_006294b0` override added alongside this note is correct for the
 path it covers (a row with a pad binding names it, whatever slot it sits in,

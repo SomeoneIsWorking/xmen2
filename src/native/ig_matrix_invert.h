@@ -18,10 +18,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef enum IgInvertVerdict {
   kIgInvertUndecided = 0, /* the guest body must run */
   kIgInvertSingular,      /* |det| < FLT_MIN: `out` untouched */
@@ -41,9 +37,5 @@ enum {
    `compare_codes` is set unless the verdict is kIgInvertUndecided. */
 IgInvertVerdict ig_matrix44_invert(float out[16], const float m[16],
                                    uint16_t *compare_codes);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_IG_MATRIX_INVERT_H */

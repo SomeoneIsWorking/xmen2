@@ -1,8 +1,6 @@
 #include "touch_runtime.h"
 
-extern "C" {
 #include "../native/guest_clock.h"
-}
 #include "gameplay_control.h"
 
 #include "../config/settings.h"

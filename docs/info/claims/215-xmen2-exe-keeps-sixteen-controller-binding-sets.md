@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-18
 tags: input,binding
-depends: src/native/input_bindings.c, src/native/xbox_defaults.c
+depends: src/native/input_bindings.cpp, src/native/xbox_defaults.cpp
 ---
 
 ## Claim

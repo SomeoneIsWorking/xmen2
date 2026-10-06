@@ -26,10 +26,6 @@
 #ifndef X2_GAMEPLAY_CONTROL_H
 #define X2_GAMEPLAY_CONTROL_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* How long a HUD heartbeat stands for. Generous next to a frame at 30 Hz, so
    an uneven frame is not read as a menu; short enough that opening one is
    answered within a blink. */
@@ -63,9 +59,5 @@ int x2_gameplay_control_active(double now);
 /* Testing and the shutdown report: how many times each answer was given. */
 void x2_gameplay_control_reset(void);
 unsigned long x2_gameplay_control_answers(int state);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

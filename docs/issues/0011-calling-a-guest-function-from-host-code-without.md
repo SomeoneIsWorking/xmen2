@@ -24,7 +24,7 @@ bytes per call until it left the mapped stack.
 
 ## Fix
 
-`x86_guest_call(C, target)` in src/native/x86rt_native.c pushes the return
+`x86_guest_call(C, target)` in src/native/x86rt_native.cpp pushes the return
 address the body will pop. Host code that enters guest code uses it; the
 convention now lives in one place instead of being re-derived per call site.
 

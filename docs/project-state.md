@@ -164,7 +164,7 @@ faulted after `igArenaMemoryPool` called
 `igPthreadSemaphore::obtainResource` with an invalid `0xffffffec` semaphore
 field. That apparent startup fault is now resolved: `libIGCore`'s
 retained registry-backed `igFile` setup has no Android value, so opening
-`sounds/badaudio.wav` returned null. `engine_file_path.c` super-calls that body
+`sounds/badaudio.wav` returned null. `engine_file_path.cpp` super-calls that body
 and, at its live allocator seam, passes the selected install through the
 retained setter as virtual `C:\\`. The generic case-insensitive resolver now
 begins below that validated install root because the Android app cannot
@@ -245,7 +245,7 @@ route that arms the hot-guest-entry-point probe on a released build
 is host-bound, not GPU- or compositor-bound. Host uploads were 25.4 ms/frame of
 which 22.9 ms was submission: each of ~34 uploads per frame recorded its own
 command buffer and submitted it, against only ~550 KB of actual data. Batching
-the frame's copies into one command buffer (`src/gpu/gpu_upload_batch.c`) cut
+the frame's copies into one command buffer (`src/gpu/gpu_upload_batch.cpp`) cut
 host upload to 1.6 ms/frame, host draw to 8.6 ms/frame and the swapchain wait to
 1.5 ms/frame, and the frame to 81.2 ms. The GPU layer is now ~10 ms of that
 frame; the remaining ~70 ms is the D3D8 import boundary and guest execution --
@@ -260,7 +260,7 @@ so a buffer uploaded twice in a frame paid for two. Measured on the Dead Zone
 map: 308,362 uploads had asked the driver for 57,856 transfer buffers, about
 31 new GPU allocations a frame for roughly 550 KB of data, and `perf` put
 35.6% of all cycles in the driver's virtual-address allocator
-(`amdgpu_vamgr_find_va`) beneath `gpu_upload_stage`. `src/gpu/gpu_staging_ring.c`
+(`amdgpu_vamgr_find_va`) beneath `gpu_upload_stage`. `src/gpu/gpu_staging_ring.cpp`
 writes every upload at its own offset in a shared page, which SDL states
 needs no cycling, and cycles a page once a frame at the batch submit. Same map,
 same route: frame wall 88.4 -> 49.6 ms, p50 82.0 -> 48.6 ms, host upload 85.04
@@ -325,7 +325,7 @@ Issue #140 fixed four JIT integration defects: translated blocks ran through
 host interception points, a JITted thread never yielded the guest lock, the
 guest-call stack was shared across threads, and the native-override hand-back
 depended on a fixed-depth shadow frame. The current intrusive per-thread stack
-has no separate call-context copy or depth cap; `tests/test_jit_intercept.c`
+has no separate call-context copy or depth cap; `tests/test_jit_intercept.cpp`
 locks the override hand-back against deep nesting. The JIT reaches the title
 screen and plays the intro reel through native FFmpeg. The native BehavEd
 context/scheduler and title timed-event
@@ -414,10 +414,10 @@ vitals draw (`0x005a3320`), inventory draw (`0x005a5170`), and portrait draw
 (`0x005a1ab0`). Within these scoped boundaries, 2D sprite submissions
 (`0x0059a140`), 2D text submissions (`0x005f11b0`), and 3D scene node
 matrices (`0x00570970`) are transformed into the mobile viewport layout
-(`src/presentation/hud_layout.c`), relocating vitals and potions to the top-left
+(`src/presentation/hud_layout.cpp`), relocating vitals and potions to the top-left
 and character portraits to the top-right while moving the D-pad cross offscreen.
 Single-player portrait positioning is natively owned by
-`src/native/hud_portrait_position.c` (reproducing `0x005a1650`), verified against
+`src/native/hud_portrait_position.cpp` (reproducing `0x005a1650`), verified against
 the guest body under `hud.verify`. Output-pixel portrait bounds are published
 to touch controls (`set_portraits`), and direct portrait tapping routes through
 Win32 mouse translation to the transformed `PORTRAIT_CENTERS` (`0x00a0a0cc`),
@@ -535,7 +535,7 @@ with measured reductions (C207 and C233).
 Issue #141 identified per-thunk unwinding of `x86p_jit_engine_run` as a
 structural crossing cost. x86port `d5d3b00` added an inline between-blocks
 dispatch hook, and xmen2 now services import thunks and override bodies without
-unwinding the JIT slice (`x86_engine_dispatch.c`, CVar
+unwinding the JIT slice (`x86_engine_dispatch.cpp`, CVar
 `jit.inline_dispatch`, default on). On the same driven in-game input path,
 host-import share of wall time fell from roughly 62% to 18% and frames rendered
 per fixed wall-time window rose roughly 15%. Later targeted unpaced sessions
@@ -659,7 +659,7 @@ Attributing translated-code samples to guest addresses then named one
 function pair as ~38% of them: libIGSg.dll's bounding-box frustum test, the
 clip-space box corners (`0x10047570`, ~250 straight-line x87 instructions)
 and their clip-code classification (`0x100478e0`). Both are native overrides
-now (`src/native/box_cull.{c,h}`, `box_cull_override.c`), computed in `x87_real`
+now (`src/native/box_cull.{c,h}`, `box_cull_override.cpp`), computed in `x87_real`
 in the guest's own operation order and 32-bit spills, and answered natively
 at the guest's control word with room on the x87 stack. `x87_real` is `long
 double` on an x87 host, where the answer is the guest's bits, and `double` on
@@ -679,7 +679,7 @@ an extent computed min - max aborted it at the first box.
 libIGMath's SSE skinning loops (0x10022df0 weighted blend, 0x10022e80 one
 bone per vertex) were ~11.6% of JIT samples, the hottest guest code on the
 route. They run natively in the guest's per-lane order with contraction off
-(`src/native/skin.{c,h}`, `skin_override.c`) at 0.9%; `math.skin_verify`
+(`src/native/skin.{c,h}`, `skin_override.cpp`) at 0.9%; `math.skin_verify`
 matched 65,536 calls against the guest body and aborted at the first vertex
 of a row-reordered build. Same binary, `math.skin` on against off: unpaced
 presents/s 98.0 and 99.6 against 91.4 to 94.8.
@@ -693,7 +693,7 @@ it calls, ~3.1% of JIT samples, runs natively in their x87 order and float
 spills (`src/native/ig_matrix_invert.{c,h}`) at 0.4%. `math.invert_verify`
 matched 262,144 inverts against the guest body, the igResult, registers and
 x87 status included.
-The guest heap (`src/native/guest_heap.c`), a first-fit scan from the arena's
+The guest heap (`src/native/guest_heap.cpp`), a first-fit scan from the arena's
 base on every malloc and a whole-arena coalescing walk on every free, was then
 3.5% of the process's samples on the same route: the game's operator new
 reaches it. It keeps segregated free lists with boundary tags now, so both are
@@ -722,7 +722,7 @@ loading frame every 200 ms; `tools/jit_map_profile.py --time` ranks it.
 
 Two host costs showed in the boot profile. Import binding found each export
 with a linear `strcmp` walk (7.3% of boot in `strcmp`, 3.2% in
-`pe_export_rva`). `src/native/pe_export_search.c` binary-searches the sorted
+`pe_export_rva`). `src/native/pe_export_search.cpp` binary-searches the sorted
 name table instead, and together the two now take under 0.3%. jit-common
 scanned every block-table slot on each invalidation, and 461 of them dropped
 one block over a boot and load (5-7% of boot). Its region filter (`b93421a`)
@@ -878,8 +878,8 @@ subsystem counters, accepts ordered input, records it, and captures the final
 composited frame at the render boundary. Refusals distinguish missing mappings,
 missing frames, and absent guest polls.
 
-Evidence: `tools/x2ctl.py`, `src/native/live_session.c`, and
-`src/input/input_record.c` own the shipping path; C260 proves a screenshot
+Evidence: `tools/x2ctl.py`, `src/native/live_session.cpp`, and
+`src/input/input_record.cpp` own the shipping path; C260 proves a screenshot
 completes during a presenting run with no input polls, and issue #115 records
 the render-boundary root cause. The controls include deliberately differing
 input/frame cases rather than only uniform output.
@@ -888,7 +888,7 @@ input/frame cases rather than only uniform output.
 
 Observed capability: the on-screen pad and the mobile HUD placement are decided
 by the device the player is touching, never by the platform the binary was
-built for. `src/input/touch_source.c` classifies each host event into touch /
+built for. `src/input/touch_source.cpp` classifies each host event into touch /
 not-touch — ignoring SDL's `SDL_TOUCH_MOUSEID` synthetic pointer, treating a
 resting stick below half of SDL's signed range as no answer, and ignoring every
 other device kind rather than counting it as not-touch — and
@@ -1104,8 +1104,8 @@ now serve every diagnostic, and "the game read a button N time(s)" means the
 game. `tests/test_touch_runtime` covers both, and the probe check was shown to
 fail (`buttons bitmap 0`) when pointed at the counted read.
 
-The pad sampler moved out of the inventory: `dinput_pad.c` (397 lines) owns
-when a device exists, `dinput_pad_sample.c` owns what the guest reads out of
+The pad sampler moved out of the inventory: `dinput_pad.cpp` (397 lines) owns
+when a device exists, `dinput_pad_sample.cpp` owns what the guest reads out of
 one, and they meet at `dinput_pad_handle`, which distinguishes an empty slot
 from a device SDL gave no handle for — two different defects that used to
 return the same "not pressed" silently.
@@ -1215,7 +1215,7 @@ its own worker in the browser, so one call never returned and streamed about
 — the stall it reported became permanent because it reported it (issue #155).
 The second was path resolution: every guest open enumerated every directory on
 its path, once per component, and in WASMFS each enumeration is a cross-thread
-round trip, so one `fopen` cost 23.3 ms (issue #156). `src/native/host_dir_cache.c`
+round trip, so one `fopen` cost 23.3 ms (issue #156). `src/native/host_dir_cache.cpp`
 keeps one listing per directory with an explicit invalidation contract on every
 creating, removing and renaming site. Re-measured on the same route with the
 same page command line: **console output fell from 117,318 lines in 20 s to
@@ -1243,14 +1243,14 @@ when the access straddles a page), the base add, and a direct wasm load — with
 the sparse mode and the desktop path untouched; `test_memory_perms` (23 checks)
 and `test_wasm_perms` (9, every one through `x86p_jit_engine_run`, so the
 emitted guard is what answers) fail when the guard or its second page load is
-deleted. `src/native/guest_memory.c` is now the single owner for every host and
+deleted. `src/native/guest_memory.cpp` is now the single owner for every host and
 `guest_memory_sparse.c` is gone: on a host with no VM it holds one `calloc`ed
 window over the packed layout in the new `src/native/guest_layout.h` — one
 authority for the image, the relocated modules, the guest reservations, the
 runtime heap and the file-view arena, which had been chosen separately and
 overlapped, the module scan running through both the reservation and view
 arenas — and projects the Win32 page table it already kept into the permission
-bytes x86port reads. `tests/test_guest_memory_window.c` proves that owner on the
+bytes x86port reads. `tests/test_guest_memory_window.cpp` proves that owner on the
 desktop with `X2_GUEST_ARENA_WINDOW=1` (43 checks, including that a released and
 remapped page reads zero rather than what the previous mapping left, and that a
 decommit and a recommit each reach the execution owner). Re-measured on the Dead
@@ -1314,7 +1314,7 @@ on both the import and the JIT fast path, and GetTickCount, each read
 CLOCK_MONOTONIC privately and so ignored the idle skew an unbounded run
 applies; QPC also pumped the multimedia timers, which read the clock a second
 time (issue #163). All three now take one reading from the owner and pass that
-instant to the pump; `tests/test_guest_clock.c` fails on a skew-blind clock
+instant to the pump; `tests/test_guest_clock.cpp` fails on a skew-blind clock
 with "the five-second skip moved the counter by 110 ns". Its browser effect is
 measured and small: `_emscripten_get_now` 4.19% to 3.88%, so the pump's second
 reading was a minority of the clock cost and the rest is the guest's own call
@@ -1324,7 +1324,7 @@ Most of that guest call rate was not the guest's. Every host crossing stamps
 the thread's last crossing for the wedge reports, and the stamp's "coarse"
 clock was a full `performance.now()` in the browser, which has no
 `CLOCK_MONOTONIC_COARSE`: 75% of the worker's clock samples. The stamp now
-reuses the last precise reading any thread took (`guest_clock.c`), and on
+reuses the last precise reading any thread took (`guest_clock.cpp`), and on
 the same route `_emscripten_get_now` fell from 5.84% to 1.59% of the guest
 worker, with JS glue from 15.9% to 10.5%.
 
@@ -1680,21 +1680,21 @@ at the retail "Loading..." prompt and later one phase further on, with 99% of
 every interval inside `KERNEL32!Sleep` (issue #158). The cause was this port's
 scheduler, not the title: `scheduler_has_waiter()` counted any thread parked in
 a condition wait as a thread the guest lock could be handed to, and the
-hand-off promise in `threads_yield.c` then waits until somebody else has taken
+hand-off promise in `threads_yield.cpp` then waits until somebody else has taken
 a turn. XMen2.exe's gamepad-enumeration loop sleeps 83.3 ms an iteration
 through `igPthreadThread::internalSleep`, and a thread sleeping out a deadline
 cannot take a turn, so every quantum yield waited out that deadline and the
-whole product advanced at the sleeper's 12 Hz. `src/native/threads_ready.c` now
+whole product advanced at the sleeper's 12 Hz. `src/native/threads_ready.cpp` now
 owns the rule: a condition waiter is a candidate when a broadcast has reached
 it or its deadline has passed, never merely because it is parked, and the
 broadcast path issue #149 depends on is preserved by marking waiters ready when
-they are signalled (`tests/test_threads_ready.c`, 15 checks). Measured on the
+they are signalled (`tests/test_threads_ready.cpp`, 15 checks). Measured on the
 same Zen retail route: **0 presents in six minutes became 2,969 at a sustained
 50 per 5 s, draws per 5 s went from about 40 to about 12,000, and the longest
 lock hand-off fell from 398 ms to 2 ms.** Two instruments were needed to get
 there and both stay: `KERNEL32!Sleep` was not counted anywhere, so the
 heartbeat's wait line read "+0" through a stall that was almost entirely
-Sleep -- it now lives in `kernel32_wait.c` with the other blocking waits and
+Sleep -- it now lives in `kernel32_wait.cpp` with the other blocking waits and
 feeds the same counters -- and a bounded census beside them names the guest
 call sites that called it. The gameplay test route is unaffected by the fix
 (it runs one guest thread, so it never parked) and still measures about 9.8
@@ -1720,7 +1720,7 @@ an explicit asset-only release under `build/release/web`.
 Two mechanisms recorded here have since been root-caused and fixed: the
 wait-bound stall that spent 178-361 ms per `WaitForSingleObject`/`SuspendThread`
 was the guest-lock hand-off starving woken waiters under Emscripten (issue
-#149, fixed in `src/native/threads_yield.c`), and the args-run plateau at the
+#149, fixed in `src/native/threads_yield.cpp`), and the args-run plateau at the
 retail intro was the web entry point's `argc == 2` route test dropping the
 gameplay-test request (issue #151, fixed in `src/web/web_request.cpp`). A
 packaged browser run of either route now advances scenes/draws/presents
@@ -1873,7 +1873,7 @@ cleared, the draw dump above named the real cause.
   D3DFVF_XYZRHW (the pretransformed branch, `vs.pretransformed`), never
   D3DFVF_XYZ + lighting (`vs.mvp`, `vs.world`, the material/light fields) --
   a real, narrower coverage gap. A new `gpu_lit_mvp_selftest()`
-  (`src/gpu/gpu_selftest.c`, wired into the `--vk-selftest` battery) draws
+  (`src/gpu/gpu_selftest.cpp`, wired into the `--vk-selftest` battery) draws
   through exactly that branch with an identity MVP/world and a known material
   emissive colour: it PASSES natively, confirming it is a valid discriminator,
   but its in-browser result is not yet obtained -- the WebLua diagnostic route
@@ -1903,7 +1903,7 @@ cleared, the draw dump above named the real cause.
   run's hot-entry-point probe exposed -- `WaitForSingleObject` 178 ms/call and
   `SuspendThread` 361 ms/call while guest bodies cost 4.8 ms -- was the
   guest-lock hand-off re-winning its own `sched_yield()` on an Emscripten
-  worker (issue #149); with the `threads_yield.c` promise in the packaged
+  worker (issue #149); with the `threads_yield.cpp` promise in the packaged
   build the same route fires winmm at 60/s, reports `worst oversleep 118 ms`
   and hand-offs waiting at most 15 ms, and advances to 396 scenes / 395
   presents with no abort. The heartbeat now prints how each park ended
@@ -2015,7 +2015,7 @@ machine: one hosts through Play Online → Host, the other's Server Browser list
 it by the game's own broadcast query, joins, and both control their own heroes
 in the same level. A client quitting is shown on the host as the game's
 "Player(s) have been dropped from the game", and the host continues. The Peer
-login is answered locally (`lan_login.c`), `gethostbyname` answers as Windows
+login is answered locally (`lan_login.cpp`), `gethostbyname` answers as Windows
 does (`winsock_resolve`, `test_winsock_posix`), adapter-bound datagram sockets
 receive broadcasts, and the co-op participation policy maps seats to game
 players so it leaves network players alone (`test_player_participation_policy`).

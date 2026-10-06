@@ -10,7 +10,7 @@ updated: 2026-08-06
 
 ## Symptom
 
-`x2native --d3d8 --run` aborts in `crt.c`:
+`x2native --d3d8 --run` aborts in `crt.cpp`:
 
     crt: more than 16 live setjmp buffers. Refusing rather than dropping one.
 
@@ -39,4 +39,4 @@ Running the discriminator against the real corpus rather than against the case b
 
 ## Fixed in
 
-`src/native/crt.c` (reclamation, growth, the table dump), `src/native/guest_heap.c` (`guest_heap_addr_is_live`), `src/native/x2native.c` (`case_setjmp_table`, 6 checks). C136.
+`src/native/crt.cpp` (reclamation, growth, the table dump), `src/native/guest_heap.cpp` (`guest_heap_addr_is_live`), `src/native/x2native.cpp` (`case_setjmp_table`, 6 checks). C136.

@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-28
 tags: rendering,ui,resolution
-depends: src/native/dialog_selection_scale.c#x2_dialog_selection_transform, src/native/dialog_selection_scale_policy.c#x2_dialog_selection_scale, src/native/dialog_selection_scale_policy.c#x2_dialog_selection_offset_correction
+depends: src/native/dialog_selection_scale.cpp#x2_dialog_selection_transform, src/native/dialog_selection_scale_policy.cpp#x2_dialog_selection_scale, src/native/dialog_selection_scale_policy.cpp#x2_dialog_selection_offset_correction
 ---
 
 ## Claim

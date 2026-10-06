@@ -22,10 +22,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Map the main thread's TEB at its fixed low address, give it the SEH
    sentinel and its static TLS, and return its base for FS; 0, having said
    why, when it cannot. Call after every image is registered. */
@@ -43,9 +39,5 @@ int guest_teb_tls_attach(uint32_t tib);
 
 /* Return what guest_teb_tls_attach gave `tib`; safe on a TEB that has none. */
 void guest_teb_tls_detach(uint32_t tib);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_GUEST_TEB_H */

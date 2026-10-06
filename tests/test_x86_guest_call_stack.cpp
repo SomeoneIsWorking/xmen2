@@ -1,0 +1,150 @@
+/*
+ * The title's live guest-call stack is per-thread (issue #140): a
+ * shared one had one guest thread reading another's return_to and running past
+ * its own 0xDEADBEEF entry sentinel. These check the single-thread contract and
+ * that two threads keep independent stacks.
+ */
+#include "x86_guest_call_stack.h"
+
+#include "platform_threads.h"
+#include <assert.h>
+#include <stdio.h>
+
+static int checks;
+#define CHECK(c)                                                               \
+  do {                                                                         \
+    assert(c);                                                                 \
+    checks++;                                                                  \
+  } while (0)
+
+static void single_thread_contract(void) {
+  X86GuestCallFrame first, second, third;
+  struct X86pCpu *first_cpu = (struct X86pCpu *)(uintptr_t)0x100u;
+  CHECK(x86_guest_call_depth() == 0);
+  CHECK(x86_guest_call_top() == NULL);
+
+  /* Whether a frame belongs to the CPU being dispatched is checked where the
+     frame is consumed (x86_engine_dispatch.cpp), not here: the run's frame now
+     arrives as x86port's per-run pointer rather than being looked up. */
+  x86_guest_call_push(&first, first_cpu, 0x1000u, 0xDEADBEEFu, 0x200000u);
+  x86_guest_call_push(&second, first_cpu, 0x2000u, 0x1005u, 0x1ff000u);
+  CHECK(x86_guest_call_depth() == 2);
+  CHECK(x86_guest_call_top()->entry == 0x2000u);
+  CHECK(x86_guest_call_top()->return_to == 0x1005u);
+  CHECK(x86_guest_call_top()->previous == &first);
+
+  /* A longjmp unwinds the nested host frame; restore takes the top back to the
+     surviving frame without retaining a pointer to dead stack storage. */
+  x86_guest_call_push(&third, NULL, 0x3000u, 0x2005u, 0x1fe000u);
+  CHECK(x86_guest_call_depth() == 3);
+  x86_guest_call_restore(&second);
+  CHECK(x86_guest_call_depth() == 2);
+  CHECK(x86_guest_call_top()->entry == 0x2000u);
+
+  x86_guest_call_pop(&second);
+  x86_guest_call_pop(&first);
+  CHECK(x86_guest_call_depth() == 0);
+  CHECK(x86_guest_call_top() == NULL);
+
+  /* Depth has no shadow-array limit: every live host frame supplies its node.
+   */
+  X86GuestCallFrame deep[96];
+  for (int i = 0; i < 96; i++)
+    x86_guest_call_push(&deep[i], NULL, (uint32_t)(0x10000u + i), 0u, 0u);
+  CHECK(x86_guest_call_depth() == 96u);
+  CHECK(x86_guest_call_top() == &deep[95]);
+  for (int i = 95; i >= 0; i--)
+    x86_guest_call_pop(&deep[i]);
+  CHECK(x86_guest_call_depth() == 0);
+}
+
+/*
+ * A minimal reusable two-party rendezvous, standing in for pthread_barrier_t:
+ * Darwin's libc never implemented that POSIX-optional API, so this test
+ * cannot rely on it existing. Generation-counted so repeated wait() calls on
+ * the same barrier (as below) each block for a fresh rendezvous rather than
+ * falling straight through on the count left over from the previous one.
+ */
+typedef struct {
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+  unsigned parties;
+  unsigned waiting;
+  unsigned generation;
+} TestBarrier;
+
+static void test_barrier_init(TestBarrier *b, unsigned parties) {
+  pthread_mutex_init(&b->mutex, NULL);
+  pthread_cond_init(&b->cond, NULL);
+  b->parties = parties;
+  b->waiting = 0;
+  b->generation = 0;
+}
+
+static void test_barrier_wait(TestBarrier *b) {
+  pthread_mutex_lock(&b->mutex);
+  unsigned gen = b->generation;
+  if (++b->waiting == b->parties) {
+    b->generation++;
+    b->waiting = 0;
+    pthread_cond_broadcast(&b->cond);
+  } else {
+    while (gen == b->generation) {
+      pthread_cond_wait(&b->cond, &b->mutex);
+    }
+  }
+  pthread_mutex_unlock(&b->mutex);
+}
+
+static void test_barrier_destroy(TestBarrier *b) {
+  pthread_mutex_destroy(&b->mutex);
+  pthread_cond_destroy(&b->cond);
+}
+
+static TestBarrier barrier;
+
+static void *other_thread(void *arg) {
+  X86GuestCallFrame first, second;
+  (void)arg;
+  CHECK(x86_guest_call_depth() == 0); /* not the main thread's frames */
+  x86_guest_call_push(&first, NULL, 0xBBBB0000u, 0xBBBB1111u, 0xB000u);
+  x86_guest_call_push(&second, NULL, 0xBBBB2222u, 0xBBBB3333u, 0xB100u);
+  test_barrier_wait(&barrier); /* main pushes its own frames here */
+  test_barrier_wait(&barrier); /* main has checked; verify we are untouched */
+  CHECK(x86_guest_call_depth() == 2);
+  CHECK(x86_guest_call_top()->entry == 0xBBBB2222u);
+  CHECK(x86_guest_call_top()->return_to == 0xBBBB3333u);
+  x86_guest_call_pop(&second);
+  x86_guest_call_pop(&first);
+  return NULL;
+}
+
+static void two_threads_are_independent(void) {
+  pthread_t t;
+  X86GuestCallFrame frame;
+  test_barrier_init(&barrier, 2);
+  CHECK(pthread_create(&t, NULL, other_thread, NULL) == 0);
+
+  test_barrier_wait(&barrier); /* other has pushed 2 */
+  CHECK(x86_guest_call_depth() == 0);
+  x86_guest_call_push(&frame, NULL, 0xAAAA0000u, 0xAAAA1111u, 0xA000u);
+  CHECK(x86_guest_call_depth() == 1);
+  CHECK(x86_guest_call_top()->entry == 0xAAAA0000u);
+  test_barrier_wait(&barrier); /* let other verify and unwind */
+
+  pthread_join(t, NULL);
+  x86_guest_call_pop(&frame);
+  CHECK(x86_guest_call_depth() == 0);
+  test_barrier_destroy(&barrier);
+
+  /* deepest is the cross-thread high-water. */
+  CHECK(x86_guest_call_deepest() >= 2);
+}
+
+int main(void) {
+  single_thread_contract();
+  x86_guest_call_reset_deepest();
+  two_threads_are_independent();
+  printf("test_x86_guest_call_stack: %d check(s) passed\n", checks);
+  return 0;
+}

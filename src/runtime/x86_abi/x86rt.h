@@ -161,8 +161,8 @@ void x86_setjmp_done(CPU *C, int rc);
 /*
  * The buffer table gives slots back: a jmp_buf living in a guest heap block
  * that has been freed can no longer be jumped to. That is the ONLY rule -- see
- * crt.c for the second one the real run refuted. x86_setjmp_reclaim returns how
- * many it freed, so "reclaimed nothing" and "reclaimed everything" are
+ * crt.cpp for the second one the real run refuted. x86_setjmp_reclaim returns
+ * how many it freed, so "reclaimed nothing" and "reclaimed everything" are
  * distinguishable; x86_setjmp_live is how many are held.
  */
 int x86_setjmp_reclaim(void);

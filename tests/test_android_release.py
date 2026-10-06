@@ -137,7 +137,7 @@ def main() -> int:
         ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2SetupActivity.java"
     ).read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-    native_main = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
+    native_main = (ROOT / "src/native/x2native.cpp").read_text(encoding="utf-8")
     # The setup uses Android's scoped picker: shared android-port owns persisted SAF grants,
     # bounded OBB staging, cancellation, and promotion after title validation.
     # No port code may reconstruct a provider filesystem path or
@@ -157,15 +157,15 @@ def main() -> int:
     bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
     # The host-backtrace half of a fault report has its own owner; the check
     # follows the code rather than the file it used to live in.
-    fault_report = (ROOT / "src/native/fault_report.c").read_text(encoding="utf-8")
+    fault_report = (ROOT / "src/native/fault_report.cpp").read_text(encoding="utf-8")
     assert "buildConfig = true" in gradle
     assert "#elif !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
     assert "[HOST STACK] unavailable on Android" in fault_report
     assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
     assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
-    runtime = (ROOT / "src/native/guest_memory_probe.c").read_text(encoding="utf-8")
+    runtime = (ROOT / "src/native/guest_memory_probe.cpp").read_text(encoding="utf-8")
     assert "syscall(SYS_process_vm_readv" in runtime
-    draw_trace = (ROOT / "src/gpu/gpu_draw_trace.c").read_text(encoding="utf-8")
+    draw_trace = (ROOT / "src/gpu/gpu_draw_trace.cpp").read_text(encoding="utf-8")
     assert "funopen(&g_capture" in draw_trace
     assert "capture_close(g_frame_dump.capture" in draw_trace
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
@@ -187,7 +187,7 @@ def main() -> int:
     # this permission's inet group; without it control_start() exit(2)s before
     # the game runs, which presented as an unexplained crash on device.
     assert "android.permission.INTERNET" in manifest
-    sdl_setup = (ROOT / "src/native/sdl_host_setup.c").read_text(encoding="utf-8")
+    sdl_setup = (ROOT / "src/native/sdl_host_setup.cpp").read_text(encoding="utf-8")
     assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in sdl_setup
     assert "if (!sdl_host_setup(options.window))" in native_main
     assert "debug.boot_map" in activity

@@ -7,7 +7,7 @@ created: 2026-08-14
 
 ## Instrument
 
-X2_LIGHT_DUMP (src/d3d8/d3d8_drawcall.c) -- the per-draw lighting inputs of a level frame
+X2_LIGHT_DUMP (src/d3d8/d3d8_drawcall.cpp) -- the per-draw lighting inputs of a level frame
 
 ## Validated by
 

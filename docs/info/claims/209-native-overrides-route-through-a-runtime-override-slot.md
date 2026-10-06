@@ -16,7 +16,7 @@ the JIT.
 
 ## Evidence
 
-`x86_register_override` in `src/native/x86rt_native.c` records the module name,
+`x86_register_override` in `src/native/x86rt_native.cpp` records the module name,
 linked entry point, and native function. After `pe_map` places every image,
 `x86_overrides_resolve` converts each pair to a mapped address and refuses an
 absent module, out-of-image address, or invalid entry. Runtime interception

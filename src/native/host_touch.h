@@ -15,9 +15,6 @@
  * answers the capability question through the platform instead. The policy
  * above it stays platform-neutral.
  */
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* Nonzero when a touchscreen exists or the host says one can be used. */
 int x2_host_touch_capable(void);
@@ -25,9 +22,5 @@ int x2_host_touch_capable(void);
 /* What SDL's device list says right now. Reported beside the capability so a
    run with neither can be told from a run this was never asked in. */
 int x2_host_touch_devices(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_HOST_TOUCH_H */

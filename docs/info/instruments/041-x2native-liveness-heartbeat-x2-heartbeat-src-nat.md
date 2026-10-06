@@ -7,7 +7,7 @@ created: 2026-08-07
 
 ## Instrument
 
-x2native liveness heartbeat (X2_HEARTBEAT, src/native/heartbeat.c)
+x2native liveness heartbeat (X2_HEARTBEAT, src/native/heartbeat.cpp)
 
 ## Validated by
 

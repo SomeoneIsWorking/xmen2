@@ -1,4 +1,4 @@
-/* Map a PE32 image at its own preferred base. See pe_map.c for why it refuses
+/* Map a PE32 image at its own preferred base. See pe_map.cpp for why it refuses
    to relocate rather than falling back to another address. */
 #ifndef PE_MAP_H
 #define PE_MAP_H
@@ -33,7 +33,7 @@ uint32_t pe_export_containing(uint32_t base, uint32_t rva,
                               const char **name_out);
 
 /* Bind every import slot of a mapped image. `resolve` returns the address to
-   write, or 0 when it cannot -- see pe_map.c for why 0 must not stay 0. */
+   write, or 0 when it cannot -- see pe_map.cpp for why 0 must not stay 0. */
 int pe_bind_imports(uint32_t base,
                     uint32_t (*resolve)(const char *mod, const char *sym,
                                         int by_ordinal, uint32_t ordinal,

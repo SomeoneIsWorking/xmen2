@@ -2,7 +2,7 @@
 
 How XMen2.exe gets from process start to the first script, how New Game builds
 its party, and the path the `loadmap` console command uses to load a level --
-the mechanism behind `X2_BOOT_MAP` (`src/native/startup.c`).
+the mechanism behind `X2_BOOT_MAP` (`src/native/startup.cpp`).
 
 ## The boot sequence: FUN_00402ba0
 
@@ -103,7 +103,7 @@ not exist. That was the root cause of the old boot-map path's zero hero handles.
 
 ## X2_BOOT_MAP -- skip presentation, preserve initialization
 
-`src/native/startup.c` overrides `FUN_0055beb0` (console +0x18, the command
+`src/native/startup.cpp` overrides `FUN_0055beb0` (console +0x18, the command
 executor). With `X2_BOOT_MAP=<map>` set, the one string
 `runscript menus/intro_normal` is intercepted and the retail
 `startFirstMission` function is called. That function synchronously installs
@@ -132,7 +132,7 @@ with that text merely as a prefix is not a boot event.
 Normal passes the command through untouched. Continue runs the retail forced
 main-menu callback `FUN_0049fb00` so the menu-map lifecycle completes, and
 intercepts the retained `CMenuMain::Show` that lifecycle ends in
-(`src/native/continue_runtime.c`): the intercept selects the primary player
+(`src/native/continue_runtime.cpp`): the intercept selects the primary player
 through CPadManager's own setter -- a presentation-bypassing boot has no title
 input -- calls retail Show, applies the menu plan, runs `CMenuMain::Hide`, and
 dispatches the same authoritative retail mode-3 chain the main-menu Continue
@@ -168,7 +168,7 @@ leaf directory `<profile>/Activision/X-Men Legends 2/Save`, rather than the
 profile root also used by host config and registry state. A directory that does
 not exist yet is an ordinary first-run no-save result. The catalog captures the
 newest admitted leaf once for this boot request
-and publishes it to `src/native/continue_runtime.c`. At boot, that owner
+and publishes it to `src/native/continue_runtime.cpp`. At boot, that owner
 dispatches retail save/load mode 3 directly as described above. On the retained
 `CMenuMain::Show` boundary it drives the same owner for an ordinary menu click
 or a boot fallback. When the catalog has no candidate (or cannot be read), the

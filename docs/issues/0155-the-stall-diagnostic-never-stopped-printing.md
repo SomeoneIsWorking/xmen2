@@ -12,7 +12,7 @@ updated: 2026-09-19
 # 0155 — the stall diagnostic never stopped printing, so it caused the stall
 
 - **State items:** S021
-- **Status:** fixed in `src/native/x86rt_native.c`
+- **Status:** fixed in `src/native/x86rt_native.cpp`
 
 ## What it was
 

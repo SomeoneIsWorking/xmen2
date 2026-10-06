@@ -4,7 +4,7 @@
 /*
  * Winsock semantics over POSIX sockets, with no guest in sight.
  *
- * The WS2_32 import thunks (ws2_32.c) read the guest's arguments and hand
+ * The WS2_32 import thunks (ws2_32.cpp) read the guest's arguments and hand
  * them here; everything that is a TRANSLATION -- an errno becoming a WSA code,
  * a Winsock option or ioctl becoming a host one, a Windows sockaddr_in or
  * fd_set becoming the host's, which socket is blocking -- lives in this one
@@ -16,10 +16,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #define WINSOCK_SOCKET_ERROR 0xffffffffu
 #define WINSOCK_INVALID_SOCKET 0xffffffffu
@@ -111,9 +107,5 @@ int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
 
 /* How many sockets are open, for the shutdown report. */
 unsigned winsock_open_count(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_WINSOCK_POSIX_H */

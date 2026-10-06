@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Publication of the port's output size into the
    game's own persistent registry: HKCU\Software\Activision\X-Men Legends 2\
    Settings\Display "Resolution" as REG_SZ "%dx%d" -- byte for byte what the
@@ -25,7 +21,7 @@ extern "C" {
    resolution chosen in the RETAIL options screen holds only until the next
    launch, when the port's own setting is published over it. */
 
-/* Composed from boot control (startup.c) at the first guest call, ahead of
+/* Composed from boot control (startup.cpp) at the first guest call, ahead of
    the engine's settings registration; announces one line either way. */
 void x2_display_mode_seed_boot(void);
 
@@ -54,9 +50,5 @@ int x2_display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
    enumeration. Zero before any successful publication or matching read. */
 uint32_t x2_display_mode_seed_width(void);
 uint32_t x2_display_mode_seed_height(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_DISPLAY_MODE_SEED_H */

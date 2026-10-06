@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-21
 tags: gpu,fmv,headless
-depends: src/gpu/gpu_upload.c#gpu_upload_stage, src/gpu/gpu_frame_submit.c#gpu_frame_submit
+depends: src/gpu/gpu_upload.c#gpu_upload_stage, src/gpu/gpu_frame_submit.cpp#gpu_frame_submit
 ---
 
 ## Claim

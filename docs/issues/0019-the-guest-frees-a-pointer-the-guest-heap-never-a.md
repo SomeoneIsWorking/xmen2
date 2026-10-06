@@ -18,7 +18,7 @@ one of its own.
 
 There appear to be two allocators where the original had a clearer story:
 
-1. `src/native/guest_heap.c`, which serves the imported
+1. `src/native/guest_heap.cpp`, which serves the imported
    MSVCRT/MSVCR71 `malloc`/`free`/`realloc`/`calloc`. libIGCore does import
    all four, so those calls land here.
 2. libIGCore's own statically-linked MSVC heap, which `igArenaMemoryPool`

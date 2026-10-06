@@ -52,11 +52,11 @@ A native boundary reaches the preemption point in `X86_ENTER_FN`
 (`src/runtime/x86_abi/x86rt.h`) on every call. JITted guest code carries no
 such point, so a thread
 that stayed inside JITted code -- MAIN, in a libCriMovie playback loop polling
-the decoder -- held the single guest lock (`threads.c` `g_lock`) for its whole
+the decoder -- held the single guest lock (`threads.cpp` `g_lock`) for its whole
 duration. The decoder's feeder threads could never run to resume it. "0
 preemptions while MAIN runs guest code for 117 s" is that, exactly.
 
-Fix (`src/native/x86_engine.c`): run the JIT in slices bounded by
+Fix (`src/native/x86_engine.cpp`): run the JIT in slices bounded by
 `guest_quantum_size()` and call `guest_quantum()` between them. It is a no-op
 when no other guest thread is
 blocked on the lock.
@@ -77,7 +77,7 @@ frame. A libCriMovie thread then ran past its own `0xDEADBEEF` entry sentinel
 
 Fix: `src/native/x86_guest_call_stack.{c,h}` -- each live host call owns an
 intrusive frame in a thread-local stack; `deepest` stays a cross-thread
-high-water for the report only. This also took `x86_engine.c` back under the
+high-water for the report only. This also took `x86_engine.cpp` back under the
 500-line cap.
 
 ## Result
@@ -106,10 +106,10 @@ state to diverge. The hand-back address predicate also remains unconditional.
 * x86port `tests/test_jit_engine.c`:
   `test_boundary_ends_a_block_before_a_flagged_address`,
   `test_verify_reports_an_in_block_self_modification`.
-* xmen2 `tests/test_x86_guest_call_stack.c`: two pthreads keep independent
+* xmen2 `tests/test_x86_guest_call_stack.cpp`: two pthreads keep independent
   stacks; the single-thread case covers push/pop, deep nesting, and longjmp
   restoration without a shadow copy.
-* xmen2 `tests/test_jit_intercept.c` (cause 4): uses 69 live intrusive frames
+* xmen2 `tests/test_jit_intercept.cpp` (cause 4): uses 69 live intrusive frames
   and asserts both current-frame retention and native-override hand-back; it
   also covers no-frame, shallow-frame, thunk, plain-guest,
   selftest-in-place, and translation-boundary cases.

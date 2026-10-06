@@ -4,7 +4,7 @@
 /*
  * The pipeline and sampler caches.
  *
- * Split from gpu_draw.c, which decides WHAT to draw. This owns the objects a
+ * Split from gpu_draw.cpp, which decides WHAT to draw. This owns the objects a
  * draw needs before it can be recorded: the fixed-function shaders, one baked
  * pipeline per distinct render state, and one sampler per distinct filtering
  * state. Both caches are bounded and refuse by name when full rather than

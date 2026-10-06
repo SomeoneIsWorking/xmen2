@@ -48,7 +48,7 @@ Then a counter, and on the common exit (`kX86pJitExitBlockEnd`) a `continue`.
 The exit handling is a chain of compares and is not the cost.
 
 **The intercept body is not the problem and should not be "optimised".**
-`src/native/x86_engine_intercept.c` is already a range check, a frame-return
+`src/native/x86_engine_intercept.cpp` is already a range check, a frame-return
 compare and a bloom probe, with the expected branch marked on each — about six
 instructions on the path it almost always takes. Its 1.53% is the crossing, not
 the work. Rewriting it would move nothing.

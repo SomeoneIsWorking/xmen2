@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-20
 tags: boot,gameplay
-depends: src/native/startup.c#x2_override_0055beb0, src/native/input_probe.c
+depends: src/native/startup.cpp#x2_override_0055beb0, src/native/input_probe.cpp
 ---
 
 ## Claim

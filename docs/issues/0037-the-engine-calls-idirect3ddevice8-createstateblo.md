@@ -27,12 +27,12 @@ are two ordinary work items queued here, not a fault.
 ## Notes for implementing it
 
 A D3D8 state block is a recorded set of render/texture/transform state that
-`Apply` replays. `src/d3d8/d3d8_state.c` already models the state the device
+`Apply` replays. `src/d3d8/d3d8_state.cpp` already models the state the device
 holds, so a block is a copy of that structure plus the four entry points
 (`CreateStateBlock`, `BeginStateBlock`/`EndStateBlock`, `ApplyStateBlock`,
 `CaptureStateBlock`, `DeleteStateBlock`). The token is an opaque handle, so it
 can be an index into a table this layer owns -- the same shape
-`src/gpu/gpu_draw.c` uses for resources, where a stale handle reports itself
+`src/gpu/gpu_draw.cpp` uses for resources, where a stale handle reports itself
 rather than addressing whatever took its slot.
 
 `D3DSBT_ALL` vs `_PIXELSTATE` vs `_VERTEXSTATE` decides WHICH state is
@@ -42,9 +42,9 @@ state it expected to keep, so the mask has to be honoured rather than assumed.
 
 ## Resolved
 
-`src/d3d8/d3d8_stateblock.c`. A block is a whole copy of `D3D8State` plus a
+`src/d3d8/d3d8_stateblock.cpp`. A block is a whole copy of `D3D8State` plus a
 generation-tagged token, so a stale token reports itself rather than addressing
-whatever took its slot -- the same shape `src/gpu/gpu_draw.c` uses for
+whatever took its slot -- the same shape `src/gpu/gpu_draw.cpp` uses for
 resources.
 
 Deliberately NOT done, each refusing by name rather than approximating:
@@ -60,7 +60,7 @@ Deliberately NOT done, each refusing by name rather than approximating:
   apply an empty snapshot over live state.
 
 `FindFirstFileA`/`FindNextFileA`/`FindClose` were the next stop and are
-implemented in `src/native/kernel32.c`, with Windows' wildcard rules rather
+implemented in `src/native/kernel32.cpp`, with Windows' wildcard rules rather
 than `fnmatch`'s -- `*.*` on Windows matches names with no dot, and a matcher
 that dropped those would hand the asset scanner a silently shorter list.
 `case_find_file` in the battery runs the matcher against BOTH classes (a

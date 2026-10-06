@@ -4,10 +4,6 @@
 #include "../config/hud_settings.h"
 #include "touch_layout.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct {
   float left, top, width, height;
 } X2HudSpace; /* Retail X/Z plane: Z increases upward. */
@@ -52,7 +48,4 @@ void x2_hud_transform_matrix(X2HudTransform transform, float matrix[16]);
 X2Rect x2_hud_output_rect(X2HudSpace space, float output_width,
                           float output_height, float x, float z, float radius);
 
-#ifdef __cplusplus
-}
-#endif
 #endif

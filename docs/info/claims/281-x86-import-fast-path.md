@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-03
 tags: pc,native,jit,performance,imports,fastpath
-depends: src/native/x86_import_fastpath.c#x86_import_fastpath_dispatch, src/native/x86_engine_dispatch.c#x86_engine_run_host_at
+depends: src/native/x86_import_fastpath.cpp#x86_import_fastpath_dispatch, src/native/x86_engine_dispatch.cpp#x86_engine_run_host_at
 ---
 
 ## Claim
@@ -30,7 +30,7 @@ pointers directly according to their calling convention (`__cdecl` versus
 `__stdcall`) while preserving non-scratch registers.
 
 Controlled by runtime CVar `engine.import_fastpath` (default true) for instant A/B
-toggling without rebuilding. Tested in `tests/test_x86_import_fastpath.c`
+toggling without rebuilding. Tested in `tests/test_x86_import_fastpath.cpp`
 covering each eligible import's stack cleanup, return value, parameter
 interpretation, and enable/disable toggle.
 

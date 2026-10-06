@@ -2,7 +2,7 @@
  * Reading a GPU texture back to CPU bytes.
  *
  * Two owners need exactly this: the off-screen read used by the selftests and
- * `X2_SHOT` (gpu_draw.c), and the presented-frame luma probe, which samples
+ * `X2_SHOT` (gpu_draw.cpp), and the presented-frame luma probe, which samples
  * the logical D3D backbuffer to separate "the engine drew black" from "the
  * composite presented black". The fence/pass-completion choreography differs
  * per caller, so the shared helper is only: download one texture region

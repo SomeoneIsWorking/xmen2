@@ -202,7 +202,7 @@ void stop_log_router() {
 
 } // namespace
 
-extern "C" void x2_android_log_stdio(void) {
+void x2_android_log_stdio(void) {
   static bool routed = false;
   if (routed)
     return;
@@ -227,14 +227,14 @@ extern "C" void x2_android_log_stdio(void) {
 
 #else
 
-extern "C" const char *x2_android_install_source(void) { return nullptr; }
+const char *x2_android_install_source(void) { return nullptr; }
 
-extern "C" void x2_android_log_stdio(void) {}
+void x2_android_log_stdio(void) {}
 
 #endif
 
 #if defined(__ANDROID__)
-extern "C" const char *x2_android_install_source(void) {
+const char *x2_android_install_source(void) {
   return install_source[0] ? install_source : nullptr;
 }
 #endif

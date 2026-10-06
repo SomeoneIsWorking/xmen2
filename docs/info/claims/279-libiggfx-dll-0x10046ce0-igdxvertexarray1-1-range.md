@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-03
 tags: 
-depends: src/native/vertex_color_swizzle.c, src/native/vertex_color_swizzle_verify.c
+depends: src/native/vertex_color_swizzle.cpp, src/native/vertex_color_swizzle_verify.cpp
 ---
 
 ## Claim

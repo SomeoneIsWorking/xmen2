@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-14
 tags: launcher,native,sdl3
-depends: run.sh, bootstrap.py, tools/run.py, src/native/x2native_options.c
+depends: run.sh, bootstrap.py, tools/run.py, src/native/x2native_options.cpp
 reconfirmed: 2026-08-27
 verified_at: 2026-08-27 02:19:24
 falsified_on: 2026-08-27
@@ -16,7 +16,7 @@ Zero-argument run.sh and x2native launch the current native SDL3 GPU plus D3D8 g
 
 ## Evidence
 
-`tests/test_x2native_options.c` exercises the executable's zero-argument
+`tests/test_x2native_options.cpp` exercises the executable's zero-argument
 product policy. `tests/test_launcher.py` requires the shell shim to reject
 arguments, requires the bootstrap to exec the locked Python interpreter with
 only `tools/run.py`, and verifies automatic discovery when `XMen2.exe` is in

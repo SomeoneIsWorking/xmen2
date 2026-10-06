@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: input,pad,dinput,hotswap,save,continue
-depends: src/native/dinput8_controller_slots.c#dinput8_controller_slots_probe, src/native/dinput8_hotplug.c#dinput8_check_controller_table, src/native/input_probe.c#input_probe_report, tools/live_case.py#case_pad_after_load
+depends: src/native/dinput8_controller_slots.cpp#dinput8_controller_slots_probe, src/native/dinput8_hotplug.cpp#dinput8_check_controller_table, src/native/input_probe.cpp#input_probe_report, tools/live_case.py#case_pad_after_load
 ---
 
 ## Claim

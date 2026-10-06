@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: input,pad,hotswap,controller
-depends: src/native/dinput8_hotplug.c#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.c#dinput8_hotplug_pump, src/native/dinput8_hotplug.c#dinput8_check_controller_table, src/native/dinput_pad_virtual.c#dinput_pad_virtual_from_env, src/input/player_input.c#resolve_pads
+depends: src/native/dinput8_hotplug.cpp#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.cpp#dinput8_hotplug_pump, src/native/dinput8_hotplug.cpp#dinput8_check_controller_table, src/native/dinput_pad_virtual.cpp#dinput_pad_virtual_from_env, src/input/player_input.cpp#resolve_pads
 ---
 
 ## Claim

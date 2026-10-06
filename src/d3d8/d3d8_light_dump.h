@@ -1,7 +1,7 @@
 #ifndef D3D8_LIGHT_DUMP_H
 #define D3D8_LIGHT_DUMP_H
 
-/* X2_LIGHT_DUMP -- see d3d8_light_dump.c. */
+/* X2_LIGHT_DUMP -- see d3d8_light_dump.cpp. */
 #include "gpu_draw.h"
 
 #include <stdint.h>

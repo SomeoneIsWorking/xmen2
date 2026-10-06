@@ -7,7 +7,7 @@ created: 2026-08-15
 
 ## Instrument
 
-X2_GPU_DEBUG / gpu_device.c validation announcement
+X2_GPU_DEBUG / gpu_device.cpp validation announcement
 
 ## Validated by
 

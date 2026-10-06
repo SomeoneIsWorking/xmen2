@@ -8,16 +8,8 @@
 #define X2_PRINTF_FORMAT(format_index, argument_index)
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 void x2_log_error(const char *format, ...) X2_PRINTF_FORMAT(1, 2);
 void x2_log_info(const char *format, ...) X2_PRINTF_FORMAT(1, 2);
-
-#ifdef __cplusplus
-}
-#endif
 
 #undef X2_PRINTF_FORMAT
 

@@ -23,9 +23,7 @@
 #include "lan_presence.hpp"
 #include "lan_rendezvous.hpp"
 
-extern "C" {
 #include "x86rt.h"
-}
 
 #include <cstdint>
 #include <map>

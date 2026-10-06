@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: save,autosave,continue
-depends: src/native/autosave_runtime.c#x2_autosave_override_00484ce0, src/native/autosave_runtime.c#publish_snapshot, src/save/autosave_storage.c#x2_autosave_storage_publish, src/native/continue_runtime.c
+depends: src/native/autosave_runtime.cpp#x2_autosave_override_00484ce0, src/native/autosave_runtime.cpp#publish_snapshot, src/save/autosave_storage.cpp#x2_autosave_storage_publish, src/native/continue_runtime.cpp
 ---
 
 ## Claim

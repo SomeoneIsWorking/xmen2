@@ -2,7 +2,7 @@
  * gpu_index_storage.h -- an index buffer's bytes, as a region of a shared
  * chunk (gpu_index_arena.h).
  *
- * gpu_draw.c owns the handles and this owns their storage. A draw binds
+ * gpu_draw.cpp owns the handles and this owns their storage. A draw binds
  * `buffer` from offset 0 and starts `region.offset / index size` indices
  * further in. A buffer the open frame has already drawn is written in a new
  * region, so the earlier draws keep their bytes. Chunks are never cycled, so

@@ -22,7 +22,7 @@ spin priority at 0x10057294, then loops over `ResumeThread` and
 when the flag is set; its park path clears the flag and calls
 `SuspendThread(self)`. The loop therefore polls for a park that it also arms.
 
-The module-qualified native override in `src/native/movie.c` performs the same
+The module-qualified native override in `src/native/movie.cpp` performs the same
 flag arm, one resume, and priority update, waits through
 `guest_cond_wait_ms` with a 1,000-wait bound, restores priority, preserves the
 retail return and stack contracts, and can call the original body through

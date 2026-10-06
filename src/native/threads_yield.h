@@ -1,5 +1,5 @@
 /*
- * The guest lock's voluntary release. See threads_yield.c for what a turn
+ * The guest lock's voluntary release. See threads_yield.cpp for what a turn
  * guarantees and why the old unlock/yield/lock could not deliver one.
  */
 #ifndef X2_THREADS_YIELD_H
@@ -29,7 +29,7 @@ void guest_yield_counts(unsigned long *handoffs, unsigned long *worst_ms,
  * past its deadline could not be told from one that was woken late -- the
  * fork in issue #149 between "the lock never came to me" and "the wake-up
  * itself was slow". The waiter's own asked/slept pair is counted in
- * kernel32_wait.c; only the two columns together name it.
+ * kernel32_wait.cpp; only the two columns together name it.
  */
 void guest_yield_note_park(int timed_out);
 

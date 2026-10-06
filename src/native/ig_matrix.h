@@ -18,15 +18,7 @@
 #ifndef X2_IG_MATRIX_H
 #define X2_IG_MATRIX_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* `out` must not overlap `a` or `b`. */
 void ig_matrix44_multiply(float out[16], const float a[16], const float b[16]);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_IG_MATRIX_H */

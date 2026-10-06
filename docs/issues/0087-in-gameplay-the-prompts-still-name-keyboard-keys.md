@@ -20,7 +20,7 @@ with keys from `igct.bnx`. Those PC-only strings name mouse controls and
 keyboard shortcuts, while each localized dialog asset already contains the
 controller-authored version.
 
-`src/native/dialog_prompts.c` now scopes the shared localization lookup
+`src/native/dialog_prompts.cpp` now scopes the shared localization lookup
 `FUN_00629bf0` to its one call from `0x005ec061`. When a controller is connected,
 it asks the already-loaded dialog parser for its own `text` field, using the
 same parser getter as the ordinary retail branch. With no controller it retains
@@ -46,7 +46,7 @@ The live shutdown report carried the denominators:
                           8 unrelated localization lookups
     scripts: switching_hint launched 1 time
 
-`tests/test_dialog_prompts.c` independently covers the scoped return address,
+`tests/test_dialog_prompts.cpp` independently covers the scoped return address,
 the controller/no-controller split, unrelated localization calls, mapped
 addresses, parser ABI, return value and guest stack effect.
 

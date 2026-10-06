@@ -1,7 +1,7 @@
 /*
  * x86_dispatch_report.h -- explaining a dispatch that found nothing.
  *
- * Split from x86rt_native.c because it is a different job from dispatching:
+ * Split from x86rt_native.cpp because it is a different job from dispatching:
  * everything here runs exactly once, on the way to abort(), and none of it is
  * on any hot path. Keeping it beside the dispatcher made the dispatcher's own
  * logic harder to read, and the report is the part most often extended -- each

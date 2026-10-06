@@ -7,7 +7,7 @@ created: 2026-08-15
 
 ## Instrument
 
-tools/lightlog_diff.py + X2_LIGHTLOG (src/d3d8/d3d8_device.c) -- the port's light path in the control's exact format, compared
+tools/lightlog_diff.py + X2_LIGHTLOG (src/d3d8/d3d8_device.cpp) -- the port's light path in the control's exact format, compared
 
 ## Validated by
 

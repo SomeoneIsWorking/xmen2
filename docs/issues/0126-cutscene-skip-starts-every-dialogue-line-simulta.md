@@ -26,7 +26,7 @@ BehavEd/event work could launch an adjacent conversation whose initial line
 used the separate presenter at `0045a170`. Suppressing only the response call
 therefore still allowed line audio to start.
 
-`src/native/cutscene_dialogue.c` now owns this cutscene-player policy. It stops
+`src/native/cutscene_dialogue.cpp` now owns this cutscene-player policy. It stops
 the current retail handle and scopes both exact presenters across the entire
 synchronous player invocation. Ordinary playback retains and super-calls both
 retail guest bodies through the JIT; skip preserves response/script application

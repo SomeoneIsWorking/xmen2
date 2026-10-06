@@ -85,7 +85,7 @@ to WGSL. Texture/sampler slots and depth-image declarations must match the SDL
 backend's resource contract. Acceptance requires a real X-Men frame, settings
 and touch UI, audio and input through the same owners as desktop.
 
-The `present_luma` instrument (`src/gpu/gpu_present_luma.c`, armed
+The `present_luma` instrument (`src/gpu/gpu_present_luma.cpp`, armed
 `--set present_luma=N` or `X2_PRESENT_LUMA`) reads back BOTH the logical D3D
 scene and the composed windowed frame, so a run can be told to photograph what
 actually reaches the screen instead of trusting a page screenshot of a
@@ -105,7 +105,7 @@ SDL WebGPU's synchronous native waits over asynchronous browser operations.
 Both the JIT and OPFS native calls run off the browser main thread. Guest
 threads are serialized by the one guest mutex, and under Emscripten a voluntary
 release cannot rely on `sched_yield()` to deliver a turn (it is a worker no-op,
-and the releasing thread re-wins the lock's trylock): `src/native/threads_yield.c`
+and the releasing thread re-wins the lock's trylock): `src/native/threads_yield.cpp`
 makes the quantum yield and `Sleep(0)` a bounded promise that another guest
 thread takes the lock before the yielder re-takes it. Without it woken waits
 advanced only when the holder parked, which measured 178-361 ms per
@@ -141,7 +141,7 @@ A stop in the browser used to arrive as "native code called abort()" and
 nothing else. x86port reports through one process-wide sink whose default
 writes to standard error, and a worker's standard error never reaches the page,
 so every fatal library diagnostic was silent there. The port installs its own
-sink (`src/native/x86_engine_diagnostic.c`): the component and the text arrive
+sink (`src/native/x86_engine_diagnostic.cpp`): the component and the text arrive
 in the page's console and the guest state is dumped before the library aborts.
 The page's console is written in blocks rather than one proxied round trip per
 line, and the sink states its own cost, because the log competes with the guest

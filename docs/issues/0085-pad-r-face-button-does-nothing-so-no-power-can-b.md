@@ -25,7 +25,7 @@ issue #82) and not the pad reaching DirectInput at all.
 
 ## Why the earlier input checks did not cover this
 
-The port's Xbox default mapping (`src/native/xbox_defaults.c`, feature 2)
+The port's Xbox default mapping (`src/native/xbox_defaults.cpp`, feature 2)
 installs a set of rows into the game's binding banks. C215 established how the
 game reads them -- the working copies 4..7, filled from masters 0..3 by
 `FUN_0061b030`, with the preset going into slot 1, the alternate the game
@@ -43,7 +43,7 @@ screenshot; the initialized boot-map gameplay capture settled the second.
 ## The trigger delivered nothing, so the Power modifier never engaged
 
 `Power` is binding row 8, and the port's preset binds it to physical code 0x06
--- Z-, the right trigger. Two defects in `src/native/dinput_pad.c` meant that
+-- Z-, the right trigger. Two defects in `src/native/dinput_pad.cpp` meant that
 code could never resolve to anything:
 
 * **Scale.** The shared Z axis was `(l - r) / 2`. One trigger squeezed alone

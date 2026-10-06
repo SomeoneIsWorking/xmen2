@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Decode a PNG with Python's own zlib and check it against the known image.
 
-The encoder under test (src/native/control_png.c) is hand-written, so it must
+The encoder under test (src/native/control_png.cpp) is hand-written, so it must
 be checked by something that shares none of its code. This reads the chunks,
 verifies every CRC, inflates the IDAT stream and reproduces the exact gradient
-tests/test_control_png.c wrote -- so a byte swap, a stride error or a bad CRC
+tests/test_control_png.cpp wrote -- so a byte swap, a stride error or a bad CRC
 is a mismatch here rather than a picture nobody can open.
 
     tools/check_png.py FILE.png
@@ -18,7 +18,7 @@ W, H = 61, 37
 
 
 def expected(x, y):
-    """Must match the gradient in tests/test_control_png.c, RGB order."""
+    """Must match the gradient in tests/test_control_png.cpp, RGB order."""
     return ((x + y) & 0xFF, (y * 7) & 0xFF, (x * 4) & 0xFF)
 
 

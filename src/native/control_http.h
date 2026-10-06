@@ -1,7 +1,7 @@
 #ifndef X2_CONTROL_HTTP_H
 #define X2_CONTROL_HTTP_H
 
-/* The control channel's transport -- see control_http.c. */
+/* The control channel's transport -- see control_http.cpp. */
 #include "platform_socket.h"
 #include <stddef.h>
 

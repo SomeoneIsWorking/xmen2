@@ -2,10 +2,8 @@
 
 #include <algorithm>
 
-extern "C" {
 #include "dinput_pad.h"
 #include "transient_controller_assignment.h"
-}
 
 namespace x2::ui {
 

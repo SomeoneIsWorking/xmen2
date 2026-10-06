@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-04
 tags: pc,native,jit,performance,startup,timer
-depends: src/native/startup.c#x2_override_0055b610
+depends: src/native/startup.cpp#x2_override_0055b610
 ---
 
 ## Claim
@@ -17,7 +17,7 @@ In a 2000-frame in-game profiling run (`act0/tutorial/tutorial1`), `XMen2.exe!0x
 
 Because `x2_override_0055b610` previously invoked `x86_guest_body` on every single query, each of the ~2.8M calls crossed back into the engine to execute the guest SEH setup/teardown.
 
-In `src/native/startup.c`, `x2_override_0055b610` was updated to check whether the initialization guard byte `0x007ac288` has bit 0 set. On the very first call, it defers to `x86_guest_body` so retail initialization and atexit registration execute unaltered. On all subsequent calls, it sets `C->eax = s_inst_addr`, pops the return address (`C->esp += 4u`), and returns directly to the caller.
+In `src/native/startup.cpp`, `x2_override_0055b610` was updated to check whether the initialization guard byte `0x007ac288` has bit 0 set. On the very first call, it defers to `x86_guest_body` so retail initialization and atexit registration execute unaltered. On all subsequent calls, it sets `C->eax = s_inst_addr`, pops the return address (`C->esp += 4u`), and returns directly to the caller.
 
 Measured in a 2000-frame unpaced in-game benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`):
 - Average frame time reduced from 15.14 ms to 14.65 ms.

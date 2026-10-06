@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-22
 tags: input,cutscene,conversation
-depends: src/native/conversation.c#x2_override_0045d1a0, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_should_advance, src/native/conversation_skip_policy.c#conversation_skip_policy_update, tools/check_conversation_skip_wiring.py#audit
+depends: src/native/conversation.cpp#x2_override_0045d1a0, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_should_advance, src/native/conversation_skip_policy.c#conversation_skip_policy_update, tools/check_conversation_skip_wiring.py#audit
 falsified_on: 2026-08-22
 ---
 

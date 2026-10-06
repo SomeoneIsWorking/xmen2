@@ -18,7 +18,7 @@ Read from XMen2.exe and observed on the native port with the row enabled:
 1. **Main menu.** `label_option09` (*Play Online*) opens the `online` menu
    (`FUN_005c9640`). Our Continue feature disables that row when there is no
    save, and replaces it with Continue when there is one
-   (`src/save/continue_policy.c`). That is deliberate, because the row leads
+   (`src/save/continue_policy.cpp`). That is deliberate, because the row leads
    nowhere.
 2. **Online menu show** (`FUN_005caff0`). The menu writes the local IP into
    `data_networkfile` and then **disables** `text_networkset` and
@@ -58,7 +58,7 @@ Play Online → Host; B's Server Browser lists A, joins, both ready, A starts, a
 the two heroes are controlled from their own instances. B quitting shows the
 game's "Player(s) have been dropped from the game" on A, which continues.
 
-- `lan_login.c` answers `peerConnect` (0x0062f070) through the game's own
+- `lan_login.cpp` answers `peerConnect` (0x0062f070) through the game's own
   callback 0x00605d90 with the success branch, so no GameSpy name is resolved
   and the "temporarily unavailable" race is gone. Later Peer SDK calls decline
   on the Peer's clear connected flag.
@@ -94,7 +94,7 @@ game's "Player(s) have been dropped from the game" on A, which continues.
     the client's `FUN_00608630` reassembles it and acknowledges with 0x4a.
   - `startloadedonlinegame` → `FUN_00606fb0` loads +0x2250 on every peer.
   - The port's autosave already produces that exact buffer mid-game: game
-    vtable 0x208 serializes the running campaign (`autosave_runtime.c`).
+    vtable 0x208 serializes the running campaign (`autosave_runtime.cpp`).
 
   So drop-in is a re-formed session: the host serializes the running campaign,
   hosts it as a saved campaign, the joiner receives it, and every peer reloads
@@ -118,7 +118,7 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   through menus. Each instance announces once a second what it is doing:
   playing a campaign map alone, holding an open lobby, or hosting a network
   game (a client in someone else's game stays silent). A peer expires after
-  3.5 s. The main menu puts a "Join <host>" row first (`continue_policy.c`;
+  3.5 s. The main menu puts a "Join <host>" row first (`continue_policy.cpp`;
   with Continue also present, Review then Play Online give way). Choosing it
   sends JoinRequest until that host announces its lobby, then runs the
   director's join script. The host answers the first request by re-forming
