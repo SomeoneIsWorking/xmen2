@@ -23,7 +23,7 @@ int button_change_for(lucent::touch::Phase phase) {
 
 void RetailPointer::queue(lucent::touch::Point at, int button_change) {
   pending_.push_back(
-      {1, at.x, at.y, button_change, static_cast<uint32_t>(SDL_GetTicks())});
+      {1, at.x, at.y, button_change, static_cast<uint32_t>(SDL_GetTicks()), 0});
 }
 
 bool RetailPointer::contact(std::int64_t contact_id, lucent::touch::Point at,
@@ -39,6 +39,15 @@ bool RetailPointer::contact(std::int64_t contact_id, lucent::touch::Point at,
 void RetailPointer::resolved(lucent::touch::Point at,
                              lucent::touch::Phase phase) {
   queue(at, button_change_for(phase));
+}
+
+void RetailPointer::click_client(int client_x, int client_y) {
+  const auto now = static_cast<uint32_t>(SDL_GetTicks());
+  const auto x = static_cast<float>(client_x);
+  const auto y = static_cast<float>(client_y);
+  pending_.push_back({1, x, y, -1, now, 1});
+  pending_.push_back({1, x, y, 1, now, 1});
+  pending_.push_back({1, x, y, 0, now, 1});
 }
 
 bool RetailPointer::release_if_held() {

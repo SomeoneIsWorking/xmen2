@@ -9,6 +9,7 @@
 #include "../input/touch_runtime.h"
 #include "d3d8_drawcall.h"
 #include "rmlui_ui.h"
+#include "touch_menu_source.hpp"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -173,6 +174,7 @@ static void drain_touch_pointer(void) {
 static void pump_sdl(void) {
   SDL_Event event;
 
+  x2::native::refresh_touch_menu();
   drain_touch_pointer();
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT ||

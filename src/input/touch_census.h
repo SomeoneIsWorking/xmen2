@@ -32,6 +32,11 @@ typedef struct X2TouchCensus {
    */
   unsigned long pointer_events;
   unsigned long pointer_refused;
+  /* The port's touch menu: contacts it took, and the retail clicks and menu
+     pad taps it delivered for them. */
+  unsigned long touch_menu_contacts;
+  unsigned long touch_menu_clicks;
+  unsigned long touch_menu_pad_taps;
   unsigned long zone_presses;
   unsigned long buttons_published;
   unsigned long buttons_refused;

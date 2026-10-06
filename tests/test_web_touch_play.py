@@ -14,8 +14,8 @@ from tools.web_touch_play import Census
 
 GATE_ACTIVE = (
     "log     [touch] [HB] 32 contact event(s): 16 down, 0 moved, 16 up, 0 canceled",
-    "log     [touch] [HB] 0 of 32 dropped before routing, all with no window "
-    "(touch_controls=AUTO, source says touch, gate active)",
+    "log     [touch] [HB] 0 of 32 contact(s) were dropped before routing: "
+    "nothing was dropped (touch_controls=AUTO, source says touch, gate active)",
     "log     [touch] [HB] 0 contact(s) became the retail GUI pointer because no "
     "control was drawn (gate active); 0 refused, held by another finger",
     "log     [touch] [HB] 9 zone action(s) routed; 0 cancellation(s) for a lost "
@@ -31,8 +31,8 @@ GATE_ACTIVE = (
 # answers from each other and from touch being broken.
 EVERYTHING_TO_THE_POINTER = (
     "log     [touch] [HB] 32 contact event(s): 16 down, 0 moved, 16 up, 0 canceled",
-    "log     [touch] [HB] 0 of 32 dropped before routing, all with no window "
-    "(touch_controls=AUTO, source says touch, gate never-seen)",
+    "log     [touch] [HB] 0 of 32 contact(s) were dropped before routing: "
+    "nothing was dropped (touch_controls=AUTO, source says touch, gate never-seen)",
     "log     [touch] [HB] 32 contact(s) became the retail GUI pointer because no "
     "control was drawn (gate never-seen); 0 refused, held by another finger",
     "log     [touch] [HB] 0 zone action(s) routed; 0 cancellation(s) for a lost "
@@ -42,6 +42,24 @@ EVERYTHING_TO_THE_POINTER = (
     "log     [touch] [HB] a controller chosen in this run already holds player "
     "one (3 time(s) asked), so the touch pad was not claimed for it -- if "
     "nothing moves, THAT controller is what the guest is reading",
+)
+
+# The two cases where the drop count is non-zero. They are different faults and
+# must not read as one: the first is the ordinary headless case where there was
+# nothing to route into, the second is the one the old wording hid -- contacts
+# dropped while the runtime demonstrably held a window.
+NO_WINDOW = (
+    "log     [touch] [HB] 4 contact event(s): 2 down, 0 moved, 2 up, 0 canceled",
+    "log     [touch] [HB] 4 of 4 contact(s) were dropped before routing: there "
+    "was no window to route them into (touch_controls=AUTO, source says touch, "
+    "gate never-seen)",
+)
+
+UNEXPLAINED = (
+    "log     [touch] [HB] 4 contact event(s): 2 down, 0 moved, 2 up, 0 canceled",
+    "log     [touch] [HB] 4 of 4 contact(s) were dropped before routing: the "
+    "runtime HELD a window, so the no-window cause does not explain this and "
+    "needs looking at (touch_controls=AUTO, source says touch, gate active)",
 )
 
 NOTHING_TOUCHED = (
@@ -122,6 +140,31 @@ class CensusReaderTest(unittest.TestCase):
     def test_beats_count_only_the_line_that_opens_a_block(self):
         census = read(GATE_ACTIVE + EVERYTHING_TO_THE_POINTER + NOTHING_TOUCHED)
         self.assertEqual(census.beats, 3)
+
+    def test_the_dropped_reason_is_read_rather_than_assumed(self):
+        """The reason is a fact about the run, so the reader carries it.
+
+        The line used to read "all with no window" whatever the run did, and
+        this reader hardcoded that sentence: a product fixed to stop asserting
+        an unobserved cause would have left the reader silently reporting
+        `dropped is None` on every healthy browser run, which looks like a
+        broken driver rather than a changed sentence.
+        """
+        for want, line in (
+            ("nothing was dropped", GATE_ACTIVE[1]),
+            ("nothing was dropped", EVERYTHING_TO_THE_POINTER[1]),
+            ("there was no window to route them into", NO_WINDOW[1]),
+            ("the runtime HELD a window, so the no-window cause does not "
+             "explain this and needs looking at", UNEXPLAINED[1]),
+        ):
+            with self.subTest(reason=want[:32]):
+                census = read([line])
+                self.assertEqual(census.dropped, int(line.split()[3]))
+                self.assertEqual(census.dropped_reason, want)
+
+    def test_a_fresh_census_has_no_dropped_reason_yet(self):
+        census = Census()
+        self.assertIsNone(census.dropped_reason)
 
     def test_unrelated_console_output_is_not_read_as_a_census(self):
         """The falsifier. Engine heartbeat lines carry the same [HB] tag and

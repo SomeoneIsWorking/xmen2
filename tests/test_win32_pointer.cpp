@@ -11,6 +11,7 @@
  * rather than the identity.
  */
 #include "settings_store.h"
+#include "touch_runtime.h"
 #include "win32_mouse.h"
 #include "win32_pointer.h"
 
@@ -83,6 +84,30 @@ int main(void) {
   cursor_agrees(window, 320.0f, 240.0f,
                 "a warp to the window centre moved the cursor");
   cursor_agrees(window, 17.0f, 401.0f, "a warp off centre moved the cursor");
+
+  /* A client-space touch click is delivered at that guest client point, with
+     no window mapping: the touch menu's clicks land on the box the game
+     hit-tests. */
+  {
+    X2Win32Mouse mouse;
+    X2Win32Message message;
+    X2TouchPointer pointer = {1, 1100.0f, 650.0f, 1, 0, 1};
+    int32_t screen_x = 1100;
+    int32_t screen_y = 650;
+
+    check(x2_win32_pointer_client_to_screen(&screen_x, &screen_y),
+          "the window has an origin");
+    memset(&mouse, 0, sizeof mouse);
+    x2_win32_pointer_translate_touch(&pointer, &mouse, 1u);
+    check(x2_win32_message_take(&mouse, 0u, X2_WM_LBUTTONDOWN, X2_WM_LBUTTONUP,
+                                1, &message) &&
+              message.message == X2_WM_LBUTTONDOWN,
+          "a client-space contact presses the button");
+    check(message.screen_x == screen_x && message.screen_y == screen_y,
+          "a client-space contact is delivered at its own client point");
+    check((message.lparam & 0xffffu) == 1100u && (message.lparam >> 16) == 650u,
+          "and its message carries that client point unmapped");
+  }
 
   SDL_DestroyWindow(window);
   SDL_Quit();

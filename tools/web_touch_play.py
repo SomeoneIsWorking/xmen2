@@ -56,9 +56,15 @@ class Census:
     zero" are different answers and must not collapse into one.
     """
 
+    # The reason is matched as text rather than assumed. The line used to read
+    # "dropped before routing, all with no window" unconditionally, so a run
+    # that HAD a window printed a cause it had not observed and this reader
+    # believed it; the product now names only the cause that happened, and a
+    # reader that hardcoded the old sentence would silently stop reading the
+    # dropped count at all.
     DROPPED = re.compile(
-        r"\[touch\] (?:\[HB\] )?(\d+) of (\d+) dropped before routing, all "
-        r"with no window \(touch_controls=(\S+), source says ([^,]+), "
+        r"\[touch\] (?:\[HB\] )?(\d+) of (\d+) contact\(s\) were dropped before "
+        r"routing: (?P<reason>.*?) \(touch_controls=(\S+), source says ([^,]+), "
         r"gate ([^)]+)\)"
     )
     # Where a contact goes when no control is drawn -- the intro, the menus,
@@ -69,7 +75,7 @@ class Census:
         r"\[touch\] (?:\[HB\] )?(\d+) contact\(s\) became the retail GUI "
         r"pointer because no control was drawn \(gate ([^)]+)\); (\d+) refused"
     )
-    CONTACTS = re.compile(r"\[touch\] (?:\[HB\] )?(\d+) contact event\(s\)")
+    CONTACTS = re.compile(r"\[touch\] (?:\[HB\] )?(\d+) contact event\(s\):")
     NOTHING = re.compile(
         r"\[touch\] (?:\[HB\] )?no contact reached the port this run -- "
         r"touch_controls=(\S+), source says ([^,]+), gate ([^,]+),"
@@ -93,6 +99,12 @@ class Census:
         self.beats = 0
         self.contacts = None
         self.dropped = None
+        # Why contacts were dropped before routing, in the product's own
+        # words. None until the heartbeat says; a reader that collapses
+        # "nothing was dropped" and "the runtime held a window and this is
+        # unexplained" into one number is exactly the reader this exists to
+        # stop being.
+        self.dropped_reason = None
         self.pointer = None
         self.pointer_refused = None
         self.gate = None
@@ -120,7 +132,8 @@ class Census:
         match = self.DROPPED.search(line)
         if match:
             self.dropped = int(match.group(1))
-            self.mode, self.source, self.gate = match.group(3, 4, 5)
+            self.dropped_reason = match.group("reason")
+            self.mode, self.source, self.gate = match.group(4, 5, 6)
             return
         match = self.POINTER.search(line)
         if match:

@@ -20,6 +20,8 @@ typedef struct X2TouchPointer {
   float y;
   int button_change; /* 1 = press, 0 = release, -1 = motion only. */
   uint32_t time_ms;
+  /* x/y are already guest client coordinates, not window pixels. */
+  int client_space;
 } X2TouchPointer;
 
 int x2_touch_runtime_event(const union SDL_Event *event);

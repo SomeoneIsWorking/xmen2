@@ -307,7 +307,10 @@ int dinput_pad_open_gamepad_axis(int pad, int gamepad_axis) {
 #endif
 }
 
-uint32_t dinput_pad_pov(int pad) {
+/* Game reads of the d-pad, so a virtual d-pad press is held for its reader. */
+static unsigned long g_pov_reads;
+
+static uint32_t pov_of(int pad) {
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
   int up, down, left, right;
@@ -342,3 +345,12 @@ uint32_t dinput_pad_pov(int pad) {
   return 0xFFFFFFFFu;
 #endif
 }
+
+uint32_t dinput_pad_pov(int pad) {
+  g_pov_reads++;
+  return pov_of(pad);
+}
+
+uint32_t dinput_pad_pov_uncounted(int pad) { return pov_of(pad); }
+
+unsigned long dinput_pad_pov_read_count(void) { return g_pov_reads; }

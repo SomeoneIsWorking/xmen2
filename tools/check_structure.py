@@ -31,7 +31,7 @@ LEGACY_LIMITS = {
     "src/gpu/gpu_draw.cpp": 1016,               # was 1123; uniforms -> gpu_vertex_uniforms.cpp
     "src/d3d8/d3d8_report.cpp": 1433,           # was 1514; gamma -> d3d8_gamma_selftest.cpp
     "src/native/threads.cpp": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.cpp
-    "src/gpu/gpu_device.cpp": 758,              # pass attachments -> gpu_pass_attachments.cpp
+    "src/gpu/gpu_device.cpp": 753,              # was 758; pass attachments -> gpu_pass_attachments.cpp
     "src/d3d8/d3d8_resource.cpp": 1050,         # was 924
     "src/native/dinput_pad.cpp": 378,           # sampler split into dinput_pad_sample.cpp
     "src/native/win32_sdl.cpp": 1025,           # was 930
