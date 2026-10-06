@@ -559,7 +559,7 @@ returned to mode 0, and `$MENU_OK Accept` closed the team menu to gameplay.
   (`~05Back`); the touch menu strips it. What it selects (colour or font) is
   not read.
 - **No title item on the PDA or the team menu.** Neither has a `label_<menu>`
-  or `title*` item, so their touch menus show no title.
+  or `title*` item, so their touch menus have no header band.
 - **Navigation of a menu whose links are all 0** (`pause`): the model offers
   only the anchor row.
 - **The anchor fallback** uses slot order where the game's default focus walks

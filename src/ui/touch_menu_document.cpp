@@ -103,8 +103,10 @@ std::string markup(const input::TouchMenuState &state, Scale scale) {
   rml << "<div class='tm-cover' style='" << box(above, 0.0F, 0.0F, scale)
       << "'></div><div class='tm-cover' style='"
       << box(below, 0.0F, 0.0F, scale) << "'></div>";
-  rml << "<div id='tm-title' style='" << box(layout.title, 0.0F, 0.0F, scale)
-      << "'><span>" << escape_rml(state.view.title) << "</span></div>";
+  if (!state.view.title.empty()) {
+    rml << "<div id='tm-title' style='" << box(layout.title, 0.0F, 0.0F, scale)
+        << "'><span>" << escape_rml(state.view.title) << "</span></div>";
+  }
   rml << footer.str();
   return rml.str();
 }

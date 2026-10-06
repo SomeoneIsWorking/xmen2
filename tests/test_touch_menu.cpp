@@ -323,6 +323,20 @@ void the_layout_is_finger_sized_and_inside_the_safe_area() {
         "a footer button is hit at its centre");
 }
 
+void a_menu_without_a_title_has_no_header_band() {
+  auto view =
+      *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
+  const TouchMenuLayout titled =
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+  view.title.clear();
+  const TouchMenuLayout untitled =
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+  check(untitled.title.bottom == untitled.title.top &&
+            untitled.list.top == untitled.title.top &&
+            untitled.list.top < titled.list.top,
+        "a menu without a title starts its rows where the header band was");
+}
+
 void a_menu_without_footers_gives_their_band_to_the_list() {
   auto view =
       *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
@@ -427,6 +441,7 @@ int main() {
   a_delivered_click_lands_in_the_hit_box();
   the_layout_is_finger_sized_and_inside_the_safe_area();
   a_menu_without_footers_gives_their_band_to_the_list();
+  a_menu_without_a_title_has_no_header_band();
   a_tap_delivers_the_games_own_input();
   the_team_party_is_its_heroes();
   a_drag_scrolls_and_does_not_press();
