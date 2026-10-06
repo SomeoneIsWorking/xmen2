@@ -25,8 +25,13 @@ struct TouchMenuRow {
   /* The row has leftcmd/rightcmd, which act on the focused row only. */
   bool steps = false;
   bool focused = false;
+  /* A row reached by a focus walk is pressed with A on arrival; a list entry
+     is only selected, as a click on it would. */
+  bool press_on_arrival = true;
   /* The retail item, as its slot; stable while the menu is up. */
   unsigned slot = 0;
+  /* The entry within a list box item, or -1 for the item itself. */
+  int entry = -1;
   /* The centre of the box the game hit-tests, in client coordinates. */
   presentation::ClientPoint click;
 };
@@ -48,6 +53,8 @@ struct TouchMenuView {
   std::vector<TouchMenuFooter> footers;
   /* Index into `rows` of the menu's own focus, or -1. */
   int focused_row = -1;
+  /* The game's Up/Down wraps from the last row to the first. */
+  bool focus_wraps = true;
 
   /* The same retail screen: menu object, name and row set. */
   bool same_screen(const TouchMenuView &other) const;

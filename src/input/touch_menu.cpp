@@ -27,9 +27,9 @@ TouchMenuDelivery click(presentation::ClientPoint at) {
   return delivery;
 }
 
-int row_of_slot(const TouchMenuView &view, unsigned slot) {
+int row_of(const TouchMenuView &view, unsigned slot, int entry) {
   for (std::size_t i = 0; i < view.rows.size(); ++i) {
-    if (view.rows[i].slot == slot) {
+    if (view.rows[i].slot == slot && view.rows[i].entry == entry) {
       return static_cast<int>(i);
     }
   }
@@ -138,10 +138,14 @@ TouchMenu::activate(const TouchMenuButton &button, std::uint64_t now_ms) {
   Walk walk;
   walk.address = view_->address;
   walk.slot = row.slot;
-  walk.final_button =
-      button.part == TouchMenuPart::step_left    ? TouchAction::MenuLeft
-      : button.part == TouchMenuPart::step_right ? TouchAction::MenuRight
-                                                 : TouchAction::MenuA;
+  walk.entry = row.entry;
+  if (button.part == TouchMenuPart::step_left) {
+    walk.final_button = TouchAction::MenuLeft;
+  } else if (button.part == TouchMenuPart::step_right) {
+    walk.final_button = TouchAction::MenuRight;
+  } else if (row.press_on_arrival) {
+    walk.final_button = TouchAction::MenuA;
+  }
   walk.started_ms = now_ms;
   walk_ = walk;
   return advance_walk(now_ms);
@@ -157,28 +161,36 @@ std::vector<TouchMenuDelivery> TouchMenu::advance_walk(std::uint64_t now_ms) {
     walk_.reset();
     return {};
   }
-  const int target = row_of_slot(*view_, walk.slot);
+  const int target = row_of(*view_, walk.slot, walk.entry);
   if (target < 0) {
     walk_.reset();
     return {};
   }
   const int focused = view_->focused_row;
   if (focused == target) {
-    const TouchAction final_button = walk.final_button;
+    const std::optional<TouchAction> final_button = walk.final_button;
     walk_.reset();
-    return {pad(final_button)};
+    if (!final_button) {
+      return {};
+    }
+    return {pad(*final_button)};
   }
   if (walk.pressed && focused == walk.focus_at_press &&
       now_ms - walk.pressed_ms < kWalkStepMs) {
     return {};
   }
-  const int count = static_cast<int>(view_->rows.size());
-  const int down = focused < 0 ? 0 : (target - focused + count) % count;
-  const int up = focused < 0 ? count : (focused - target + count) % count;
+  bool down = focused < target;
+  if (view_->focus_wraps) {
+    const int count = static_cast<int>(view_->rows.size());
+    const int down_steps = focused < 0 ? 0 : (target - focused + count) % count;
+    const int up_steps =
+        focused < 0 ? count : (focused - target + count) % count;
+    down = down_steps <= up_steps;
+  }
   walk.pressed = true;
   walk.pressed_ms = now_ms;
   walk.focus_at_press = focused;
-  return {pad(down <= up ? TouchAction::MenuDown : TouchAction::MenuUp)};
+  return {pad(down ? TouchAction::MenuDown : TouchAction::MenuUp)};
 }
 
 void TouchMenu::cancel() {

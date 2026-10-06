@@ -57,6 +57,25 @@ inline constexpr std::uint8_t kItemEnabled = 0x08u;
 inline constexpr std::uint8_t kItemNavigationSkip = 0x10u;
 inline constexpr std::uint8_t kItemNeverFocus = 0x20u;
 
+/* A CMenuItemListBox's entries and the window it shows them through. */
+struct ListBoxState {
+  /* What the box's entry getter (0x005c23c0) returns: the entry record's
+     text up to its first tab. */
+  std::vector<std::string> entries;
+  /* First entry in the window, item+0xd8. */
+  int top = 0;
+  /* item+0xac; -1 when none. */
+  int selected = -1;
+  /* Rows the window holds, item+0xdb. */
+  int visible_rows = 0;
+  /* item+0xe0, in scene units. */
+  int row_height = 0;
+  /* The box the list's own onMouse (0x005c0e10) tests, without the base
+     class's half-depth lift. Row k spans `row_height` down from
+     bottom - k * row_height. */
+  SceneRect hit;
+};
+
 struct MenuItem {
   std::uint32_t address = 0;
   unsigned slot = 0;
@@ -77,6 +96,8 @@ struct MenuItem {
   bool navigable = false;
   /* CMenuItemBar's drawn level, item+0x40. */
   std::optional<float> fill;
+  /* A list box's entries; set for ItemClass::list_box only. */
+  std::optional<ListBoxState> list_box;
   /* The item showing the game variable this row's command changes. */
   int value_item = -1;
   int link_left = -1;
@@ -107,7 +128,8 @@ struct MenuSnapshot {
   /* A CPopupDialog is shown; it takes the pointer before any menu does. */
   bool popup_up = false;
   /* The class's own screen state, for the classes that keep one. CMenuTeam:
-     0 the party, 1 the roster, 2..6 a hero's detail tabs. */
+     0 the party, 1 the roster, 2..6 a hero's detail tabs. CMenuShop: bit 0
+     set for the stash. */
   std::optional<std::uint32_t> mode;
 };
 
@@ -143,6 +165,8 @@ private:
                  std::array<std::uint32_t, 4> *links, std::uint32_t *getter);
   bool read_label(const std::uint8_t *header, ItemClass item_class,
                   std::string *out);
+  bool read_list_box(std::uint32_t address, const std::uint8_t *header,
+                     ListBoxState *out);
   int step(const MenuSnapshot &menu, int from, int direction) const;
   void order_rows(MenuSnapshot *menu) const;
   bool pair_values(MenuSnapshot *menu,

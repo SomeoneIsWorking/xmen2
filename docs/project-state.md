@@ -1009,8 +1009,14 @@ screen follows: measured by `tools/live_case.py touch-team`, 13 of 13 on
 2026-10-06, the touch menu replaced the PDA, Team Management opened the
 party with its four heroes, a tap selected Cyclops in the game, a second tap
 opened Cyclops's details where the menu pad takes over, the pad's B returned
-to the party, and Accept closed the team menu. Gap: the team roster and detail
-tabs keep the retail screen; shop, stash, codex, worldmap, danger room,
+to the party, and Accept closed the team menu. The shop follows: measured by
+`tools/live_case.py touch-shop`, 12 of 12 on 2026-10-06, `openmenu shop` from
+gameplay showed the touch menu with the three tabs and the training list, a tap
+on buy opened the game's buy tab and its 13 entries, a tap on Health Pack
+selected it in the game's list, and Accept closed the shop. Gap: the team
+roster and detail tabs keep the retail screen; the shop's description, cost
+and money are not shown in the touch menu, and walking to an entry outside the
+game's list window is unit-tested only; stash, codex, worldmap, danger room,
 review, region, automap, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 

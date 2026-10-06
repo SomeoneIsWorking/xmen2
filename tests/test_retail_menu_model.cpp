@@ -86,6 +86,9 @@ constexpr std::uint32_t kVtTextBox = 0x006a1154u;
 constexpr std::uint32_t kVtMenuOptions = 0x0069ebd4u;
 constexpr std::uint32_t kVtMenuTeam = 0x006a2c94u;
 constexpr std::uint32_t kVtCharSummary = 0x006a0244u;
+constexpr std::uint32_t kVtMenuShop = 0x0069eb4cu;
+constexpr std::uint32_t kVtListBox = 0x006a062cu;
+constexpr std::uint32_t kListStore = 0x25000000u;
 
 std::uint32_t rebased(std::uint32_t linked) {
   return linked - kLinked + kImage;
@@ -482,6 +485,97 @@ void test_team_menu() {
         "a class without a mode reads none");
 }
 
+/* A shop-shaped menu: one list box of three entries drawn from the shared
+   record table, the second selected, the window scrolled by one. */
+FakeGuest build_shop(std::uint32_t entries) {
+  FakeGuest guest;
+  Pool2 pool(&guest);
+  guest.u32(rebased(0x008aff18u), kManager);
+  guest.u32(rebased(0x008b13ecu), 0u);
+  guest.u32(kManager + 0x86090u, kMenu);
+  guest.zero(kMenu, 0x1900u);
+  guest.u32(kMenu, rebased(kVtMenuShop));
+  guest.text(kMenu + 0x0cu, "shop");
+  guest.u32(kMenu + 0x15f0u, 0x01u);
+  guest.u32(kMenu + 0x1608u, 1u);
+  guest.u32(kMenu + 0x160cu, item_address(0));
+  guest.u32(kMenu + 0x324u, item_address(0));
+  put_item(&guest, &pool, 0,
+           {kVtListBox,
+            "list",
+            "",
+            0x0bu,
+            "",
+            "",
+            "",
+            {215, 329, 268, 185, 97},
+            0u});
+  const std::uint32_t at = item_address(0);
+  guest.i16(at + 0xacu, 1);
+  guest.u32(at + 0xbcu, kListStore);
+  guest.i16(at + 0xd8u, 1);
+  const std::uint8_t rows = 23u;
+  guest.put(at + 0xdbu, &rows, 1u);
+  guest.u32(at + 0xe0u, 8u);
+  guest.zero(kListStore, 0x88u);
+  guest.u32(kListStore + 0x84u, entries);
+  const std::uint8_t ids[3] = {26u, 27u, 0xffu};
+  guest.put(kListStore, ids, sizeof ids);
+  const std::uint32_t records = rebased(0x008a83f4u);
+  guest.zero(records + 26u * 0x70u, 0x70u);
+  guest.text(records + 26u * 0x70u, "Magneto: Level Advance");
+  guest.zero(records + 27u * 0x70u, 0x70u);
+  guest.text(records + 27u * 0x70u, "Med Kit\t3");
+  guest.zero(records + 0xffu * 0x70u, 0x70u);
+  guest.put(records + 0xffu * 0x70u,
+            "An entry name long enough that the getter cuts it at 63 bytes "
+            "and no further",
+            0x40u);
+  put_registry(&guest);
+  return guest;
+}
+
+void test_shop_list_box() {
+  const FakeGuest guest = build_shop(3u);
+  x2::menu::RetailMenuModel model(guest, kImage);
+  x2::menu::MenuSnapshot menu;
+  check(model.read(&menu) == x2::menu::ReadStatus::ok, "the shop reads");
+  check(menu.menu_class == "CMenuShop", "CMenuShop from its vtable");
+  const auto *list = find(menu, "list");
+  check(list != nullptr && list->list_box.has_value(),
+        "a list box carries its entries");
+  if (list == nullptr || !list->list_box) {
+    return;
+  }
+  const x2::menu::ListBoxState &box = *list->list_box;
+  check(box.entries.size() == 3u, "one entry per record id");
+  check(box.entries.size() == 3u &&
+            box.entries[0] == "Magneto: Level Advance" &&
+            box.entries[1] == "Med Kit",
+        "an entry's text, cut at its first tab");
+  check(box.entries.size() == 3u && box.entries[2].size() == 63u,
+        "an entry's text is at most what the getter copies");
+  check(box.selected == 1 && box.top == 1, "the selection and window top");
+  check(box.visible_rows == 23 && box.row_height == 8, "the window's rows");
+  check(box.hit.bottom == 329 && box.hit.top == 143 && box.hit.left == 215 &&
+            box.hit.right == 482,
+        "the list's own hit box has no half-depth lift");
+  check(list->rect.bottom == 377, "while the item's base box keeps it");
+
+  const FakeGuest options = build_options();
+  x2::menu::RetailMenuModel options_model(options, kImage);
+  check(options_model.read(&menu) == x2::menu::ReadStatus::ok &&
+            find(menu, "label_accept") != nullptr &&
+            !find(menu, "label_accept")->list_box,
+        "a text item has no list");
+
+  const FakeGuest overflow = build_shop(0x85u);
+  x2::menu::RetailMenuModel overflow_model(overflow, kImage);
+  check(overflow_model.read(&menu) == x2::menu::ReadStatus::unreadable &&
+            overflow_model.failed_address() == kListStore + 0x84u,
+        "a count past the store is a fault naming the count");
+}
+
 void test_linked_base_is_not_read() {
   const FakeGuest guest = build_options();
   x2::menu::RetailMenuModel model(guest, kLinked);
@@ -499,6 +593,7 @@ int main() {
   test_no_menu_and_faults();
   test_linked_base_is_not_read();
   test_team_menu();
+  test_shop_list_box();
   std::printf("%d/%d check(s) passed\n", checks - failures, checks);
   return failures == 0 ? 0 : 1;
 }

@@ -240,6 +240,137 @@ void the_team_party_is_its_heroes() {
         "a tap on Storm is a click on Storm's summary");
 }
 
+/* CMenuShop's training tab as GET /menu read it in the jungle: the three
+   tabs with training lit, the list box holding `entries` entries. */
+MenuSnapshot shop_menu(int entries, int top, int selected) {
+  MenuSnapshot menu;
+  menu.address = 0x27128964u;
+  menu.name = "shop";
+  menu.menu_class = "CMenuShop";
+  menu.mode = 0u;
+  menu.items.push_back(
+      item(1, "desctext2", "~05$MENU_ACCEPT Buy", 82, 21, 161, 35));
+  menu.items.push_back(
+      item(2, "desctext3", "~05$MENU_OK Accept", 215, 21, 294, 35));
+  menu.items.push_back(item(14, "shop_option01", "buy", 229, 354, 288, 368));
+  menu.items.push_back(item(15, "shop_option02", "sell", 319, 354, 378, 368));
+  MenuItem training = item(16, "shop_option03", "training", 409, 354, 468, 368);
+  training.flags |= x2::menu::kItemFocusLit;
+  menu.items.push_back(training);
+  MenuItem list = item(46, "list", "", 215, 191, 482, 377);
+  x2::menu::ListBoxState box;
+  for (int i = 0; i < entries; ++i) {
+    box.entries.push_back("Entry " + std::to_string(i));
+  }
+  box.top = top;
+  box.selected = selected;
+  box.visible_rows = 23;
+  box.row_height = 8;
+  box.hit = {215, 143, 482, 329};
+  list.list_box = box;
+  list.focused = true;
+  menu.items.push_back(list);
+  menu.rows = {5};
+  menu.focused = 5;
+  return menu;
+}
+
+void the_shop_is_its_tabs_and_entries() {
+  const RetailScenePlane plane = plane_1280x720();
+  const MenuSnapshot menu = shop_menu(30, 4, 6);
+  const auto view = x2::input::build_touch_menu_view(menu, plane);
+  check(view.has_value(), "the shop is replaced");
+  if (!view) {
+    return;
+  }
+  check(view->rows.size() == 33u && view->rows[0].label == "buy" &&
+            view->rows[2].label == "training" &&
+            view->rows[3].label == "Entry 0",
+        "the tabs, then one row per list entry");
+  check(view->rows[2].focused && !view->rows[0].focused,
+        "the lit tab is the open one");
+  check(view->focused_row == 9 && view->rows[9].focused,
+        "the list's selection is the menu's focus");
+  check(!view->focus_wraps, "the list's Up/Down does not wrap");
+  bool tabs_inside = true;
+  for (std::size_t i = 0; i < 3u; ++i) {
+    const auto &rect = menu.items[i + 2u].rect;
+    const auto scene = plane.to_scene(view->rows[i].click);
+    tabs_inside = tabs_inside && view->rows[i].clicks &&
+                  scene.x >= static_cast<float>(rect.left) &&
+                  scene.x < static_cast<float>(rect.right) &&
+                  scene.z >= static_cast<float>(rect.top) + 3.0F &&
+                  scene.z < static_cast<float>(rect.bottom) - 3.0F;
+  }
+  check(tabs_inside, "a tab is clicked inside the box CMenuShop tests");
+  bool rows_land = true;
+  for (int entry = 4; entry < 27; ++entry) {
+    const auto &row = view->rows[static_cast<std::size_t>(entry + 3)];
+    const auto scene = plane.to_scene(row.click);
+    /* CMenuItemListBox::onMouse (0x005c0e10): (top edge - y) / row height. */
+    const int window_row = (329 - static_cast<int>(std::floor(scene.z))) / 8;
+    rows_land = rows_land && row.clicks && !row.press_on_arrival &&
+                window_row == entry - 4 && scene.x >= 215.0F &&
+                scene.x < 482.0F;
+  }
+  check(rows_land, "each entry in the window is clicked on its own row");
+  check(!view->rows[3 + 3].clicks && !view->rows[27 + 3].clicks,
+        "an entry outside the window has no row to click");
+  check(view->footers.size() == 2u && view->footers[0].label == "Buy",
+        "the shop's Buy and Accept footers");
+
+  MenuSnapshot stash = shop_menu(3, 0, 0);
+  stash.mode = 1u;
+  check(!x2::input::build_touch_menu_view(stash, plane),
+        "the stash keeps the retail screen");
+  MenuSnapshot unread = shop_menu(3, 0, 0);
+  unread.mode.reset();
+  check(!x2::input::build_touch_menu_view(unread, plane),
+        "a shop whose mode was not read keeps the retail screen");
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  MenuSnapshot live = shop_menu(30, 4, 6);
+  touch.set_view(x2::input::build_touch_menu_view(live, plane), 0u);
+  const auto visible = *x2::input::build_touch_menu_view(live, plane);
+  TouchMenu short_list;
+  short_list.set_viewport(viewport_1280x720());
+  const auto tabs = x2::input::build_touch_menu_view(shop_menu(3, 0, 0), plane);
+  short_list.set_view(tabs, 0u);
+  auto out = tap(short_list,
+                 find(short_list.layout(), TouchMenuPart::row, 0)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
+            out[0].at.x == tabs->rows[0].click.x &&
+            out[0].at.y == tabs->rows[0].click.y,
+        "a tap on a tab is a click on the tab");
+  const X2Rect entry_row = find(touch.layout(), TouchMenuPart::row, 9)->rect;
+  out = tap(touch, entry_row, 20u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
+            out[0].at.y == visible.rows[9].click.y,
+        "a tap on a shown entry is a click on its row");
+
+  /* Entry 28 is below the window: walk the selection down to it, then stop. */
+  const float x = 0.5F * (entry_row.left + entry_row.right);
+  touch.contact(3, {x, entry_row.top}, lucent::touch::Phase::began, 25u);
+  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::moved,
+                25u);
+  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::ended,
+                25u);
+  const auto *far = find(touch.layout(), TouchMenuPart::row, 31);
+  check(far != nullptr, "the far entry has a button");
+  if (far == nullptr) {
+    return;
+  }
+  out = tap(touch, far->rect, 30u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "an entry outside the window is walked to with Down, not the wrap");
+  live.items[5].list_box->selected = 28;
+  live.items[5].list_box->top = 6;
+  out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 40u);
+  check(out.empty(), "and only selected on arrival, as a click would");
+}
+
 /* A click delivered at a row's client point lands inside the box
    CMenuItem::onMouse tests, after FUN_005f9eb0's own mapping. */
 void a_delivered_click_lands_in_the_hit_box() {
@@ -444,6 +575,7 @@ int main() {
   a_menu_without_a_title_has_no_header_band();
   a_tap_delivers_the_games_own_input();
   the_team_party_is_its_heroes();
+  the_shop_is_its_tabs_and_entries();
   a_drag_scrolls_and_does_not_press();
   if (failures) {
     std::printf("touch_menu: %d of %d check(s) failed\n", failures, checks);

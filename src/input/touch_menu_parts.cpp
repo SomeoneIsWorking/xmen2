@@ -42,6 +42,16 @@ menu_item_centre(const menu::SceneRect &rect,
                           0.5F * static_cast<float>(rect.top + rect.bottom)});
 }
 
+const menu::MenuItem *find_menu_item(const menu::MenuSnapshot &menu,
+                                     std::string_view name) {
+  for (const menu::MenuItem &item : menu.items) {
+    if (item.name == name) {
+      return &item;
+    }
+  }
+  return nullptr;
+}
+
 bool menu_item_shown(const menu::MenuItem &item) {
   return item.enabled() && !item.hidden();
 }

@@ -520,6 +520,65 @@ with Magneto, Cyclops, Wolverine, Storm; a click on Cyclops lit
 `char_summary02`, a second click set mode 2 and showed `details_panel`; B
 returned to mode 0, and `$MENU_OK Accept` closed the team menu to gameplay.
 
+## The shop (`CMenuShop`) and its list box (`CMenuItemListBox`)
+
+`CMenuShop` (vtable `0x69eb4c`) serves both `shop` and `stash`; bit 0 of
+`menu+0x18e8` picks the stash. Its `onMouse` (`FUN_005d3400`) runs on
+`WM_LBUTTONUP`/`WM_RBUTTONUP` (or while `FUN_0061a600` reports the button
+held): it finds the tabs `shop_option01..03` (`stash_option01..03` for the
+stash), takes the lit one (`item+0x54` bit 0, through item vfunc `+0x50`) and
+the one under the pointer, tested with the raw box (`top = [0x72] - [0x76] - 1`,
+`bottom = [0x72]`, no half-depth lift). A click on a different tab publishes
+axis 0 (`DAT_00a09fa8[p] = 1`, `DAT_00a09f2c[p] = 0`) at +1.0, or -1.0 when the
+clicked tab is the one before the lit one; with three tabs that reaches any tab
+in one step. Otherwise it runs the base `CMenu::onMouse`, and when that takes
+nothing, `FUN_005d30d0`.
+
+The shop's items: `shop_option01..03` (`buy`, `sell`, `training`), `list` (the
+list box), `item_desc` (text box), `item_cost_value`, `inventory_count`,
+`money_value`, `up_arrow`/`down_arrow`, and `desctext2` `$MENU_ACCEPT Buy`,
+`desctext3` `$MENU_OK Accept`. `openmenu shop` from the console opens it on the
+training tab.
+
+`CMenuItemListBox` (vtable `0x6a062c`) fields:
+
+| field | meaning |
+|---|---|
+| `item+0xac` (i16) | selected entry, -1 for none (`FUN_005bf8a0` clamps it) |
+| `item+0xbc` | the entry store: one byte record id per entry, the count at `store+0x84` (`FUN_005bf750`) |
+| `item+0xd8` (i16) | first entry in the window |
+| `item+0xdb` (u8) | rows the window holds (vfunc `+0xec`, `0x005bf100`) |
+| `item+0xdd` (u8) | rows kept between the selection and the window's edge |
+| `item+0xe0` (i32) | row height, scene units |
+| `item+0x2a4` | bit 1: skip entries vfunc `+0x88` refuses; bit 3: Up/Down wraps; bit 2: wordwrap |
+
+An entry's text is a record in one table every list box shares:
+`0x8a83f4 + id * 0x70` (256 records). The entry getter (vfunc `+0xe4`,
+`0x005c23c0`) copies at most 0x3f bytes of it and cuts at the first tab; the
+rest of the line is further columns (`columns` attribute, at most 4).
+
+The list's `onMouse` (vfunc `+0x74`, `0x005c0e10`) tests the raw box too (no
+half-depth lift: for `list` the base box is 48 units higher than what it
+tests). The row under the pointer is `([0x72] - y) / [0xe0]`, counted down from
+the top edge, and its entry is `top + row`:
+
+- the wheel publishes axis 1 at +1.0 (up) or -1.0 (down): one step of the
+  selection, the same as the pad's Up/Down (`FUN_005c1740`, vfunc `+0x58`),
+  which moves `top` when the selection leaves the window;
+- a button-down on an entry that is not selected publishes one axis 1 step
+  toward it and keeps the remaining steps at `item+0x88` (timed at `+0x8c`), so
+  the selection walks there;
+- a button-up on the entry the same button went down on, when that press did
+  not move the selection (`item+0x90` clear), publishes `MENU_ACCEPT` (4) for
+  the left button and 8 for the right. So a click on the selected entry buys.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu shop`): training tab
+lit with 12 entries (four heroes by level advance, bonus skill point,
+redistribute skills), 23 window rows of 8 units; a click on `buy` lit
+`shop_option01` and the list became 13 entries (Energy Pack .. Grab Bag); a
+click on Health Pack selected entry 1; `$MENU_OK Accept` closed the shop to
+gameplay.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
@@ -551,8 +610,15 @@ returned to mode 0, and `$MENU_OK Accept` closed the team menu to gameplay.
 - **`item+0x57` mode bits** and **`item+0x56` filter** are parsed, not
   understood.
 - **The writer of the pool-2 generation `pool[0]`.**
-- **`ListBox`/`ListCodex` entries, popup text and buttons, and a bar's value
-  text** are not read; the model reports the list item's own label only.
+- **`ListCodex` and the other list subclasses' entries, popup text and
+  buttons, and a bar's value text** are not read. `CMenuItemListBox` entries
+  are; a subclass that overrides the entry getter (`+0xe4`) is not assumed to
+  share the record table.
+- **A shop list longer than its window.** The jungle shop's lists hold at most
+  13 entries against 23 rows, so walking the selection to an entry outside the
+  window is unit-tested only.
+- **What a buy does with no money.** The measured run had 0 money; a click on
+  the selected entry was not driven.
 - **The command-less main rows by touch** (`danger room`, `play online`) are
   reached by the pad walk and A; only the keyboard path has been measured.
 - **The `~NN` text escape.** Labels and footers carry `~` and two digits
