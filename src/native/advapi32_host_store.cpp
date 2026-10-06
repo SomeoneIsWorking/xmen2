@@ -47,8 +47,6 @@ int advapi32_host_set_string(const char *path, const char *name,
     return 0;
   }
   v = advapi32_store_put(path, name);
-  if (!v)
-    return 0;
   v->type = 1u; /* REG_SZ */
   v->len = (uint32_t)n;
   memcpy(v->data, value, n);

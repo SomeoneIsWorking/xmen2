@@ -8,7 +8,6 @@
 
 #include <stdint.h>
 
-#define MAX_VALUES 256
 #define MAX_PATH_ 256
 #define MAX_NAME_ 96
 #define MAX_DATA_ 512
@@ -32,6 +31,7 @@ typedef struct {
 void advapi32_store_load(void);
 void advapi32_store_save(void);
 RegValue *advapi32_store_find(const char *path, const char *name);
+/* The value at path\\name, created when missing; never NULL. */
 RegValue *advapi32_store_put(const char *path, const char *name);
 
 /* A write made through the store by the HOST, not by a guest import: counts
