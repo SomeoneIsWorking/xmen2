@@ -144,6 +144,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Representative product conformance and remaining subsystem-by-subsystem ownership are incomplete.
 - notes: Overrides may call original guest behavior through the same JIT without recursion.
 
+### extraction-revive — Extraction point use and hero revival (paid, money-gated)
+- status: re-partial
+- deps: native-overrides
+- evidence: Static decompile plus a live genosha4 run: extractionPoint (0x004a6b50) only opens the world map and saves; a fallen hero is revived in CMenuTeam roster mode for max(200, 2*level^2) money.
+- where: docs/RE/extraction.md
+- gap: Where the dead flag lives on the stats object (actor[0xd7]+0xc0 vslot 0x28) and the extraction-to-roster team menu hop are not decompiled end to end.
+- notes: Retail revive is not free, so auto-revive is on hold pending a user decision.
+
 ## graphics
 
 ### vk-substitute — Vulkan renderer substituted into the engine through ARK
