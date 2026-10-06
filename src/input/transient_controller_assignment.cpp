@@ -18,20 +18,36 @@ static TransientAssignment g_assignment[TRANSIENT_PLAYERS];
 
 int x2_transient_controller_assign(int pad, unsigned player) {
   unsigned char guid[16];
+  TransientAssignment displaced;
   const char *id;
+  int vacated = -1;
   unsigned i;
   if (player >= TRANSIENT_PLAYERS || !dinput_pad_instance_guid(pad, guid))
     return 0;
+  displaced = g_assignment[player];
   for (i = 0; i < TRANSIENT_PLAYERS; i++)
     if (g_assignment[i].assigned &&
-        x2_controller_instance_matches(&g_assignment[i].instance, guid))
+        x2_controller_instance_matches(&g_assignment[i].instance, guid)) {
       memset(&g_assignment[i], 0, sizeof g_assignment[i]);
+      vacated = (int)i;
+    }
   memset(&g_assignment[player], 0, sizeof g_assignment[player]);
   g_assignment[player].assigned = 1;
   x2_controller_instance_bind(&g_assignment[player].instance, guid);
   id = dinput_pad_persistent_id(pad);
   snprintf(g_assignment[player].id, sizeof g_assignment[player].id, "%s",
            id ? id : "session-controller");
+  if (displaced.assigned && vacated >= 0 && vacated != (int)player)
+    g_assignment[vacated] = displaced;
+  return 1;
+}
+
+int x2_transient_controller_move(unsigned from, unsigned to) {
+  if (from >= TRANSIENT_PLAYERS || to >= TRANSIENT_PLAYERS ||
+      !g_assignment[from].assigned || g_assignment[to].assigned)
+    return 0;
+  g_assignment[to] = g_assignment[from];
+  memset(&g_assignment[from], 0, sizeof g_assignment[from]);
   return 1;
 }
 

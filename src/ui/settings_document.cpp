@@ -7,6 +7,7 @@
 #include "controller_assignment_rows.hpp"
 #include "display_settings_document.hpp"
 #include "hud_settings_document.hpp"
+#include "keyboard_bindings_document.hpp"
 #include "rml_text.hpp"
 #include "ui_resources.h"
 
@@ -20,7 +21,6 @@
 #include <string>
 #include <vector>
 
-#include "binding_rows.h"
 #include "dinput_pad.h"
 #include "dinput_system.h"
 #include "gpu_shadow.h"
@@ -40,6 +40,7 @@ unsigned active_tab;
 int capture_row = -1;
 bool close_requested;
 uint64_t observed_pad_generation;
+bool observed_game_bindings;
 std::vector<ControllerAssignmentRow> visible_controllers;
 
 class SettingsListener final : public Rml::EventListener {
@@ -48,23 +49,20 @@ public:
 };
 SettingsListener listener;
 
-const char *keyboard_code_name(unsigned code) {
-  if (code > 0xffu)
-    return nullptr;
-  const char *name = dinput_system_dik_name((unsigned char)code);
-  return name && name[0] ? name : nullptr;
+void assignment_cell(std::ostringstream &rml, const char *kind, size_t row,
+                     int owner, bool assigned) {
+  rml << "<button id='assign-" << kind << "-" << row << "-" << owner + 1 << "'"
+      << (assigned ? " class='assigned'" : "") << "><img src='"
+      << (assigned ? "assign_on.svg" : "assign_off.svg") << "' /></button>";
 }
 
-std::string binding_label(const X2KeyboardProfile &profile, unsigned row) {
-  char out[64];
-  if (!profile.keyboard_set[row])
-    return "Game default";
-  if (!profile.keyboard[row])
-    return "Unbound";
-  if (const char *name = keyboard_code_name(profile.keyboard[row]))
-    return name;
-  std::snprintf(out, sizeof out, "DIK 0x%02x", profile.keyboard[row]);
-  return out;
+/* A session pad displaced from `seat` takes the seat its displacer left. */
+void relocate_session_pad(unsigned seat, int vacated) {
+  if (!x2_transient_controller_has_assignment(seat))
+    return;
+  if (vacated < 0 || (unsigned)vacated == seat ||
+      !x2_transient_controller_move(seat, (unsigned)vacated))
+    x2_transient_controller_clear_player(seat);
 }
 
 void wire(const char *id, const char *event) {
@@ -78,12 +76,12 @@ void rebuild() {
       settings->keyboard_profile[selected_profile];
   Rml::Element *content;
   std::ostringstream rml;
-  unsigned row;
 
   if (!document || !(content = document->GetElementById("content")))
     return;
   dinput_pad_refresh();
   observed_pad_generation = dinput_pad_generation();
+  observed_game_bindings = keyboard_bindings_game_known();
   if (active_tab == 0) {
     rml << "<pane><div class='section-heading'>Startup</div>"
            "<select-button id='boot-mode'><key>Boot</key><value>"
@@ -116,13 +114,10 @@ void rebuild() {
     for (unsigned p = 0; p < X2_SETTINGS_KEYBOARD_PROFILES; p++) {
       rml << "<div class='assignment-row'><key>Keyboard " << p + 1 << "</key>";
       for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
-        rml << "<button id='assign-kb-" << p << "-" << owner + 1 << "'>"
-            << (settings->keyboard_player[p] == owner &&
-                        !(owner > 0 &&
-                          x2_transient_controller_has_assignment(owner))
-                    ? "●"
-                    : "·")
-            << "</button>";
+        assignment_cell(
+            rml, "kb", p, owner,
+            settings->keyboard_player[p] == owner &&
+                !(owner > 0 && x2_transient_controller_has_assignment(owner)));
       rml << "</div>";
     }
     for (size_t i = 0; i < visible_controllers.size(); i++) {
@@ -130,23 +125,17 @@ void rebuild() {
       rml << "<div class='assignment-row'><key>"
           << escape_rml(visible_controllers[i].name) << "</key>";
       for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
-        rml << "<button id='assign-pad-" << i << "-" << owner + 1 << "'>"
-            << (assigned == owner ? "●" : "·") << "</button>";
+        assignment_cell(rml, "pad", i, owner, assigned == owner);
       rml << "</div>";
     }
     rml << "<p id='status' class='status'></p><spacer></spacer></pane>"
            "<pane><select-button id='profile'><key>Edit bindings</key>"
         << "<value>Keyboard " << selected_profile + 1
         << "</value></select-button><div class='hint'>Select a binding and "
-           "press its replacement key. Delete clears it; Escape cancels."
-           "</div><div class='section-heading'>Actions</div>";
-    for (row = 0; row < INPUT_BINDING_ROWS; row++) {
-      const char *name = input_binding_row_display_label(row);
-      rml << "<div class='binding'><key>" << escape_rml(name ? name : "Unknown")
-          << "</key><button id='kb-" << row << "'>"
-          << binding_label(profile, row) << "</button></div>";
-    }
-    rml << "<p id='status' class='status'></p>"
+           "press its replacement key. Delete clears it; Escape cancels. "
+           "Reset returns a binding to the game's own key.</div>"
+        << keyboard_bindings_document_rml(profile)
+        << "<p id='status' class='status'></p>"
            "<spacer></spacer></pane>";
   }
   content->SetInnerRML(rml.str());
@@ -172,10 +161,7 @@ void rebuild() {
             "assign-pad-" + std::to_string(i) + "-" + std::to_string(owner);
         wire(id.c_str(), "click");
       }
-  }
-  for (row = 0; row < INPUT_BINDING_ROWS; row++) {
-    std::string kb = "kb-" + std::to_string(row);
-    wire(kb.c_str(), "click");
+    keyboard_bindings_document_wire(*document, listener);
   }
 }
 
@@ -282,14 +268,18 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
       tab->SetPseudoClass("selected", active_tab == 2);
     rebuild();
   } else if (id.rfind("assign-kb-", 0) == 0) {
+    X2Settings *settings = x2_settings_store();
     unsigned profile_index, owner_index;
     if (std::sscanf(id.c_str(), "assign-kb-%u-%u", &profile_index,
                     &owner_index) != 2 ||
-        !x2_settings_assign_keyboard(x2_settings_store(), profile_index,
+        profile_index >= X2_SETTINGS_KEYBOARD_PROFILES)
+      return;
+    int vacated = settings->keyboard_player[profile_index];
+    if (!x2_settings_assign_keyboard(settings, profile_index,
                                      (int)owner_index - 1))
       return;
     if (owner_index > 1)
-      x2_transient_controller_clear_player(owner_index - 1);
+      relocate_session_pad(owner_index - 1, vacated);
     std::string status = save_settings();
     rebuild();
     set_status(status);
@@ -316,7 +306,7 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
             x2_settings_store(), controller.id.c_str(), (int)owner_index - 1))
       return;
     if (owner_index > 0)
-      x2_transient_controller_clear_player(owner_index - 1);
+      relocate_session_pad(owner_index - 1, controller.owner);
     std::string status = save_settings();
     rebuild();
     set_status(status);
@@ -333,6 +323,17 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
   } else if (id == "profile") {
     selected_profile = (selected_profile + 1u) % X2_SETTINGS_KEYBOARD_PROFILES;
     rebuild();
+  } else if (id.rfind("binding-reset-", 0) == 0) {
+    X2Settings *settings = x2_settings_store();
+    X2KeyboardProfile &profile = settings->keyboard_profile[selected_profile];
+    X2KeyboardProfile before = profile;
+    if (!keyboard_bindings_document_restore(profile, id))
+      return;
+    std::string status = save_settings();
+    if (status != "Saved")
+      profile = before;
+    rebuild();
+    set_status(status);
   } else if (id.rfind("kb-", 0) == 0) {
     capture_row = std::atoi(id.c_str() + 3);
     element->SetInnerRML("Press a control...");
@@ -410,6 +411,7 @@ void settings_document_shutdown() {
   capture_row = -1;
   close_requested = false;
   observed_pad_generation = 0;
+  observed_game_bindings = false;
   visible_controllers.clear();
 }
 
@@ -430,9 +432,11 @@ void settings_document_update() {
   uint64_t generation;
   dinput_pad_refresh();
   generation = dinput_pad_generation();
-  if (generation == observed_pad_generation)
+  if (generation == observed_pad_generation &&
+      keyboard_bindings_game_known() == observed_game_bindings)
     return;
   observed_pad_generation = generation;
+  observed_game_bindings = keyboard_bindings_game_known();
   if (document && active_tab == 2 && capture_row < 0)
     rebuild();
 }

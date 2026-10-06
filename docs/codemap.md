@@ -91,7 +91,7 @@ below name cross-directory seams and the entry points used to extend them.
 | Retail dialog selected-row scale | Own the shared 800x600 retail UI reference and extend the title's evidenced selected-row transform formula above that reference at its exact call site | `src/presentation/retail_ui_design.h`, `src/native/dialog_selection_scale_policy.{cpp,h}`, `src/native/dialog_selection_scale.{cpp,h}` | `x2_dialog_selection_scale`, `x2_dialog_selection_transform` | [Issue #133](issues/0133-retail-dialog-selection-highlight-is-missing.md) |
 | Guest ABI support | Hand-written CPU/ABI compatibility helpers shared by title-native call boundaries | `src/runtime/x86_abi/` | narrow helper named for the ABI contract | — |
 | Save model | Retail save directory, catalog, Continue policy, autosave policy/format/storage, Load Game logical-window policy, and trace model | `src/save/` | `save_directory.cpp`, `save_catalog.cpp`, `load_game_menu_policy.cpp` | [Boot](RE/boot.md) |
-| Port settings UI | RmlUi lifetime, settings document, controller rows, and overlay state | `src/ui/` | `rmlui_ui.cpp`, `settings_document.cpp` | [External provenance](prior-art.md) |
+| Port settings UI | RmlUi lifetime, settings document, controller rows, keyboard-binding rows (labels resolved against the game's own master-set binding, per-row and whole-profile reset), device-assignment marks (`assets/ui/assign_*.svg`), and overlay state | `src/ui/` | `rmlui_ui.cpp`, `settings_document.cpp`, `keyboard_bindings_document.cpp` | [External provenance](prior-art.md) |
 | ARK visual-context backend | Alchemy visual-context class construction and slot bridges | `src/vulkan/` | `igvk_context.cpp`, `igvk_ark.cpp` | — |
 
 ## Cross-directory subsystem seams

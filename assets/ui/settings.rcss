@@ -230,7 +230,17 @@ select-button value {
     font-size: 14dp;
     color: #E0DBC8;
     background-color: rgba(17, 16, 10, 65%);
+    line-height: 30dp;
 }
+.binding button.restore,
+.binding restore-slot {
+    flex: 0 0 64dp;
+    width: 64dp;
+    padding: 6dp 4dp;
+    font-size: 13dp;
+    text-align: center;
+}
+.binding restore-slot { display: block; }
 
 .assignment-row {
     display: flex;
@@ -254,6 +264,18 @@ select-button value {
     padding: 4dp;
     text-align: center;
 }
+.assignment-row button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.assignment-row button img {
+    width: 16dp;
+    height: 16dp;
+    image-color: rgba(224, 219, 200, 35%);
+}
+.assignment-row button.assigned { border: 1dp #C2A42D; }
+.assignment-row button.assigned img { image-color: #C2A42D; }
 .assignment-head {
     opacity: 0.65;
     font-size: 14dp;

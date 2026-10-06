@@ -179,12 +179,14 @@ int main(void) {
     CHECK(slots[bank[row] + 2][17][INPUT_BINDING_ALT_SLOT].code == 0x1c);
   }
 
-  /* Moving a keyboard row evicts the prior keyboard row for that player. */
+  /* Moving a keyboard row swaps it with that player's prior keyboard row,
+     so the player it left keeps a device and stays eligible. */
   CHECK(x2_settings_assign_keyboard(&settings, 2, 0));
   x2_player_input_sync(&cpu);
   CHECK(slots[0][4][0].code == 77);
-  CHECK(participation_leave == 0x08u);
-  participation_leave = 0;
+  CHECK(x2_settings_player_keyboard(&settings, 3) == 0);
+  CHECK(slots[3][4][0].code == 24u);
+  CHECK(participation_leave == 0u);
 
   /* Disconnecting an assigned pad leaves its association reserved. */
   pads[1] = NULL;

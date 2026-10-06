@@ -773,6 +773,18 @@ target_include_directories(test_controller_assignment_rows PRIVATE
                            src/ui src/input src/native src/config)
 add_test(NAME controller_assignment_rows COMMAND test_controller_assignment_rows)
 
+add_executable(test_keyboard_bindings_document
+               tests/test_keyboard_bindings_document.cpp
+               src/ui/keyboard_bindings_document.cpp src/ui/rml_text.cpp
+               src/input/binding_rows.cpp src/config/settings.cpp
+               src/config/hud_settings.cpp src/config/input_assignments.cpp
+               src/config/boot_mode.cpp)
+target_include_directories(test_keyboard_bindings_document PRIVATE
+                           src/ui src/input src/native src/config)
+target_link_libraries(test_keyboard_bindings_document PRIVATE rmlui_core)
+add_test(NAME keyboard_bindings_document
+         COMMAND test_keyboard_bindings_document)
+
 add_executable(test_input_record tests/test_input_record.cpp
                src/input/input_record.cpp src/native/json_string.cpp
                src/config/directory_create.cpp)
@@ -1687,6 +1699,10 @@ foreach(x2_touch_icon punch smash use jump menu)
     configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_${x2_touch_icon}.svg"
                    "${CMAKE_BINARY_DIR}/ui/touch_${x2_touch_icon}.svg" COPYONLY)
 endforeach()
+foreach(x2_assign_mark on off)
+    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/assign_${x2_assign_mark}.svg"
+                   "${CMAKE_BINARY_DIR}/ui/assign_${x2_assign_mark}.svg" COPYONLY)
+endforeach()
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
@@ -1694,6 +1710,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/settings_document.cpp
     src/ui/display_settings_document.cpp
     src/ui/hud_settings_document.cpp
+    src/ui/keyboard_bindings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
     src/ui/skip_document.cpp

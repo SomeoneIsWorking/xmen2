@@ -58,6 +58,21 @@ int main(void) {
   CHECK(x2_transient_controller_player_for_pad(0) == -1);
   CHECK(x2_transient_controller_resolve(2) == 1);
 
+  /* Changing one session pad's seat never turns the other one off. */
+  CHECK(x2_transient_controller_assign(0, 0));
+  CHECK(x2_transient_controller_assign(0, 3));
+  CHECK(x2_transient_controller_player_for_pad(1) == 2);
+  CHECK(x2_transient_controller_assign(0, 2));
+  CHECK(x2_transient_controller_player_for_pad(0) == 2);
+  CHECK(x2_transient_controller_player_for_pad(1) == 3);
+  CHECK(strcmp(x2_transient_controller_id(3), "sdl-session-pad-b") == 0);
+  CHECK(x2_transient_controller_move(3, 1));
+  CHECK(!x2_transient_controller_move(1, 2));
+  CHECK(x2_transient_controller_player_for_pad(1) == 1);
+  x2_transient_controller_clear_player(1);
+  CHECK(x2_transient_controller_assign(1, 2));
+  CHECK(x2_transient_controller_player_for_pad(0) == -1);
+
   connected[1] = 0;
   CHECK(x2_transient_controller_has_assignment(2));
   CHECK(x2_transient_controller_resolve(2) == -1);
