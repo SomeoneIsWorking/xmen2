@@ -1,15 +1,17 @@
 #include "autosave_policy.h"
 
+namespace x2::save {
+
 /* The title policy owns an asynchronous request -> write -> completion state
    machine. Its verified checkpoint is a successful retail map load, cancelled
    by main-menu Show, taken once the player controls a character. */
 
-void x2_autosave_policy_init(X2AutosavePolicy *policy) {
+void autosave_policy_init(AutosavePolicy *policy) {
   if (policy)
-    *policy = (X2AutosavePolicy){0};
+    *policy = AutosavePolicy{};
 }
 
-void x2_autosave_policy_map_return(X2AutosavePolicy *policy, int succeeded) {
+void autosave_policy_map_return(AutosavePolicy *policy, int succeeded) {
   if (!policy)
     return;
   policy->map_returns++;
@@ -17,13 +19,13 @@ void x2_autosave_policy_map_return(X2AutosavePolicy *policy, int succeeded) {
     return;
   policy->successful_map_returns++;
   policy->pending.id = policy->successful_map_returns;
-  policy->pending.kind = X2_AUTOSAVE_CHECKPOINT_MAP_LOAD;
+  policy->pending.kind = AutosaveCheckpointKind::MapLoad;
   policy->has_pending = 1;
   policy->idle_polls = 0;
   policy->scheduled++;
 }
 
-void x2_autosave_policy_menu_show(X2AutosavePolicy *policy) {
+void autosave_policy_menu_show(AutosavePolicy *policy) {
   if (!policy || !policy->has_pending)
     return;
   policy->has_pending = 0;
@@ -31,31 +33,31 @@ void x2_autosave_policy_menu_show(X2AutosavePolicy *policy) {
   policy->cancelled_menu++;
 }
 
-X2AutosavePollResult x2_autosave_policy_poll(X2AutosavePolicy *policy,
-                                             uint32_t manager_mode,
-                                             int player_controls,
-                                             X2AutosaveCheckpoint *checkpoint) {
+AutosavePollResult autosave_policy_poll(AutosavePolicy *policy,
+                                        std::uint32_t manager_mode,
+                                        int player_controls,
+                                        AutosaveCheckpoint *checkpoint) {
   if (!policy)
-    return X2_AUTOSAVE_POLL_IDLE;
+    return AutosavePollResult::Idle;
   if (policy->has_active)
-    return X2_AUTOSAVE_POLL_AWAITING_RESULT;
+    return AutosavePollResult::AwaitingResult;
   if (!policy->has_pending)
-    return X2_AUTOSAVE_POLL_IDLE;
+    return AutosavePollResult::Idle;
   if (manager_mode != 0u) {
     policy->idle_polls = 0;
     policy->deferred_polls++;
-    return X2_AUTOSAVE_POLL_DEFERRED;
+    return AutosavePollResult::Deferred;
   }
   if (!player_controls) {
     policy->idle_polls = 0;
     policy->deferred_polls++;
     policy->control_deferred_polls++;
-    return X2_AUTOSAVE_POLL_DEFERRED;
+    return AutosavePollResult::Deferred;
   }
   policy->idle_polls++;
-  if (policy->idle_polls < X2_AUTOSAVE_IDLE_POLLS) {
+  if (policy->idle_polls < kAutosaveIdlePolls) {
     policy->deferred_polls++;
-    return X2_AUTOSAVE_POLL_DEFERRED;
+    return AutosavePollResult::Deferred;
   }
   policy->active = policy->pending;
   policy->has_active = 1;
@@ -63,11 +65,11 @@ X2AutosavePollResult x2_autosave_policy_poll(X2AutosavePolicy *policy,
   policy->attempts++;
   if (checkpoint)
     *checkpoint = policy->active;
-  return X2_AUTOSAVE_POLL_FIRE;
+  return AutosavePollResult::Fire;
 }
 
-int x2_autosave_policy_finish(X2AutosavePolicy *policy, uint64_t checkpoint_id,
-                              int succeeded) {
+int autosave_policy_finish(AutosavePolicy *policy, std::uint64_t checkpoint_id,
+                           int succeeded) {
   if (!policy || !policy->has_active || policy->active.id != checkpoint_id)
     return 0;
   policy->has_active = 0;
@@ -77,3 +79,5 @@ int x2_autosave_policy_finish(X2AutosavePolicy *policy, uint64_t checkpoint_id,
     policy->failures++;
   return 1;
 }
+
+} // namespace x2::save

@@ -136,7 +136,7 @@ static double queued_movie_audio(void *userdata) {
 }
 
 static void close_native_movie(void) {
-  x2_fmv_probe_end();
+  x2::media::fmv_probe_end();
   if (g_native_movie.player)
     x2_fmv_report(g_native_movie.player);
   x2_fmv_close(g_native_movie.player);
@@ -149,7 +149,7 @@ static X2FmvPlayer *movie_for(uint32_t info) {
 }
 
 void x2_movie_report(void) {
-  x2_fmv_probe_report();
+  x2::media::fmv_probe_report();
   if (g_native_movie.player)
     x2_fmv_report(g_native_movie.player);
 }
@@ -194,14 +194,14 @@ static void x2_movie_load(CPU *C) {
     movie_return(C, 0, 1);
     return;
   }
-  x2_fmv_probe_begin(guest_path);
+  x2::media::fmv_probe_begin(guest_path);
   first_frame = x2_fmv_update(player, 0.0);
   if (first_frame < 0 || !x2_fmv_decoded_frames(player)) {
     x2_log_error("movie: SFD '%s' produced no decodable video frame\n",
                  guest_path);
     x2_fmv_close(player);
     movie_audio_close();
-    x2_fmv_probe_end();
+    x2::media::fmv_probe_end();
     movie_return(C, 0, 1);
     return;
   }
@@ -328,7 +328,8 @@ static void x2_movie_next_frame(CPU *C) {
       WR32(info + INFO_STATE, 3u);
       changed = -1;
     } else {
-      x2_fmv_probe_padded(guest_memory_as<const uint8_t>(data), bytes, pitch);
+      x2::media::fmv_probe_padded(guest_memory_as<const uint8_t>(data), bytes,
+                                  pitch);
       g_native_movie.needs_copy = 0;
     }
   }

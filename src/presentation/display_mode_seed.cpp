@@ -24,15 +24,20 @@
    2\Settings\Display|Resolution|1|38303078363030 The engine formats the value
    with the "%dx%d" at XMen2.exe 0x006a4b80, so
    "<w>x<h>" below is the encoding it parses, not a choice. */
+namespace x2::presentation {
+
 #define X2_DISPLAY_KEY                                                         \
   "HKEY_CURRENT_USER\\Software\\Activision\\X-Men Legends 2\\Settings"         \
   "\\Display"
 #define X2_DISPLAY_VALUE "Resolution"
 
-static uint32_t g_published_width, g_published_height;
+namespace {
 
-int x2_display_mode_seed_format(unsigned w, unsigned h, char *out_value,
-                                int cap) {
+uint32_t g_published_width, g_published_height;
+
+} // namespace
+
+int display_mode_seed_format(unsigned w, unsigned h, char *out_value, int cap) {
   int length;
 
   if (!out_value || cap <= 0 || !w || !h || w > 16384u || h > 16384u)
@@ -41,26 +46,26 @@ int x2_display_mode_seed_format(unsigned w, unsigned h, char *out_value,
   return length >= 0 && length < cap;
 }
 
-int x2_display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
-                              char *out_value, int cap) {
-  if (!x2_display_mode_seed_format(w, h, out_value, cap))
+int display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
+                           char *out_value, int cap) {
+  if (!display_mode_seed_format(w, h, out_value, cap))
     return 0;
   return !stored || strcmp(stored, out_value) != 0;
 }
 
-int x2_display_mode_seed_is_current(void) {
+int display_mode_seed_is_current() {
   const X2Settings *settings = x2_settings_store();
   char stored[32];
   char expected[32];
 
-  return x2_display_mode_seed_format(settings->width, settings->height,
-                                     expected, (int)sizeof expected) &&
+  return display_mode_seed_format(settings->width, settings->height, expected,
+                                  (int)sizeof expected) &&
          advapi32_host_get_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE, stored,
                                   (int)sizeof stored) &&
          strcmp(stored, expected) == 0;
 }
 
-int x2_display_mode_seed_publish(void) {
+int display_mode_seed_publish() {
   X2Settings *settings = x2_settings_store();
   char before[32];
   char value[32];
@@ -68,8 +73,8 @@ int x2_display_mode_seed_publish(void) {
   int had_before = advapi32_host_get_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE,
                                             before, (int)sizeof before);
 
-  if (!x2_display_mode_seed_format(settings->width, settings->height, value,
-                                   (int)sizeof value))
+  if (!display_mode_seed_format(settings->width, settings->height, value,
+                                (int)sizeof value))
     return 0;
   if (had_before && strcmp(before, value) == 0) {
     g_published_width = settings->width;
@@ -88,7 +93,9 @@ int x2_display_mode_seed_publish(void) {
    width for another shape -- the 1280x720 default pillarboxed on a 2728x1264
    phone -- so the width is re-derived from the display this run has before
    the mode is published. An unknown display (a headless run) keeps it. */
-static void fit_display(X2Settings *settings) {
+namespace {
+
+void fit_display(X2Settings *settings) {
   unsigned display_w = 0, display_h = 0;
 
   if (!x2_display_pixel_size(&display_w, &display_h))
@@ -97,13 +104,15 @@ static void fit_display(X2Settings *settings) {
       (uint16_t)x2_resolution_width_for(settings->height, display_w, display_h);
 }
 
-void x2_display_mode_seed_boot(void) {
+} // namespace
+
+void display_mode_seed_boot() {
   X2Settings *settings = x2_settings_store();
   int acted, current;
 
   fit_display(settings);
-  acted = x2_display_mode_seed_publish();
-  current = x2_display_mode_seed_is_current();
+  acted = display_mode_seed_publish();
+  current = display_mode_seed_is_current();
 
   /* This early write supplies the warm-profile path. Retail first-run
      initialization may install its own 800x600 default afterwards;
@@ -122,5 +131,7 @@ void x2_display_mode_seed_boot(void) {
   }
 }
 
-uint32_t x2_display_mode_seed_width(void) { return g_published_width; }
-uint32_t x2_display_mode_seed_height(void) { return g_published_height; }
+uint32_t display_mode_seed_width() { return g_published_width; }
+uint32_t display_mode_seed_height() { return g_published_height; }
+
+} // namespace x2::presentation

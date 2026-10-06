@@ -199,14 +199,14 @@ static void x2_override_display_settings_load(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x00619770u);
 
   settings = x2_settings_store();
-  if (!x2_display_mode_seed_format(settings->width, settings->height, expected,
-                                   (int)sizeof expected) ||
+  if (!x2::presentation::display_mode_seed_format(
+          settings->width, settings->height, expected, (int)sizeof expected) ||
       strlen(expected) >= RESOLUTION_CAPACITY)
     refuse("configured mode exceeds the retail string capacity", expected,
            NULL);
 
-  (void)x2_display_mode_seed_publish();
-  if (!x2_display_mode_seed_is_current())
+  (void)x2::presentation::display_mode_seed_publish();
+  if (!x2::presentation::display_mode_seed_is_current())
     refuse("configured mode could not be republished after first-run defaults",
            expected, NULL);
 

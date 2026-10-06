@@ -1,15 +1,19 @@
 #include "continue_policy.h"
 
-#include <string.h>
+#include <cstring>
 
-typedef struct {
-  X2MainMenuText text;
+namespace x2::save {
+
+namespace {
+
+struct MenuRow {
+  MainMenuText text;
   unsigned source;
-} MenuRow;
+};
 
 enum { SHIPPED_REVIEW_ROW = 3u, SHIPPED_ONLINE_ROW = 5u, CANDIDATE_ROWS = 8u };
 
-static unsigned without(MenuRow *rows, unsigned count, unsigned source) {
+unsigned without(MenuRow *rows, unsigned count, unsigned source) {
   unsigned kept = 0;
   for (unsigned i = 0; i < count; i++) {
     if (rows[i].source != source) {
@@ -19,8 +23,9 @@ static unsigned without(MenuRow *rows, unsigned count, unsigned source) {
   return kept;
 }
 
-void x2_continue_menu_plan(int has_save, int has_lan_game,
-                           X2ContinueMenuPlan *out) {
+} // namespace
+
+void continue_menu_plan(int has_save, int has_lan_game, ContinueMenuPlan *out) {
   MenuRow rows[CANDIDATE_ROWS];
   unsigned count = 0;
   unsigned row;
@@ -28,58 +33,60 @@ void x2_continue_menu_plan(int has_save, int has_lan_game,
   if (!out)
     return;
   if (has_lan_game)
-    rows[count++] = (MenuRow){X2_MENU_TEXT_JOIN_LAN, X2_MENU_COMMAND_JOIN_LAN};
+    rows[count++] = (MenuRow){MainMenuText::JoinLan, kMenuCommandJoinLan};
   if (has_save)
-    rows[count++] = (MenuRow){X2_MENU_TEXT_CONTINUE, X2_MENU_COMMAND_CONTINUE};
-  for (row = 0; row < X2_MAIN_MENU_ROWS; row++)
+    rows[count++] = (MenuRow){MainMenuText::Continue, kMenuCommandContinue};
+  for (row = 0; row < kMainMenuRows; row++)
     rows[count++] =
-        (MenuRow){(X2MainMenuText)(X2_MENU_TEXT_NEW_GAME + row), row};
-  if (count > X2_MAIN_MENU_ROWS)
+        (MenuRow){static_cast<MainMenuText>(
+                      static_cast<unsigned>(MainMenuText::NewGame) + row),
+                  row};
+  if (count > kMainMenuRows)
     count = without(rows, count, SHIPPED_ONLINE_ROW);
-  if (count > X2_MAIN_MENU_ROWS)
+  if (count > kMainMenuRows)
     count = without(rows, count, SHIPPED_REVIEW_ROW);
 
-  memset(out, 0, sizeof *out);
+  std::memset(out, 0, sizeof *out);
   out->show_last_row = 1;
-  for (row = 0; row < X2_MAIN_MENU_ROWS; row++) {
+  for (row = 0; row < kMainMenuRows; row++) {
     out->text[row] = rows[row].text;
     out->command_source[row] = rows[row].source;
-    if (rows[row].text == X2_MENU_TEXT_DANGER_ROOM)
+    if (rows[row].text == MainMenuText::DangerRoom)
       out->danger_row = row;
   }
   out->disable_online_special =
-      rows[X2_MAIN_MENU_ROWS - 1u].source != SHIPPED_ONLINE_ROW;
+      rows[kMainMenuRows - 1u].source != SHIPPED_ONLINE_ROW;
 }
 
-int x2_continue_leaf_slot(const char *leaf, unsigned *slot) {
+int continue_leaf_slot(const char *leaf, unsigned *slot) {
   if (!leaf || !slot)
     return 0;
-  if (!strcmp(leaf, "autosave.save")) {
+  if (!std::strcmp(leaf, "autosave.save")) {
     *slot = 0u;
     return 1;
   }
-  if (strlen(leaf) == 14u && !strncmp(leaf, "saveslot", 8u) && leaf[8] >= '0' &&
-      leaf[8] <= '9' && !strcmp(leaf + 9, ".save")) {
+  if (std::strlen(leaf) == 14u && !std::strncmp(leaf, "saveslot", 8u) &&
+      leaf[8] >= '0' && leaf[8] <= '9' && !std::strcmp(leaf + 9, ".save")) {
     *slot = (unsigned)(leaf[8] - '0');
     return 1;
   }
   return 0;
 }
 
-void x2_continue_transaction_begin(X2ContinueTransaction *transaction) {
+void continue_transaction_begin(ContinueTransaction *transaction) {
   if (transaction)
     transaction->auto_ack_pending = 1;
 }
 
-void x2_continue_transaction_reader_result(X2ContinueTransaction *transaction,
-                                           int succeeded) {
+void continue_transaction_reader_result(ContinueTransaction *transaction,
+                                        int succeeded) {
   if (transaction && !succeeded)
     transaction->auto_ack_pending = 0;
 }
 
-int x2_continue_transaction_take_success_ack(X2ContinueTransaction *transaction,
-                                             unsigned manager_mode,
-                                             unsigned manager_state) {
+int continue_transaction_take_success_ack(ContinueTransaction *transaction,
+                                          unsigned manager_mode,
+                                          unsigned manager_state) {
   int acknowledge;
   if (!transaction)
     return 0;
@@ -88,3 +95,5 @@ int x2_continue_transaction_take_success_ack(X2ContinueTransaction *transaction,
   transaction->auto_ack_pending = 0;
   return acknowledge;
 }
+
+} // namespace x2::save

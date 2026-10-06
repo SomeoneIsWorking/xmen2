@@ -1,10 +1,11 @@
-#ifndef X2_FMV_PROBE_H
-#define X2_FMV_PROBE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-typedef struct {
+namespace x2::media {
+
+struct FmvProbeStats {
   int active;
   unsigned long decoded_frames;
   unsigned long padded_checks;
@@ -13,16 +14,17 @@ typedef struct {
   unsigned long upload_matches;
   unsigned long upload_mismatch_rows;
   unsigned long complete_frames;
-} X2FmvProbeStats;
+};
 
-void x2_fmv_probe_begin(const char *guest_path);
-void x2_fmv_probe_decoded(const uint8_t *pixels, int width, int height,
-                          size_t pitch);
-void x2_fmv_probe_padded(const uint8_t *pixels, size_t bytes, size_t pitch);
-void x2_fmv_probe_upload(const uint8_t *pixels, size_t bytes, int width,
-                         int height, size_t pitch);
-void x2_fmv_probe_get_stats(X2FmvProbeStats *stats);
-void x2_fmv_probe_report(void);
-void x2_fmv_probe_end(void);
+void fmv_probe_begin(const char *guest_path);
+void fmv_probe_decoded(const std::uint8_t *pixels, int width, int height,
+                       std::size_t pitch);
+void fmv_probe_padded(const std::uint8_t *pixels, std::size_t bytes,
+                      std::size_t pitch);
+void fmv_probe_upload(const std::uint8_t *pixels, std::size_t bytes, int width,
+                      int height, std::size_t pitch);
+void fmv_probe_get_stats(FmvProbeStats *stats);
+void fmv_probe_report();
+void fmv_probe_end();
 
-#endif
+} // namespace x2::media

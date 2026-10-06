@@ -1,7 +1,8 @@
-#ifndef X2_DISPLAY_MODE_SEED_H
-#define X2_DISPLAY_MODE_SEED_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::presentation {
 
 /* Publication of the port's output size into the
    game's own persistent registry: HKCU\Software\Activision\X-Men Legends 2\
@@ -23,32 +24,31 @@
 
 /* Composed from boot control (startup.cpp) at the first guest call, ahead of
    the engine's settings registration; announces one line either way. */
-void x2_display_mode_seed_boot(void);
+void display_mode_seed_boot();
 
 /* Publish if -- and only if -- the stored value differs from video.width x
    video.height. Returns 1 when the store changed. */
-int x2_display_mode_seed_publish(void);
+int display_mode_seed_publish();
 
 /* The one authoritative retail Resolution encoding. Returns 1 only when
    dimensions are plausible and the complete "%ux%u" value fits. */
-int x2_display_mode_seed_format(unsigned w, unsigned h, char *out_value,
-                                int cap);
+int display_mode_seed_format(unsigned w, unsigned h, char *out_value, int cap);
 
 /* Whether the retail store currently contains the configured output mode.
    This distinguishes a no-op because the value already matched from a
    refused/failed publication. */
-int x2_display_mode_seed_is_current(void);
+int display_mode_seed_is_current();
 
 /* The pure decision under publish(): 1 stores "%dx%d" of w/h into out_value
    because it differs from `stored` (NULL or empty means absent); 0 means no
    action -- stored already equals it, or the dimensions are not plausible
    output sizes. */
-int x2_display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
-                              char *out_value, int cap);
+int display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
+                           char *out_value, int cap);
 
 /* The mode publish() last established as current, for the d3d8 adapter's
    enumeration. Zero before any successful publication or matching read. */
-uint32_t x2_display_mode_seed_width(void);
-uint32_t x2_display_mode_seed_height(void);
+std::uint32_t display_mode_seed_width();
+std::uint32_t display_mode_seed_height();
 
-#endif /* X2_DISPLAY_MODE_SEED_H */
+} // namespace x2::presentation

@@ -14,75 +14,75 @@ static int failures;
   } while (0)
 
 int main(void) {
-  X2ContinueMenuPlan plan;
-  X2ContinueTransaction transaction = {0};
+  x2::save::ContinueMenuPlan plan;
+  x2::save::ContinueTransaction transaction = {0};
   unsigned slot = 99u;
   unsigned i;
 
-  x2_continue_menu_plan(0, 0, &plan);
-  CHECK(plan.text[0] == X2_MENU_TEXT_NEW_GAME);
-  CHECK(plan.text[4] == X2_MENU_TEXT_OPTIONS);
+  x2::save::continue_menu_plan(0, 0, &plan);
+  CHECK(plan.text[0] == x2::save::MainMenuText::NewGame);
+  CHECK(plan.text[4] == x2::save::MainMenuText::Options);
   CHECK(plan.show_last_row); /* Play Online leads to LAN play */
   CHECK(plan.danger_row == 2u);
   CHECK(!plan.disable_online_special);
-  for (i = 0; i < X2_MAIN_MENU_ROWS; i++)
+  for (i = 0; i < x2::save::kMainMenuRows; i++)
     CHECK(plan.command_source[i] == i);
 
-  x2_continue_menu_plan(1, 0, &plan);
-  CHECK(plan.text[0] == X2_MENU_TEXT_CONTINUE);
-  CHECK(plan.text[1] == X2_MENU_TEXT_NEW_GAME);
-  CHECK(plan.text[2] == X2_MENU_TEXT_LOAD_GAME);
-  CHECK(plan.text[3] == X2_MENU_TEXT_DANGER_ROOM);
-  CHECK(plan.text[4] == X2_MENU_TEXT_REVIEW);
-  CHECK(plan.text[5] == X2_MENU_TEXT_OPTIONS);
+  x2::save::continue_menu_plan(1, 0, &plan);
+  CHECK(plan.text[0] == x2::save::MainMenuText::Continue);
+  CHECK(plan.text[1] == x2::save::MainMenuText::NewGame);
+  CHECK(plan.text[2] == x2::save::MainMenuText::LoadGame);
+  CHECK(plan.text[3] == x2::save::MainMenuText::DangerRoom);
+  CHECK(plan.text[4] == x2::save::MainMenuText::Review);
+  CHECK(plan.text[5] == x2::save::MainMenuText::Options);
   CHECK(plan.show_last_row);
   CHECK(plan.danger_row == 3u);
   CHECK(plan.disable_online_special);
-  for (i = 0; i < X2_MAIN_MENU_ROWS; i++)
+  for (i = 0; i < x2::save::kMainMenuRows; i++)
     CHECK(plan.command_source[i] == (i ? i - 1u : 6u));
 
   /* A LAN game leads; Play Online, then Review, make room for it. */
-  x2_continue_menu_plan(0, 1, &plan);
-  CHECK(plan.text[0] == X2_MENU_TEXT_JOIN_LAN);
-  CHECK(plan.command_source[0] == X2_MENU_COMMAND_JOIN_LAN);
-  CHECK(plan.text[1] == X2_MENU_TEXT_NEW_GAME);
-  CHECK(plan.text[4] == X2_MENU_TEXT_REVIEW);
-  CHECK(plan.text[5] == X2_MENU_TEXT_OPTIONS);
+  x2::save::continue_menu_plan(0, 1, &plan);
+  CHECK(plan.text[0] == x2::save::MainMenuText::JoinLan);
+  CHECK(plan.command_source[0] == x2::save::kMenuCommandJoinLan);
+  CHECK(plan.text[1] == x2::save::MainMenuText::NewGame);
+  CHECK(plan.text[4] == x2::save::MainMenuText::Review);
+  CHECK(plan.text[5] == x2::save::MainMenuText::Options);
   CHECK(plan.command_source[5] == 4u);
   CHECK(plan.danger_row == 3u);
   CHECK(plan.disable_online_special);
 
-  x2_continue_menu_plan(1, 1, &plan);
-  CHECK(plan.text[0] == X2_MENU_TEXT_JOIN_LAN);
-  CHECK(plan.text[1] == X2_MENU_TEXT_CONTINUE);
-  CHECK(plan.command_source[1] == X2_MENU_COMMAND_CONTINUE);
-  CHECK(plan.text[2] == X2_MENU_TEXT_NEW_GAME);
-  CHECK(plan.text[4] == X2_MENU_TEXT_DANGER_ROOM);
-  CHECK(plan.text[5] == X2_MENU_TEXT_OPTIONS);
+  x2::save::continue_menu_plan(1, 1, &plan);
+  CHECK(plan.text[0] == x2::save::MainMenuText::JoinLan);
+  CHECK(plan.text[1] == x2::save::MainMenuText::Continue);
+  CHECK(plan.command_source[1] == x2::save::kMenuCommandContinue);
+  CHECK(plan.text[2] == x2::save::MainMenuText::NewGame);
+  CHECK(plan.text[4] == x2::save::MainMenuText::DangerRoom);
+  CHECK(plan.text[5] == x2::save::MainMenuText::Options);
   CHECK(plan.danger_row == 4u);
   CHECK(plan.disable_online_special);
 
-  CHECK(x2_continue_leaf_slot("autosave.save", &slot) && slot == 0u);
-  CHECK(x2_continue_leaf_slot("saveslot0.save", &slot) && slot == 0u);
-  CHECK(x2_continue_leaf_slot("saveslot9.save", &slot) && slot == 9u);
-  CHECK(!x2_continue_leaf_slot("saveslot10.save", &slot));
-  CHECK(!x2_continue_leaf_slot("../saveslot0.save", &slot));
-  CHECK(!x2_continue_leaf_slot(NULL, &slot));
-  CHECK(!x2_continue_leaf_slot("autosave.save", NULL));
+  CHECK(x2::save::continue_leaf_slot("autosave.save", &slot) && slot == 0u);
+  CHECK(x2::save::continue_leaf_slot("saveslot0.save", &slot) && slot == 0u);
+  CHECK(x2::save::continue_leaf_slot("saveslot9.save", &slot) && slot == 9u);
+  CHECK(!x2::save::continue_leaf_slot("saveslot10.save", &slot));
+  CHECK(!x2::save::continue_leaf_slot("../saveslot0.save", &slot));
+  CHECK(!x2::save::continue_leaf_slot(NULL, &slot));
+  CHECK(!x2::save::continue_leaf_slot("autosave.save", NULL));
 
   /* Manual Load never arms native Continue's one-shot. */
-  CHECK(!x2_continue_transaction_take_success_ack(&transaction, 3u, 1u));
-  x2_continue_transaction_begin(&transaction);
-  x2_continue_transaction_reader_result(&transaction, 0);
-  CHECK(!x2_continue_transaction_take_success_ack(&transaction, 3u, 1u));
-  x2_continue_transaction_begin(&transaction);
-  x2_continue_transaction_reader_result(&transaction, 1);
-  CHECK(!x2_continue_transaction_take_success_ack(&transaction, 3u, 0u));
-  CHECK(!x2_continue_transaction_take_success_ack(&transaction, 3u, 1u));
-  x2_continue_transaction_begin(&transaction);
-  x2_continue_transaction_reader_result(&transaction, 1);
-  CHECK(x2_continue_transaction_take_success_ack(&transaction, 3u, 1u));
-  CHECK(!x2_continue_transaction_take_success_ack(&transaction, 3u, 1u));
+  CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));
+  x2::save::continue_transaction_begin(&transaction);
+  x2::save::continue_transaction_reader_result(&transaction, 0);
+  CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));
+  x2::save::continue_transaction_begin(&transaction);
+  x2::save::continue_transaction_reader_result(&transaction, 1);
+  CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 0u));
+  CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));
+  x2::save::continue_transaction_begin(&transaction);
+  x2::save::continue_transaction_reader_result(&transaction, 1);
+  CHECK(x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));
+  CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));
 
   printf("continue_policy: %d checks, %d failures\n", checks, failures);
   return failures != 0;

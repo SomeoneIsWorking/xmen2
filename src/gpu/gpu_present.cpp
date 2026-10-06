@@ -210,5 +210,5 @@ void gpu_present_boot_blackout(SDL_GPUCommandBuffer *command_buffer,
     if (pass)
       SDL_EndGPURenderPass(pass);
   }
-  x2_boot_blackout_frame_presented();
+  x2::presentation::boot_blackout_frame_presented();
 }

@@ -60,9 +60,9 @@ static uint32_t g_ui;
 static uint32_t g_page;
 static uint32_t g_manager;
 static uint32_t g_autosave_metadata;
-static ResidentRow g_rows[X2_LOAD_GAME_MAX_ENTRIES];
-static X2LoadGameMenuPlan g_plan;
-static X2LoadGameMenuWindow g_window;
+static ResidentRow g_rows[x2::save::kLoadGameMaxEntries];
+static x2::save::LoadGameMenuPlan g_plan;
+static x2::save::LoadGameMenuWindow g_window;
 static unsigned g_refreshes;
 static unsigned g_manual_choices;
 static unsigned g_autosave_choices;
@@ -133,13 +133,13 @@ static void clear_row(uint32_t page, unsigned resident) {
 }
 
 static void update_selected_leaf(void) {
-  const X2LoadGameEntry *entry;
+  const x2::save::LoadGameEntry *entry;
 
   g_selected_leaf[0] = 0;
   if (!g_active || g_window.selected >= g_plan.count)
     return;
   entry = &g_plan.entries[g_window.selected];
-  if (entry->kind == X2_LOAD_GAME_AUTOSAVE)
+  if (entry->kind == x2::save::LoadGameEntryKind::Autosave)
     snprintf(g_selected_leaf, sizeof g_selected_leaf, "%s", AUTOSAVE_LEAF);
   else
     snprintf(g_selected_leaf, sizeof g_selected_leaf, "saveslot%u.save",
@@ -156,21 +156,22 @@ static void refresh_projection(void) {
 
   if (!g_active || !g_page)
     return;
-  count = x2_load_game_menu_window_count(&g_plan, &g_window);
-  focus = x2_load_game_menu_window_focus(&g_plan, &g_window);
-  if (count > X2_LOAD_GAME_VISIBLE_ROWS || focus >= count) {
+  count = x2::save::load_game_menu_window_count(&g_plan, &g_window);
+  focus = x2::save::load_game_menu_window_focus(&g_plan, &g_window);
+  if (count > x2::save::kLoadGameVisibleRows || focus >= count) {
     g_active = 0;
     return;
   }
-  for (resident = 0u; resident < X2_LOAD_GAME_VISIBLE_ROWS; resident++) {
-    X2LoadGameEntry entry;
+  for (resident = 0u; resident < x2::save::kLoadGameVisibleRows; resident++) {
+    x2::save::LoadGameEntry entry;
     const ResidentRow *row;
 
     if (resident >= count) {
       clear_row(g_page, resident);
       continue;
     }
-    if (!x2_load_game_menu_window_entry(&g_plan, &g_window, resident, &entry)) {
+    if (!x2::save::load_game_menu_window_entry(&g_plan, &g_window, resident,
+                                               &entry)) {
       g_active = 0;
       return;
     }
@@ -187,7 +188,7 @@ static void refresh_projection(void) {
   WR32(g_page + PAGE_SECONDARY_BITS, secondary_bits);
   WR32(g_page + PAGE_SELECTABLE_BITS, selectable_bits);
   WR8(g_page + PAGE_COUNT, (uint8_t)count);
-  WR8(g_page + PAGE_CAPACITY, X2_LOAD_GAME_VISIBLE_ROWS);
+  WR8(g_page + PAGE_CAPACITY, x2::save::kLoadGameVisibleRows);
   WR8(g_page + PAGE_ORIGIN, 0u);
   WR8(g_page + PAGE_FOCUS, (uint8_t)focus);
   g_refreshes++;
@@ -198,7 +199,7 @@ static uint16_t manual_present_mask(uint32_t manager) {
   uint16_t mask = 0u;
   unsigned slot;
 
-  for (slot = 0u; slot < X2_LOAD_GAME_MANUAL_SLOTS; slot++) {
+  for (slot = 0u; slot < x2::save::kLoadGameManualSlots; slot++) {
     uint32_t metadata = manager + MANAGER_METADATA + slot * METADATA_STRIDE;
     /* EMPTY alone controls residency. Header failure at +0xa5 still
        produces retail's saveloadChooseCorrupt() row, which is captured
@@ -251,7 +252,7 @@ static void activate_projection(const CPU *source, uint32_t manager) {
     return;
 
   mask = manual_present_mask(manager);
-  x2_load_game_menu_plan(mask, 1, &g_plan);
+  x2::save::load_game_menu_plan(mask, 1, &g_plan);
   manual_count = g_plan.count - 1u;
   retail_count = RD8(g_page + PAGE_COUNT);
   if (manual_count && retail_count != manual_count)
@@ -260,7 +261,7 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   for (logical = 0u; logical < manual_count; logical++)
     capture_row(g_page, (unsigned)logical, &g_rows[logical]);
   make_autosave_row(&g_rows[manual_count]);
-  x2_load_game_menu_window_init(&g_plan, &g_window);
+  x2::save::load_game_menu_window_init(&g_plan, &g_window);
   g_manager = manager;
   g_active = 1;
   refresh_projection();
@@ -356,10 +357,11 @@ static void x2_override_005e9d30(CPU *C) {
     return;
   }
   resident_focus = RD8(g_page + PAGE_FOCUS);
-  if (x2_load_game_menu_window_select(&g_plan, &g_window, resident_focus))
+  if (x2::save::load_game_menu_window_select(&g_plan, &g_window,
+                                             resident_focus))
     update_selected_leaf();
   if (poll_navigation_delta(C, ui, &delta) && delta &&
-      x2_load_game_menu_window_move(&g_plan, &g_window, delta)) {
+      x2::save::load_game_menu_window_move(&g_plan, &g_window, delta)) {
     refresh_projection();
     update_origin_and_play_focus_sound(C, ui);
   }
@@ -397,7 +399,7 @@ size_t x2_load_game_menu_runtime_report(char *out, size_t capacity) {
                       ? (long)g_window.selected
                       : -1l;
   size_t resident =
-      g_active ? x2_load_game_menu_window_count(&g_plan, &g_window) : 0u;
+      g_active ? x2::save::load_game_menu_window_count(&g_plan, &g_window) : 0u;
 
   if (!out || !capacity)
     return 0u;

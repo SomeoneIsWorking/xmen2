@@ -18,6 +18,7 @@
  * concrete stop rather than a silently skipped operation.
  */
 #include "../d3d8/d3d8_drawcall.h"
+#include "../presentation/display_mode_seed.h"
 #include "advapi32.h"
 #include "android_bridge.h"
 #include "config_directory.h"
@@ -1731,8 +1732,7 @@ int main(int argc, char **argv) {
      while its modules initialise and sizes its D3D device from it. See
      display_mode_seed.h; not the synthetic view rejected as C255. */
   {
-    extern void x2_display_mode_seed_boot(void);
-    x2_display_mode_seed_boot();
+    x2::presentation::display_mode_seed_boot();
   }
   {
     extern void kernel32_narrowing_report(void);

@@ -63,7 +63,7 @@ void x2_interrupt_reports(int killed) {
   gpu_prompt_glyphs_report();
   {
     char blackout[256];
-    x2_boot_blackout_report(blackout, sizeof blackout);
+    x2::presentation::boot_blackout_report(blackout, sizeof blackout);
     x2_log_info("        %s", blackout);
   }
   x2_engine_report();
