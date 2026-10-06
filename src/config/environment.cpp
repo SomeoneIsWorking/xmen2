@@ -1,11 +1,12 @@
 #include "environment.h"
 
+#include <iterator>
 #include <stdlib.h>
 #include <string.h>
 
 extern char **environ;
 
-static const char *const k_override_names[kX2ConfigOverrideCount] = {
+static const char *const k_override_names[] = {
     "DISPLAY",
     "GAME_PC_DIR",
     "X2_ASSETS",
@@ -80,7 +81,11 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     "X2_FAULT",
     "X2_FAULT_STACK",
     "X2_FAULT_SELFTEST",
+    "SDL_AUDIODRIVER",
 };
+/* Positional, so a name added out of step with the enum shifts every later one.
+ */
+static_assert(std::size(k_override_names) == kX2ConfigOverrideCount);
 
 const char *x2_config_override_name(X2ConfigOverride variable) {
   if (variable < 0 || variable >= kX2ConfigOverrideCount)

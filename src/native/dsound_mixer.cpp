@@ -4,6 +4,7 @@
  * See dsound_mixer.h for the boundary; dsound.cpp owns the COM surface above
  * it.
  */
+#include "../config/environment.h"
 #include "dsound_mixer.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
@@ -31,6 +32,7 @@ static double g_silent_time;
 static SDL_AudioStream *g_stream;
 static float *g_mix_scratch;
 static int g_mix_scratch_frames;
+
 #endif
 
 /* The guest's clock, not a private one: see guest_clock.h. Five copies of
@@ -178,15 +180,27 @@ void dsound_mixer_open_device(void) {
    * observational run should not seize the machine's speakers and talk over
    * whatever the user is actually doing.
    *
-   * This takes the SILENT-BUT-TIMED device rather than skipping audio, and
-   * the difference matters. The game drives real logic off buffer play
-   * cursors -- a cutscene advances when its stream reports itself finished --
-   * so a device whose cursors never move does not make the run quiet, it
-   * makes the run hang. The silent device below advances every cursor on the
-   * wall clock at the buffer's own rate, so the guest sees audio complete on
-   * schedule and hears nothing.
+   * That is what the device selection below is for, but it must not cost
+   * TIMING. Playback is not driven by the guest asking where the play cursor
+   * is; it is driven by whoever owns the clock. The two devices here differ in
+   * exactly that:
+   *
+   *   - the timed SILENT device is clocked by the guest, from the calls the
+   *     guest happens to make (GetCurrentPosition / GetStatus / the channel
+   *     poll). Silence and timing fidelity are then the same decision, and a
+   *     guest that polls less often plays back slower than real time.
+   *   - an SDL device is clocked by SDL's audio thread, which advances the
+   *     cursors at the device's real cadence whether or not the guest asks.
+   *
+   * So when the run is hidden AND the caller has selected SDL's dummy driver,
+   * take the SDL device anyway: the dummy driver consumes at the correct rate
+   * and discards the samples, which is precisely "no sound" without lying
+   * about time. `SDL_AUDIODRIVER=dummy` is that request. Only a hidden run with
+   * no such request falls back to the guest-clocked silent device.
    */
-  if (win32_sdl_windows_hidden()) {
+  const char *driver = x2_config_override_get(kX2ConfigSdlAudioDriver);
+  const int want_sdl = driver && !strcmp(driver, "dummy");
+  if (win32_sdl_windows_hidden() && !want_sdl) {
     x2_log_error("DSOUND: --no-window, so no host playback device is "
                  "opened -- using the timed SILENT device. Play cursors "
                  "still advance at %d Hz, so audio-gated logic (cutscene "
@@ -226,8 +240,13 @@ void dsound_mixer_open_device(void) {
       return;
     }
     x2_log_error("DSOUND: SDL3 playback opened at %d Hz, stereo F32; "
-                 "the game supplies PCM through DirectSound buffers.\n",
-                 g_primary_rate);
+                 "the game supplies PCM through DirectSound buffers.%s\n",
+                 g_primary_rate,
+                 win32_sdl_windows_hidden()
+                     ? " Hidden run on SDL's dummy driver: cursors advance "
+                       "on SDL's audio thread at the real device cadence, so "
+                       "playback timing matches a player while staying silent."
+                     : "");
   }
 #else
   x2_log_error("DSOUND: built without SDL audio -- using a timed SILENT "
