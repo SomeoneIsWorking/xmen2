@@ -1036,6 +1036,16 @@ add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
 set_tests_properties(prompt_glyph_draw PROPERTIES
                      ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
+# The registry store: unbounded, with stable value addresses as it grows.
+add_executable(test_advapi32_store tests/test_advapi32_store.cpp
+               src/native/advapi32.cpp src/native/guest_memory.cpp
+               src/native/guest_memory_arena.cpp tests/native_stubs.cpp)
+target_include_directories(test_advapi32_store
+                           PRIVATE src/runtime/x86_abi src/native src/config)
+target_compile_definitions(test_advapi32_store PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_advapi32_store PRIVATE m pthread x2_runtime_config)
+add_test(NAME advapi32_store COMMAND test_advapi32_store)
+
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.cpp
                src/native/prompt_glyph_metrics.cpp
                src/native/text_put.cpp

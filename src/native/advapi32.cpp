@@ -41,6 +41,7 @@
 
 #include "platform_strings.h"
 #include <ctype.h>
+#include <deque>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,7 +65,8 @@ static void ret_std(CPU *C, uint32_t eax, int nargs) {
 
 /* ---- the store ---------------------------------------------------------- */
 
-static RegValue g_val[MAX_VALUES];
+/* A deque keeps a handed-out RegValue* valid while the store grows. */
+static std::deque<RegValue> g_val;
 static int g_dirty;
 static unsigned long g_reads, g_misses, g_writes;
 
@@ -211,7 +213,7 @@ void advapi32_store_save(void) {
   fprintf(f, "# x2native registry. One value per line:\n"
              "#   <path>|<value name>|<type>|<hex bytes>\n"
              "# Delete this file to reset the game's stored settings.\n");
-  for (i = 0; i < MAX_VALUES; i++) {
+  for (i = 0; i < static_cast<int>(g_val.size()); i++) {
     uint32_t j;
     if (!g_val[i].used)
       continue;
@@ -253,16 +255,8 @@ void advapi32_store_load(void) {
       continue;
     *p3++ = 0;
     hex = p3;
-    for (i = 0; i < MAX_VALUES; i++)
-      if (!g_val[i].used)
-        break;
-    if (i == MAX_VALUES) {
-      x2_log_error("advapi32: \"%s\" holds more than %d values; the "
-                   "rest were NOT loaded and the game will not see "
-                   "them.\n",
-                   store_path(), MAX_VALUES);
-      break;
-    }
+    i = static_cast<int>(g_val.size());
+    g_val.emplace_back();
     memset(&g_val[i], 0, sizeof g_val[i]);
     g_val[i].used = 1;
     snprintf(g_val[i].path, sizeof g_val[i].path, "%s", line);
@@ -282,7 +276,7 @@ void advapi32_store_load(void) {
 
 RegValue *advapi32_store_find(const char *path, const char *name) {
   int i;
-  for (i = 0; i < MAX_VALUES; i++)
+  for (i = 0; i < static_cast<int>(g_val.size()); i++)
     if (g_val[i].used && strcasecmp(g_val[i].path, path) == 0 &&
         strcmp(g_val[i].name, name) == 0)
       return &g_val[i];
@@ -294,16 +288,11 @@ RegValue *advapi32_store_put(const char *path, const char *name) {
   int i;
   if (v)
     return v;
-  for (i = 0; i < MAX_VALUES; i++)
+  for (i = 0; i < static_cast<int>(g_val.size()); i++)
     if (!g_val[i].used)
       break;
-  if (i == MAX_VALUES) {
-    x2_log_error("advapi32: the registry holds its maximum of %d values; "
-                 "this write is REFUSED rather than replacing an "
-                 "unrelated one.\n",
-                 MAX_VALUES);
-    return NULL;
-  }
+  if (i == static_cast<int>(g_val.size()))
+    g_val.emplace_back();
   memset(&g_val[i], 0, sizeof g_val[i]);
   g_val[i].used = 1;
   snprintf(g_val[i].path, sizeof g_val[i].path, "%s", path);
@@ -316,7 +305,7 @@ RegValue *advapi32_store_put(const char *path, const char *name) {
 static int key_exists(const char *path) {
   size_t n = strlen(path);
   int i;
-  for (i = 0; i < MAX_VALUES; i++) {
+  for (i = 0; i < static_cast<int>(g_val.size()); i++) {
     if (!g_val[i].used)
       continue;
     if (strncasecmp(g_val[i].path, path, n) == 0 &&
@@ -387,10 +376,6 @@ static void reg_create(CPU *C, int ex) {
   existed = key_exists(full);
   if (!existed) {
     RegValue *v = advapi32_store_put(full, KEY_MARK);
-    if (!v) {
-      ret_std(C, ERROR_ACCESS_DENIED, nargs);
-      return;
-    }
     v->type = REG_BINARY;
     v->len = 0;
     g_dirty = 1;
@@ -519,10 +504,6 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C) {
     return;
   }
   v = advapi32_store_put(path, name);
-  if (!v) {
-    ret_std(C, ERROR_ACCESS_DENIED, 6);
-    return;
-  }
   v->type = type;
   v->len = cb;
   if (cb && data)
@@ -554,7 +535,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C) {
     return;
   }
   n = strlen(path);
-  for (i = 0; i < MAX_VALUES; i++) {
+  for (i = 0; i < static_cast<int>(g_val.size()); i++) {
     const char *p, *sep;
     char child[MAX_NAME_];
     int j, dup = 0;
@@ -618,7 +599,7 @@ void imp_ADVAPI32_RegEnumValueA(CPU *C) {
     ret_std(C, ERROR_ACCESS_DENIED, 8);
     return;
   }
-  for (i = 0; i < MAX_VALUES; i++) {
+  for (i = 0; i < static_cast<int>(g_val.size()); i++) {
     RegValue *v = &g_val[i];
     if (!v->used || strcasecmp(v->path, path) != 0)
       continue;
@@ -684,7 +665,7 @@ void advapi32_install(void) {
 
 void advapi32_report(void) {
   int i, n = 0, leaked = 0;
-  for (i = 0; i < MAX_VALUES; i++)
+  for (i = 0; i < static_cast<int>(g_val.size()); i++)
     if (g_val[i].used && strcmp(g_val[i].name, KEY_MARK) != 0)
       n++;
   for (i = 0; i < g_key_cap; i++)
