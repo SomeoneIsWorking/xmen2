@@ -89,8 +89,7 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
  * frame out of twenty have the same average, and one of those is ""free"" in
  * a way the heartbeat's deltas gloss over.
  *
- * Reads are the heartbeat's usual torn-read trade, stated once in
- * heartbeat.cpp.
+ * Reads are the heartbeat's usual torn-read trade; see heartbeat.cpp.
  */
 static unsigned long long g_frame_end_submits;
 #endif

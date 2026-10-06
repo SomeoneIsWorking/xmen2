@@ -83,9 +83,9 @@ static Listing *enumerate(const char *path) {
   if (!directory) {
     return NULL;
   }
-  names = malloc(capacity);
-  offsets = malloc(slot_capacity * sizeof *offsets);
-  listing = calloc(1, sizeof *listing);
+  names = static_cast<char *>(malloc(capacity));
+  offsets = static_cast<size_t *>(malloc(slot_capacity * sizeof *offsets));
+  listing = static_cast<Listing *>(calloc(1, sizeof *listing));
   if (!names || !offsets || !listing) {
     free(names);
     free(offsets);
@@ -101,14 +101,15 @@ static Listing *enumerate(const char *path) {
       while (used + size > capacity) {
         capacity *= 2u;
       }
-      grown = realloc(names, capacity);
+      grown = static_cast<char *>(realloc(names, capacity));
       if (!grown) {
         break;
       }
       names = grown;
     }
     if (slots == slot_capacity) {
-      size_t *grown = realloc(offsets, slot_capacity * 2u * sizeof *offsets);
+      size_t *grown = static_cast<size_t *>(
+          realloc(offsets, slot_capacity * 2u * sizeof *offsets));
       if (!grown) {
         break;
       }

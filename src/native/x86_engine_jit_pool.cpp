@@ -114,7 +114,8 @@ static void pool_unlock(X86EngineJitPool *pool) {
 
 static X86EngineJitNode *create_node(const X86pMem *mem, char *reason,
                                      unsigned reason_len) {
-  X86EngineJitNode *node = calloc(1u, sizeof *node);
+  X86EngineJitNode *node =
+      static_cast<X86EngineJitNode *>(calloc(1u, sizeof *node));
   if (!node) {
     snprintf(reason, reason_len, "out of memory creating a JIT thread record");
     return NULL;
@@ -148,7 +149,8 @@ static X86EngineJitNode *create_node(const X86pMem *mem, char *reason,
 
 X86EngineJitPool *x86_engine_jit_pool_create(const X86pMem *mem, char *reason,
                                              unsigned reason_len) {
-  X86EngineJitPool *pool = calloc(1u, sizeof *pool);
+  X86EngineJitPool *pool =
+      static_cast<X86EngineJitPool *>(calloc(1u, sizeof *pool));
   if (!pool) {
     snprintf(reason, reason_len, "out of memory creating the JIT pool");
     return NULL;

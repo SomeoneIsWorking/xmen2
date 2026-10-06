@@ -1,7 +1,10 @@
 #include "fmv_sfd.h"
 
+// FFmpeg is a C library whose headers declare no C++ linkage.
+extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+}
 
 #include <stdint.h>
 #include <string.h>

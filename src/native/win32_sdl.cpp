@@ -239,7 +239,7 @@ void imp_USER32_SetWindowPos(CPU *C) {
 
 void imp_USER32_SetWindowTextA(CPU *C) {
   if (g_win && hwnd_is_main(A(0)) && A(1))
-    SDL_SetWindowTitle(g_win, guest_memory_const_pointer(A(1)));
+    SDL_SetWindowTitle(g_win, guest_memory_as<const char>(A(1)));
   ret_std(C, 1, 2);
 }
 
@@ -456,8 +456,8 @@ int win32_sdl_dialog(const char *title, const char *text,
 
 void imp_USER32_MessageBoxA(CPU *C) {
   /* (hWnd, lpText, lpCaption, uType) */
-  const char *text = guest_memory_const_pointer(A(1));
-  const char *cap = guest_memory_const_pointer(A(2));
+  const char *text = guest_memory_as<const char>(A(1));
+  const char *cap = guest_memory_as<const char>(A(2));
   uint32_t type = A(3);
   /*
    * WHO decided this. The text says what the game concluded; without the
@@ -581,8 +581,9 @@ void imp_USER32_CreateWindowExA(CPU *C) {
    * Desktop video drivers ignore the hint.
    */
   SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
-  g_win = SDL_CreateWindow(name ? guest_memory_const_pointer(name) : "x2native",
-                           w, h, window_flags);
+  g_win =
+      SDL_CreateWindow(name ? guest_memory_as<const char>(name) : "x2native", w,
+                       h, window_flags);
   if (!g_win) {
     x2_log_error("win32_sdl: SDL_CreateWindow failed: %s\n", SDL_GetError());
     ret_std(C, 0, 12);

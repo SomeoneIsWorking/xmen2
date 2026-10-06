@@ -19,7 +19,7 @@ static void x2_log_message(LucentLogLevel level, const char *format,
     lucent_log_error("x2", "diagnostic formatting failed");
     return;
   }
-  message = malloc((size_t)length + 1u);
+  message = static_cast<char *>(malloc((size_t)length + 1u));
   if (!message) {
     lucent_log_error("x2", "diagnostic allocation failed (%d bytes)",
                      length + 1);

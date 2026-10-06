@@ -79,9 +79,7 @@ public:
 
   explicit operator bool() const { return address_ != 0u; }
   uint32_t address() const { return address_; }
-  uint8_t *bytes() const {
-    return static_cast<uint8_t *>(guest_memory_pointer(address_));
-  }
+  uint8_t *bytes() const { return guest_memory_as<uint8_t>(address_); }
 
 private:
   uint32_t address_;
@@ -110,8 +108,7 @@ inline std::string_view guest_string(uint32_t address, size_t limit = 256u) {
   if (!address) {
     return {};
   }
-  const auto *text =
-      static_cast<const char *>(guest_memory_const_pointer(address));
+  const auto *text = guest_memory_as<const char>(address);
   return {text, strnlen(text, limit)};
 }
 

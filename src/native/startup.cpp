@@ -166,7 +166,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
   const X2BootModeDecision *decision;
   X2BootMode requested;
   if (!command ||
-      !x2_boot_mode_is_intro_command(guest_memory_const_pointer(command)))
+      !x2_boot_mode_is_intro_command(guest_memory_as<const char>(command)))
     return 0;
   requested = x2_settings_store()->boot_mode;
   decision =
@@ -285,7 +285,7 @@ void x2_override_0055beb0(CPU *C) {
     return;
   }
   if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
-      x2_boot_mode_is_intro_command(guest_memory_const_pointer(s))) {
+      x2_boot_mode_is_intro_command(guest_memory_as<const char>(s))) {
     /* The boot has already reset the game. Run the retail New Game owner;
        its nested menus/new_game command is intercepted below only after
        it has installed the default party. */
@@ -308,7 +308,7 @@ void x2_override_0055beb0(CPU *C) {
     return;
   }
   if (mode && phase == BOOT_MAP_INITIALIZING_PARTY && cmd && exe_base && s &&
-      strncmp(guest_memory_const_pointer(s), NEW_GAME_PFX,
+      strncmp(guest_memory_as<const char>(s), NEW_GAME_PFX,
               sizeof NEW_GAME_PFX - 1u) == 0) {
     /* startFirstMission has completed the real party setup and is about to
        run the presentation-only new_game script. Replace that script's

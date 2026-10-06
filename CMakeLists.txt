@@ -1065,6 +1065,7 @@ add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 # The guest printf format walker. It builds crt.cpp against a stub runtime, so it
 # needs no guest runtime and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.cpp src/native/crt.cpp
+               src/native/crt_format.cpp
                src/native/crt_console.cpp
                src/native/crt_stdio.cpp
                src/native/host_dir_cache.cpp
@@ -1389,7 +1390,8 @@ endif()
 add_executable(test_control_png tests/test_control_png.cpp src/native/control_png.cpp)
 target_include_directories(test_control_png PRIVATE src/native)
 target_compile_definitions(test_control_png PRIVATE
-    CHECK_PNG="${CMAKE_CURRENT_SOURCE_DIR}/tools/check_png.py")
+    CHECK_PNG="${CMAKE_CURRENT_SOURCE_DIR}/tools/check_png.py"
+    CHECK_PNG_PYTHON="${Python3_EXECUTABLE}")
 add_test(NAME control_png COMMAND test_control_png)
 
 add_executable(test_control_screenshot
@@ -1408,7 +1410,7 @@ add_test(NAME pad_glyph_manifest
 add_test(NAME prompt_glyph_atlas
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest
-                 --cc ${CMAKE_C_COMPILER})
+                 --cxx ${CMAKE_CXX_COMPILER})
 set_tests_properties(prompt_glyph_atlas PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
@@ -1841,6 +1843,7 @@ set(X2_NATIVE_SOURCES
     src/native/crt_console.cpp
     src/native/crt_stdio.cpp
     src/native/crt.cpp
+    src/native/crt_format.cpp
     src/native/crt_aliases.cpp
     src/native/crt_setjmp.cpp
     src/native/crt_write_watch.cpp

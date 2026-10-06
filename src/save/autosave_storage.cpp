@@ -11,7 +11,7 @@
 #include <sys/stat.h>
 
 static int write_complete(int fd, const void *data, size_t size) {
-  const unsigned char *bytes = data;
+  const unsigned char *bytes = static_cast<const unsigned char *>(data);
   while (size) {
     ssize_t written = write(fd, bytes, size);
     if (written < 0 && errno == EINTR)

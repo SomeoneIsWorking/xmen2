@@ -2,7 +2,10 @@
 
 #include "x2_log.h"
 
+// igb is a C library whose header declares no C++ linkage.
+extern "C" {
 #include <igb.h>
+}
 
 #include <algorithm>
 #include <cmath>

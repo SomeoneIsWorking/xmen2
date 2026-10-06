@@ -96,6 +96,10 @@ uint32_t x86_native_callback(void (*fn)(struct X86pCpu *), const char *owner,
  */
 void *x86_callback_ctx(void);
 
+/* The module containing a runtime address and its address in that module's
+   linked image; mod is NULL when no module owns it. */
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
+
 /* Host->guest call with an explicit stdcall/thiscall cleanup contract. The
    zero-argument/cdecl wrapper remains declared by x86rt.h. */
 void x86_guest_call_args(struct X86pCpu *C, uint32_t target,

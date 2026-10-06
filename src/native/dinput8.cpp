@@ -235,8 +235,8 @@ static uint32_t padinst_for(int pad) {
      and DIDEVTYPE_HID (0x00010000) set: a caller that switches on the
      subtype gets a real one rather than zero. */
   WR32(buf + 36u, 0x00010115u);
-  snprintf(guest_memory_pointer(buf + 40u), 260, "%s", nm ? nm : "Gamepad");
-  snprintf(guest_memory_pointer(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
+  snprintf(guest_memory_as<char>(buf + 40u), 260, "%s", nm ? nm : "Gamepad");
+  snprintf(guest_memory_as<char>(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
   return buf;
 }
 
@@ -267,15 +267,8 @@ static uint32_t padinst_for(int pad) {
  * pointers FUN_00628e20 passes to CreateDevice -- rather than taken on trust
  * from a header.
  */
-static const unsigned char GUID_SYS_KEYBOARD[16] = {
-    0x61, 0x2B, 0x1D, 0x6F, 0xA0, 0xD5, 0xCF, 0x11,
-    0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00};
-static const unsigned char GUID_SYS_MOUSE[16] = {
-    0x60, 0x2B, 0x1D, 0x6F, 0xA0, 0xD5, 0xCF, 0x11,
-    0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00};
-
 static void guid_text(uint32_t g, char *out, size_t n) {
-  const unsigned char *b = guest_memory_const_pointer(g);
+  const unsigned char *b = guest_memory_as<const unsigned char>(g);
   snprintf(out, n,
            "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
            "%02X%02X%02X%02X%02X%02X}",
@@ -357,15 +350,14 @@ static void m_CreateDevice(CPU *C) {
     return;
   }
 
-  if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
-    obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
-  else if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
-    obj = dinput_device_new(DINPUT_DEV_MOUSE);
-  else if (dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0) {
+  const unsigned char *guid_bytes = guest_memory_as<const unsigned char>(guid);
+  if (DInputDeviceKind kind = dinput_guid_kind(guid))
+    obj = dinput_device_new(kind);
+  else if (dinput_pad_for_guid(guid_bytes) >= 0) {
     /* A GUID the enumeration above handed out. A device enumerated under
        one GUID and creatable only under another is a device the game can
        see and never open, so the two go through the same inventory. */
-    obj = dinput_device_new_pad(guest_memory_const_pointer(guid));
+    obj = dinput_device_new_pad(guid_bytes);
   } else {
     /*
      * NOT a system device, so it is one that enumeration would have had to
@@ -402,12 +394,12 @@ static void m_GetDeviceStatus(CPU *C) {
     ret_com(C, DIERR_INVALIDPARAM, 1);
     return;
   }
-  if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0 ||
-      memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
+  if (dinput_guid_kind(guid))
     attached = 1;
   else {
     dinput_pad_refresh();
-    attached = dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0;
+    attached =
+        dinput_pad_for_guid(guest_memory_as<const unsigned char>(guid)) >= 0;
   }
   ret_com(C, attached ? S_OK : S_FALSE, 1);
 }

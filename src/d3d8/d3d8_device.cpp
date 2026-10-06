@@ -1047,7 +1047,7 @@ static void vertex_shader_bytes(CPU *C, int function) {
   D3D8VertexShader *s =
       d3d8_vs_get(d3d8_arg(C, 0), function ? "GetVertexShaderFunction"
                                            : "GetVertexShaderDeclaration");
-  uint8_t *data = guest_memory_pointer(d3d8_arg(C, 1));
+  uint8_t *data = guest_memory_as<uint8_t>(d3d8_arg(C, 1));
   uint32_t *size = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 2), "byte count");
   const uint32_t *src;
   size_t need;

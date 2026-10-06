@@ -14,12 +14,13 @@ const char *x2_boot_mode_label(X2BootMode mode) {
 }
 
 int x2_boot_mode_parse(const char *text, X2BootMode *mode) {
-  X2BootMode i;
-  for (i = X2_BOOT_NORMAL; i <= X2_BOOT_CONTINUE; i++)
-    if (strcmp(text, x2_boot_mode_name(i)) == 0) {
-      if (mode)
-        *mode = i;
+  for (int i = X2_BOOT_NORMAL; i <= X2_BOOT_CONTINUE; i++) {
+    if (strcmp(text, x2_boot_mode_name(static_cast<X2BootMode>(i))) == 0) {
+      if (mode) {
+        *mode = static_cast<X2BootMode>(i);
+      }
       return 1;
     }
+  }
   return 0;
 }

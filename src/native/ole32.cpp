@@ -55,7 +55,7 @@ void imp_ole32_CoCreateInstance(CPU *C) {
   if (!g_told) {
     g_told = 1;
     if (rclsid) {
-      const unsigned char *g = guest_memory_const_pointer(rclsid);
+      const unsigned char *g = guest_memory_as<const unsigned char>(rclsid);
       lucent_log_error(
           "x2",
           "ole32: CoCreateInstance for CLSID "

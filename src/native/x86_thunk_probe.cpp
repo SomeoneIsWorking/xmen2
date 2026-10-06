@@ -38,7 +38,7 @@ void x86_thunk_probe_note(uint32_t index, unsigned long long ns) {
 }
 
 X86ThunkProbe *x86_thunk_probe_create(void) {
-  return calloc(1, sizeof(X86ThunkProbe));
+  return static_cast<X86ThunkProbe *>(calloc(1, sizeof(X86ThunkProbe)));
 }
 
 void x86_thunk_probe_destroy(X86ThunkProbe *probe) { free(probe); }

@@ -11,15 +11,13 @@
  * 4 GB host window containing its static data as the guest-memory base, so the
  * same 32-bit-address translation used by the ARM64 runtime is exercised.
  */
+#include "crt_format.h"
 #include "guest_memory.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
-int guest_vsscanf(const char *in, const char *fmt, uint32_t va);
 
 /* The runtime globals the header pulls in. */
 uint32_t g_imgbase = 0x10000000U;
@@ -360,8 +358,10 @@ void x86_guest_call(struct X86pCpu *C, uint32_t t) {
   fprintf(stderr, "test_vformat: x86_guest_call reached\n");
   abort();
 }
-uint32_t x86_guest_addr_of(void *p) {
-  (void)p;
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest) {
+  (void)addr;
+  (void)mod;
+  (void)guest;
   fprintf(stderr, "test_vformat: x86_guest_addr_of reached\n");
   abort();
 }

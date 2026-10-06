@@ -95,10 +95,11 @@ int main(void) {
             page_permission(base) == (PROT_READ | PROT_WRITE),
         "a read-only page loses write, and only that page");
 
-  host = guest_memory_pointer(base);
+  host = guest_memory_as<uint8_t>(base);
   x86_store32_raw(base + 4095, 0x76543210);
   check(x86_load32(base + 4095) == 0x76543210,
         "native unaligned ABI load/store reaches the window");
+  host = guest_memory_as<uint8_t>(base);
   check(guest_memory_host_address(host + 17, &address) &&
             address == base + 17 && guest_memory_address(host + 17) == address,
         "native pointer round-trips through the shared mapper");
@@ -153,7 +154,7 @@ int main(void) {
 
   check(guest_memory_map_fixed(base, 32768, PROT_READ | PROT_WRITE) == 0,
         "map a bulk file-sized guest buffer");
-  host = guest_memory_pointer(base);
+  host = guest_memory_as<uint8_t>(base);
   memcpy(host + 0x6038, "FONT_TABLE", sizeof "FONT_TABLE");
   {
     char bulk_tail[sizeof "FONT_TABLE"] = {0};
@@ -163,8 +164,9 @@ int main(void) {
   }
   {
     enum { payload_size = 28272 };
-    unsigned char *payload = malloc(payload_size);
-    unsigned char *restored = malloc(payload_size);
+    unsigned char *payload = static_cast<unsigned char *>(malloc(payload_size));
+    unsigned char *restored =
+        static_cast<unsigned char *>(malloc(payload_size));
     char font_name[sizeof "FONT_TABLE"] = {0};
     FILE *input = tmpfile();
     FILE *output = tmpfile();

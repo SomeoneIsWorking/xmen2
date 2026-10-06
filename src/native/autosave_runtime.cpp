@@ -28,14 +28,14 @@ enum {
   MANAGER_MODE = 0xd4u
 };
 
-typedef enum {
+enum AutosaveLastResult {
   AUTOSAVE_LAST_NONE = 0,
   AUTOSAVE_LAST_SERIALIZER_FAILED,
   AUTOSAVE_LAST_HEADER_FAILED,
   AUTOSAVE_LAST_DIRECTORY_FAILED,
   AUTOSAVE_LAST_PUBLISH_FAILED,
   AUTOSAVE_LAST_SUCCEEDED
-} AutosaveLastResult;
+};
 
 static X2AutosavePolicy g_policy;
 static uint32_t g_exe;
@@ -81,7 +81,8 @@ static int publish_snapshot(const CPU *source) {
     return 0;
   }
   if (!x2_autosave_header_from_payload(
-          guest_memory_const_pointer(x2_campaign_snapshot_address(g_snapshot)),
+          guest_memory_as<const unsigned char>(
+              x2_campaign_snapshot_address(g_snapshot)),
           X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES, header)) {
     g_last_result = AUTOSAVE_LAST_HEADER_FAILED;
     return 0;
@@ -141,21 +142,22 @@ size_t x2_autosave_runtime_report(char *out, size_t capacity) {
   initialize();
   if (!out || !capacity)
     return 0;
-  count = snprintf(
-      out, capacity,
-      "autosave map-success=%" PRIu64 "/%" PRIu64 " scheduled=%" PRIu64
-      " cancelled-menu=%" PRIu64
-      " idle-polls=%u manager-mode=%u control=%s deferred=%" PRIu64
-      " control-deferred=%" PRIu64 " attempts=%" PRIu64 "/%" PRIu64
-      " success=%" PRIu64 "/%" PRIu64 " fail=%" PRIu64 "/%" PRIu64
-      " pending=%d active=%d last=%s errno=%d\n",
-      g_policy.successful_map_returns, g_policy.map_returns, g_policy.scheduled,
-      g_policy.cancelled_menu, g_policy.idle_polls, g_last_manager_mode,
-      x2_gameplay_control_name((int)g_last_control), g_policy.deferred_polls,
-      g_policy.control_deferred_polls, g_policy.attempts, g_policy.scheduled,
-      g_policy.successes, g_policy.attempts, g_policy.failures,
-      g_policy.attempts, g_policy.has_pending, g_policy.has_active,
-      RESULT[g_last_result], g_last_errno);
+  count = snprintf(out, capacity,
+                   "autosave map-success=%" PRIu64 "/%" PRIu64
+                   " scheduled=%" PRIu64 " cancelled-menu=%" PRIu64
+                   " idle-polls=%u manager-mode=%u control=%s deferred=%" PRIu64
+                   " control-deferred=%" PRIu64 " attempts=%" PRIu64 "/%" PRIu64
+                   " success=%" PRIu64 "/%" PRIu64 " fail=%" PRIu64 "/%" PRIu64
+                   " pending=%d active=%d last=%s errno=%d\n",
+                   g_policy.successful_map_returns, g_policy.map_returns,
+                   g_policy.scheduled, g_policy.cancelled_menu,
+                   g_policy.idle_polls, g_last_manager_mode,
+                   x2_gameplay_control_name(static_cast<int>(g_last_control)),
+                   g_policy.deferred_polls, g_policy.control_deferred_polls,
+                   g_policy.attempts, g_policy.scheduled, g_policy.successes,
+                   g_policy.attempts, g_policy.failures, g_policy.attempts,
+                   g_policy.has_pending, g_policy.has_active,
+                   RESULT[g_last_result], g_last_errno);
   if (count < 0 || (size_t)count >= capacity)
     return 0;
   return (size_t)count;

@@ -107,7 +107,7 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
     return;
   }
   if (target == REGISTER_TARGET) {
-    const char *name = guest_memory_const_pointer(RD32(C->reg[kX86pEsp]));
+    const char *name = guest_memory_as<const char>(RD32(C->reg[kX86pEsp]));
     if (callee_pop_bytes != 8u || registration_calls == MAX_REGISTRATIONS)
       abort();
     registered_method = target;

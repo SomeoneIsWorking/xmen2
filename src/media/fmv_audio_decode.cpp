@@ -1,10 +1,13 @@
 #include "fmv_audio_decode.h"
 
+// FFmpeg is a C library whose headers declare no C++ linkage.
+extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/error.h>
 #include <libavutil/mathematics.h>
 #include <libswresample/swresample.h>
+}
 
 #include <stdlib.h>
 
@@ -124,7 +127,8 @@ static const X2FmvDecoderDrainOps g_drain_ops = {send_flush, receive_step,
 X2FmvAudioDecode *x2_fmv_audio_decode_create(AVCodecContext *codec,
                                              const X2FmvAudioSink *sink,
                                              int *error) {
-  X2FmvAudioDecode *decode = calloc(1, sizeof(*decode));
+  X2FmvAudioDecode *decode =
+      static_cast<X2FmvAudioDecode *>(calloc(1, sizeof(*decode)));
   AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
   int result = 0;
   if (!decode) {

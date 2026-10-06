@@ -116,7 +116,7 @@ static const char *label_after(const char *name) {
   WR32(stack + 4u, 7u); /* the action id; the stub ignores it */
   c.reg[kX86pEsp] = stack;
   x2_override_00619e30(&c);
-  return guest_memory_const_pointer(c.reg[kX86pEax]);
+  return guest_memory_as<const char>(c.reg[kX86pEax]);
 }
 
 /* Write a binding straight into the guest table, using the ABI
@@ -155,7 +155,7 @@ static int reader_says(uint32_t row, uint32_t *kind, uint32_t *code,
 static int check_call(uint32_t kind, uint32_t code, uint32_t want,
                       int want_real) {
   CPU c = {0};
-  uint32_t *stack = guest_memory_pointer(mapped_base + 0x1000u);
+  uint32_t *stack = guest_memory_as<uint32_t>(mapped_base + 0x1000u);
   int before = real_calls;
   stack[0] = 0xfeedfaceu;
   stack[1] = kind;

@@ -131,6 +131,11 @@ static inline const void *guest_memory_const_pointer(uint32_t address) {
   return guest_memory_pointer(address);
 }
 
+/* A guest address as a typed host pointer; T may be const-qualified. */
+template <class T> inline T *guest_memory_as(uint32_t address) {
+  return static_cast<T *>(guest_memory_pointer(address));
+}
+
 static inline uint32_t guest_memory_address(const void *pointer) {
   return (uint32_t)((uintptr_t)pointer - g_guest_memory_base);
 }

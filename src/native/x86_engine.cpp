@@ -271,7 +271,8 @@ static EngineRunOutcome run_guest(volatile EngineRun *run) {
     if (st != kX86pRunIntercept && st != kX86pRunBudget)
       refuse(entry, cpu, why[0] ? why : x86p_jit_run_status_name(st));
     guest_quantum();
-    if (++run->steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
+    run->steps = run->steps + 1;
+    if (run->steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
       refuse(entry, cpu,
              "the call has not returned within the step cap -- it is "
              "not finishing");

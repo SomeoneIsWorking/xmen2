@@ -440,10 +440,10 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                    bytes, source_bytes, lw, lh);
       return 0;
     }
-    expanded = malloc(upload_bytes);
+    expanded = static_cast<uint8_t *>(malloc(upload_bytes));
     if (!expanded)
       return 0;
-    gpu_bgr8_to_bgra8(data, expanded, lw * lh);
+    gpu_bgr8_to_bgra8(static_cast<const uint8_t *>(data), expanded, lw * lh);
     upload_data = expanded;
   }
   t0 = gpu_host_timer_ns();

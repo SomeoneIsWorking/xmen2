@@ -21,15 +21,15 @@ SDL_GPUTextureFormat gpu_sampleable_depth_format(SDL_GPUDevice *device) {
 }
 
 bool gpu_depth_binding_create(SDL_GPUDevice *device) {
-  SDL_GPUTextureCreateInfo info = {0};
-  SDL_GPUSamplerCreateInfo sampler = {0};
-  SDL_GPUDepthStencilTargetInfo target = {0};
+  SDL_GPUTextureCreateInfo info = {};
+  SDL_GPUSamplerCreateInfo sampler = {};
+  SDL_GPUDepthStencilTargetInfo target = {};
   SDL_GPUCommandBuffer *command;
   SDL_GPURenderPass *pass;
   if (neutral.texture && neutral.sampler) {
     return true;
   }
-  info.type = SDL_GPU_TEXTURETYPE_2D;
+  info.type = static_cast<SDL_GPUTextureType>(SDL_GPU_TEXTURETYPE_2D);
   info.format = gpu_sampleable_depth_format(device);
   info.usage =
       SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
@@ -38,8 +38,10 @@ bool gpu_depth_binding_create(SDL_GPUDevice *device) {
     return SDL_SetError("No sampleable depth format for shader binding");
   }
   neutral.texture = SDL_CreateGPUTexture(device, &info);
-  sampler.min_filter = sampler.mag_filter = SDL_GPU_FILTER_NEAREST;
-  sampler.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+  sampler.min_filter = sampler.mag_filter =
+      static_cast<SDL_GPUFilter>(SDL_GPU_FILTER_NEAREST);
+  sampler.mipmap_mode =
+      static_cast<SDL_GPUSamplerMipmapMode>(SDL_GPU_SAMPLERMIPMAPMODE_NEAREST);
   sampler.address_mode_u = sampler.address_mode_v = sampler.address_mode_w =
       SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   neutral.sampler = SDL_CreateGPUSampler(device, &sampler);
@@ -81,6 +83,6 @@ void gpu_depth_binding_destroy(SDL_GPUDevice *device) {
   if (neutral.sampler) {
     SDL_ReleaseGPUSampler(device, neutral.sampler);
   }
-  neutral = (SDL_GPUTextureSamplerBinding){0};
+  neutral = SDL_GPUTextureSamplerBinding{};
 }
 #endif

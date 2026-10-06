@@ -36,7 +36,7 @@ void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
   if (!verify_enabled())
     return;
 
-  uint8_t *mine = malloc(out_bytes ? out_bytes : 1u);
+  uint8_t *mine = static_cast<uint8_t *>(malloc(out_bytes ? out_bytes : 1u));
   if (!mine)
     return;
   for (uint32_t k = 0; k < out_bytes; k++)

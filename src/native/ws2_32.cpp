@@ -144,7 +144,8 @@ static void address_call(CPU *C, int connecting) {
   if (not_socket(C, s, 3)) {
     return;
   }
-  if (!winsock_sockaddr_to_host(guest_memory_span(A(1), WIN_SOCKADDR_IN),
+  if (!winsock_sockaddr_to_host(static_cast<const uint8_t *>(
+                                    guest_memory_span(A(1), WIN_SOCKADDR_IN)),
                                 (int32_t)A(2), &host, &error)) {
     ret_result(C, 0, 0, error, 3);
     return;
@@ -185,7 +186,7 @@ void imp_WS2_32__6(CPU *C) {
     ret_result(C, 0, 0, error, 3);
     return;
   }
-  winsock_sockaddr_from_host(&host, guest_memory_pointer(name));
+  winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(name));
   WR32(length, WIN_SOCKADDR_IN);
   ret_std(C, 0, 3);
 }
@@ -292,7 +293,8 @@ void imp_WS2_32__20(CPU *C) {
   }
   const void *data = length ? guest_memory_span(buffer, length) : NULL;
   if ((length && !data) ||
-      !winsock_sockaddr_to_host(guest_memory_span(A(4), WIN_SOCKADDR_IN),
+      !winsock_sockaddr_to_host(static_cast<const uint8_t *>(
+                                    guest_memory_span(A(4), WIN_SOCKADDR_IN)),
                                 (int32_t)A(5), &host, &error)) {
     ret_result(C, 0, 0, error ? error : WSAEFAULT, 6);
     return;
@@ -331,7 +333,7 @@ void imp_WS2_32__17(CPU *C) {
   const int err = errno;
   wait_end(waited);
   if (n >= 0 && from) {
-    winsock_sockaddr_from_host(&host, guest_memory_pointer(from));
+    winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(from));
     WR32(fromlen, WIN_SOCKADDR_IN);
   }
   g_received += n >= 0;
@@ -347,7 +349,9 @@ void imp_WS2_32__18(CPU *C) {
   uint32_t error = 0;
   for (int i = 0; i < 3; ++i) {
     const uint32_t set = A(1 + i);
-    sets[i] = set ? guest_memory_span(set, sizeof(WinsockFdSet)) : NULL;
+    sets[i] = set ? static_cast<WinsockFdSet *>(
+                        guest_memory_span(set, sizeof(WinsockFdSet)))
+                  : NULL;
     if (set && !sets[i]) {
       ret_result(C, 0, 0, WSAEFAULT, 5);
       return;
@@ -371,7 +375,8 @@ void imp_WS2_32__18(CPU *C) {
 
 /* int __WSAFDIsSet(SOCKET s, fd_set *set) */
 void imp_WS2_32__151(CPU *C) {
-  const WinsockFdSet *set = guest_memory_span(A(1), sizeof(WinsockFdSet));
+  const WinsockFdSet *set = static_cast<const WinsockFdSet *>(
+      guest_memory_span(A(1), sizeof(WinsockFdSet)));
   uint32_t found = 0;
   for (uint32_t i = 0; set && i < set->count && i < WINSOCK_FD_SETSIZE; ++i) {
     found |= set->handles[i] == A(0);

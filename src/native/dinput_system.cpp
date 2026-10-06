@@ -241,14 +241,14 @@ static const unsigned char GUID_SYS_MOUSE[16] = {
     0x60, 0x2B, 0x1D, 0x6F, 0xA0, 0xD5, 0xCF, 0x11,
     0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00};
 
-int dinput_guid_kind(uint32_t guid) {
+DInputDeviceKind dinput_guid_kind(uint32_t guid) {
   if (!guid)
-    return 0;
+    return DINPUT_DEV_NONE;
   if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
     return DINPUT_DEV_KEYBOARD;
   if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
     return DINPUT_DEV_MOUSE;
-  return 0;
+  return DINPUT_DEV_NONE;
 }
 
 const unsigned char *dinput_guid_of(int kind) {

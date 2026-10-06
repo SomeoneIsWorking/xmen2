@@ -69,7 +69,7 @@ static int cpu_source(const D3D8State *s, const D3D8DrawRequest *req,
     return 0;
   }
   bytes = count * (uint32_t)sizeof *vertices;
-  vertices = malloc(bytes);
+  vertices = static_cast<D3D8VSOutput *>(malloc(bytes));
   if (!vertices) {
     return 0;
   }

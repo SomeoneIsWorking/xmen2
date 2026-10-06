@@ -141,7 +141,7 @@ static uint32_t key_open(const char *path) {
       return KEY_TOK + (uint32_t)i;
     }
   cap = g_key_cap ? g_key_cap * 2 : KEYS_INITIAL;
-  grown = (KeyRec *)realloc(g_key, (size_t)cap * sizeof *grown);
+  grown = static_cast<KeyRec *>(realloc(g_key, (size_t)cap * sizeof *grown));
   if (!grown) {
     x2_log_error("advapi32: out of memory growing the open-key table to "
                  "%d; RegOpenKey will now FAIL and the guest will treat "
@@ -331,7 +331,7 @@ static int key_exists(const char *path) {
 /* LONG RegOpenKeyExA(HKEY, LPCSTR sub, DWORD opts, REGSAM sam, PHKEY out) */
 static void reg_open(CPU *C, int ex) {
   const char *parent = key_path(A(0));
-  const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
+  const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t out = ex ? A(4) : A(2);
   char full[MAX_PATH_];
   int nargs = ex ? 5 : 3;
@@ -373,7 +373,7 @@ void imp_ADVAPI32_RegOpenKeyExA(CPU *C) { reg_open(C, 1); }
  */
 static void reg_create(CPU *C, int ex) {
   const char *parent = key_path(A(0));
-  const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
+  const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t out = ex ? A(7) : A(2), disp = ex ? A(8) : 0;
   char full[MAX_PATH_];
   int nargs = ex ? 9 : 3, existed;
@@ -416,7 +416,7 @@ void imp_ADVAPI32_RegCreateKeyExA(CPU *C) { reg_create(C, 1); }
 /* LONG RegQueryValueExA(HKEY, name, res, PDWORD type, BYTE *data, PDWORD cb) */
 void imp_ADVAPI32_RegQueryValueExA(CPU *C) {
   const char *path = key_path(A(0));
-  const char *name = A(1) ? guest_memory_const_pointer(A(1)) : "";
+  const char *name = A(1) ? guest_memory_as<const char>(A(1)) : "";
   uint32_t ptype = A(3), data = A(4), pcb = A(5);
   RegValue *v;
 
@@ -459,7 +459,7 @@ void imp_ADVAPI32_RegQueryValueExA(CPU *C) {
  */
 void imp_ADVAPI32_RegQueryValueA(CPU *C) {
   const char *parent = key_path(A(0));
-  const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
+  const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t data = A(2), pcb = A(3);
   char full[MAX_PATH_];
   RegValue *v;
@@ -499,7 +499,7 @@ void imp_ADVAPI32_RegQueryValueA(CPU *C) {
 /* LONG RegSetValueExA(HKEY, name, res, type, const BYTE *data, DWORD cb) */
 void imp_ADVAPI32_RegSetValueExA(CPU *C) {
   const char *path = key_path(A(0));
-  const char *name = A(1) ? guest_memory_const_pointer(A(1)) : "";
+  const char *name = A(1) ? guest_memory_as<const char>(A(1)) : "";
   uint32_t type = A(3), data = A(4), cb = A(5);
   RegValue *v;
 

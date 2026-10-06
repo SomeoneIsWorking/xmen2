@@ -145,7 +145,7 @@ static uint32_t intern_join_command(const CPU *source) {
 /* The Join row's text, re-copied whenever the announced host changes. */
 static uint32_t join_text(const char *label) {
   if (g_join_text) {
-    if (!strcmp(guest_memory_const_pointer(g_join_text), label))
+    if (!strcmp(guest_memory_as<const char>(g_join_text), label))
       return g_join_text;
     guest_free(g_join_text);
   }

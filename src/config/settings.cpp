@@ -23,11 +23,11 @@ const char *x2_window_mode_name(X2WindowMode mode) {
 }
 
 int x2_window_mode_parse(const char *text, X2WindowMode *mode) {
-  X2WindowMode i;
+  int i;
   for (i = X2_WINDOW_WINDOWED; i <= X2_WINDOW_FULLSCREEN; i++)
-    if (strcmp(text, x2_window_mode_name(i)) == 0) {
+    if (strcmp(text, x2_window_mode_name(static_cast<X2WindowMode>(i))) == 0) {
       if (mode)
-        *mode = i;
+        *mode = static_cast<X2WindowMode>(i);
       return 1;
     }
   return 0;

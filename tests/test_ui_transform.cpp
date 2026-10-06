@@ -1,6 +1,5 @@
 /* The shipping computeMatrix_Dx override, driven at its CPU/guest-memory ABI.
  */
-#define _GNU_SOURCE
 #include "gpu_matrix.h"
 #include "guest_memory.h"
 #include "ui_transform.h"

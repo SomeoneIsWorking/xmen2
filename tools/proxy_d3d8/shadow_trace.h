@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SHADOW_TRACE_STAGES 8
 #define SHADOW_TRACE_STAGE_STATES 32
 #define SHADOW_TRACE_TRANSFORMS 512
@@ -96,5 +100,9 @@ void shadow_trace_draw(ShadowTrace *trace, int indexed, uint32_t primitive,
 void shadow_trace_clear(ShadowTrace *trace, uint32_t rect_count,
                         const int32_t *rects, uint32_t flags, uint32_t color,
                         float depth, uint32_t stencil, long result);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

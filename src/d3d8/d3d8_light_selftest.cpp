@@ -54,7 +54,7 @@ int d3d8_light_selftest(void) {
                 "failed.\n");
     return 1;
   }
-  light = guest_memory_pointer(light_address);
+  light = guest_memory_as<float>(light_address);
   memset(light, 0, (26u + 3u) * sizeof(uint32_t));
   ((uint32_t *)light)[0] = 3u; /* directional */
   light[1] = 0.25f;
