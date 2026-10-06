@@ -78,8 +78,12 @@ static uint32_t g_batch;
 #define TEXT_BATCH (GUEST_PAGE + 0x7d0u)
 #define TEXT_ARRAY 0x01f29db8u
 
+/* FUN_005840a0's vtable, linked; XMen2.exe is mapped at its linked base. */
+#define TEXT_BATCH_VTABLE 0x0069c904u
+
 static void text_batch_init(void) {
   WR32(TEXT_WRITER, TEXT_BATCH);
+  WR32(TEXT_BATCH, TEXT_BATCH_VTABLE);
   WR32(TEXT_BATCH + 4u, 0u);
   WR32(TEXT_BATCH + 8u, TEXT_ARRAY);
   WR32(TEXT_BATCH + 0x10u, 1u);
@@ -149,9 +153,8 @@ static void guest_body_005ee780(CPU *C) {
     WR32(stack + 28u, float_bits(0.3f));
     WR32(stack + 32u, float_bits(0.4f));
     emitter.reg[kX86pEsp] = stack;
-    /* Deliberately not the loop's arg2: colour must have been pre-read from
-       FUN_005ee780 arg2+8 before this loop was armed. */
-    emitter.reg[kX86pEcx] = TEXT_WRITER;
+    /* The retail loop hands the emitter its own arg2 as the writer. */
+    emitter.reg[kX86pEcx] = RD32(C->reg[kX86pEsp] + 8u);
     x2_override_005ee400(&emitter);
     if (emitter.reg[kX86pEsp] != stack + 0x24u)
       fail("the retail emitter did not own its RET 0x20 stack effect");
@@ -218,9 +221,9 @@ int main(void) {
   }
   g_next = GUEST_PAGE;
   g_stack = GUEST_STACK_TOP;
-  g_batch = GUEST_PAGE + 0x780u;
-  WR32(g_batch + 8u, 0x7f2468acu);
+  g_batch = TEXT_WRITER;
   text_batch_init();
+  WR32(g_batch + 8u, 0x7f2468acu);
 
   if (!native_stubs_registered("XMen2.exe", 0x005ee780))
     fail("the constructor did not register the glyph-loop override");
@@ -479,6 +482,27 @@ int main(void) {
     x2_prompt_quads_reset();
   }
 
+  {
+    /* The PC settings GUI's writer appends to a 2D list (FUN_005f64f0) that
+       no finalizer places: the whole string stays stock, nothing aborts. */
+    static const uint16_t two[] = {
+        X2_PAD_GLYPH_FACE_A,
+        X2_PAD_GLYPH_FACE_B,
+    };
+    CPU cpu;
+    unsigned long emit_before = g_emitter_calls;
+    WR32(TEXT_BATCH, 0x006a4c4cu);
+    x2_prompt_quads_reset();
+    call_glyph_loop(&cpu, guest_wide(two, 2));
+    if (x2_prompt_quads_pending() || g_emitter_calls != emit_before + 2u ||
+        !rect_has_area((unsigned)emit_before) ||
+        !rect_has_area((unsigned)emit_before + 1u))
+      fail("a writer that is not the text batch was intercepted");
+    else
+      ok("a writer that is not the text batch keeps the string stock");
+    WR32(TEXT_BATCH, TEXT_BATCH_VTABLE);
+  }
+
   /* The report itself runs, so a change that breaks its format is caught
      here rather than in a run log nobody diffs. */
   printf("  the report reads:\n");
@@ -494,6 +518,10 @@ int main(void) {
  * symbol per function -- and an entry point this test does not model is a
  * FAILURE that names itself, never a silent return.
  */
+uint32_t x86_module_base(const char *image) {
+  return strcmp(image, "XMen2.exe") == 0 ? 0x00400000u : 0u;
+}
+
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
   if (linked_ep == 0x005ee400u && !strcmp(module, "XMen2.exe")) {
     guest_body_005ee400(C);
