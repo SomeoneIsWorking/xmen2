@@ -22,14 +22,13 @@
  */
 #include "fault_report.h"
 
+#include "crash_report.hpp"
 #include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
-#elif !defined(__ANDROID__)
-#include <execinfo.h>
 #endif
 #include <dlfcn.h>
 #include <signal.h>
@@ -150,6 +149,13 @@ void fault_report(int sig, siginfo_t *si, void *uc) {
   uint32_t a;
   const char *mod = NULL, *sym;
 
+  x2::diagnostics::CrashReport::begin(fault_name(sig), sig, si->si_code,
+                                      (uintptr_t)si->si_addr,
+#if defined(__EMSCRIPTEN__)
+                                      0);
+#else
+                                      fault_context_pc(uc));
+#endif
   if (!guest_memory_host_address(si->si_addr, &a))
     a = (uint32_t)(uintptr_t)si->si_addr;
   if (sig != SIGSEGV) {
@@ -194,13 +200,6 @@ where:
   fault_host_pc_report(uc);
 #if defined(__ANDROID__)
   x2_log_error("[HOST STACK] unavailable on Android (no execinfo API)\n");
-#elif !defined(__EMSCRIPTEN__)
-  {
-    void *frames[32];
-    int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));
-    x2_log_error("[HOST STACK] %d frame(s):\n", count);
-    backtrace_symbols_fd(frames, count, STDERR_FILENO);
-  }
 #endif
   x86_regs_dump();
   x86_diag_dump();

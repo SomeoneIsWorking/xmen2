@@ -80,11 +80,9 @@ typedef enum X2ConfigOverride {
   kX2ConfigFault,
   kX2ConfigFaultStack,
   kX2ConfigFaultSelftest,
-  /* SDL's own driver selection. The audio device owner needs it to tell a
-     hidden run that wants SDL's real-cadence dummy device from one that has
-     asked for nothing: both are silent, but only the SDL device is clocked by
-     SDL's audio thread, so only that one plays back at a player's rate. */
+  /* SDL's driver; `dummy` keeps a hidden run on SDL's real-cadence clock. */
   kX2ConfigSdlAudioDriver,
+  kX2ConfigLogDir,
   kX2ConfigOverrideCount
 } X2ConfigOverride;
 

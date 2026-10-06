@@ -82,6 +82,7 @@ static const char *const k_override_names[] = {
     "X2_FAULT_STACK",
     "X2_FAULT_SELFTEST",
     "SDL_AUDIODRIVER",
+    "X2_LOG_DIR",
 };
 /* Positional, so a name added out of step with the enum shifts every later one.
  */
