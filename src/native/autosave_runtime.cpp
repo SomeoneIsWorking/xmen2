@@ -22,6 +22,10 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   EXE_PREFERRED = 0x00400000u,
   MANAGER_RVA = 0x0035cbc0u,
@@ -37,23 +41,30 @@ enum AutosaveLastResult {
   AUTOSAVE_LAST_SUCCEEDED
 };
 
-static x2::save::AutosavePolicy g_policy;
-static uint32_t g_exe;
-static X2CampaignSnapshot *g_snapshot;
-static uint32_t g_last_manager_mode;
-static X2GameplayControl g_last_control;
-static AutosaveLastResult g_last_result;
-static int g_last_errno;
-static int g_initialized;
+x2::save::AutosavePolicy g_policy;
 
-static void initialize(void) {
+uint32_t g_exe;
+
+X2CampaignSnapshot *g_snapshot;
+
+uint32_t g_last_manager_mode;
+
+X2GameplayControl g_last_control;
+
+AutosaveLastResult g_last_result;
+
+int g_last_errno;
+
+int g_initialized;
+
+void initialize(void) {
   if (g_initialized)
     return;
   x2::save::autosave_policy_init(&g_policy);
   g_initialized = 1;
 }
 
-static uint32_t exe_base(void) {
+uint32_t exe_base(void) {
   const X86Module *module;
   if (g_exe)
     return g_exe;
@@ -65,13 +76,13 @@ static uint32_t exe_base(void) {
   return g_exe;
 }
 
-static int serialize_snapshot(const CPU *source) {
+int serialize_snapshot(const CPU *source) {
   if (!g_snapshot)
     g_snapshot = x2_campaign_snapshot_create();
   return x2_campaign_snapshot_capture(g_snapshot, source);
 }
 
-static int publish_snapshot(const CPU *source) {
+int publish_snapshot(const CPU *source) {
   unsigned char header[X2_SAVE_HEADER_BYTES];
   const char *directory;
 
@@ -104,17 +115,19 @@ static int publish_snapshot(const CPU *source) {
   return 1;
 }
 
-void x2_autosave_runtime_map_return(int succeeded) {
+} // namespace
+
+void autosave_runtime_map_return(int succeeded) {
   initialize();
   x2::save::autosave_policy_map_return(&g_policy, succeeded);
 }
 
-void x2_autosave_runtime_menu_show(void) {
+void autosave_runtime_menu_show(void) {
   initialize();
   x2::save::autosave_policy_menu_show(&g_policy);
 }
 
-void x2_autosave_runtime_poll(CPU *cpu) {
+void autosave_runtime_poll(CPU *cpu) {
   x2::save::AutosaveCheckpoint checkpoint;
   x2::save::AutosavePollResult result;
   int succeeded;
@@ -133,7 +146,7 @@ void x2_autosave_runtime_poll(CPU *cpu) {
   x2::save::autosave_policy_finish(&g_policy, checkpoint.id, succeeded);
 }
 
-size_t x2_autosave_runtime_report(char *out, size_t capacity) {
+size_t autosave_runtime_report(char *out, size_t capacity) {
   static const char *const RESULT[] = {"none",           "serializer-failed",
                                        "header-failed",  "directory-failed",
                                        "publish-failed", "succeeded"};
@@ -163,15 +176,17 @@ size_t x2_autosave_runtime_report(char *out, size_t capacity) {
   return (size_t)count;
 }
 
-static void x2_autosave_override_00484ce0(CPU *C) {
+namespace {
+
+void x2_autosave_override_00484ce0(CPU *C) {
   uint32_t map = C->reg[kX86pEcx];
   int succeeded;
 
   x86_guest_body(C, "XMen2.exe", 0x00484ce0u);
   succeeded = (C->reg[kX86pEax] & 0xffu) != 0u;
-  x2_save_trace_map_return(map, succeeded);
-  x2_lan_session_map_loaded(map, succeeded);
-  x2_autosave_runtime_map_return(succeeded);
+  x2::save::save_trace_map_return(map, succeeded);
+  x2::native::lan_session_map_loaded(map, succeeded);
+  autosave_runtime_map_return(succeeded);
   /* The boot's own destination load completes here: this is the signal the
      boot blackout waits for. Later zone loads arrive while the blackout is
      already closed and are no-ops to it. */
@@ -183,3 +198,7 @@ __attribute__((constructor)) static void x2_autosave_register(void) {
   x86_register_override("XMen2.exe", 0x00484ce0u,
                         x2_autosave_override_00484ce0);
 }
+
+} // namespace
+
+} // namespace x2::native

@@ -38,7 +38,7 @@ typedef struct {
 
 static const PortCommand PORT_COMMANDS[] = {
     {"port_settings", x2_port_settings_command, "options_menu"},
-    {"port_lan_join", x2_lan_join_command, "lan_session"}};
+    {"port_lan_join", x2::native::lan_join_command, "lan_session"}};
 
 enum { PORT_COMMAND_COUNT = sizeof PORT_COMMANDS / sizeof PORT_COMMANDS[0] };
 

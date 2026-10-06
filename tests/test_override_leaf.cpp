@@ -216,7 +216,9 @@ static void test_the_guard_aborts_inside_a_leaf(const char *self) {
 
 int main(int argc, char **argv) {
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(ARENA, ARENA_SIZE, PROT_READ | PROT_WRITE) != 0) {
+      guest_memory_map_fixed(ARENA, ARENA_SIZE,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
+          0) {
     fprintf(stderr, "could not map the test arena\n");
     return 1;
   }

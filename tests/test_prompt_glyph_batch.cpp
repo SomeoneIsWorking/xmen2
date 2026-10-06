@@ -49,8 +49,8 @@ int x2_ui_transform_current(uint32_t context, float mvp[16]) {
   return 1;
 }
 
-int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
-                             const float mvp[16]) {
+int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
+                             unsigned count, const float mvp[16]) {
   unsigned i;
   note('G');
   gpu_calls++;
@@ -92,13 +92,13 @@ static uint32_t context_array = ARRAY_TEXT;
    `array`, the way prompt_glyph_draw.cpp does. */
 static void put(uint32_t array, uint32_t vertex, unsigned native,
                 uint16_t codepoint) {
-  struct X2PromptQuad quads[8];
-  const struct X2PromptVertexKey key = {array, vertex};
+  struct x2::native::PromptQuad quads[8];
+  const struct x2::native::PromptVertexKey key = {array, vertex};
   unsigned i;
   memset(quads, 0, sizeof quads);
   for (i = 0; i < native; i++)
     quads[i].codepoint = codepoint;
-  if (!x2_prompt_quads_put(key, quads, native)) {
+  if (!x2::native::prompt_quads_put(key, quads, native)) {
     printf("  FAIL  the store refused a quad\n");
     failures++;
   }
@@ -117,7 +117,7 @@ static void draw(uint32_t start, unsigned glyphs, CPU *cpu) {
 }
 
 static void reset_case(uint32_t primitives) {
-  x2_prompt_quads_reset();
+  x2::native::prompt_quads_reset();
   draw_primitives = primitives;
   draw_start = 0;
   context_array = ARRAY_TEXT;
@@ -133,7 +133,7 @@ static void reset_case(uint32_t primitives) {
   memset(events, 0, sizeof events);
 }
 
-static unsigned pending(void) { return x2_prompt_quads_pending(); }
+static unsigned pending(void) { return x2::native::prompt_quads_pending(); }
 
 int main(void) {
   CPU cpu;
@@ -257,12 +257,12 @@ int main(void) {
   check(!strcmp(events, "D") && gpu_calls == 0,
         "a draw that never finalized places nothing");
 
-  x2_prompt_quads_reset();
+  x2::native::prompt_quads_reset();
   check(pending() == 0u, "a new frame drops every undrawn quad");
 
   printf("  the report reads:\n");
   x2_prompt_glyph_batch_report();
-  x2_prompt_quads_report();
+  x2::native::prompt_quads_report();
   printf("\ntest_prompt_glyph_batch: %d failure(s)\n", failures);
   return failures ? 1 : 0;
 }

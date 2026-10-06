@@ -56,10 +56,12 @@ uint32_t options_menu_stubs_callback(int index) {
 int options_menu_stubs_join_commands(void) { return join_commands; }
 
 /* lan_session.cpp's command, which this test does not link. */
-void x2_lan_join_command(CPU *C) {
+namespace x2::native {
+void lan_join_command(CPU *C) {
   join_commands++;
   C->reg[kX86pEsp] += 4u;
 }
+} // namespace x2::native
 uint32_t options_menu_stubs_method(void) { return registered_method; }
 x86_override_fn options_menu_stubs_callback_function(void) {
   return callback_function;
@@ -91,7 +93,7 @@ uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
     return CALLBACK_TARGET;
   }
   if (!ctx && !strcmp(owner, "lan_session") && !strcmp(name, "port_lan_join") &&
-      fn == x2_lan_join_command) {
+      fn == x2::native::lan_join_command) {
     return JOIN_CALLBACK_TARGET;
   }
   fprintf(stderr, "options menu stub: callback identity changed\n");

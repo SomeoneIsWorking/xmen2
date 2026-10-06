@@ -71,7 +71,8 @@ int main(void) {
   uint32_t manager = MANAGER_ADDRESS;
 
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(manager, MANAGER_BYTES, PROT_READ | PROT_WRITE) !=
+      guest_memory_map_fixed(manager, MANAGER_BYTES,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     perror("test_dinput8_controller_slots guest map");
     return 1;

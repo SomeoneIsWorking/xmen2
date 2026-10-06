@@ -9,6 +9,8 @@
 
 #include <array>
 
+namespace x2::native {
+
 namespace {
 
 /* The script function mainMenuExit(): what the pause menu's quit dialog runs
@@ -30,25 +32,25 @@ __attribute__((constructor)) void register_main_menu_exit_script() {
 
 } // namespace
 
-void x2_lan_session_poll(CPU *cpu, double now) {
+void lan_session_poll(CPU *cpu, double now) {
   x2::lan::coordinator().poll(*cpu, now);
 }
 
-void x2_lan_session_map_loaded(uint32_t map, int succeeded) {
+void lan_session_map_loaded(uint32_t map, int succeeded) {
   x2::lan::coordinator().map_loaded(map, succeeded != 0);
 }
 
-const char *x2_lan_session_join_label(void) {
+const char *lan_session_join_label(void) {
   return x2::lan::coordinator().join_label();
 }
 
-void x2_lan_join_command(CPU *cpu) {
+void lan_join_command(CPU *cpu) {
   x2::lan::coordinator().join_chosen();
   /* A retail menu command is void and takes nothing: just its RET. */
   cpu->reg[kX86pEsp] += 4u;
 }
 
-void x2_lan_session_route(x2_socket_t fd, const char *query) {
+void lan_session_route(x2_socket_t fd, const char *query) {
   x2::lan::SessionDirector &director = x2::lan::session_director();
   using Role = x2::lan::SessionDirector::Role;
   std::array<char, 8> value{};
@@ -72,3 +74,5 @@ void x2_lan_session_route(x2_socket_t fd, const char *query) {
                      x2::lan::coordinator().status().c_str(),
                      director.status().c_str());
 }
+
+} // namespace x2::native

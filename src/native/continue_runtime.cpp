@@ -199,7 +199,7 @@ static void set_text(const CPU *source, uint32_t menu, unsigned row,
 }
 
 static int catalog_for_show(void) {
-  const char *boot_leaf = x2_boot_mode_runtime_continue_leaf();
+  const char *boot_leaf = x2::native::boot_mode_runtime_continue_leaf();
   const char *directory;
   X2SaveCandidate latest;
   int result;
@@ -235,7 +235,7 @@ static uint32_t row_command(unsigned source) {
 static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
   x2::save::ContinueMenuPlan plan;
   uint32_t item[x2::save::kMainMenuRows];
-  const char *join_label = x2_lan_session_join_label();
+  const char *join_label = x2::native::lan_session_join_label();
   unsigned row;
 
   g_continue_command_armed = 0;
@@ -292,11 +292,11 @@ void x2_main_menu_refresh(CPU *cpu, uint32_t menu) {
 void x2_override_005c9260(CPU *C) {
   uint32_t menu = C->reg[kX86pEcx];
   int has_save;
-  int boot_continue = x2_boot_mode_runtime_continue_leaf() != NULL;
+  int boot_continue = x2::native::boot_mode_runtime_continue_leaf() != NULL;
 
   x2::save::continue_transaction_reader_result(&g_transaction, 0);
-  x2_autosave_runtime_menu_show();
-  x2_save_trace_menu_open();
+  x2::native::autosave_runtime_menu_show();
+  x2::save::save_trace_menu_open();
   /* Retail reaches CMenuMain::Show with the player who dismissed the title
      screen selected. CMenu::Show copies that selection into CMenuMgr and
      clears CPadManager while the menu is active; CMenu::Hide restores it
@@ -356,7 +356,7 @@ int x2_continue_boot_dispatch(struct X86pCpu *C) {
   if (!start_latest_load(C))
     return 0;
   g_boot_load_pending = 1;
-  x2_boot_mode_runtime_continue_started();
+  x2::native::boot_mode_runtime_continue_started();
   return 1;
 }
 
@@ -366,7 +366,7 @@ void x2_override_005f2b70(CPU *C) {
     return;
   }
   if (start_latest_load(C))
-    x2_boot_mode_runtime_continue_started();
+    x2::native::boot_mode_runtime_continue_started();
   C->reg[kX86pEax] = 0u;
   C->reg[kX86pEsp] += 4u;
 }

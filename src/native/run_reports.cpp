@@ -56,7 +56,7 @@ void x2_interrupt_reports(int killed) {
   x2_prompt_draw_report();
   x2_keycap_labels_report();
   x2_prompt_glyph_metrics_report();
-  x2_prompt_quads_report();
+  x2::native::prompt_quads_report();
   x2_prompt_glyph_batch_report();
   x2_prompt_tokens_report();
   x2_ui_transform_report();

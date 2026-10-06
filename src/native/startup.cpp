@@ -169,8 +169,8 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
       !x2_boot_mode_is_intro_command(guest_memory_as<const char>(command)))
     return 0;
   requested = x2_settings_store()->boot_mode;
-  decision =
-      x2_boot_mode_runtime_prepare(requested, x2_retail_save_directory());
+  decision = x2::native::boot_mode_runtime_prepare(requested,
+                                                   x2_retail_save_directory());
   if (decision->effective == X2_BOOT_NORMAL)
     return 0;
   if (!exe_base) {
@@ -179,7 +179,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
     return 0;
   }
   if (decision->fell_back_to_menu) {
-    if (x2_boot_mode_runtime_catalog_failed())
+    if (x2::native::boot_mode_runtime_catalog_failed())
       x2_log_error("BOOT MODE: Continue was requested but the save "
                    "directory could not be read; opening the retail "
                    "main menu.\n");
@@ -198,7 +198,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
     x2_log_error("BOOT MODE: skipping the introduction, splash wait "
                  "and menu; dispatching the retail save chain for "
                  "%s directly.\n",
-                 x2_boot_mode_runtime_continue_leaf());
+                 x2::native::boot_mode_runtime_continue_leaf());
     if (x2_continue_boot_dispatch(C)) {
       C->reg[kX86pEax] = 1u;
       C->reg[kX86pEsp] += 8u;

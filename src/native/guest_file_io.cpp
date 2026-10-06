@@ -7,6 +7,10 @@
 #include <stdint.h>
 #include <unistd.h>
 
+namespace x2::native {
+
+namespace {
+
 /*
  * One host call per guest transfer, straight through the guest pointer.
  *
@@ -18,7 +22,7 @@
  * play. A bad span is refused by guest_memory_span before the call, not after
  * a partial transfer.
  */
-static int span_bytes(size_t size, size_t count, size_t *bytes) {
+int span_bytes(size_t size, size_t count, size_t *bytes) {
   if (count > SIZE_MAX / size) {
     errno = EOVERFLOW;
     return 0;
@@ -27,8 +31,10 @@ static int span_bytes(size_t size, size_t count, size_t *bytes) {
   return 1;
 }
 
-size_t x2_guest_fread(uint32_t destination, size_t size, size_t count,
-                      FILE *stream) {
+} // namespace
+
+size_t guest_fread(uint32_t destination, size_t size, size_t count,
+                   FILE *stream) {
   size_t bytes;
   void *host;
   if (!size || !count || !span_bytes(size, count, &bytes)) {
@@ -38,8 +44,7 @@ size_t x2_guest_fread(uint32_t destination, size_t size, size_t count,
   return host ? fread(host, size, count, stream) : 0;
 }
 
-size_t x2_guest_fwrite(uint32_t source, size_t size, size_t count,
-                       FILE *stream) {
+size_t guest_fwrite(uint32_t source, size_t size, size_t count, FILE *stream) {
   size_t bytes;
   const void *host;
   if (!size || !count || !span_bytes(size, count, &bytes)) {
@@ -49,7 +54,7 @@ size_t x2_guest_fwrite(uint32_t source, size_t size, size_t count,
   return host ? fwrite(host, size, count, stream) : 0;
 }
 
-ssize_t x2_guest_read_fd(int fd, uint32_t destination, size_t bytes) {
+ssize_t guest_read_fd(int fd, uint32_t destination, size_t bytes) {
   void *host;
   if (bytes > SSIZE_MAX) {
     errno = EOVERFLOW;
@@ -62,7 +67,7 @@ ssize_t x2_guest_read_fd(int fd, uint32_t destination, size_t bytes) {
   return host ? read(fd, host, bytes) : -1;
 }
 
-ssize_t x2_guest_write_fd(int fd, uint32_t source, size_t bytes) {
+ssize_t guest_write_fd(int fd, uint32_t source, size_t bytes) {
   const void *host;
   if (bytes > SSIZE_MAX) {
     errno = EOVERFLOW;
@@ -74,3 +79,5 @@ ssize_t x2_guest_write_fd(int fd, uint32_t source, size_t bytes) {
   host = guest_memory_span(source, bytes);
   return host ? write(fd, host, bytes) : -1;
 }
+
+} // namespace x2::native

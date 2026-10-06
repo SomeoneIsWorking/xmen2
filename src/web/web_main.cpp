@@ -97,9 +97,9 @@ static int run_application(int argc, char **argv) {
           ? x2_install_archive_extract_unpublished(
                 selection, "/opfs/install", executable, sizeof(executable),
                 reason, sizeof(reason), report_unpack_progress, nullptr) &&
-                x2_install_picker_directory_from_executable(
+                x2::native::install_picker_directory_from_executable(
                     executable, directory, sizeof(directory))
-          : install_ready() && x2_install_picker_resolve_selection(
+          : install_ready() && x2::native::install_picker_resolve_selection(
                                    selection, nullptr, directory,
                                    sizeof(directory), reason, sizeof(reason));
   if (!selected) {

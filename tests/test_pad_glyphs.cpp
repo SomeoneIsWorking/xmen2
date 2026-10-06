@@ -177,7 +177,8 @@ int main(int argc, char **argv) {
   (void)argc;
   if (guest_memory_init() != 0 ||
       guest_memory_map_any(0x10000000u, 0x70000000u, 0x01000000u, SIZE,
-                           PROT_READ | PROT_WRITE, &mapped_base) != 0) {
+                           x2::native::kProtRead | x2::native::kProtWrite,
+                           &mapped_base) != 0) {
     perror("test_pad_glyphs guest map");
     return 1;
   }

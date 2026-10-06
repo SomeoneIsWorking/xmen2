@@ -183,7 +183,8 @@ static void test_counter_increments(void) {
 
 int main(void) {
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(DATA_BASE, DATA_SIZE, PROT_READ | PROT_WRITE) !=
+      guest_memory_map_fixed(DATA_BASE, DATA_SIZE,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     fprintf(stderr, "could not map test data region\n");
     return 1;

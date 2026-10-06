@@ -44,15 +44,16 @@ int main(void) {
   CHECK(fputs("opaque", save) >= 0);
   CHECK(fclose(save) == 0);
 
-  decision = x2_boot_mode_runtime_prepare(X2_BOOT_CONTINUE, directory);
+  decision = x2::native::boot_mode_runtime_prepare(X2_BOOT_CONTINUE, directory);
   CHECK(decision->requested == X2_BOOT_CONTINUE);
   CHECK(decision->effective == X2_BOOT_CONTINUE);
   CHECK(!decision->fell_back_to_menu);
-  CHECK(!x2_boot_mode_runtime_catalog_failed());
-  CHECK(x2_boot_mode_runtime_continue_leaf() != NULL);
-  CHECK(strcmp(x2_boot_mode_runtime_continue_leaf(), "saveslot2.save") == 0);
-  x2_boot_mode_runtime_continue_started();
-  CHECK(x2_boot_mode_runtime_continue_leaf() == NULL);
+  CHECK(!x2::native::boot_mode_runtime_catalog_failed());
+  CHECK(x2::native::boot_mode_runtime_continue_leaf() != NULL);
+  CHECK(strcmp(x2::native::boot_mode_runtime_continue_leaf(),
+               "saveslot2.save") == 0);
+  x2::native::boot_mode_runtime_continue_started();
+  CHECK(x2::native::boot_mode_runtime_continue_leaf() == NULL);
 
   CHECK(remove(save_path) == 0);
   CHECK(rmdir(directory) == 0);

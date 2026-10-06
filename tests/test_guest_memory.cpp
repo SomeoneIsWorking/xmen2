@@ -79,9 +79,12 @@ static void exercise_pages(void) {
   check(reserved_length == (UINT64_C(1) << 32) + (uint64_t)host_page_size &&
             guest_memory_window().guard_above == (uint32_t)host_page_size,
         "reserves one host page above the space and reports it as the guard");
-  check(guest_memory_map_fixed(0x80000u, 4096, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(0x80000u, 4096,
+                               x2::native::kProtRead |
+                                   x2::native::kProtWrite) == 0,
         "maps the boot return trampoline");
-  check(guest_memory_map_fixed(base, 32768, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(
+            base, 32768, x2::native::kProtRead | x2::native::kProtWrite) == 0,
         "maps a multi-page image");
   if (failures)
     return;
@@ -89,25 +92,27 @@ static void exercise_pages(void) {
   unsigned char *b = guest_memory_as<unsigned char>(second);
   *a = 17;
   *b = 23;
-  check(guest_memory_protect(first, 4096, PROT_NONE) == 0,
+  check(guest_memory_protect(first, 4096, x2::native::kProtNone) == 0,
         "decommits one guest page");
   check(!guest_memory_is_readable(first, 4096) &&
             guest_memory_is_readable(second, 4096),
         "guest permissions stay independent within a host granule");
   *b = 29;
   check(*b == 29, "a neighboring committed page remains writable");
-  check(guest_memory_protect(first, 4096, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_protect(
+            first, 4096, x2::native::kProtRead | x2::native::kProtWrite) == 0,
         "restores one guest page");
   check(*a == 17, "protection changes preserve page contents");
   errno = 0;
-  check(guest_memory_map_fixed(second, 4096, PROT_READ) == -1 &&
+  check(guest_memory_map_fixed(second, 4096, x2::native::kProtRead) == -1 &&
             errno == EEXIST,
         "refuses overlapping guest allocations");
   check(guest_memory_release(first, 4096) == 0 &&
             !guest_memory_is_readable(first, 4096),
         "releases one guest page without publishing it as readable");
   check(*b == 29, "release preserves its committed neighbor");
-  check(guest_memory_map_fixed(first, 4096, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(
+            first, 4096, x2::native::kProtRead | x2::native::kProtWrite) == 0,
         "maps a guest page unaligned to the larger host granule");
   *a = 31;
   check(*a == 31 && *b == 29, "remapping preserves neighboring data");

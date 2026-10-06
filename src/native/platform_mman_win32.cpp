@@ -10,9 +10,9 @@
 namespace {
 
 DWORD page_protection(int protection) {
-  const bool writable = (protection & PROT_WRITE) != 0;
-  const bool readable = (protection & PROT_READ) != 0;
-  if (protection & PROT_EXEC) {
+  const bool writable = (protection & x2::native::kProtWrite) != 0;
+  const bool readable = (protection & x2::native::kProtRead) != 0;
+  if (protection & x2::native::kProtExec) {
     return writable ? PAGE_EXECUTE_READWRITE : PAGE_EXECUTE_READ;
   }
   if (writable) {
@@ -60,11 +60,14 @@ int protect_none(void *address, size_t size) {
 
 } // namespace
 
+namespace x2::native {
+
 // A no-access mapping is only reserved, so a 4 GB guest arena costs no commit
-// charge; x2_protect commits pages as they become accessible.
-extern "C" void *x2_map_anonymous(void *hint, size_t size, int protection) {
-  const DWORD type =
-      protection == PROT_NONE ? MEM_RESERVE : (MEM_RESERVE | MEM_COMMIT);
+// charge; protect commits pages as they become accessible.
+void *map_anonymous(void *hint, size_t size, int protection) {
+  const DWORD type = protection == x2::native::kProtNone
+                         ? MEM_RESERVE
+                         : (MEM_RESERVE | MEM_COMMIT);
   void *mapped = VirtualAlloc(hint, size, type, page_protection(protection));
   if (mapped == NULL) {
     set_errno_from_last_error();
@@ -80,7 +83,7 @@ extern "C" void *x2_map_anonymous(void *hint, size_t size, int protection) {
 
 // Windows releases only whole reservations, so a span inside one is
 // decommitted: no-access, holding no memory, and not claimable by anyone else.
-extern "C" int x2_unmap(void *address, size_t size) {
+int unmap(void *address, size_t size) {
   MEMORY_BASIC_INFORMATION info;
   if (VirtualQuery(address, &info, sizeof info) == 0) {
     set_errno_from_last_error();
@@ -110,8 +113,8 @@ extern "C" int x2_unmap(void *address, size_t size) {
   return 0;
 }
 
-extern "C" int x2_protect(void *address, size_t size, int protection) {
-  if (protection == PROT_NONE) {
+int protect(void *address, size_t size, int protection) {
+  if (protection == x2::native::kProtNone) {
     return protect_none(address, size);
   }
   // Committing an already committed page keeps its contents and only sets
@@ -124,8 +127,10 @@ extern "C" int x2_protect(void *address, size_t size, int protection) {
   return 0;
 }
 
-extern "C" long x2_page_size(void) {
+long page_size(void) {
   SYSTEM_INFO info;
   GetSystemInfo(&info);
   return static_cast<long>(info.dwPageSize);
 }
+
+} // namespace x2::native

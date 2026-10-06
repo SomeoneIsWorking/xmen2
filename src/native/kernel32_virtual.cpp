@@ -187,7 +187,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
        it silently. */
     uint32_t base = addr & ~0xFFFu;
     uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
-    if (guest_memory_map_fixed(base, len, PROT_READ | PROT_WRITE) != 0) {
+    if (guest_memory_map_fixed(
+            base, len, x2::native::kProtRead | x2::native::kProtWrite) != 0) {
       /* Already mapped: fine ONLY if the guest reserved it. Anything
          else is our own memory and must be refused. */
       if (errno == EEXIST && guest_reserved(base, len)) {
@@ -199,7 +200,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
          * access makes a decommit permanent, and the guest faults on
          * the memory Win32 just told it it had. Issue #41.
          */
-        if (guest_memory_protect(base, len, PROT_READ | PROT_WRITE) != 0)
+        if (guest_memory_protect(
+                base, len, x2::native::kProtRead | x2::native::kProtWrite) != 0)
           x2_log_error("kernel32: VirtualAlloc could not restore "
                        "access to 0x%08x+%u: %s\n",
                        base, len, strerror(errno));
@@ -285,7 +287,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
     for (tries = 0; tries < 64; tries++) {
       if (next + len > RES_HI || next + len < next)
         next = RES_LO;
-      if (guest_memory_map_fixed(next, len, PROT_NONE) == 0) {
+      if (guest_memory_map_fixed(next, len, x2::native::kProtNone) == 0) {
         uint32_t base = next;
         next += len;
         if (g_nreserved < MAX_RESERVED) {
@@ -386,7 +388,7 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
        readable would let a use-after-decommit read stale data silently. */
     uint32_t base = addr & ~0xFFFu;
     uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
-    if (len && guest_memory_protect(base, len, PROT_NONE) != 0)
+    if (len && guest_memory_protect(base, len, x2::native::kProtNone) != 0)
       x2_log_error("kernel32: VirtualFree(MEM_DECOMMIT) could not "
                    "protect 0x%08x+%u: %s\n",
                    base, len, strerror(errno));

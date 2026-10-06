@@ -53,7 +53,8 @@ int main(void) {
   int key_h;
   void *page;
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(GUEST_BASE, MAP_BYTES, PROT_READ | PROT_WRITE) !=
+      guest_memory_map_fixed(GUEST_BASE, MAP_BYTES,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     fprintf(stderr,
             "test_prompt_glyph_metrics: could not map guest "

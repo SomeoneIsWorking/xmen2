@@ -32,7 +32,7 @@ int guest_arena_acquire(GuestArena *arena) {
 }
 #elif GUEST_ARENA_RESERVED
 int guest_arena_acquire(GuestArena *arena) {
-  long host_page_size = x2_page_size();
+  long host_page_size = x2::native::page_size();
   if (host_page_size < GUEST_PAGE_SIZE ||
       (unsigned long)host_page_size > UINT32_MAX ||
       ((unsigned long)host_page_size & ((unsigned long)host_page_size - 1u))) {
@@ -44,9 +44,10 @@ int guest_arena_acquire(GuestArena *arena) {
   }
   /* The guard page above the space is part of the one reservation, so it is
      there whatever else the host has mapped. */
-  void *base = x2_map_anonymous(
-      NULL, (size_t)GUEST_SPACE_SIZE + (size_t)host_page_size, PROT_NONE);
-  if (base == X2_MAP_FAILED) {
+  void *base = x2::native::map_anonymous(
+      NULL, (size_t)GUEST_SPACE_SIZE + (size_t)host_page_size,
+      x2::native::kProtNone);
+  if (base == x2::native::kMapFailed) {
     x2_log_error("guest_memory: cannot reserve the 4 GB guest arena: %s\n",
                  strerror(errno));
     return -1;
@@ -69,13 +70,14 @@ int guest_arena_acquire(GuestArena *arena) {
  * slower, so the run says so.
  */
 static uint32_t map_guard_above(void) {
-  const size_t page = (size_t)x2_page_size();
+  const size_t page = (size_t)x2::native::page_size();
   void *const want = (void *)(uintptr_t)GUEST_SPACE_SIZE;
-  void *const guard = x2_map_anonymous(want, page, PROT_NONE);
+  void *const guard =
+      x2::native::map_anonymous(want, page, x2::native::kProtNone);
   if (guard == want)
     return (uint32_t)page;
-  if (guard != X2_MAP_FAILED)
-    x2_unmap(guard, page);
+  if (guard != x2::native::kMapFailed)
+    x2::native::unmap(guard, page);
   x2_log_info("guest_memory: no guard page could be placed at 4 GB; every "
               "translated guest access keeps its bounds check\n");
   return 0;

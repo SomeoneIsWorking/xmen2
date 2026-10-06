@@ -22,7 +22,8 @@ int main(void) {
   const uint32_t memory = 0x70000000u;
   uint32_t *mem;
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(memory, 4096, PROT_READ | PROT_WRITE) != 0) {
+      guest_memory_map_fixed(
+          memory, 4096, x2::native::kProtRead | x2::native::kProtWrite) != 0) {
     fprintf(stderr, "could not allocate guest callback corpus\n");
     return 1;
   }

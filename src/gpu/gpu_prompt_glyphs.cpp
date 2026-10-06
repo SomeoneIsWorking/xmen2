@@ -63,7 +63,7 @@ static int ensure_resources(void) {
   g_labels = gpu_texture_create(X2_KEYCAP_LABEL_SHEET_W,
                                 X2_KEYCAP_LABEL_SHEET_H, GPU_FMT_RGBA8, 1);
   g_vertices = gpu_buffer_create(GPU_BUF_VERTEX,
-                                 X2_PROMPT_QUADS_MAX * 6u *
+                                 x2::native::kPromptQuadsMax * 6u *
                                      (uint32_t)sizeof(struct PromptVertex));
   if (!g_atlas || !g_labels || !g_vertices) {
     release_resources();
@@ -118,7 +118,8 @@ static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
   return gpu_draw(&draw);
 }
 
-static void write_quad(struct PromptVertex *v, const struct X2PromptQuad *q) {
+static void write_quad(struct PromptVertex *v,
+                       const struct x2::native::PromptQuad *q) {
   /* Generated UVs follow D3D's bottom-origin convention. SDL_GPU samples
      the top-down RGBA byte image, so the conversion belongs exactly here. */
   float top = 1.0f - q->v1;
@@ -138,21 +139,21 @@ static void write_quad(struct PromptVertex *v, const struct X2PromptQuad *q) {
 }
 
 void gpu_prompt_glyphs_frame_begin(void) {
-  x2_prompt_quads_reset();
+  x2::native::prompt_quads_reset();
   if (ensure_resources())
     g_frames_ready++;
 }
 
-int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
-                             const float mvp[16]) {
-  struct PromptVertex vertices[X2_PROMPT_QUADS_MAX * 6u];
+int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
+                             unsigned count, const float mvp[16]) {
+  struct PromptVertex vertices[x2::native::kPromptQuadsMax * 6u];
   unsigned i, atlas = 0, labels = 0;
 
   g_render_calls++;
   if (!count)
     return 1;
-  if (!quads || count > X2_PROMPT_QUADS_MAX || !mvp || !g_atlas || !g_labels ||
-      !g_vertices || !gpu_frame_in_progress()) {
+  if (!quads || count > x2::native::kPromptQuadsMax || !mvp || !g_atlas ||
+      !g_labels || !g_vertices || !gpu_frame_in_progress()) {
     g_refused += count;
     return 0;
   }
@@ -202,12 +203,12 @@ int gpu_prompt_glyphs_selftest(void) {
       0.0f,         -2.0f / 64.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f, 1.0f,
   };
   const struct x2_prompt_cell *cell = &x2_prompt_cells[1]; /* red face B */
-  struct X2PromptQuad full = {
+  struct x2::native::PromptQuad full = {
       4.0f, 12.0f, 44.0f, 52.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0xffffffffu, 0x81u,
   };
-  struct X2PromptQuad half = full;
+  struct x2::native::PromptQuad half = full;
   struct PromptVertex check[6];
-  struct X2PromptQuad quads[2];
+  struct x2::native::PromptQuad quads[2];
   unsigned i, changed = 0;
   unsigned full_red = 0, half_red = 0;
   int failed = 0;

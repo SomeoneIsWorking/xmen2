@@ -320,7 +320,7 @@ int k32_open_replaced(const char *guest_path, int for_write) {
 void k32_open_note(const char *guest_path, int succeeded, int replaced,
                    const char *host_path) {
   note_asset(guest_path, succeeded, host_path);
-  x2_save_trace_asset_open(guest_path, succeeded);
+  x2::save::save_trace_asset_open(guest_path, succeeded);
   if (!replaced || !succeeded)
     return;
   {

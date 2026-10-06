@@ -38,6 +38,6 @@ unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
 #define X2_KEYCAP_QUADS 4u
 void x2_keycap_quads(const float left[4], const float right[4],
                      const struct x2_keycap_art *label, uint32_t color,
-                     struct X2PromptQuad out[X2_KEYCAP_QUADS]);
+                     struct x2::native::PromptQuad out[X2_KEYCAP_QUADS]);
 
 #endif
