@@ -4,11 +4,11 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 enum {
   ARENA_BASE = 0x35000000u,

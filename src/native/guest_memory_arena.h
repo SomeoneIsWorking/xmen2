@@ -27,7 +27,8 @@
  * the guest space must be reserved up front and every address rebased into it.
  * Apple Silicon refuses those addresses outright; on Android the loader and
  * ART already occupy them, and a fixed map of the guest heap at 0x71000000
- * fails with the arena having nowhere to live.
+ * fails with the arena having nowhere to live. Windows places the process's
+ * own heaps, stacks, PEB/TEBs and its shared user data page there.
  *
  * Such a host must also never munmap inside the arena -- it drops protection
  * instead, so that nothing else can claim the hole it would leave. This is a
@@ -41,7 +42,8 @@
  * Android take in production, not a debug-only variant of it. */
 #if defined(X2_GUEST_ARENA_RESERVED)
 #define GUEST_ARENA_RESERVED X2_GUEST_ARENA_RESERVED
-#elif (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__)
+#elif (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__) ||  \
+    defined(_WIN32)
 #define GUEST_ARENA_RESERVED 1
 #else
 #define GUEST_ARENA_RESERVED 0

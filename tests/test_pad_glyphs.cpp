@@ -1,3 +1,4 @@
+#include "environment.h"
 #include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "pad_glyphs.h"
@@ -6,11 +7,11 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include "platform_posix.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 #define SIZE 0x00700000u
 #define BUFFER_RVA 0x0066aec8u
@@ -184,15 +185,15 @@ int main(int argc, char **argv) {
   host_pad_for_slot[0] = 1; /* guest slot 0 is Xbox-family host pad 1 */
   host_pad_for_slot[1] = 0; /* guest slot 1 is generic host pad 0 */
   if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
-    setenv("X2_PROMPT_GLYPHS", "0", 1);
-    unsetenv("X2_PAD_GLYPHS");
+    x2_guest_environment_set("X2_PROMPT_GLYPHS", "0");
+    x2_guest_environment_set("X2_PAD_GLYPHS", nullptr);
     x2_runtime_config_init(0, NULL);
     ok = check_call(3, 0x15, 0, 1);
     printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
   }
 
-  setenv("X2_PROMPT_GLYPHS", "1", 1);
+  x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
   x2_runtime_config_init(0, NULL);
   ok = check_call(3, 0x15, 0x80, 0) && /* A */
        check_call(3, 5, 0x86, 0) &&    /* Z+ = LT */

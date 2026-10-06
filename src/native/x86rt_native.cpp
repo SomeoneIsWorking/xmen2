@@ -9,6 +9,7 @@
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "host_code_location.hpp"
 #include "host_imports.h"
 #include "module_name_memo.h"
 #include "pe_map.h"
@@ -22,7 +23,6 @@
 #include "x86_thunk_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
-#include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -1778,17 +1778,16 @@ void x87_fault(const char *what) {
    * neighbourhood. The binary is PIE, so the load base has to come off first.
    */
   {
-    unsigned long ra = (unsigned long)__builtin_return_address(0);
-    Dl_info di;
-    if (dladdr((void *)ra, &di) && di.dli_fbase)
-      x2_log_error("  the body that did it:  addr2line -fCe "
-                   "<this binary> 0x%lx\n",
-                   ra - (unsigned long)di.dli_fbase);
+    const uintptr_t ra = (uintptr_t)__builtin_return_address(0);
+    x2::diagnostics::HostCodeLocation at;
+    if (x2::diagnostics::host_code_location(ra, &at))
+      x2_log_error("  the body that did it:  %s %s 0x%llx\n",
+                   x2::diagnostics::kHostSymbolizer, at.image,
+                   (unsigned long long)at.offset);
     else
-      x2_log_error("  (dladdr could not give the load base, so the "
-                   "return address 0x%lx cannot be turned into a file "
-                   "offset here)\n",
-                   ra);
+      x2_log_error("  (no loaded image holds the return address 0x%llx, so "
+                   "it cannot be turned into an offset here)\n",
+                   (unsigned long long)ra);
   }
   x86_diag_dump();
   abort();
@@ -1832,21 +1831,21 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
    */
   if (C->reg[kX86pEsp] != expected) {
     const char *nm = x86_native_name_at(target);
-    unsigned long ra = (unsigned long)__builtin_return_address(0);
-    Dl_info di;
+    const uintptr_t ra = (uintptr_t)__builtin_return_address(0);
+    x2::diagnostics::HostCodeLocation at;
     x2_log_error("x86_guest_call: 0x%08x (%s) violated its stack "
                  "contract: ESP %08x -> %08x, expected %08x after "
                  "popping %u argument byte(s).\n",
                  target, nm ? nm : "?", before, C->reg[kX86pEsp], expected,
                  callee_pop_bytes);
-    if (dladdr((void *)ra, &di) && di.dli_fbase)
-      x2_log_error("  host caller: addr2line -fCe <this binary> "
-                   "0x%lx\n",
-                   ra - (unsigned long)di.dli_fbase);
+    if (x2::diagnostics::host_code_location(ra, &at))
+      x2_log_error("  host caller: %s %s 0x%llx\n",
+                   x2::diagnostics::kHostSymbolizer, at.image,
+                   (unsigned long long)at.offset);
     else
       x2_log_error("  host caller could not be resolved (return "
-                   "address 0x%lx).\n",
-                   ra);
+                   "address 0x%llx).\n",
+                   (unsigned long long)ra);
     x86_diag_dump();
     abort();
   }

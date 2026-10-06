@@ -18,6 +18,12 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#define lstat stat
+#endif
+
 static char test_dir[] = "scratch/save-catalog-test-XXXXXX";
 static int checks;
 
@@ -77,10 +83,26 @@ static void set_mtime(const char *leaf, int64_t seconds, long nanoseconds) {
   char path[256];
 
   path_for(path, sizeof path, leaf);
+#if defined(_WIN32)
+  (void)times;
+  /* 100 ns ticks since 1601, NTFS's resolution. */
+  const uint64_t ticks =
+      (uint64_t)(seconds + INT64_C(11644473600)) * UINT64_C(10000000) +
+      (uint64_t)nanoseconds / 100u;
+  FILETIME when;
+  when.dwLowDateTime = (DWORD)ticks;
+  when.dwHighDateTime = (DWORD)(ticks >> 32);
+  HANDLE file = CreateFileA(path, FILE_WRITE_ATTRIBUTES, 0, NULL, OPEN_EXISTING,
+                            FILE_ATTRIBUTE_NORMAL, NULL);
+  CHECK(file != INVALID_HANDLE_VALUE);
+  CHECK(SetFileTime(file, NULL, &when, &when));
+  CHECK(CloseHandle(file));
+#else
   times[0].tv_sec = (time_t)seconds;
   times[0].tv_nsec = nanoseconds;
   times[1] = times[0];
   CHECK(utimensat(AT_FDCWD, path, times, 0) == 0);
+#endif
 }
 
 static X2SaveCandidate latest(void) {
@@ -101,8 +123,10 @@ static void test_exact_regular_leaves(void) {
   write_file("other.save", "unrelated");
   path_for(path, sizeof path, "saveslot1.save");
   CHECK(mkdir(path, 0700) == 0);
+#if !defined(_WIN32)
   path_for(path, sizeof path, "saveslot2.save");
   CHECK(symlink("other.save", path) == 0);
+#endif
 
   CHECK(x2_save_catalog_latest(test_dir, &candidate) == 0);
   clear_test_dir();
@@ -117,12 +141,12 @@ static void test_sparse_slots_and_nanoseconds(void) {
   write_file("autosave.save", "autosave");
   set_mtime("saveslot0.save", 10, 900);
   set_mtime("saveslot4.save", 20, 100);
-  set_mtime("saveslot9.save", 20, 101);
-  set_mtime("autosave.save", 19, 999999999);
+  set_mtime("saveslot9.save", 20, 200);
+  set_mtime("autosave.save", 19, 999999900);
 
   candidate = latest();
   CHECK(!strcmp(candidate.leaf, "saveslot9.save"));
-  CHECK(candidate.mtime_ns == INT64_C(20000000101));
+  CHECK(candidate.mtime_ns == INT64_C(20000000200));
   clear_test_dir();
 }
 
@@ -132,9 +156,9 @@ static void test_equal_time_tie_is_by_leaf(void) {
   write_file("autosave.save", "auto");
   write_file("saveslot2.save", "two");
   write_file("saveslot9.save", "nine");
-  set_mtime("autosave.save", 30, 77);
-  set_mtime("saveslot2.save", 30, 77);
-  set_mtime("saveslot9.save", 30, 77);
+  set_mtime("autosave.save", 30, 700);
+  set_mtime("saveslot2.save", 30, 700);
+  set_mtime("saveslot9.save", 30, 700);
 
   candidate = latest();
   CHECK(!strcmp(candidate.leaf, "saveslot9.save"));

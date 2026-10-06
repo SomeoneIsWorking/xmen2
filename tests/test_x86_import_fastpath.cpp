@@ -10,12 +10,12 @@
 #include "cpu.h"
 #include "x87.h"
 
+#include "platform_mman.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 enum {
   ARENA = 0x32000000u,

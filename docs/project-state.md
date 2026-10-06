@@ -19,9 +19,10 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S022 — native Windows host package and CI release.** The active work is to
-close the title's Windows VM, file, synchronization, and remaining host
-boundaries before adding a real Windows build and release artifact.
+**S022 — native Windows host package and CI release.** `x2native.exe` builds
+with llvm-mingw and boots under Wine. The active work is the jit-common
+Windows code-publish cost, the first Windows runner job, and a native Windows
+run before a release artifact.
 
 ## Capability inventory
 
@@ -46,7 +47,7 @@ boundaries before adding a real Windows build and release artifact.
 | S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
 | S021 | Web (WASM + PWA) product with browser-side install | partial | S001, S020, W1, W2, W3 | G005 |
-| S022 | Native Windows host package and CI release | missing | S001, S002 | G005 |
+| S022 | Native Windows host package and CI release | partial | S001, S002 | G005 |
 | S023 | Seamless LAN multiplayer without GameSpy's servers | partial | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
@@ -2016,7 +2017,7 @@ it by the game's own broadcast query, joins, and both control their own heroes
 in the same level. A client quitting is shown on the host as the game's
 "Player(s) have been dropped from the game", and the host continues. The Peer
 login is answered locally (`lan_login.cpp`), `gethostbyname` answers as Windows
-does (`winsock_resolve`, `test_winsock_posix`), adapter-bound datagram sockets
+does (`winsock_resolve`, `test_winsock_host`), adapter-bound datagram sockets
 receive broadcasts, and the co-op participation policy maps seats to game
 players so it leaves network players alone (`test_player_participation_policy`).
 
@@ -2053,18 +2054,24 @@ is the retail "dropped" path); and no run has crossed two physical machines,
 real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
-### S022 — native Windows host package and CI release: missing
+### S022 — native Windows host package and CI release: partial
 
-Missing capability: a runnable native Windows host binary, release package, and
-MSVC/Clang-cl CI build.
+Observed subset: `tools/windows_deps.py` provisions a checksummed llvm-mingw
+toolchain and static SDL3, SDL3_image, FreeType, zlib and FFmpeg.
+`tools/build_windows.py` then cross-builds `x2native.exe` (PE32+ x86-64) and
+every test with no warnings. Under Wine 11:
+- `--fault-selftest` reports all five fault kinds.
+- `--selftest` against the retail install fails 0 of 92 checks.
+- A headless boot reaches `/status` with the Vulkan renderer ready by 15 s and
+  presents 702 frames by 60 s.
+- CTest through `wine` passes every host-boundary test.
 
-The current Windows job is a policy check that records the unsupported native
-host; the release workflow intentionally emits no Windows artifact. The title
-now has portable VM, PE file-map, case-insensitive string, synchronization,
-and CRT file-operation boundaries, each with focused Linux regression coverage
-and a Windows-target syntax check where the SDK headers are available. The native runtime still
-has POSIX-only directory, socket, signal, diagnostic, and dependency-link
-owners, so a Windows ZIP would not be a runnable release. Issue
-[#146](issues/0146-native-windows-host-boundary.md) records the remaining
-host work and its falsifier. Until that work lands, the Windows comparison
-baseline remains the retail executable rather than a port package.
+Gap:
+- The same boot on Linux presents 15108 frames by 60 s. 78.6% of the Wine boot
+  is in `VirtualProtect` over jit-common's whole code region on each publish.
+- The `windows-x86_64` CI job passes actionlint but has not run.
+- No native Windows run has been made, and there is no release ZIP.
+
+Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
+the order of the remaining work. Until a package exists, the Windows comparison
+baseline is the retail executable.

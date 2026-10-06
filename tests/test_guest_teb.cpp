@@ -17,10 +17,10 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
 enum {
   MAIN_TEB = 0x000A0000u,

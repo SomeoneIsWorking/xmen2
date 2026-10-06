@@ -1,5 +1,6 @@
 #include "settings.h"
 #include "input_assignments.h"
+#include "platform_posix.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -473,7 +474,7 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
                 p->keyboard[row]);
     }
   }
-  if (fclose(file) != 0 || rename(pending, path) != 0) {
+  if (fclose(file) != 0 || x2_replace_file(pending, path) != 0) {
     if (why)
       snprintf(why, (size_t)whyn, "cannot publish %s: %s", path,
                strerror(errno));

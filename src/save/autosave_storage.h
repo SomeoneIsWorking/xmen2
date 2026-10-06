@@ -18,7 +18,8 @@ typedef enum {
 
 /* Publish one retail-compatible save image transactionally. The temporary
    file is created in directory, completely written and fsynced, then renamed
-   over autosave.save and the directory is fsynced. Every failure before the
+   over autosave.save and the directory is fsynced (on Windows a write-through
+   MoveFileEx replaces it instead). Every failure before the
    rename leaves the previous autosave untouched. `fault` is a deterministic
    test seam; production passes X2_AUTOSAVE_FAULT_NONE. */
 int x2_autosave_storage_publish(const char *directory, const void *header,

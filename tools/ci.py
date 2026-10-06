@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run the repository's asset-free CI contracts.
 
-This tool never provisions, discovers, or opens a game install.  Linux and
-Apple Silicon compile only explicitly listed native components; policy-only
-targets remain policy-only until their missing host/JIT boundary is real.
+This tool never provisions, discovers, or opens a game install.  Linux, Apple
+Silicon and Windows compile only explicitly listed native components;
+policy-only targets remain policy-only until their missing host/JIT boundary
+is real.
 """
 
 from __future__ import annotations
@@ -53,26 +54,42 @@ def ensure_shared(environment: dict[str, str]) -> None:
             environment[name] = value
 
 
+def windows_configure(
+    build: Path, environment: dict[str, str]
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """llvm-mingw and the pinned dependency prefix (tools/windows_deps.py)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import build_windows
+    import windows_deps
+
+    deps = windows_deps.provision(windows_deps.DEFAULT_DEPS_ROOT, os.cpu_count() or 2)
+    configure = build_windows.configure_command(build, "Debug", deps)
+    return tuple(configure), build_windows.environment(deps, environment)
+
+
 def native_components(target: ci_support.TargetSupport) -> None:
     ci_support.require_runner(target)
     targets = ci_support.native_targets(target)
     environment = os.environ.copy()
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
-    environment.setdefault("CC", "clang")
-    environment.setdefault("CXX", "clang++")
     ensure_shared(environment)
     build = ROOT / "build" / f"ci-{target.key}"
-    configure = (
-        "cmake",
-        "-S",
-        str(ROOT),
-        "-B",
-        str(build),
-        "-G",
-        "Ninja",
-        "-DCMAKE_BUILD_TYPE=Debug",
-        f"-DPython3_EXECUTABLE={sys.executable}",
-    )
+    if target.system == "Windows":
+        configure, environment = windows_configure(build, environment)
+    else:
+        environment.setdefault("CC", "clang")
+        environment.setdefault("CXX", "clang++")
+        configure = (
+            "cmake",
+            "-S",
+            str(ROOT),
+            "-B",
+            str(build),
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Debug",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+        )
     ci_support.run_checked(configure, ROOT, environment)
     ci_support.run_checked(
         ("cmake", "--build", str(build), "--target", *targets, "--parallel", "2"),
@@ -205,6 +222,7 @@ jobs:
       - run: uv run --frozen python tools/ci.py policy --target macos-arm64
       - run: uv run --frozen python tools/ci.py native-components --target macos-arm64
       - run: uv run --frozen python tools/ci.py policy --target windows-x86_64
+      - run: uv run --frozen python tools/ci.py native-components --target windows-x86_64
       - run: uv run --frozen python tools/ci.py policy --target android-arm64
       - run: uv run --frozen python tools/ci.py policy --target web-wasm
       - run: uv run --frozen python tools/ci.py wasm-portability --target web-wasm
@@ -232,7 +250,10 @@ jobs:
         "test_x86_import_fastpath",
     ):
         raise RuntimeError("ci selftest lost the Linux JIT integration targets")
-    for unsupported in ("windows-x86_64", "android-arm64"):
+    windows = ci_support.native_targets(ci_support.TARGETS["windows-x86_64"])
+    if "test_jit_intercept" not in windows or "test_winsock_host" not in windows:
+        raise RuntimeError("ci selftest lost the Windows JIT or host-boundary targets")
+    for unsupported in ("android-arm64", "web-wasm"):
         try:
             ci_support.native_targets(ci_support.TARGETS[unsupported])
         except RuntimeError:

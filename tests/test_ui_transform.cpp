@@ -5,11 +5,11 @@
 #include "ui_transform.h"
 #include "x86rt.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
 

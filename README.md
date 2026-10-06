@@ -100,7 +100,7 @@ come from the locked environment.
 |---|---|---|
 | Linux x86-64 | policy + native/JIT component build and tests | JIT available; CI makes no asset-backed gameplay claim |
 | Apple Silicon macOS | policy + platform-neutral native component build and tests | ARM64 JIT present; host/runtime and real-title qualification pending |
-| Windows x86-64 | policy only | Unsupported: the native Windows host is not implemented |
+| Windows x86-64 | policy + llvm-mingw native/JIT component build and tests | x86-64 JIT and host boundaries built with llvm-mingw; boots under Wine, native Windows qualification pending |
 | Android ARM64 | policy + arm64 APK assembly | ARM64 JIT present; emulator boot/gameplay and device qualification pending |
 | Web (WASM + PWA) | policy + measured wasm32 portability with denominators | Browser package build/deployment is in progress; real-title browser execution remains a separate qualification gate (docs/web-release.md) |
 

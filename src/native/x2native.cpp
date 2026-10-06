@@ -62,7 +62,6 @@
 #include "platform_strings.h"
 #include "sdl_host_setup.h"
 #include <errno.h>
-#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -180,139 +179,13 @@ const char *x86_poison_name(uint32_t addr, const char **mod) {
   return poison_name(addr, mod);
 }
 
-/*
- * A run that has to be KILLED, reported.
- *
- * It is the one failure mode with nothing to read afterwards: a crash names a
- * body, an abort names a symbol, and a run that never returns leaves a log
- * that stops mid-sentence. tools/native_discover.py sat on one round for fifty
- * minutes and then reported CONVERGENCE, because a killed run and a run that
- * found nothing look identical from outside.
- *
- * ASYNC-SIGNAL-SAFE, the hard way, because the obvious version did not work:
- * fprintf here deadlocks whenever the interrupted code happens to hold the
- * stdio lock, and it does often enough that the report was being cut off
- * halfway through its own first line -- a hang diagnostic that hangs. So the
- * message goes out with write(2), which cannot block on a lock, and the ring
- * dump (which uses stdio, and resolves a name per entry against 16k functions)
- * is BEST EFFORT behind an alarm: if it deadlocks or simply takes too long,
- * SIGALRM ends the process and the message is already out.
- */
-static void interrupted(int sig) {
-  static const char msg[] =
-      "\n*** x2native was INTERRUPTED -- it did not stop on its own.\n"
-      "    Nothing below is a failure the run reported; this is where it\n"
-      "    HAPPENED TO BE. A run that has to be killed is usually spinning:\n"
-      "    read the ring below for a repeating pair of bodies.\n"
-      "    (The ring is best-effort from a signal handler and may be cut\n"
-      "    short; everything above this line is complete.)\n";
-  ssize_t ignored;
-  (void)sig;
-  /* Back to the default first: a second signal must be able to kill this, or
-     a report that itself hangs makes the process unkillable by the very
-     timeout that was trying to bound it. */
-  signal(SIGTERM, SIG_DFL);
-  signal(SIGINT, SIG_DFL);
-  ignored = write(2, msg, sizeof msg - 1);
-  (void)ignored;
-  /*
-   * Hand the reports to the heartbeat thread when there is one.
-   *
-   * Every report in this project is an atexit handler, because the run
-   * always used to END. Now it reaches a frame loop and keeps going, so the
-   * only way it stops is a kill -- and a signal handler cannot run those
-   * reports: they are stdio, and stdio here deadlocks against whatever the
-   * interrupted code was holding. The heartbeat thread is ordinary context.
-   * The alarm is the backstop: if that thread never gets there, the process
-   * still dies rather than becoming unkillable by the very kill that was
-   * trying to stop it.
-   */
-  signal(SIGALRM, SIG_DFL);
-  if (heartbeat_running()) {
-    alarm(10);
-    x2_report_now = 1;
-    return;
-  }
-  alarm(5);
-  x86_diag_dump();
-  _exit(4);
-}
-
-/*
- * What a normal exit would print, from ordinary context.
- *
- * exit() itself is NOT used: it was tried, and it died in "terminate called
- * without an active exception" -- a C++ teardown in the graphics stack that
- * has nothing to do with the reports. So the reports are called directly and
- * the process leaves with _exit.
- */
-
 static int poison_init(void) {
-  struct sigaction sa;
   if (guest_memory_map_fixed(POISON_BASE, POISON_SIZE, PROT_NONE) != 0) {
     x2_log_error("x2native: could not reserve the unbound-import page; "
                  "unresolved imports would read as plausible values\n");
     return -1;
   }
-  /* On an alternate stack, so a fault caused by the guest stack running out
-     -- or by runaway recursion in the runtime itself -- can still be
-     reported. Without it the handler needs the very stack that just died and
-     the process dumps core silently, which is how an infinite
-     import-dispatch loop first appeared: as nothing at all. */
-  {
-    static char altstack[65536]; /* >= SIGSTKSZ on every target here */
-    stack_t ss;
-    ss.ss_sp = altstack;
-    ss.ss_size = sizeof altstack;
-    ss.ss_flags = 0;
-    if (sigaltstack(&ss, NULL) != 0)
-      x2_log_error("x2native: no alternate signal stack; a stack "
-                   "overflow will die silently\n");
-  }
-  memset(&sa, 0, sizeof sa);
-  sa.sa_sigaction = fault_report;
-  sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-  if (sigaction(SIGSEGV, &sa, NULL) != 0)
-    return -1;
-  /*
-   * The OTHER fatal signals, which used to kill the run in silence.
-   *
-   * SIGSEGV was handled because unbound imports fault there, and that made
-   * every other fault invisible: an illegal instruction (a jump through a
-   * wrong function pointer, a RET onto a corrupted stack) produced no line
-   * at all, so a crash and a closed window read the same from a log. Each of
-   * these prints the same context a SIGSEGV does. `--fault-selftest` proves
-   * every one of them fires. SIGABRT is recorded by the run log's crash
-   * reporter, which re-raises it so exit 134 is unchanged.
-   */
-  {
-    static const int fatal[] = {SIGILL, SIGFPE, SIGBUS, SIGTRAP};
-    size_t i;
-    for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
-      if (sigaction(fatal[i], &sa, NULL) != 0)
-        x2_log_error("x2native: could not install the fault "
-                     "reporter for %s; a fault of that kind will "
-                     "die silently\n",
-                     fault_name(fatal[i]));
-  }
-  /*
-   * A HANG had no report at all, and that is the one failure mode with
-   * nothing to read afterwards: a crash names a body, an abort names a
-   * symbol, and a run that simply never returns produces a log that stops
-   * mid-sentence. tools/native_discover.py sat on one round for fifty
-   * minutes and then reported CONVERGENCE, because a killed run and a run
-   * that found nothing look identical from outside.
-   *
-   * So SIGTERM and SIGINT dump the boundary ring on the way out -- the same
-   * thing a fault prints, which is what says WHERE the run was spinning.
-   * timeout(1) sends SIGTERM, so this is what the loop now gets.
-   */
-  memset(&sa, 0, sizeof sa);
-  sa.sa_handler = interrupted;
-  sa.sa_flags = 0;
-  sigaction(SIGTERM, &sa, NULL);
-  sigaction(SIGINT, &sa, NULL);
-  return 0;
+  return x2::fault::install_handlers() ? 0 : -1;
 }
 
 /* The battery talks in libIGDisplay's guest addresses, so it needs that
@@ -1408,14 +1281,14 @@ static void qsort_probe(CPU *C) {
 }
 
 static void case_qsort(void) {
-  static const uint32_t IN[6] = {5, 3, 9, 1, 4, 1};
-  uint32_t arr = guest_malloc(sizeof IN), cmp, i;
+  static const uint32_t kUnsorted[6] = {5, 3, 9, 1, 4, 1};
+  uint32_t arr = guest_malloc(sizeof kUnsorted), cmp, i;
   int sorted = 1;
   CPU C;
 
   x2_log_info("  qsort with a guest comparator\n");
   for (i = 0; i < 6; i++)
-    WR32(arr + i * 4u, IN[i]);
+    WR32(arr + i * 4u, kUnsorted[i]);
   cmp = x86_native_callback(qsort_probe, "battery", "qsort_probe", NULL);
 
   cpu_reset(&C);
@@ -1736,6 +1609,8 @@ int main(int argc, char **argv) {
   /* The fault reporter, proved by faulting -- no install, no engine. */
   if (options.fault_selftest)
     return x2_fault_selftest();
+  if (options.fault_selftest_child >= 0)
+    return x2::fault::selftest_child(options.fault_selftest_child);
   if (vkselftest)
     return gpu_host_selftest();
   /*

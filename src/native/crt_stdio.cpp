@@ -18,6 +18,7 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "host_dir_cache.h"
+#include "platform_posix.h"
 #include "win_path.h"
 
 #include <stdio.h>

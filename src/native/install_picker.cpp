@@ -54,6 +54,12 @@ int x2_install_picker_directory_from_executable(const char *path,
       !S_ISREG(info.st_mode))
     return 0;
   slash = strrchr(path, '/');
+#if defined(_WIN32)
+  /* Windows hands back either separator, often both in one path. */
+  const char *backslash = strrchr(path, '\\');
+  if (backslash && (!slash || backslash > slash))
+    slash = backslash;
+#endif
   if (!slash || slash == path || strcasecmp(slash + 1, "XMen2.exe") != 0)
     return 0;
   if (!x2_install_validate_executable(path, NULL, 0))

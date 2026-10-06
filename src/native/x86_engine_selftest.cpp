@@ -9,9 +9,9 @@
 #include "cpu.h"
 #include "x87.h"
 
+#include "platform_mman.h"
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
 /* ---- selftest ---------------------------------------------------------- */
 

@@ -54,10 +54,14 @@ TARGETS: Mapping[str, TargetSupport] = {
         key="windows-x86_64",
         system="Windows",
         machine="x86_64",
-        verification="policy only",
-        gameplay_jit=False,
-        native_components=False,
-        explanation="the native Windows host is not implemented",
+        verification="policy + llvm-mingw native/JIT component build and tests",
+        gameplay_jit=True,
+        native_components=True,
+        explanation=(
+            "x86port's Win64 JIT and the Windows host boundaries build with "
+            "llvm-mingw against the pinned windows_deps prefix; CI remains "
+            "asset-free and therefore does not claim a gameplay run"
+        ),
     ),
     "android-arm64": TargetSupport(
         key="android-arm64",
@@ -114,10 +118,23 @@ COMMON_NATIVE_TARGETS = (
     "test_alchemy_controller_adapter",
 )
 
-LINUX_JIT_TARGETS = (
+JIT_TARGETS = (
     "test_x86_guest_call_stack",
     "test_jit_intercept",
     "test_x86_import_fastpath",
+)
+
+# The Windows halves of the host boundaries: VM, sockets, files, processes and
+# the vectored fault reporter (x2native --fault-selftest).
+WINDOWS_HOST_TARGETS = (
+    "test_platform_mman",
+    "test_winsock_host",
+    "test_control_http",
+    "test_save_catalog",
+    "test_env_file",
+    "test_install_picker",
+    "test_override_leaf",
+    "x2native",
 )
 
 COMMON_NATIVE_TESTS = (
@@ -132,10 +149,25 @@ COMMON_NATIVE_TESTS = (
     "alchemy_controller_adapter",
 )
 
-LINUX_JIT_TESTS = (
+JIT_TESTS = (
     "x86_guest_call_stack",
     "jit_intercept",
     "x86_import_fastpath",
+)
+
+WINDOWS_HOST_TESTS = (
+    "platform_mman",
+    "winsock_host",
+    "control_http",
+    "save_catalog",
+    "env_file_load",
+    "env_file_preserve",
+    "env_file_malformed",
+    "env_file_unknown_key",
+    "env_file_executable_precedence",
+    "install_picker",
+    "override_leaf",
+    "fault_reporter",
 )
 
 ACTION_REFERENCE = re.compile(r"\buses:\s*([^\s@]+)@([^\s#]+)")
@@ -279,12 +311,10 @@ def workflow_violations(text: str) -> list[str]:
         invocation = f"tools/ci.py policy --target {target}"
         if invocation not in text:
             failures.append(f"workflow omits {target} policy invocation")
-    for target in ("linux-x86_64", "macos-arm64"):
+    for target in ("linux-x86_64", "macos-arm64", "windows-x86_64"):
         invocation = f"tools/ci.py native-components --target {target}"
         if invocation not in text:
             failures.append(f"workflow omits {target} native-component invocation")
-    if "tools/ci.py native-components --target windows-x86_64" in text:
-        failures.append("workflow pretends the unsupported Windows host builds")
     if "tools/ci.py native-components --target android-arm64" in text:
         failures.append("workflow pretends the unsupported Android product builds")
     if "tools/ci.py native-components --target web-wasm" in text:
@@ -313,15 +343,20 @@ def verify_workflow(root: Path) -> None:
 def native_targets(target: TargetSupport) -> tuple[str, ...]:
     if not target.native_components:
         raise CiFailure(f"{target.key} is {target.verification}: {target.explanation}")
-    if target.key == "linux-x86_64":
-        return COMMON_NATIVE_TARGETS + LINUX_JIT_TARGETS
-    return COMMON_NATIVE_TARGETS
+    targets = COMMON_NATIVE_TARGETS
+    if target.gameplay_jit:
+        targets += JIT_TARGETS
+    if target.system == "Windows":
+        targets += WINDOWS_HOST_TARGETS
+    return targets
 
 
 def native_test_regex(target: TargetSupport) -> str:
     names = COMMON_NATIVE_TESTS
-    if target.key == "linux-x86_64":
-        names += LINUX_JIT_TESTS
+    if target.gameplay_jit:
+        names += JIT_TESTS
+    if target.system == "Windows":
+        names += WINDOWS_HOST_TESTS
     return "^(" + "|".join(names) + ")$"
 
 
@@ -341,7 +376,7 @@ def markdown_support_rows() -> tuple[str, ...]:
     product_status = {
         "linux-x86_64": "JIT available; CI makes no asset-backed gameplay claim",
         "macos-arm64": "ARM64 JIT present; host/runtime and real-title qualification pending",
-        "windows-x86_64": "Unsupported: the native Windows host is not implemented",
+        "windows-x86_64": "x86-64 JIT and host boundaries built with llvm-mingw; boots under Wine, native Windows qualification pending",
         "android-arm64": "ARM64 JIT present; emulator boot/gameplay and device qualification pending",
         "web-wasm": "Browser package build/deployment is in progress; real-title browser execution remains a separate qualification gate (docs/web-release.md)",
     }

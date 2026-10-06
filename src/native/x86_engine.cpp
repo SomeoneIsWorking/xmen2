@@ -30,7 +30,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 /*
  * Step cap for one call. The PROGRAM's entry point is exempt: main does not

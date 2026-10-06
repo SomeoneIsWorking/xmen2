@@ -66,19 +66,33 @@ static FILE *capture_open(char **text, size_t *size) {
   g_capture.text = NULL;
   g_capture.size = 0;
   return funopen(&g_capture, NULL, capture_write, NULL, NULL);
+#elif defined(_WIN32)
+  /* UCRT has neither open_memstream nor funopen; the capture is an anonymous
+   * temporary file, read back on close. */
+  return tmpfile();
 #else
   return open_memstream(text, size);
 #endif
 }
 
 static void capture_close(FILE *capture, char **text, size_t *size) {
+#if defined(_WIN32)
+  const long length = ftell(capture);
+  char *buffer = length >= 0 ? (char *)malloc((size_t)length + 1u) : NULL;
+  if (buffer) {
+    rewind(capture);
+    *size = fread(buffer, 1, (size_t)length, capture);
+    buffer[*size] = 0;
+    *text = buffer;
+  }
+#endif
   fclose(capture);
 #if defined(__ANDROID__)
   *text = g_capture.text;
   *size = g_capture.size;
   g_capture.text = NULL;
   g_capture.size = 0;
-#else
+#elif !defined(_WIN32)
   (void)text;
   (void)size;
 #endif

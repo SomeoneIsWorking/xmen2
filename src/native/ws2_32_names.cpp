@@ -11,15 +11,12 @@
 #include "guest_memory.h"
 #include "stdcall_import.h"
 #include "threads.h"
-#include "winsock_posix.h"
+#include "winsock_host.h"
 #include "winsock_resolve.h"
 #include "x86rt_native.h"
 
-#include <arpa/inet.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 /* The answer block: a 32-bit hostent, its name, a null alias list, up to
    MAX_ADDRESSES address pointers plus the terminator, the addresses, and the
@@ -83,12 +80,10 @@ static int guest_text(uint32_t address, char *out, size_t size) {
    The bytes stay in network order, as the guest stores them. */
 void imp_WS2_32__11(CPU *C) {
   char text[64];
-  struct in_addr parsed;
-  uint32_t out = 0xffffffffu;
-  if (A(0) && guest_text(A(0), text, sizeof text) && inet_aton(text, &parsed)) {
-    memcpy(&out, &parsed, 4);
-  }
-  ret_std(C, out, 1);
+  uint32_t parsed = 0;
+  const int valid = A(0) && guest_text(A(0), text, sizeof text) &&
+                    winsock_parse_ipv4(text, &parsed);
+  ret_std(C, valid ? parsed : 0xffffffffu, 1);
 }
 
 /* char *inet_ntoa(struct in_addr in) -- the address arrives by value. */
@@ -106,14 +101,14 @@ void imp_WS2_32__12(CPU *C) {
 void imp_WS2_32__57(CPU *C) {
   char name[NAME_BYTES];
   const uint32_t out = A(0), size = A(1);
-  if (gethostname(name, sizeof name) != 0) {
-    winsock_set_last_error(WSAENETDOWN);
+  if (!winsock_host_name(name, sizeof name)) {
+    winsock_set_last_error(WINSOCK_ENETDOWN);
     ret_std(C, WINSOCK_SOCKET_ERROR, 2);
     return;
   }
   name[sizeof name - 1] = 0;
   if (strlen(name) + 1 > size || !guest_memory_span(out, size)) {
-    winsock_set_last_error(WSAEFAULT);
+    winsock_set_last_error(WINSOCK_EFAULT);
     ret_std(C, WINSOCK_SOCKET_ERROR, 2);
     return;
   }
@@ -128,7 +123,7 @@ void imp_WS2_32__52(CPU *C) {
   WinsockHost host;
   uint32_t error = 0;
   if (!A(0) || !guest_text(A(0), name, sizeof name)) {
-    winsock_set_last_error(WSAEFAULT);
+    winsock_set_last_error(WINSOCK_EFAULT);
     ret_std(C, 0, 1);
     return;
   }

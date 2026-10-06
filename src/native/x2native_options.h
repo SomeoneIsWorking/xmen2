@@ -27,6 +27,8 @@ typedef struct {
   int dialog_selftest;
   int override_selftest;
   int fault_selftest;
+  /* --fault-selftest-child=N: one case of that battery, -1 = not one. */
+  int fault_selftest_child;
 } X2NativeOptions;
 
 int x2native_options_parse(int argc, char **argv, X2NativeOptions *options);

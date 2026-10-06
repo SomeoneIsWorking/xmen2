@@ -366,20 +366,20 @@ static volatile sig_atomic_t g_ft_signal;
 /* Defined with the rest of the OBJ writer, below the frame table it serves. */
 static void obj_open_if_wanted(void);
 
-static void ft_sigusr1(int sig) {
-  (void)sig;
-  g_ft_signal = 1;
-}
-
 void d3d8_frame_table_install_signal(void) {
+#if defined(_WIN32)
+  x2_log_info("d3d8: Windows has no SIGUSR1; the frame table can only be "
+              "armed with F9.\n");
+#else
   struct sigaction sa;
   memset(&sa, 0, sizeof sa);
-  sa.sa_handler = ft_sigusr1;
+  sa.sa_handler = [](int) { g_ft_signal = 1; };
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
   if (sigaction(SIGUSR1, &sa, NULL) != 0)
     x2_log_error("d3d8: SIGUSR1 could not be installed; the frame "
                  "table can only be armed with F9.\n");
+#endif
 }
 
 void d3d8_frame_table_arm(void) {

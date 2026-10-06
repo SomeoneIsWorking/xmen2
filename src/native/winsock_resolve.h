@@ -19,6 +19,7 @@
  * h_addr_list[0].
  */
 
+#include <stddef.h>
 #include <stdint.h>
 
 enum { WINSOCK_HOST_NAME_BYTES = 256, WINSOCK_HOST_ADDRESSES = 8 };
@@ -30,9 +31,13 @@ typedef struct WinsockHost {
   unsigned count;
 } WinsockHost;
 
-/* Returns 1 with *out filled, or 0 with *error set (WSAHOST_NOT_FOUND). May
-   block on the host resolver. */
+/* Returns 1 with *out filled, or 0 with *error set (WINSOCK_HOST_NOT_FOUND).
+   May block on the host resolver. */
 int winsock_resolve(const char *name, WinsockHost *out, uint32_t *error);
+
+/* The machine's own name, as gethostname gives it, terminated within `size`.
+   Returns 0 when the host has none. */
+int winsock_host_name(char *out, size_t size);
 
 /* The machine's own IPv4 addresses, primary first, without loopback. Returns
    the count; 0 when no adapter has an address. */

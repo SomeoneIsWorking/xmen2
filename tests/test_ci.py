@@ -27,12 +27,13 @@ def test_support_matrix_distinguishes_product_and_policy_targets():
     assert ci_support.TARGETS["linux-x86_64"].gameplay_jit
     assert ci_support.TARGETS["macos-arm64"].native_components
     assert not ci_support.TARGETS["macos-arm64"].gameplay_jit
-    assert not ci_support.TARGETS["windows-x86_64"].native_components
+    assert ci_support.TARGETS["windows-x86_64"].gameplay_jit
+    assert ci_support.TARGETS["windows-x86_64"].native_components
     assert not ci_support.TARGETS["android-arm64"].native_components
 
 
 def test_unsupported_targets_cannot_acquire_a_fake_native_plan():
-    for name in ("windows-x86_64", "android-arm64"):
+    for name in ("android-arm64", "web-wasm"):
         with pytest.raises(RuntimeError, match="policy"):
             ci_support.native_targets(ci_support.TARGETS[name])
 
@@ -45,6 +46,24 @@ def test_linux_native_plan_includes_real_jit_integration_boundaries():
     assert "x86_guest_call_stack" in ci_support.native_test_regex(
         ci_support.TARGETS["linux-x86_64"]
     )
+
+
+def test_windows_native_plan_adds_the_host_boundaries_to_the_jit():
+    target = ci_support.TARGETS["windows-x86_64"]
+    targets = ci_support.native_targets(target)
+    assert "test_jit_intercept" in targets
+    assert "test_winsock_host" in targets
+    assert "x2native" in targets
+    regex = ci_support.native_test_regex(target)
+    assert "fault_reporter" in regex and "platform_mman" in regex
+    assert "winsock_host" not in ci_support.native_test_regex(
+        ci_support.TARGETS["linux-x86_64"]
+    )
+
+
+def test_workflow_must_build_the_windows_components():
+    reasons = ci_support.workflow_violations("run: tools/ci.py policy --target windows-x86_64\n")
+    assert "workflow omits windows-x86_64 native-component invocation" in reasons
 
 
 def test_workflow_policy_rejects_mutable_actions_and_game_inputs():
@@ -93,6 +112,7 @@ run: tools/ci.py native-components --target linux-x86_64
 run: tools/ci.py policy --target macos-arm64
 run: tools/ci.py native-components --target macos-arm64
 run: tools/ci.py policy --target windows-x86_64
+run: tools/ci.py native-components --target windows-x86_64
 run: tools/ci.py policy --target android-arm64
 run: tools/ci.py policy --target web-wasm
 run: tools/ci.py wasm-portability --target web-wasm
