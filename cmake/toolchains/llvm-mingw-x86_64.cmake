@@ -9,6 +9,8 @@ if(NOT LLVM_MINGW_ROOT)
         "llvm-mingw-x86_64.cmake: pass -DLLVM_MINGW_ROOT=<llvm-mingw directory>; "
         "uv run --frozen python tools/windows_deps.py provisions one.")
 endif()
+# Windows hosts pass backslashes, which generated CMake files read as escapes.
+file(TO_CMAKE_PATH "${LLVM_MINGW_ROOT}" LLVM_MINGW_ROOT)
 list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES LLVM_MINGW_ROOT)
 
 set(_x2_mingw_bin "${LLVM_MINGW_ROOT}/bin/x86_64-w64-mingw32")
