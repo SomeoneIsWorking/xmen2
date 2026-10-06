@@ -2,15 +2,31 @@
 #define X2_GPU_SHADOW_H
 
 #include "gpu_draw.h"
+#include "shadow_policy.h"
 
 #include <stdint.h>
 
+/* The shadow tail of the fragment uniforms; layout matches d3d8_fixed.frag. */
+typedef struct {
+  uint32_t enabled;
+  float darkness;
+  uint32_t pad[2];
+  /* World position to camera view depth. */
+  float depth_plane[4];
+  /* xyz: the light's travel direction; w: one tile texel in tile UV. */
+  float light[4];
+  /* Filter tap spacing per cascade, in tile UV. */
+  float kernel_step[4];
+  /* Per cascade: split far, blend start, depth bias, normal offset. */
+  float cascade[GPU_SHADOW_CASCADES][4];
+  float view_projection[GPU_SHADOW_CASCADES][16];
+} GpuShadowPixelBlock;
+
 typedef struct {
   int enabled;
-  float matrix[16];
-  float texel_size[2];
-  float depth_bias;
-  float darkness;
+  /* Clip to world, for programmable receivers whose VS output is clip space. */
+  float world_from_clip[16];
+  GpuShadowPixelBlock pixel;
 } GpuShadowSample;
 
 struct SDL_GPUBuffer;

@@ -41,8 +41,9 @@ void gpu_shadow_shutdown(void) {}
 
 #include <SDL3/SDL.h>
 
-static const uint32_t DEFAULT_RESOLUTION = 1024;
-static const float SAMPLE_DEPTH_BIAS = 0.0015f;
+static const uint32_t DEFAULT_RESOLUTION = 2048;
+/* The setting is the atlas side; the atlas is 2x2 tiles, one per cascade. */
+static const uint32_t ATLAS_TILES = 2;
 static const float SHADOW_DARKNESS = 0.55f;
 
 /* What the shadow pass has bound; see gpu_pass_binds.h. */
@@ -75,7 +76,7 @@ typedef struct {
 } ShadowPipe;
 
 static int g_enabled = 1;
-static uint32_t g_resolution = 1024;
+static uint32_t g_resolution = DEFAULT_RESOLUTION;
 static SDL_GPUTexture *g_texture;
 static uint32_t g_texture_resolution;
 static SDL_GPUSampler *g_sampler;
@@ -88,7 +89,8 @@ static int g_frame_policy_valid;
 static ShadowPipe g_pipelines[48];
 static unsigned g_pipeline_count;
 static unsigned long g_frames, g_frames_with_light, g_frames_submitted;
-static float g_last_extent[2], g_last_view_depth;
+static GpuShadowFramePolicy g_last_policy;
+static GpuShadowSample g_frame_sample;
 static unsigned long g_casters, g_receivers, g_programmable_casters;
 static unsigned long g_programmable_receivers, g_resource_failures;
 
@@ -101,6 +103,8 @@ void gpu_shadow_configure(int enabled, uint32_t resolution) {
   g_enabled = enabled != 0;
   g_resolution = valid_resolution(resolution) ? resolution : DEFAULT_RESOLUTION;
 }
+
+static uint32_t tile_side(void) { return g_resolution / ATLAS_TILES; }
 
 static SDL_GPUShader *load_shader(const void *code, size_t size,
                                   SDL_GPUShaderStage stage, unsigned samplers,
@@ -159,7 +163,7 @@ static int resources_ready(void) {
     texture_info.num_levels = 1;
     g_texture = SDL_CreateGPUTexture(g_gpu, &texture_info);
     if (!g_texture) {
-      x2_log_error("gpu shadow: %ux%u depth target failed: %s\n", g_resolution,
+      x2_log_error("gpu shadow: %ux%u depth atlas failed: %s\n", g_resolution,
                    g_resolution, SDL_GetError());
       g_resource_failures++;
       return 0;
@@ -174,6 +178,8 @@ static int resources_ready(void) {
   sampler_info.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   sampler_info.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
   sampler_info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  sampler_info.enable_compare = true;
+  sampler_info.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
   if (!g_sampler) {
     g_sampler = SDL_CreateGPUSampler(g_gpu, &sampler_info);
     created = 1;
@@ -184,9 +190,10 @@ static int resources_ready(void) {
     return 0;
   }
   if (created)
-    x2_log_info("gpu shadow: enabled, %ux%u sampleable depth map; solid world "
-                "packet policy, first title directional light.\n",
-                g_resolution, g_resolution);
+    x2_log_info("gpu shadow: enabled, %u cascades of %ux%u in a sampleable "
+                "depth atlas; solid world packet policy, first title "
+                "directional light.\n",
+                GPU_SHADOW_CASCADES, tile_side(), tile_side());
   return 1;
 }
 
@@ -323,6 +330,51 @@ static int begin_pass(void) {
   return g_shadow_pass != NULL;
 }
 
+static void set_tile(unsigned cascade) {
+  SDL_GPUViewport viewport;
+  SDL_Rect scissor;
+  const uint32_t tile = tile_side();
+  const float side = (float)tile;
+  scissor.x = (int)((cascade % ATLAS_TILES) * tile);
+  scissor.y = (int)((cascade / ATLAS_TILES) * tile);
+  scissor.w = scissor.h = (int)tile;
+  viewport.x = (float)scissor.x;
+  viewport.y = (float)scissor.y;
+  viewport.w = viewport.h = side;
+  viewport.min_depth = 0.0f;
+  viewport.max_depth = 1.0f;
+  SDL_SetGPUViewport(g_shadow_pass, &viewport);
+  SDL_SetGPUScissor(g_shadow_pass, &scissor);
+}
+
+/* The receiver-side constants of the frame, built once per frame policy. */
+static void build_frame_sample(void) {
+  GpuShadowSample *sample = &g_frame_sample;
+  GpuShadowPixelBlock *pixel = &sample->pixel;
+  unsigned i;
+  memset(sample, 0, sizeof *sample);
+  memcpy(sample->world_from_clip, g_frame_policy.inverse_view_projection,
+         sizeof sample->world_from_clip);
+  memcpy(pixel->depth_plane, g_frame_policy.view_depth_plane,
+         sizeof pixel->depth_plane);
+  memcpy(pixel->light, g_frame_policy.light_direction,
+         sizeof g_frame_policy.light_direction);
+  pixel->light[3] = 1.0f / (float)tile_side();
+  for (i = 0; i < GPU_SHADOW_CASCADES; i++) {
+    const GpuShadowCascade *cascade = &g_frame_policy.cascade[i];
+    pixel->kernel_step[i] = cascade->kernel_texels / (float)tile_side();
+    pixel->cascade[i][0] = cascade->split_far;
+    pixel->cascade[i][1] = cascade->blend_start;
+    pixel->cascade[i][2] = cascade->depth_bias;
+    pixel->cascade[i][3] = cascade->normal_offset;
+    memcpy(pixel->view_projection[i], cascade->light_view_projection,
+           sizeof pixel->view_projection[i]);
+  }
+  pixel->darkness = SHADOW_DARKNESS;
+  pixel->enabled = 1;
+  sample->enabled = 1;
+}
+
 void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
                        uint64_t vertex_serial, SDL_GPUBuffer *indices,
                        uint32_t first_index, SDL_GPUTexture *texture,
@@ -336,16 +388,16 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
     float pad[2];
   } alpha;
   float matrix[16];
-  unsigned roles;
+  unsigned roles, cascade;
   if (!g_shadow_command || !draw || !vertices)
     return;
   roles = gpu_shadow_draw_roles(draw);
-  if (!g_frame_policy_valid && gpu_shadow_frame_policy(draw, &g_frame_policy)) {
+  if (!g_frame_policy_valid &&
+      gpu_shadow_frame_policy(draw, tile_side(), &g_frame_policy)) {
     g_frame_policy_valid = 1;
     g_frames_with_light++;
-    g_last_extent[0] = g_frame_policy.extent[0];
-    g_last_extent[1] = g_frame_policy.extent[1];
-    g_last_view_depth = g_frame_policy.view_depth;
+    g_last_policy = g_frame_policy;
+    build_frame_sample();
   }
   if (!(roles & GPU_SHADOW_CASTER) || !g_frame_policy_valid)
     return;
@@ -356,14 +408,12 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
     g_resource_failures++;
     return;
   }
-  gpu_shadow_draw_matrix(&g_frame_policy, draw, matrix);
   if (gpu_pass_binds_pipeline_changed(&g_binds, pipeline))
     SDL_BindGPUGraphicsPipeline(g_shadow_pass, pipeline);
   memset(&binding, 0, sizeof binding);
   binding.buffer = vertices;
   if (gpu_pass_binds_vertex_changed(&g_binds, vertices, vertex_serial))
     SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
-  SDL_PushGPUVertexUniformData(g_shadow_command, 0, matrix, sizeof matrix);
   if (draw->vs_program)
     gpu_vs_program_push(g_shadow_command, draw->vs_program, draw->vs_constants);
   memset(&texture_binding, 0, sizeof texture_binding);
@@ -386,10 +436,17 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
                              draw->index_is_32bit
                                  ? SDL_GPU_INDEXELEMENTSIZE_32BIT
                                  : SDL_GPU_INDEXELEMENTSIZE_16BIT);
-    SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1, first_index,
-                                 (int32_t)draw->base_vertex, 0);
-  } else {
-    SDL_DrawGPUPrimitives(g_shadow_pass, index_count, 1, draw->first_vertex, 0);
+  }
+  for (cascade = 0; cascade < GPU_SHADOW_CASCADES; cascade++) {
+    set_tile(cascade);
+    gpu_shadow_draw_matrix(&g_frame_policy, cascade, draw, matrix);
+    SDL_PushGPUVertexUniformData(g_shadow_command, 0, matrix, sizeof matrix);
+    if (indices)
+      SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1, first_index,
+                                   (int32_t)draw->base_vertex, 0);
+    else
+      SDL_DrawGPUPrimitives(g_shadow_pass, index_count, 1, draw->first_vertex,
+                            0);
   }
   g_casters++;
   if (draw->programmable)
@@ -418,11 +475,7 @@ int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample) {
   if (!g_enabled || !g_frame_policy_valid || !g_shadow_pass ||
       !(gpu_shadow_draw_roles(draw) & GPU_SHADOW_RECEIVER))
     return 0;
-  gpu_shadow_draw_matrix(&g_frame_policy, draw, sample->matrix);
-  sample->enabled = 1;
-  sample->texel_size[0] = sample->texel_size[1] = 1.0f / (float)g_resolution;
-  sample->depth_bias = SAMPLE_DEPTH_BIAS;
-  sample->darkness = SHADOW_DARKNESS;
+  *sample = g_frame_sample;
   g_receivers++;
   if (draw->programmable)
     g_programmable_receivers++;
@@ -449,11 +502,26 @@ void gpu_shadow_report(void) {
               g_binds.vertices_kept, g_binds.indices_kept,
               g_binds.samplers_kept);
   if (g_frames_with_light) {
-    x2_log_info("  gpu shadow: last map spans %.0f x %.0f world units (%.2f x "
-                "%.2f per texel) over a %.0f-unit-deep camera view\n",
-                g_last_extent[0], g_last_extent[1],
-                g_last_extent[0] / (float)g_resolution,
-                g_last_extent[1] / (float)g_resolution, g_last_view_depth);
+    char cascades[GPU_SHADOW_CASCADES * 112];
+    size_t used = 0;
+    unsigned i;
+    cascades[0] = '\0';
+    for (i = 0; i < GPU_SHADOW_CASCADES && used < sizeof cascades; i++) {
+      const GpuShadowCascade *c = &g_last_policy.cascade[i];
+      int n =
+          snprintf(cascades + used, sizeof cascades - used,
+                   "%s [%u] depth %.0f..%.0f: %.0f x %.0f world units "
+                   "(%.2f x %.2f per texel)",
+                   i ? ";" : "", i, c->slice_near, c->split_far, c->extent[0],
+                   c->extent[1], c->extent[0] / (float)tile_side(),
+                   c->extent[1] / (float)tile_side());
+      if (n < 0)
+        break;
+      used += (size_t)n;
+    }
+    x2_log_info("  gpu shadow: last map spans%s; camera view %.0f..%.0f "
+                "deep\n",
+                cascades, g_last_policy.view_near, g_last_policy.view_far);
   }
 }
 

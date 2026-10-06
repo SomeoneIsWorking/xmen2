@@ -501,12 +501,7 @@ typedef struct {
   uint32_t stage1_color_arg1, stage1_color_arg2;
   uint32_t stage1_alpha_op, stage1_alpha_arg1, stage1_alpha_arg2;
   uint32_t stage1_pad;
-  uint32_t shadow_enabled;
-  float shadow_bias;
-  float shadow_darkness;
-  float shadow_texel_x;
-  float shadow_texel_y;
-  float shadow_pad[3];
+  GpuShadowPixelBlock shadow;
 } PixelUniforms;
 
 /* GpuTexArg -> the shader's 0 diffuse / 1 texture / 2 factor, with
@@ -813,11 +808,8 @@ int gpu_draw(const GpuDraw *d) {
       d->alpha_op1 ? (uint32_t)d->alpha_op1 : (uint32_t)d->texop1;
   pu.stage1_alpha_arg1 = arg_of(d->alpha_arg1_1, 1u);
   pu.stage1_alpha_arg2 = arg_of(d->alpha_arg2_1, 3u);
-  pu.shadow_enabled = shadow.enabled ? 1u : 0u;
-  pu.shadow_bias = shadow.depth_bias;
-  pu.shadow_darkness = shadow.darkness;
-  pu.shadow_texel_x = shadow.texel_size[0];
-  pu.shadow_texel_y = shadow.texel_size[1];
+  if (shadow.enabled)
+    pu.shadow = shadow.pixel;
   SDL_PushGPUFragmentUniformData(g_cmd, 0, &pu, sizeof pu);
 
   /* The sampler is bound even when the draw is untextured: the fragment

@@ -97,15 +97,141 @@ unsigned gpu_shadow_draw_roles(const GpuDraw *draw) {
   return roles;
 }
 
-int gpu_shadow_frame_policy(const GpuDraw *draw, GpuShadowFramePolicy *out) {
+static const float SPLIT_LAMBDA = 0.8f;
+/* Fraction of a cascade's length blended into the next one. */
+static const float BLEND_FRACTION = 0.1f;
+static const float DEPTH_BIAS_TEXELS = 1.0f;
+static const float NORMAL_OFFSET_TEXELS = 1.5f;
+/* Penumbra width of the finest cascade, in its own texels. */
+static const float PENUMBRA_TEXELS = 1.5f;
+static const float KERNEL_MAX_TEXELS = 1.5f;
+/* Sphere radii step by an eighth of an octave so small camera moves keep the
+ * same map size. */
+static const float RADIUS_STEPS_PER_OCTAVE = 8.0f;
+
+static float view_depth(const float plane[4], const float p[3]) {
+  return plane[0] * p[0] + plane[1] * p[1] + plane[2] * p[2] + plane[3];
+}
+
+static int fit_depth_plane(const float view_projection[16], float corners[8][3],
+                           GpuShadowFramePolicy *out) {
+  float plane[4] = {view_projection[3], view_projection[7], view_projection[11],
+                    view_projection[15]};
+  float near_w = view_depth(plane, corners[0]);
+  float far_w = view_depth(plane, corners[4]);
+  if (fabsf(far_w - near_w) > 1e-4f * fmaxf(fabsf(far_w), fabsf(near_w))) {
+    if (near_w <= 0.0f || far_w <= near_w)
+      return 0;
+    memcpy(out->view_depth_plane, plane, sizeof plane);
+    out->view_near = near_w;
+    out->view_far = far_w;
+    return 1;
+  }
+  /* An orthographic camera has no eye depth: measure along its view axis. */
+  {
+    float near_centre[3] = {0.0f, 0.0f, 0.0f}, axis[3] = {0.0f, 0.0f, 0.0f};
+    int i, k;
+    for (i = 0; i < 4; i++)
+      for (k = 0; k < 3; k++) {
+        near_centre[k] += corners[i][k] * 0.25f;
+        axis[k] += (corners[i + 4][k] - corners[i][k]) * 0.25f;
+      }
+    out->view_far = sqrtf(vector_dot(axis, axis));
+    if (!vector_normalize(axis))
+      return 0;
+    out->view_depth_plane[0] = axis[0];
+    out->view_depth_plane[1] = axis[1];
+    out->view_depth_plane[2] = axis[2];
+    out->view_depth_plane[3] = -vector_dot(axis, near_centre);
+    out->view_near = 0.0f;
+  }
+  return 1;
+}
+
+static void practical_splits(float near_depth, float far_depth,
+                             float bounds[GPU_SHADOW_CASCADES + 1]) {
+  float log_near = fmaxf(near_depth, far_depth * 1e-3f);
+  int i;
+  bounds[0] = near_depth;
+  bounds[GPU_SHADOW_CASCADES] = far_depth;
+  for (i = 1; i < GPU_SHADOW_CASCADES; i++) {
+    float fraction = (float)i / (float)GPU_SHADOW_CASCADES;
+    float logarithmic = log_near * powf(far_depth / log_near, fraction);
+    float linear = near_depth + (far_depth - near_depth) * fraction;
+    bounds[i] = SPLIT_LAMBDA * logarithmic + (1.0f - SPLIT_LAMBDA) * linear;
+  }
+}
+
+/* The frustum between two view depths: corners interpolate along the edges,
+ * along which view depth is linear. */
+static void slice_corners(const float corners[8][3], float slice_near,
+                          float slice_far, float view_near, float view_far,
+                          float out[8][3]) {
+  int edge, k, end;
+  for (end = 0; end < 2; end++) {
+    float t =
+        ((end ? slice_far : slice_near) - view_near) / (view_far - view_near);
+    for (edge = 0; edge < 4; edge++)
+      for (k = 0; k < 3; k++)
+        out[end * 4 + edge][k] =
+            corners[edge][k] + t * (corners[edge + 4][k] - corners[edge][k]);
+  }
+}
+
+static int fit_cascade(const float slice[8][3], const float right[3],
+                       const float up[3], const float direction[3], float reach,
+                       uint32_t resolution, GpuShadowCascade *out) {
+  float centre[3] = {0.0f, 0.0f, 0.0f}, radius = 0.0f, half, texel, range;
+  float light_centre[3], near_z;
+  int i, k;
+  for (i = 0; i < 8; i++)
+    for (k = 0; k < 3; k++)
+      centre[k] += slice[i][k] * 0.125f;
+  for (i = 0; i < 8; i++) {
+    float d[3] = {slice[i][0] - centre[0], slice[i][1] - centre[1],
+                  slice[i][2] - centre[2]};
+    radius = fmaxf(radius, sqrtf(vector_dot(d, d)));
+  }
+  if (!isfinite(radius) || radius < 1e-6f)
+    return 0;
+  radius = exp2f(ceilf(log2f(radius) * RADIUS_STEPS_PER_OCTAVE) /
+                 RADIUS_STEPS_PER_OCTAVE);
+  /* Room for the snap to move the centre by up to a texel. */
+  half = radius * (float)resolution / (float)(resolution - 2);
+  texel = 2.0f * half / (float)resolution;
+  light_centre[0] = roundf(vector_dot(centre, right) / texel) * texel;
+  light_centre[1] = roundf(vector_dot(centre, up) / texel) * texel;
+  light_centre[2] = roundf(vector_dot(centre, direction) / texel) * texel;
+  /* Casters between the light and the slice sit up to `reach` before it. */
+  near_z = light_centre[2] - half - reach;
+  range = 2.0f * half + reach;
+  memset(out->light_view_projection, 0, sizeof out->light_view_projection);
+  for (k = 0; k < 3; k++) {
+    out->light_view_projection[k * 4 + 0] = right[k] / half;
+    out->light_view_projection[k * 4 + 1] = up[k] / half;
+    out->light_view_projection[k * 4 + 2] = direction[k] / range;
+  }
+  out->light_view_projection[12] = -light_centre[0] / half;
+  out->light_view_projection[13] = -light_centre[1] / half;
+  out->light_view_projection[14] = -near_z / range;
+  out->light_view_projection[15] = 1.0f;
+  out->extent[0] = out->extent[1] = 2.0f * half;
+  out->texel_world = texel;
+  out->depth_range = range;
+  out->depth_bias = DEPTH_BIAS_TEXELS * texel / range;
+  out->normal_offset = NORMAL_OFFSET_TEXELS * texel;
+  return 1;
+}
+
+int gpu_shadow_frame_policy(const GpuDraw *draw, uint32_t resolution,
+                            GpuShadowFramePolicy *out) {
   float inverse_world[16], view_projection[16], inverse_view_projection[16];
   float corners[8][3], right[3], up[3], reference_up[3] = {0.0f, 1.0f, 0.0f};
-  float minv[3] = {INFINITY, INFINITY, INFINITY};
-  float maxv[3] = {-INFINITY, -INFINITY, -INFINITY};
+  float bounds[GPU_SHADOW_CASCADES + 1];
   const GpuLight *light = NULL;
   int i, x, y, z;
 
-  if (!draw || !out || !draw->lighting || draw->programmable)
+  if (!draw || !out || resolution < 8 || !draw->lighting || draw->programmable)
     return 0;
   for (i = 0; i < draw->nlights; i++) {
     const GpuLight *candidate = &draw->light[i];
@@ -149,64 +275,38 @@ int gpu_shadow_frame_policy(const GpuDraw *draw, GpuShadowFramePolicy *out) {
   vector_cross(out->light_direction, right, up);
   if (!vector_normalize(up))
     return 0;
-
-  for (i = 0; i < 8; i++) {
-    float projected[3] = {vector_dot(corners[i], right),
-                          vector_dot(corners[i], up),
-                          vector_dot(corners[i], out->light_direction)};
-    int axis;
-    for (axis = 0; axis < 3; axis++) {
-      if (projected[axis] < minv[axis])
-        minv[axis] = projected[axis];
-      if (projected[axis] > maxv[axis])
-        maxv[axis] = projected[axis];
-    }
-  }
-  if (maxv[0] - minv[0] < 1e-4f || maxv[1] - minv[1] < 1e-4f ||
-      maxv[2] - minv[2] < 1e-4f)
+  if (!fit_depth_plane(view_projection, corners, out) ||
+      out->view_far - out->view_near < 1e-4f)
     return 0;
-  memset(out->light_view_projection, 0, sizeof out->light_view_projection);
-  {
-    float half_x = (maxv[0] - minv[0]) * 0.525f;
-    float half_y = (maxv[1] - minv[1]) * 0.525f;
-    float center_x = (minv[0] + maxv[0]) * 0.5f;
-    float center_y = (minv[1] + maxv[1]) * 0.5f;
-    float depth = maxv[2] - minv[2];
-    float near_centre[3] = {0.0f, 0.0f, 0.0f},
-          far_centre[3] = {0.0f, 0.0f, 0.0f};
-    int axis;
-    for (i = 0; i < 4; i++)
-      for (axis = 0; axis < 3; axis++) {
-        near_centre[axis] += corners[i][axis] * 0.25f;
-        far_centre[axis] += corners[i + 4][axis] * 0.25f;
-      }
-    for (axis = 0; axis < 3; axis++)
-      far_centre[axis] -= near_centre[axis];
-    out->view_depth = sqrtf(vector_dot(far_centre, far_centre));
-    out->extent[0] = half_x * 2.0f;
-    out->extent[1] = half_y * 2.0f;
-    out->light_view_projection[0] = right[0] / half_x;
-    out->light_view_projection[4] = right[1] / half_x;
-    out->light_view_projection[8] = right[2] / half_x;
-    out->light_view_projection[12] = -center_x / half_x;
-    out->light_view_projection[1] = up[0] / half_y;
-    out->light_view_projection[5] = up[1] / half_y;
-    out->light_view_projection[9] = up[2] / half_y;
-    out->light_view_projection[13] = -center_y / half_y;
-    out->light_view_projection[2] = out->light_direction[0] / depth;
-    out->light_view_projection[6] = out->light_direction[1] / depth;
-    out->light_view_projection[10] = out->light_direction[2] / depth;
-    out->light_view_projection[14] = -minv[2] / depth;
-    out->light_view_projection[15] = 1.0f;
+
+  practical_splits(out->view_near, out->view_far, bounds);
+  for (i = 0; i < GPU_SHADOW_CASCADES; i++) {
+    GpuShadowCascade *cascade = &out->cascade[i];
+    float slice[8][3];
+    cascade->split_far = bounds[i + 1];
+    cascade->blend_start =
+        bounds[i + 1] - BLEND_FRACTION * (bounds[i + 1] - bounds[i]);
+    cascade->slice_near = i ? out->cascade[i - 1].blend_start : bounds[0];
+    slice_corners(corners, cascade->slice_near, cascade->split_far,
+                  out->view_near, out->view_far, slice);
+    if (!fit_cascade(slice, right, up, out->light_direction,
+                     out->view_far - out->view_near, resolution, cascade))
+      return 0;
+  }
+  for (i = 0; i < GPU_SHADOW_CASCADES; i++) {
+    float spacing = PENUMBRA_TEXELS * out->cascade[0].texel_world /
+                    out->cascade[i].texel_world;
+    out->cascade[i].kernel_texels =
+        fminf(fmaxf(spacing, 1.0f), KERNEL_MAX_TEXELS);
   }
   memcpy(out->inverse_view_projection, inverse_view_projection,
          sizeof out->inverse_view_projection);
   return 1;
 }
 
-void gpu_shadow_draw_matrix(const GpuShadowFramePolicy *frame,
+void gpu_shadow_draw_matrix(const GpuShadowFramePolicy *frame, unsigned cascade,
                             const GpuDraw *draw, float out[16]) {
   gpu_matrix_multiply(draw->programmable ? frame->inverse_view_projection
                                          : draw->world,
-                      frame->light_view_projection, out);
+                      frame->cascade[cascade].light_view_projection, out);
 }

@@ -149,7 +149,7 @@ int main(void) {
   x2_settings_defaults(&saved);
   CHECK(saved.width == 1280 && saved.height == 720);
   CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
-  CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 1024);
+  CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 2048);
   CHECK(saved.touch_controls == X2_TOUCH_CONTROLS_AUTO);
   CHECK(strcmp(x2_touch_controls_label(saved.touch_controls), "Automatic") ==
         0);
@@ -173,7 +173,7 @@ int main(void) {
   saved.height = 1080;
   saved.window_mode = X2_WINDOW_BORDERLESS;
   saved.dynamic_shadows = 0;
-  saved.shadow_resolution = 2048;
+  saved.shadow_resolution = 4096;
   saved.touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
   saved.boot_mode = X2_BOOT_CONTINUE;
   CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
