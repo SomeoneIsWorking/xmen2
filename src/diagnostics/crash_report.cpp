@@ -12,6 +12,8 @@
 #include <execinfo.h>
 #define X2_CRASH_BACKTRACE 1
 #endif
+#elif defined(_WIN32)
+#include <csignal>
 #endif
 
 namespace x2::diagnostics {
@@ -88,6 +90,9 @@ void on_abort(int, siginfo_t *, void *) {
   signal(SIGABRT, SIG_DFL);
   raise(SIGABRT);
 }
+#elif defined(_WIN32)
+/* The UCRT's abort() fast-fails or exits 3 once this returns. */
+void on_abort(int) { CrashReport::begin("SIGABRT", SIGABRT, 0, 0, 0); }
 #endif
 
 } // namespace
@@ -119,6 +124,8 @@ void CrashReport::install_abort_handler() {
   action.sa_sigaction = on_abort;
   action.sa_flags = SA_SIGINFO | SA_NODEFER;
   sigaction(SIGABRT, &action, nullptr);
+#elif defined(_WIN32)
+  std::signal(SIGABRT, on_abort);
 #endif
 }
 

@@ -17,6 +17,7 @@
 #include <string.h>
 #include <unistd.h>
 #if defined(_WIN32)
+#include "ucrt_abort_status.hpp"
 #include <process.h>
 #else
 #include <sys/wait.h>
@@ -196,9 +197,9 @@ static int leaf_breaks_contract(void) {
 static void test_the_guard_aborts_inside_a_leaf(const char *self) {
   fflush(NULL);
 #if defined(_WIN32)
-  /* The UCRT's abort() ends the process with status 3. */
   const intptr_t status = _spawnl(_P_WAIT, self, self, kAbortChild, NULL);
-  expect(status == 3, "a leaf that called guest code did not abort");
+  expect(x2::test::is_ucrt_abort_status(status),
+         "a leaf that called guest code did not abort");
 #else
   (void)self;
   const pid_t child = fork();
