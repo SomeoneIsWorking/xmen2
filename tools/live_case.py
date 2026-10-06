@@ -1893,6 +1893,114 @@ def case_touch_team(case: Case) -> None:
     case.check("and the game is still running", case.alive())
 
 
+def shop_list(case: Case) -> dict:
+    """The shop's list box as GET /menu?items=all reads it."""
+    code, body = case.http("/menu?items=all")
+    if code != 200:
+        return {}
+    try:
+        menu = json.loads(body)
+    except ValueError:
+        return {}
+    for item in menu.get("items", []):
+        if item.get("name") == "list" and "list_box" in item:
+            return item["list_box"]
+    return {}
+
+
+def case_touch_shop(case: Case) -> None:
+    """The touch menu over CMenuShop, opened by the console from gameplay.
+
+    Each tap is judged by the game's own state: the lit tab, the list box's
+    entries and selection, and the menu it has open.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    pda = keyboard_into_the_pda(case, 300)
+    case.check("the run reached the PDA", pda.get("menu") == "pda",
+               str(pda.get("menu")))
+    menu = pda
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and menu.get("active") is not False:
+        case.http("/key?name=Escape&hold=0.2")
+        menu = wait_game_menu(case, lambda m: m.get("active") is False, 3)
+    case.check("Escape closed the PDA into gameplay",
+               menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=openmenu%20shop")
+    shop = wait_touch_menu(case, "shop", 20)
+    (case.dir / "shop.json").write_text(json.dumps(shop, indent=1) + "\n")
+    rows = shop.get("rows", [])
+    case.check("the touch menu is shown over the game's shop",
+               shop.get("visible") is True
+               and read_menu(case).get("class") == "CMenuShop",
+               str(read_menu(case).get("class")))
+    case.check("it offers the three tabs, then the list's entries",
+               [r["label"] for r in rows[:3]] == ["buy", "sell", "training"]
+               and len(rows) > 3, str([r["label"] for r in rows]))
+    if shop.get("visible") is not True or len(rows) < 5:
+        return
+    controls = live_controls(case)
+    case.check("and the menu pad is not drawn under it",
+               "menu-a" not in controls, "drawn: %s" % sorted(controls))
+    case.shot("shop")
+
+    before = shop_list(case)
+    lit = next(r["label"] for r in rows[:3] if r["focused"])
+    target_tab = "buy" if lit != "buy" else "sell"
+    tap_touch_button(case, shop, touch_button(shop, "row", target_tab))
+    switched = wait_game_menu(
+        case, lambda m: any(r["focused"] and r["label"] == target_tab
+                            for r in m.get("touch_menu", {}).get("rows", [])),
+        10)
+    after = shop_list(case)
+    case.check("a tap on %s opened that tab in the game" % target_tab,
+               any(r["focused"] and r["label"] == target_tab
+                   for r in switched.get("touch_menu", {}).get("rows", [])),
+               "was %s" % lit)
+    case.check("and the game's list now holds that tab's entries",
+               after.get("entries") != before.get("entries"),
+               "%s -> %s" % (before.get("entries"), after.get("entries")))
+    case.shot("tab")
+
+    shop = touch_menu(case)
+    rows = shop.get("rows", [])
+    selected = after.get("selected", -1)
+    entry = next((i - 3 for i, r in enumerate(rows)
+                  if i >= 3 and r["clicks"] and i - 3 != selected), None)
+    case.check("the tab has a shown entry besides the selected one",
+               entry is not None, str([r["label"] for r in rows]))
+    if entry is None:
+        return
+    button = next(b for b in shop["buttons"]
+                  if b["part"] == "row" and b["index"] == entry + 3)
+    tap_touch_button(case, shop, button)
+    picked = wait_game_menu(
+        case, lambda m: m.get("touch_menu", {}).get("focused_row") == entry + 3,
+        10)
+    case.check("a tap on %s selected that entry in the game"
+               % rows[entry + 3]["label"],
+               shop_list(case).get("selected") == entry
+               and picked.get("touch_menu", {}).get("focused_row") == entry + 3,
+               "selected %s" % shop_list(case).get("selected"))
+    case.shot("selected")
+
+    shown = touch_menu(case)
+    accept = touch_button(shown, "footer", "accept")
+    case.check("the shop offers the game's Accept footer", accept is not None,
+               str([b["label"] for b in shown.get("buttons", [])
+                    if b["part"] == "footer"]))
+    if accept is None:
+        return
+    tap_touch_button(case, shown, accept)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
+    case.check("Accept left the shop",
+               left.get("menu") != "shop", "now %r" % left.get("menu"))
+    case.shot("after-accept")
+    case.check("and the game is still running", case.alive())
+
+
 CASES = {
     "cutscene-skip": case_cutscene_skip,
     "cutscene-skip-early": case_cutscene_skip_early,
@@ -1905,6 +2013,7 @@ CASES = {
     "menu-model": case_menu_model,
     "options-back": case_options_back,
     "touch-team": case_touch_team,
+    "touch-shop": case_touch_shop,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

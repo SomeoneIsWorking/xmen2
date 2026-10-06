@@ -4,6 +4,7 @@
 #include "touch_menu_view.hpp"
 
 #include <string>
+#include <string_view>
 
 /* What every class's touch menu view is built from. */
 namespace x2::input {
@@ -12,6 +13,10 @@ namespace x2::input {
 presentation::ClientPoint
 menu_item_centre(const menu::SceneRect &rect,
                  const presentation::RetailScenePlane &plane);
+
+/* The item named `name`, or null. */
+const menu::MenuItem *find_menu_item(const menu::MenuSnapshot &menu,
+                                     std::string_view name);
 
 /* Enabled and not hidden. */
 bool menu_item_shown(const menu::MenuItem &item);

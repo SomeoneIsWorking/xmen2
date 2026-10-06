@@ -86,6 +86,22 @@ inline constexpr std::uint32_t kPopupShown = 0x18u + 0x155du;
 inline constexpr std::uint32_t kPopupStride = 0x1560u;
 inline constexpr std::int32_t kPopupCount = 3;
 
+/* CMenuItemListBox (vtable 0x006a062c); see docs/RE/menus.md. */
+inline constexpr std::size_t kListBoxBytes = 0xe4u;
+inline constexpr std::uint32_t kListSelected = 0xacu;
+inline constexpr std::uint32_t kListStore = 0xbcu;
+inline constexpr std::uint32_t kListTop = 0xd8u;
+inline constexpr std::uint32_t kListVisibleRows = 0xdbu;
+inline constexpr std::uint32_t kListRowHeight = 0xe0u;
+/* The store: one byte record id per entry, the count at +0x84. */
+inline constexpr std::uint32_t kListStoreCount = 0x84u;
+inline constexpr std::uint32_t kListStoreIds = 0x84u;
+/* Every list box draws its entries from one table of 0x70-byte records. */
+inline constexpr std::uint32_t kListRecordsRva = 0x004a83f4u;
+inline constexpr std::uint32_t kListRecordStride = 0x70u;
+/* The entry getter copies at most 0x3f bytes. */
+inline constexpr std::size_t kListEntryBytes = 0x3fu;
+
 /* CMenuItem::nextInDirection's visited list. */
 inline constexpr int kStepVisits = 32;
 
@@ -166,9 +182,11 @@ struct MenuModeEntry {
   std::uint32_t offset;
 };
 
-/* CMenuTeam::onMouse (0x005e25c0) switches on menu+0x18d8. */
+/* CMenuTeam::onMouse (0x005e25c0) switches on menu+0x18d8; CMenuShop::onMouse
+   (0x005d3400) picks its stash tabs on menu+0x18e8 bit 0. */
 inline constexpr MenuModeEntry kMenuModes[] = {
     {"CMenuTeam", 0x18d8u},
+    {"CMenuShop", 0x18e8u},
 };
 
 const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
@@ -446,6 +464,55 @@ bool RetailMenuModel::read_label(const std::uint8_t *header,
   return true;
 }
 
+bool RetailMenuModel::read_list_box(std::uint32_t address,
+                                    const std::uint8_t *header,
+                                    ListBoxState *out) {
+  std::uint8_t box[kListBoxBytes];
+  if (!read_bytes(address, box, sizeof box)) {
+    return false;
+  }
+  out->selected = field_i16(box, kListSelected);
+  out->top = field_i16(box, kListTop);
+  out->visible_rows = box[kListVisibleRows];
+  out->row_height = static_cast<int>(field_u32(box, kListRowHeight));
+  out->hit.left = field_i16(header, kItemBoxLeft);
+  out->hit.right = out->hit.left + field_i16(header, kItemBoxWidth) - 1;
+  out->hit.bottom = field_i16(header, kItemBoxY);
+  out->hit.top = out->hit.bottom - field_i16(header, kItemBoxHeight) - 1;
+  const std::uint32_t store = field_u32(box, kListStore);
+  if (store == 0u) {
+    return true;
+  }
+  std::uint32_t count = 0;
+  if (!read_u32(store + kListStoreCount, &count)) {
+    return false;
+  }
+  if (count > kListStoreIds) {
+    failed_ = store + kListStoreCount;
+    return false;
+  }
+  std::uint8_t ids[kListStoreIds];
+  if (count > 0u && !read_bytes(store, ids, count)) {
+    return false;
+  }
+  for (std::uint32_t i = 0; i < count; ++i) {
+    char text[kListEntryBytes];
+    if (!read_bytes(image_base_ + kListRecordsRva + ids[i] * kListRecordStride,
+                    text, sizeof text)) {
+      return false;
+    }
+    std::string bytes;
+    for (const char c : text) {
+      if (c == '\0' || c == '\t') {
+        break;
+      }
+      bytes.push_back(c);
+    }
+    out->entries.push_back(latin1_to_utf8(bytes));
+  }
+  return true;
+}
+
 bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
                                 MenuItem *out,
                                 std::array<std::uint32_t, 4> *links,
@@ -486,6 +553,12 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
         field_u32(header, kItemLinks + static_cast<std::uint32_t>(i) * 4u);
   }
   *getter = field_u32(header, kItemGamevarGetter);
+  if (out->item_class == ItemClass::list_box) {
+    out->list_box.emplace();
+    if (!read_list_box(address, header, &*out->list_box)) {
+      return false;
+    }
+  }
   return true;
 }
 

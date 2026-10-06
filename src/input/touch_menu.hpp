@@ -41,8 +41,9 @@ struct TouchMenuState {
  * and turns a tap into the game's own input. A row with a command is clicked
  * where the game hit-tests it; a row without one, and a left/right step, are
  * reached by walking the game's focus with the menu pad's Up/Down, confirmed
- * on each new view, and then pressed with A, Left or Right. A footer action is
- * clicked on the desctext item that carries its token.
+ * on each new view, and then pressed with A, Left or Right; a list entry the
+ * game's window does not show is walked to and only selected. A footer action
+ * is clicked on the desctext item that carries its token.
  */
 class TouchMenu {
 public:
@@ -75,7 +76,8 @@ private:
   struct Walk {
     std::uint32_t address = 0;
     unsigned slot = 0;
-    TouchAction final_button = TouchAction::MenuA;
+    int entry = -1;
+    std::optional<TouchAction> final_button;
     std::uint64_t started_ms = 0;
     std::uint64_t pressed_ms = 0;
     int focus_at_press = -2;

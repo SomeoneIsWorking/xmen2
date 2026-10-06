@@ -1,6 +1,7 @@
 #include "touch_menu_view.hpp"
 
 #include "touch_menu_parts.hpp"
+#include "touch_menu_shop.hpp"
 #include "touch_menu_team.hpp"
 
 #include <array>
@@ -51,7 +52,8 @@ bool TouchMenuView::same_screen(const TouchMenuView &other) const {
     return false;
   }
   for (std::size_t i = 0; i < rows.size(); ++i) {
-    if (rows[i].slot != other.rows[i].slot) {
+    if (rows[i].slot != other.rows[i].slot ||
+        rows[i].entry != other.rows[i].entry) {
       return false;
     }
   }
@@ -107,11 +109,12 @@ struct ReplacedClass {
   ViewBuilder build;
 };
 
-constexpr std::array<ReplacedClass, 4> kReplacedClasses = {{
+constexpr std::array<ReplacedClass, 5> kReplacedClasses = {{
     {"CMenuMain", build_row_menu_view},
     {"CMenuOptions", build_row_menu_view},
     {"CMenuPDA", build_row_menu_view},
     {"CMenuTeam", build_team_view},
+    {"CMenuShop", build_shop_view},
 }};
 
 } // namespace

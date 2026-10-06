@@ -110,6 +110,25 @@ void put_text_item(std::string *out, const menu::MenuItem &item) {
   close_object(out);
 }
 
+void put_list_box(std::string *out, const menu::ListBoxState &list) {
+  put_key(out, "list_box");
+  out->push_back('{');
+  put_int(out, "top", list.top);
+  put_int(out, "selected", list.selected);
+  put_int(out, "visible_rows", list.visible_rows);
+  put_int(out, "row_height", list.row_height);
+  put_key(out, "entries");
+  out->push_back('[');
+  for (const std::string &entry : list.entries) {
+    put_string(out, entry);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("]},");
+}
+
 void put_item(std::string *out, const menu::MenuItem &item) {
   out->push_back('{');
   put_int(out, "slot", static_cast<long>(item.slot));
@@ -128,6 +147,9 @@ void put_item(std::string *out, const menu::MenuItem &item) {
   put_int(out, "link_down", item.link_down);
   put_int(out, "link_left", item.link_left);
   put_int(out, "link_right", item.link_right);
+  if (item.list_box) {
+    put_list_box(out, *item.list_box);
+  }
   close_object(out);
 }
 
@@ -180,6 +202,7 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
     put_text(&out, "value", row.value);
     put_fill(&out, row.fill);
     put_bool(&out, "focused", row.focused);
+    put_bool(&out, "clicks", row.clicks);
     put_bool(&out, "steps", row.steps);
     close_object(&out);
     out.push_back(',');

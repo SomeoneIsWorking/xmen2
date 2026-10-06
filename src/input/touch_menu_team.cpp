@@ -12,16 +12,6 @@ constexpr std::uint32_t kPartyMode = 0u;
 constexpr std::array<std::string_view, 4> kPartySummaries = {
     "char_summary01", "char_summary02", "char_summary03", "char_summary04"};
 
-const menu::MenuItem *find_item(const menu::MenuSnapshot &menu,
-                                std::string_view name) {
-  for (const menu::MenuItem &item : menu.items) {
-    if (item.name == name) {
-      return &item;
-    }
-  }
-  return nullptr;
-}
-
 } // namespace
 
 std::optional<TouchMenuView>
@@ -32,7 +22,7 @@ build_team_view(const menu::MenuSnapshot &menu,
   }
   TouchMenuView view = start_menu_view(menu);
   for (const std::string_view name : kPartySummaries) {
-    const menu::MenuItem *item = find_item(menu, name);
+    const menu::MenuItem *item = find_menu_item(menu, name);
     if (item == nullptr || !menu_item_shown(*item)) {
       continue;
     }
