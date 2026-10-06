@@ -61,16 +61,20 @@ class Marionette:
     def navigate(self, url: str) -> None:
         self.command("WebDriver:Navigate", {"url": url})
 
-    def script(self, body: str, timeout_ms: int = 60000, *args: Any) -> Any:
+    def script(self, body: str, timeout_ms: int = 60000, *args: Any,
+               sandbox: str = "default") -> Any:
         """Run an async script; the page calls ``resolve(value)`` when done.
 
         Extra positional arguments reach the script as ``arguments[0..]``,
-        ahead of the resolve callback the page calls last.
+        ahead of the resolve callback the page calls last. ``sandbox="system"``
+        runs the script with the system principal in the current context,
+        which is what a page sandbox denies: the Gecko profiler is reached
+        through ``Services``, and a page-privileged sandbox has no such object.
         """
         self.command("WebDriver:SetTimeouts", {"script": timeout_ms})
         reply = self.command(
             "WebDriver:ExecuteAsyncScript",
-            {"script": body, "args": list(args), "newSandbox": False},
+            {"script": body, "args": list(args), "newSandbox": False, "sandbox": sandbox},
         )
         # WebDriver wraps every script result as {"value": result}.
         return reply["value"]

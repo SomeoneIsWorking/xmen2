@@ -39,6 +39,7 @@ from pathlib import Path
 from statistics import median
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gecko_profile import ProfileError, summarize_file
 from marionette_client import Marionette, MarionetteError
 from web_presents import plateau, samples, steady
 
@@ -50,6 +51,55 @@ HEARTBEAT_SECONDS = 5.0
 _WINDOW = re.compile(
     r"frame ms p50 ([0-9.]+) p95 ([0-9.]+) p99 ([0-9.]+) over (\d+) interval")
 _ELAPSED = re.compile(r"\[HB\]\s+([0-9]+\.[0-9])s\s+crossings")
+
+# The Gecko profiler is started in the CONTENT process on purpose. The game's
+# pthread workers -- the guest's x86 blocks, the x86port JIT, the host import
+# stubs -- run in the process that hosts the tab, so a profiler started in the
+# parent (what MOZ_PROFILER_STARTUP through `flatpak run --env` produced, and
+# the profile S021 recorded) can never see them. `Threads: ["*"]` is the whole
+# pool, not one guess: an unnamed pthread worker is the one doing the work.
+GECKO_FEATURES = "NoAlloc"
+GECKO_INTERVAL_US = 200
+GECKO_ENTRIES = 128
+
+START_GECKO = """
+const done = arguments[arguments.length - 1];
+const loader = globalThis.ChromeUtils
+    || (globalThis.Components && globalThis.Components.utils);
+if (!loader) {
+  done('failed: this context exposes neither Services nor a module loader');
+  return;
+}
+const {Services} = loader.importESModule('resource://gre/modules/Services.sys.mjs');
+try {
+  if (Services.profiler.isProfilerRunning()) {
+    done('already running');
+  } else {
+    Services.profiler.StartProfiler(
+      arguments[0], undefined, arguments[1], arguments[2], 0, ['*']);
+    done('started');
+  }
+} catch (e) {
+  done('failed: ' + e);
+}
+"""
+
+DUMP_GECKO = """
+const done = arguments[arguments.length - 1];
+const loader = globalThis.ChromeUtils
+    || (globalThis.Components && globalThis.Components.utils);
+if (!loader) {
+  done('dump failed: this context exposes neither Services nor a module loader');
+  return;
+}
+const {Services} = loader.importESModule('resource://gre/modules/Services.sys.mjs');
+try {
+  Services.profiler.dumpProfileToFileAsync(arguments[0]).then(
+    () => done('dumped'), (e) => done('dump failed: ' + e));
+} catch (e) {
+  done('dump failed: ' + e);
+}
+"""
 
 PREFS = {
     "dom.webgpu.enabled": True,
@@ -181,6 +231,35 @@ def install(browser: Marionette, url: str, archive: Path, seconds: float) -> Non
     raise SystemExit("zen_play: the install did not finish in time")
 
 
+def start_gecko(browser: Marionette) -> None:
+    """Start the Gecko profiler in the content process hosting the game tab.
+
+    Marionette's default context is `content`, so the script runs where the
+    page's pthread workers are; a failure is named, because a profile of the
+    wrong process is the exact dead end this option exists to replace.
+    """
+    browser.command("Marionette:SetContext", {"value": "content"})
+    answer = browser.script(START_GECKO, 30000, GECKO_FEATURES, GECKO_INTERVAL_US,
+                            GECKO_ENTRIES, sandbox="system")
+    if answer != "started":
+        raise SystemExit(f"zen_play: the Gecko profiler did not start ({answer!r}); "
+                         "a profile without the content process attributes nothing")
+
+
+def dump_gecko(browser: Marionette, destination: Path) -> Path:
+    """Write the running profile into the browser's own profile directory.
+
+    That directory is the only path the flatpak sandbox grants, so the browser
+    writes its own file there and the caller copies it out; the browser is
+    stopped afterwards, which is what finalises the profile.
+    """
+    browser.command("Marionette:SetContext", {"value": "content"})
+    answer = browser.script(DUMP_GECKO, 120000, str(destination), sandbox="system")
+    if answer != "dumped":
+        raise SystemExit(f"zen_play: the Gecko profile was not written ({answer!r})")
+    return destination
+
+
 def run(args: argparse.Namespace) -> int:
     release = args.release.resolve()
     if not (release / "x2native.wasm").is_file():
@@ -222,7 +301,17 @@ def run(args: argparse.Namespace) -> int:
         start = log_path.stat().st_size
         browser.command("WebDriver:ElementClick", {"id": next(iter(browser.command(
             "WebDriver:FindElement", {"using": "css selector", "value": "#test-play"})["value"].values()))})
+        if args.gecko_profile:
+            # Started BEFORE the wait, so the profile covers the gameplay the
+            # frame-time summary measures; the attribution then drops the same
+            # warm-up, so boot and first-frame JIT do not dilute the plateau.
+            start_gecko(browser)
         time.sleep(args.seconds)
+        profile_exit = None
+        if args.gecko_profile:
+            dump = dump_gecko(browser, profile / "gecko-profile.json")
+            args.gecko_profile.parent.mkdir(parents=True, exist_ok=True)
+            args.gecko_profile.write_bytes(dump.read_bytes())
         if args.screenshot:
             import base64
             args.screenshot.write_bytes(base64.b64decode(browser.screenshot()))
@@ -244,7 +333,13 @@ def run(args: argparse.Namespace) -> int:
         server.terminate()
         server.wait(timeout=10)
     (profile.parent / "run.log").write_text(text)
-    return summarize(text, args.warmup, args.plateau)
+    if args.gecko_profile:
+        try:
+            profile_exit = summarize_file(args.gecko_profile, args.symbols, args.top, args.warmup)
+        except ProfileError as error:
+            print(f"zen_play: the Gecko profile attributes nothing: {error}", file=sys.stderr)
+            profile_exit = 1
+    return summarize(text, args.warmup, args.plateau) or (profile_exit or 0)
 
 
 def main(argv: list[str]) -> int:
@@ -268,11 +363,27 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--height", type=int, default=720)
     parser.add_argument("--install-seconds", type=float, default=1800.0)
     parser.add_argument("--screenshot", type=Path, default=None)
+    parser.add_argument("--gecko-profile", type=Path, default=None,
+                        help="profile the CONTENT process's workers during the run and "
+                             "write the attribution table for this file")
+    parser.add_argument("--gecko-only", type=Path, default=None,
+                        help="attribute an already-dumped Gecko profile and exit, "
+                             "without launching a browser")
+    parser.add_argument("--symbols", type=Path, default=ROOT / "build/web/x2native.js.symbols",
+                        help="emscripten symbol map used to resolve x2native.wasm frames")
+    parser.add_argument("--top", type=int, default=30,
+                        help="functions listed per ranking in the Gecko attribution")
     parser.add_argument("--log", type=Path, default=None,
                         help="summarize this recorded run.log instead of running")
     args = parser.parse_args(argv)
     if args.log:
         return summarize(args.log.read_text(errors="replace"), args.warmup, args.plateau)
+    if args.gecko_only:
+        try:
+            return summarize_file(args.gecko_only, args.symbols, args.top, args.warmup)
+        except (ProfileError, RuntimeError) as error:
+            print(f"zen_play: the Gecko profile attributes nothing: {error}", file=sys.stderr)
+            return 1
     return run(args)
 
 

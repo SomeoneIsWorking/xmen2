@@ -1546,6 +1546,11 @@ add_test(NAME zen_play
          COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_zen_play)
 set_tests_properties(zen_play PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# The Gecko profile reader: per-thread shares and the busiest worker's frames.
+add_test(NAME gecko_profile
+         COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_gecko_profile)
+set_tests_properties(gecko_profile PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 # Every browser recorder reads the console through cdp_console; a worker that
 # starts after it attaches, and the stack a trap carries, must both reach it.
 add_test(NAME cdp_console
