@@ -1,7 +1,8 @@
-#ifndef X2_BOOT_BLACKOUT_H
-#define X2_BOOT_BLACKOUT_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
+
+namespace x2::presentation {
 
 /* Presentation policy for boot-mode launches: a Menu or Continue boot has no
  * use for the retail boot's branding -- the legal-text loading backdrop and
@@ -14,12 +15,12 @@
  * frames) with a printed line -- a blackout that never lifted would be a
  * black screen for the whole session, so the expiry may not be silent. */
 
-void x2_boot_blackout_arm(const char *mode_name);
-void x2_boot_blackout_disarm(const char *why);
-int x2_boot_blackout_active(void);
+void boot_blackout_arm(const char *mode_name);
+void boot_blackout_disarm(const char *why);
+int boot_blackout_active();
 /* Counted at present time by the renderer, so the report says how many
  * frames the player actually spent black. */
-void x2_boot_blackout_frame_presented(void);
-size_t x2_boot_blackout_report(char *out, size_t size);
+void boot_blackout_frame_presented();
+std::size_t boot_blackout_report(char *out, std::size_t size);
 
-#endif
+} // namespace x2::presentation

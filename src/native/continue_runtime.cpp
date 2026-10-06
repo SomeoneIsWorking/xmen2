@@ -38,7 +38,7 @@ enum {
   LABEL_OPTION09 = 0x002a1280u,
   LOADGAME_COMMAND = 0x002a385cu,
   MENU_MODE = 0x003298a8u,
-  LAST_ROW = X2_MAIN_MENU_ROWS - 1u
+  LAST_ROW = x2::save::kMainMenuRows - 1u
 };
 
 /* The command the LAN Join row runs; registered by options_menu.cpp. */
@@ -46,26 +46,26 @@ static const char JOIN_LAN_COMMAND[] = "port_lan_join";
 
 #define PRIMARY_LOCAL_PLAYER 0u
 
-static const uint32_t LABEL_RVA[X2_MAIN_MENU_ROWS] = {0x002a135cu, 0x002a134cu,
-                                                      0x002a1290u, 0x002a12d8u,
-                                                      0x002a133cu, 0x002a1280u};
-static const char *const TEXT[X2_MENU_TEXT_PLAY_ONLINE + 1u] = {
+static const uint32_t LABEL_RVA[x2::save::kMainMenuRows] = {
+    0x002a135cu, 0x002a134cu, 0x002a1290u,
+    0x002a12d8u, 0x002a133cu, 0x002a1280u};
+static const char *const TEXT[x2::save::kShippedMenuTexts] = {
     "Continue", "new game", "load game",  "danger room",
     "review",   "options",  "Play Online"};
 
 static uint32_t g_exe;
-static uint32_t g_text[X2_MENU_TEXT_PLAY_ONLINE + 1u];
+static uint32_t g_text[x2::save::kShippedMenuTexts];
 static uint32_t g_continue_command;
 static uint32_t g_join_command;
 static uint32_t g_join_text;
-static uint32_t g_original_command[X2_MAIN_MENU_ROWS];
+static uint32_t g_original_command[x2::save::kMainMenuRows];
 static int g_original_commands_ready;
 static char g_latest_leaf[X2_SAVE_LEAF_CAPACITY];
 static int g_strings_ready;
 static int g_latest_ready;
 static int g_continue_command_armed;
 static int g_boot_load_pending;
-static X2ContinueTransaction g_transaction;
+static x2::save::ContinueTransaction g_transaction;
 
 static void continue_load_completed(int succeeded);
 
@@ -95,10 +95,10 @@ static int prepare_strings(void) {
   unsigned i;
   if (g_strings_ready)
     return 1;
-  for (i = 0; i <= X2_MENU_TEXT_PLAY_ONLINE; i++)
+  for (i = 0; i < x2::save::kShippedMenuTexts; i++)
     if (!g_text[i])
       g_text[i] = copy_guest_string(TEXT[i]);
-  for (i = 0; i <= X2_MENU_TEXT_PLAY_ONLINE; i++)
+  for (i = 0; i < x2::save::kShippedMenuTexts; i++)
     if (!g_text[i])
       return 0;
   g_strings_ready = 1;
@@ -225,16 +225,16 @@ static int catalog_for_show(void) {
 }
 
 static uint32_t row_command(unsigned source) {
-  if (source == X2_MENU_COMMAND_CONTINUE)
+  if (source == x2::save::kMenuCommandContinue)
     return g_continue_command;
-  if (source == X2_MENU_COMMAND_JOIN_LAN)
+  if (source == x2::save::kMenuCommandJoinLan)
     return g_join_command;
   return g_original_command[source];
 }
 
 static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
-  X2ContinueMenuPlan plan;
-  uint32_t item[X2_MAIN_MENU_ROWS];
+  x2::save::ContinueMenuPlan plan;
+  uint32_t item[x2::save::kMainMenuRows];
   const char *join_label = x2_lan_session_join_label();
   unsigned row;
 
@@ -254,26 +254,27 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
                  "leaving it out\n");
     join_label = NULL;
   }
-  for (row = 0; row < X2_MAIN_MENU_ROWS; row++)
+  for (row = 0; row < x2::save::kMainMenuRows; row++)
     item[row] = find_item(source, menu, row);
-  for (row = 0; row < X2_MAIN_MENU_ROWS; row++)
+  for (row = 0; row < x2::save::kMainMenuRows; row++)
     if (!item[row])
       return;
   if (!g_original_commands_ready) {
-    for (row = 0; row < X2_MAIN_MENU_ROWS; row++) {
+    for (row = 0; row < x2::save::kMainMenuRows; row++) {
       g_original_command[row] = RD32(item[row] + ITEM_COMMAND);
     }
     g_original_commands_ready = 1;
   }
 
-  x2_continue_menu_plan(has_save && g_continue_command != 0u,
-                        join_label != NULL, &plan);
+  x2::save::continue_menu_plan(has_save && g_continue_command != 0u,
+                               join_label != NULL, &plan);
   g_continue_command_armed = plan.show_last_row;
-  for (row = 0; row < X2_MAIN_MENU_ROWS; row++) {
+  for (row = 0; row < x2::save::kMainMenuRows; row++) {
     WR32(item[row] + ITEM_COMMAND, row_command(plan.command_source[row]));
     set_text(source, menu, row,
-             plan.text[row] == X2_MENU_TEXT_JOIN_LAN ? g_join_text
-                                                     : g_text[plan.text[row]]);
+             plan.text[row] == x2::save::MainMenuText::JoinLan
+                 ? g_join_text
+                 : g_text[static_cast<unsigned>(plan.text[row])]);
   }
   set_visible(source, menu, LAST_ROW,
               plan.show_last_row && RD32(g_exe + MENU_MODE) != 2u);
@@ -293,7 +294,7 @@ void x2_override_005c9260(CPU *C) {
   int has_save;
   int boot_continue = x2_boot_mode_runtime_continue_leaf() != NULL;
 
-  x2_continue_transaction_reader_result(&g_transaction, 0);
+  x2::save::continue_transaction_reader_result(&g_transaction, 0);
   x2_autosave_runtime_menu_show();
   x2_save_trace_menu_open();
   /* Retail reaches CMenuMain::Show with the player who dismissed the title
@@ -328,13 +329,13 @@ static int start_latest_load(const CPU *source) {
   unsigned slot;
 
   if (!g_latest_ready || !prepare_strings() ||
-      !x2_continue_leaf_slot(g_latest_leaf, &slot))
+      !x2::save::continue_leaf_slot(g_latest_leaf, &slot))
     return 0;
   if (!x2_exact_save_load_start(source, g_exe, g_latest_leaf, slot,
                                 X2_EXACT_SAVE_LOAD_CONTINUE,
                                 continue_load_completed))
     return 0;
-  x2_continue_transaction_begin(&g_transaction);
+  x2::save::continue_transaction_begin(&g_transaction);
   return 1;
 }
 
@@ -371,7 +372,7 @@ void x2_override_005f2b70(CPU *C) {
 }
 
 static void continue_load_completed(int succeeded) {
-  x2_continue_transaction_reader_result(&g_transaction, succeeded);
+  x2::save::continue_transaction_reader_result(&g_transaction, succeeded);
 }
 
 void x2_override_004b1280(CPU *C) {
@@ -379,9 +380,9 @@ void x2_override_004b1280(CPU *C) {
   CPU call;
 
   x86_guest_body(C, "XMen2.exe", 0x004b1280u);
-  if (!x2_continue_transaction_take_success_ack(&g_transaction,
-                                                RD32(manager + MANAGER_MODE),
-                                                RD32(manager + MANAGER_STATE)))
+  if (!x2::save::continue_transaction_take_success_ack(
+          &g_transaction, RD32(manager + MANAGER_MODE),
+          RD32(manager + MANAGER_STATE)))
     return;
   if (g_boot_load_pending) {
     /* The menu lifecycle between our Show intercept and this ack clears

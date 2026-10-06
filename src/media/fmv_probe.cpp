@@ -3,12 +3,17 @@
 /* Exact row-chain evidence from decoded frame to guest image to D3D8 upload. */
 #include "fmv_probe.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
-typedef struct {
-  X2FmvProbeStats stats;
+namespace x2::media {
+
+namespace {
+
+struct FmvProbe {
+  FmvProbeStats stats;
   uint8_t *expected;
   size_t expected_bytes;
   int width;
@@ -17,11 +22,11 @@ typedef struct {
   unsigned long padded_generation;
   unsigned long completed_generation;
   char movie[96];
-} FmvProbe;
+};
 
-static FmvProbe g_probe;
+FmvProbe g_probe;
 
-static size_t power_of_two_at_least(int value) {
+size_t power_of_two_at_least(int value) {
   size_t result = 1;
   if (value <= 0)
     return 0;
@@ -33,8 +38,7 @@ static size_t power_of_two_at_least(int value) {
   return result;
 }
 
-static unsigned long mismatched_rows(const uint8_t *actual,
-                                     size_t actual_pitch) {
+unsigned long mismatched_rows(const uint8_t *actual, size_t actual_pitch) {
   size_t row_bytes = (size_t)g_probe.width * 4u;
   unsigned long mismatches = 0;
   int row;
@@ -46,13 +50,15 @@ static unsigned long mismatched_rows(const uint8_t *actual,
   return mismatches;
 }
 
-static int readable_rows(size_t bytes, size_t pitch) {
+int readable_rows(size_t bytes, size_t pitch) {
   size_t row_bytes = (size_t)g_probe.width * 4u;
   return pitch >= row_bytes && g_probe.height > 0 &&
          bytes >= pitch * (size_t)g_probe.height;
 }
 
-void x2_fmv_probe_begin(const char *guest_path) {
+} // namespace
+
+void fmv_probe_begin(const char *guest_path) {
   const char *filter = x2_config_override_get(kX2ConfigFmvProbe);
   free(g_probe.expected);
   memset(&g_probe, 0, sizeof(g_probe));
@@ -66,8 +72,8 @@ void x2_fmv_probe_begin(const char *guest_path) {
       guest_path);
 }
 
-void x2_fmv_probe_decoded(const uint8_t *pixels, int width, int height,
-                          size_t pitch) {
+void fmv_probe_decoded(const uint8_t *pixels, int width, int height,
+                       size_t pitch) {
   size_t row_bytes;
   size_t bytes;
   uint8_t *expected;
@@ -95,7 +101,7 @@ void x2_fmv_probe_decoded(const uint8_t *pixels, int width, int height,
   g_probe.stats.decoded_frames++;
 }
 
-void x2_fmv_probe_padded(const uint8_t *pixels, size_t bytes, size_t pitch) {
+void fmv_probe_padded(const uint8_t *pixels, size_t bytes, size_t pitch) {
   unsigned long mismatches;
   if (!g_probe.stats.active || !g_probe.generation || !pixels ||
       !readable_rows(bytes, pitch))
@@ -107,8 +113,8 @@ void x2_fmv_probe_padded(const uint8_t *pixels, size_t bytes, size_t pitch) {
     g_probe.padded_generation = g_probe.generation;
 }
 
-void x2_fmv_probe_upload(const uint8_t *pixels, size_t bytes, int width,
-                         int height, size_t pitch) {
+void fmv_probe_upload(const uint8_t *pixels, size_t bytes, int width,
+                      int height, size_t pitch) {
   unsigned long mismatches;
   size_t storage_width;
   size_t storage_height;
@@ -132,12 +138,12 @@ void x2_fmv_probe_upload(const uint8_t *pixels, size_t bytes, int width,
   }
 }
 
-void x2_fmv_probe_get_stats(X2FmvProbeStats *stats) {
+void fmv_probe_get_stats(FmvProbeStats *stats) {
   if (stats)
     *stats = g_probe.stats;
 }
 
-void x2_fmv_probe_report(void) {
+void fmv_probe_report() {
   if (g_probe.stats.active) {
     x2_log_info("movie probe: '%s': %lu decoded, %lu padded check(s) / %lu "
                 "mismatched row(s), %lu upload candidate(s) / %lu exact / "
@@ -150,10 +156,12 @@ void x2_fmv_probe_report(void) {
   }
 }
 
-void x2_fmv_probe_end(void) {
-  x2_fmv_probe_report();
+void fmv_probe_end() {
+  fmv_probe_report();
   free(g_probe.expected);
   g_probe.expected = NULL;
   g_probe.expected_bytes = 0;
   g_probe.stats.active = 0;
 }
+
+} // namespace x2::media

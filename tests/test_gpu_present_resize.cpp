@@ -46,7 +46,9 @@ void x2_test_release_gpu_texture(SDL_GPUDevice *device,
   released_texture[releases++] = texture;
 }
 
-void x2_boot_blackout_frame_presented(void) {}
+namespace x2::presentation {
+void boot_blackout_frame_presented() {}
+} // namespace x2::presentation
 
 int main(void) {
   SDL_GPUDevice *device = (SDL_GPUDevice *)(uintptr_t)0x1000;

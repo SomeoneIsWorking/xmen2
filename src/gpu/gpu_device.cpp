@@ -569,7 +569,7 @@ void gpu_frame_end(void) {
   /* Boot presentation policy: withhold the retail boot's branding (legal
      loading backdrop, splash art) by presenting black until the
      destination map is up; see src/presentation/boot_blackout.cpp. */
-  if (x2_boot_blackout_active())
+  if (x2::presentation::boot_blackout_active())
     gpu_present_boot_blackout(g_cmd,
                               gpu_headless_active() ? g_swap : final_output);
   gpu_capture_submit_frame(g_gpu, g_cmd, gpu_headless_active(),

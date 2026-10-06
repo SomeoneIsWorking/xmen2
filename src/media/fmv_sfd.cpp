@@ -6,46 +6,56 @@ extern "C" {
 #include <libavformat/avformat.h>
 }
 
-#include <stdint.h>
-#include <string.h>
+#include <cstdint>
+#include <cstring>
 
-#define X2_SFD_AUDIO_STREAM_ID 0x1c0
-#define X2_SFD_VIDEO_STREAM_ID 0x1e0
-#define X2_SFD_PROBE_BYTES (1024 * 1024)
-#define X2_SFD_PROBE_TIME_US (2 * AV_TIME_BASE)
+namespace x2::media {
 
-void x2_fmv_sfd_configure_probe(AVFormatContext *format) {
+namespace {
+
+constexpr int SFD_AUDIO_STREAM_ID = 0x1c0;
+constexpr int SFD_VIDEO_STREAM_ID = 0x1e0;
+constexpr int SFD_PROBE_BYTES = 1024 * 1024;
+constexpr int64_t SFD_PROBE_TIME_US = 2 * AV_TIME_BASE;
+
+} // namespace
+
+void fmv_sfd_configure_probe(AVFormatContext *format) {
   unsigned i;
-  if (!format || !format->iformat || strcmp(format->iformat->name, "mpeg") != 0)
+  if (!format || !format->iformat ||
+      std::strcmp(format->iformat->name, "mpeg") != 0)
     return;
-  format->probesize = X2_SFD_PROBE_BYTES;
-  format->max_analyze_duration = X2_SFD_PROBE_TIME_US;
+  format->probesize = SFD_PROBE_BYTES;
+  format->max_analyze_duration = SFD_PROBE_TIME_US;
   for (i = 0; i < format->nb_streams; ++i) {
     AVCodecParameters *parameters = format->streams[i]->codecpar;
-    if (format->streams[i]->id == X2_SFD_VIDEO_STREAM_ID &&
+    if (format->streams[i]->id == SFD_VIDEO_STREAM_ID &&
         parameters->codec_type == AVMEDIA_TYPE_VIDEO &&
         parameters->codec_id == AV_CODEC_ID_NONE)
       parameters->codec_id = AV_CODEC_ID_MPEG1VIDEO;
-    else if (format->streams[i]->id == X2_SFD_AUDIO_STREAM_ID &&
+    else if (format->streams[i]->id == SFD_AUDIO_STREAM_ID &&
              parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
              parameters->codec_id == AV_CODEC_ID_NONE)
       parameters->codec_id = AV_CODEC_ID_ADPCM_ADX;
   }
 }
 
-static int label_streams(AVFormatContext *format) {
+namespace {
+
+int label_streams(AVFormatContext *format) {
   unsigned i;
   int changed = 0;
-  if (!format || !format->iformat || strcmp(format->iformat->name, "mpeg") != 0)
+  if (!format || !format->iformat ||
+      std::strcmp(format->iformat->name, "mpeg") != 0)
     return 0;
   for (i = 0; i < format->nb_streams; ++i) {
     AVCodecParameters *parameters = format->streams[i]->codecpar;
-    if (format->streams[i]->id == X2_SFD_VIDEO_STREAM_ID &&
+    if (format->streams[i]->id == SFD_VIDEO_STREAM_ID &&
         parameters->codec_type == AVMEDIA_TYPE_VIDEO &&
         parameters->codec_id == AV_CODEC_ID_NONE) {
       parameters->codec_id = AV_CODEC_ID_MPEG1VIDEO;
       changed = 1;
-    } else if (format->streams[i]->id == X2_SFD_AUDIO_STREAM_ID &&
+    } else if (format->streams[i]->id == SFD_AUDIO_STREAM_ID &&
                parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
                parameters->codec_id == AV_CODEC_ID_NONE) {
       parameters->codec_id = AV_CODEC_ID_ADPCM_ADX;
@@ -55,7 +65,7 @@ static int label_streams(AVFormatContext *format) {
   return changed;
 }
 
-static int prime_stream(AVFormatContext *format, X2FmvSfd *sfd) {
+int prime_stream(AVFormatContext *format, FmvSfd *sfd) {
   AVPacket *packet;
   unsigned packets = 0;
   int found = 0;
@@ -72,7 +82,7 @@ static int prime_stream(AVFormatContext *format, X2FmvSfd *sfd) {
                 (unsigned)packet->stream_index < format->nb_streams
             ? format->streams[packet->stream_index]
             : NULL;
-    if (stream && stream->id == X2_SFD_VIDEO_STREAM_ID && packet->size >= 7) {
+    if (stream && stream->id == SFD_VIDEO_STREAM_ID && packet->size >= 7) {
       int i;
       for (i = 0; i + 7 <= packet->size; ++i) {
         const uint8_t *data = packet->data + i;
@@ -87,7 +97,7 @@ static int prime_stream(AVFormatContext *format, X2FmvSfd *sfd) {
           break;
         }
       }
-    } else if (stream && stream->id == X2_SFD_AUDIO_STREAM_ID &&
+    } else if (stream && stream->id == SFD_AUDIO_STREAM_ID &&
                packet->size > 0 && sfd->bootstrap_audio->size == 0) {
       if (av_packet_ref(sfd->bootstrap_audio, packet) < 0)
         break;
@@ -100,21 +110,23 @@ static int prime_stream(AVFormatContext *format, X2FmvSfd *sfd) {
   return found;
 }
 
-int x2_fmv_sfd_prepare(AVFormatContext *format, X2FmvSfd *sfd) {
+} // namespace
+
+int fmv_sfd_prepare(AVFormatContext *format, FmvSfd *sfd) {
   if (!sfd || !label_streams(format))
     return 0;
   sfd->bootstrap_video = av_packet_alloc();
   sfd->bootstrap_audio = av_packet_alloc();
   if (!sfd->bootstrap_video || !sfd->bootstrap_audio ||
       !prime_stream(format, sfd)) {
-    x2_fmv_sfd_close(sfd);
+    fmv_sfd_close(sfd);
     return 0;
   }
   sfd->manual = 1;
   return 1;
 }
 
-void x2_fmv_sfd_close(X2FmvSfd *sfd) {
+void fmv_sfd_close(FmvSfd *sfd) {
   if (!sfd)
     return;
   av_packet_free(&sfd->bootstrap_audio);
@@ -123,9 +135,9 @@ void x2_fmv_sfd_close(X2FmvSfd *sfd) {
   sfd->manual = 0;
 }
 
-int x2_fmv_sfd_send_video(X2FmvSfd *sfd, AVCodecContext *codec,
-                          const AVPacket *packet, X2FmvSfdSendPacket send,
-                          void *userdata) {
+int fmv_sfd_send_video(FmvSfd *sfd, AVCodecContext *codec,
+                       const AVPacket *packet, FmvSfdSendPacket send,
+                       void *userdata) {
   const uint8_t *input = packet->data;
   int remaining = packet->size;
   if (!sfd->video_parser)
@@ -154,8 +166,8 @@ int x2_fmv_sfd_send_video(X2FmvSfd *sfd, AVCodecContext *codec,
   return 0;
 }
 
-int x2_fmv_sfd_flush_video(X2FmvSfd *sfd, AVCodecContext *codec,
-                           X2FmvSfdSendPacket send, void *userdata) {
+int fmv_sfd_flush_video(FmvSfd *sfd, AVCodecContext *codec,
+                        FmvSfdSendPacket send, void *userdata) {
   uint8_t *output = NULL;
   int output_size = 0;
   int result;
@@ -173,3 +185,5 @@ int x2_fmv_sfd_flush_video(X2FmvSfd *sfd, AVCodecContext *codec,
   }
   return 0;
 }
+
+} // namespace x2::media

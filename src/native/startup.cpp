@@ -275,7 +275,8 @@ void x2_override_0055beb0(CPU *C) {
       exe_base = mapped_exe_base();
     if (boot_to_host_mode(C, s, exe_base)) {
       x2_boot_splash_arm();
-      x2_boot_blackout_arm(x2_boot_mode_name(x2_settings_store()->boot_mode));
+      x2::presentation::boot_blackout_arm(
+          x2_boot_mode_name(x2_settings_store()->boot_mode));
       return;
     }
   }

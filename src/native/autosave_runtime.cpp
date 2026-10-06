@@ -37,7 +37,7 @@ enum AutosaveLastResult {
   AUTOSAVE_LAST_SUCCEEDED
 };
 
-static X2AutosavePolicy g_policy;
+static x2::save::AutosavePolicy g_policy;
 static uint32_t g_exe;
 static X2CampaignSnapshot *g_snapshot;
 static uint32_t g_last_manager_mode;
@@ -49,7 +49,7 @@ static int g_initialized;
 static void initialize(void) {
   if (g_initialized)
     return;
-  x2_autosave_policy_init(&g_policy);
+  x2::save::autosave_policy_init(&g_policy);
   g_initialized = 1;
 }
 
@@ -106,17 +106,17 @@ static int publish_snapshot(const CPU *source) {
 
 void x2_autosave_runtime_map_return(int succeeded) {
   initialize();
-  x2_autosave_policy_map_return(&g_policy, succeeded);
+  x2::save::autosave_policy_map_return(&g_policy, succeeded);
 }
 
 void x2_autosave_runtime_menu_show(void) {
   initialize();
-  x2_autosave_policy_menu_show(&g_policy);
+  x2::save::autosave_policy_menu_show(&g_policy);
 }
 
 void x2_autosave_runtime_poll(CPU *cpu) {
-  X2AutosaveCheckpoint checkpoint;
-  X2AutosavePollResult result;
+  x2::save::AutosaveCheckpoint checkpoint;
+  x2::save::AutosavePollResult result;
   int succeeded;
 
   initialize();
@@ -124,13 +124,13 @@ void x2_autosave_runtime_poll(CPU *cpu) {
     return;
   g_last_manager_mode = RD32(g_exe + MANAGER_RVA + MANAGER_MODE);
   g_last_control = x2_gameplay_control_state(guest_clock_now_s());
-  result =
-      x2_autosave_policy_poll(&g_policy, g_last_manager_mode,
-                              g_last_control == kX2ControlActive, &checkpoint);
-  if (result != X2_AUTOSAVE_POLL_FIRE)
+  result = x2::save::autosave_policy_poll(&g_policy, g_last_manager_mode,
+                                          g_last_control == kX2ControlActive,
+                                          &checkpoint);
+  if (result != x2::save::AutosavePollResult::Fire)
     return;
   succeeded = publish_snapshot(cpu);
-  x2_autosave_policy_finish(&g_policy, checkpoint.id, succeeded);
+  x2::save::autosave_policy_finish(&g_policy, checkpoint.id, succeeded);
 }
 
 size_t x2_autosave_runtime_report(char *out, size_t capacity) {
@@ -176,7 +176,7 @@ static void x2_autosave_override_00484ce0(CPU *C) {
      boot blackout waits for. Later zone loads arrive while the blackout is
      already closed and are no-ops to it. */
   if (succeeded)
-    x2_boot_blackout_disarm("the boot's map load returned");
+    x2::presentation::boot_blackout_disarm("the boot's map load returned");
 }
 
 __attribute__((constructor)) static void x2_autosave_register(void) {

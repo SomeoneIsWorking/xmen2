@@ -31,8 +31,8 @@ typedef struct {
 struct X2FmvPlayer {
   AVFormatContext *format;
   AVCodecContext *video_codec;
-  X2FmvSfd sfd;
-  X2FmvAudioDecode *audio_decode;
+  x2::media::FmvSfd sfd;
+  x2::media::FmvAudioDecode *audio_decode;
   struct SwsContext *scaler;
   AVFrame *frame;
   AVPacket *packet;
@@ -225,17 +225,17 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
             playback_seconds + VIDEO_HORIZON_SECONDS)
       break;
     if (player->sfd.bootstrap_audio) {
-      result = x2_fmv_audio_decode_send_packet(player->audio_decode,
-                                               player->sfd.bootstrap_audio);
+      result = x2::media::fmv_audio_decode_send_packet(
+          player->audio_decode, player->sfd.bootstrap_audio);
       av_packet_free(&player->sfd.bootstrap_audio);
       if (result < 0)
         return result;
       continue;
     }
     if (player->sfd.bootstrap_video) {
-      result = x2_fmv_sfd_send_video(&player->sfd, player->video_codec,
-                                     player->sfd.bootstrap_video,
-                                     send_video_payload, player);
+      result = x2::media::fmv_sfd_send_video(&player->sfd, player->video_codec,
+                                             player->sfd.bootstrap_video,
+                                             send_video_payload, player);
       av_packet_free(&player->sfd.bootstrap_video);
       if (result < 0)
         return result;
@@ -249,12 +249,12 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
     if (result < 0)
       return result;
     if (player->packet->stream_index == player->video_stream)
-      result =
-          x2_fmv_sfd_send_video(&player->sfd, player->video_codec,
-                                player->packet, send_video_payload, player);
+      result = x2::media::fmv_sfd_send_video(&player->sfd, player->video_codec,
+                                             player->packet, send_video_payload,
+                                             player);
     else if (player->packet->stream_index == player->audio_stream)
-      result =
-          x2_fmv_audio_decode_send_packet(player->audio_decode, player->packet);
+      result = x2::media::fmv_audio_decode_send_packet(player->audio_decode,
+                                                       player->packet);
     else
       result = 0;
     av_packet_unref(player->packet);
@@ -262,19 +262,19 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
       return result;
   }
   if (player->eof) {
-    result = x2_fmv_sfd_flush_video(&player->sfd, player->video_codec,
-                                    send_video_payload, player);
+    result = x2::media::fmv_sfd_flush_video(&player->sfd, player->video_codec,
+                                            send_video_payload, player);
     if (result < 0)
       return result;
     int video_result =
         x2_fmv_decoder_drain(&player->video_drain, &g_video_drain_ops, player);
-    int audio_result = x2_fmv_decoder_drain(&player->audio_drain,
-                                            x2_fmv_audio_decode_drain_ops(),
-                                            player->audio_decode);
+    int audio_result = x2_fmv_decoder_drain(
+        &player->audio_drain, x2::media::fmv_audio_decode_drain_ops(),
+        player->audio_decode);
     if (video_result < 0)
       return player->drain_error ? player->drain_error : AVERROR_BUG;
     if (audio_result < 0)
-      return x2_fmv_audio_decode_error(player->audio_decode);
+      return x2::media::fmv_audio_decode_error(player->audio_decode);
   }
   return 0;
 }
@@ -283,8 +283,8 @@ static void select_video_frame(X2FmvPlayer *player, const VideoFrame *frame) {
   size_t pitch = (size_t)player->width * 4u;
   memcpy(player->current_bgra, frame->bgra, pitch * (size_t)player->height);
   player->have_current = 1;
-  x2_fmv_probe_decoded(player->current_bgra, player->width, player->height,
-                       pitch);
+  x2::media::fmv_probe_decoded(player->current_bgra, player->width,
+                               player->height, pitch);
 }
 
 X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
@@ -301,10 +301,10 @@ X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
     player->sink = *sink;
   result = avformat_open_input(&player->format, path, NULL, NULL);
   if (result >= 0) {
-    x2_fmv_sfd_configure_probe(player->format);
+    x2::media::fmv_sfd_configure_probe(player->format);
     result = avformat_find_stream_info(player->format, NULL);
     if (result >= 0)
-      x2_fmv_sfd_prepare(player->format, &player->sfd);
+      x2::media::fmv_sfd_prepare(player->format, &player->sfd);
   }
   if (result < 0) {
     error_text(error, error_size, "cannot open SFD", result);
@@ -368,7 +368,7 @@ X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
                                   player->height, AV_PIX_FMT_BGRA, SWS_BILINEAR,
                                   NULL, NULL, NULL);
   player->audio_decode =
-      x2_fmv_audio_decode_create(audio_codec, &player->sink, &result);
+      x2::media::fmv_audio_decode_create(audio_codec, &player->sink, &result);
   player->frame = av_frame_alloc();
   player->packet = av_packet_alloc();
   player->current_bgra =
@@ -398,9 +398,9 @@ void x2_fmv_close(X2FmvPlayer *player) {
   free_video_queue(player);
   av_free(player->current_bgra);
   av_packet_free(&player->packet);
-  x2_fmv_sfd_close(&player->sfd);
+  x2::media::fmv_sfd_close(&player->sfd);
   av_frame_free(&player->frame);
-  x2_fmv_audio_decode_close(player->audio_decode);
+  x2::media::fmv_audio_decode_close(player->audio_decode);
   sws_freeContext(player->scaler);
   avcodec_free_context(&player->video_codec);
   avformat_close_input(&player->format);
@@ -477,7 +477,8 @@ int x2_fmv_height(const X2FmvPlayer *player) {
   return player ? player->height : 0;
 }
 int x2_fmv_sample_rate(const X2FmvPlayer *player) {
-  return player ? x2_fmv_audio_decode_sample_rate(player->audio_decode) : 0;
+  return player ? x2::media::fmv_audio_decode_sample_rate(player->audio_decode)
+                : 0;
 }
 X2FmvState x2_fmv_state(const X2FmvPlayer *player) {
   return player ? player->state : X2_FMV_FAILED;
@@ -486,7 +487,7 @@ unsigned long x2_fmv_decoded_frames(const X2FmvPlayer *player) {
   return player ? player->decoded_video : 0;
 }
 unsigned long x2_fmv_decoded_audio_frames(const X2FmvPlayer *player) {
-  return player ? x2_fmv_audio_decode_samples(player->audio_decode) : 0;
+  return player ? x2::media::fmv_audio_decode_samples(player->audio_decode) : 0;
 }
 
 void x2_fmv_report(const X2FmvPlayer *player) {
@@ -497,7 +498,7 @@ void x2_fmv_report(const X2FmvPlayer *player) {
               "%u clamped\n",
               player->decoded_video, player->displayed_video,
               player->dropped_video,
-              x2_fmv_audio_decode_samples(player->audio_decode),
+              x2::media::fmv_audio_decode_samples(player->audio_decode),
               player->decode_failures, player->timeline.timestamp_fallbacks,
               player->timeline.timestamp_clamps);
 }

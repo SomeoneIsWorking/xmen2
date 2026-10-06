@@ -8,6 +8,7 @@
  * enter, so it is the one place the host has to be armed.
  */
 #include "../presentation/display_geometry.h"
+#include "../presentation/display_mode_seed.h"
 #include "d3d8_caps.h"
 #include "d3d8_com.h"
 #include "d3d8_device.h"
@@ -65,10 +66,8 @@ static void resolve_published_mode(void) {
     return;
   g_published_mode.resolved = 1;
   {
-    extern uint32_t x2_display_mode_seed_width(void);
-    extern uint32_t x2_display_mode_seed_height(void);
-    uint32_t w = x2_display_mode_seed_width();
-    uint32_t h = x2_display_mode_seed_height();
+    uint32_t w = x2::presentation::display_mode_seed_width();
+    uint32_t h = x2::presentation::display_mode_seed_height();
     int j;
     if (w && h)
       for (j = 0; j < NBASE_MODES; j++)

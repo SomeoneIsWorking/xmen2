@@ -700,9 +700,9 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
                            static_cast<const uint8_t *>(bytes), byte_count);
   if ((sub % r->levels) == 0 &&
       (r->format == D3DFMT_A8R8G8B8 || r->format == D3DFMT_X8R8G8B8))
-    x2_fmv_probe_upload(static_cast<const uint8_t *>(bytes), byte_count,
-                        static_cast<int>(lw), static_cast<int>(lh),
-                        row_pitch(r->format, lw));
+    x2::media::fmv_probe_upload(static_cast<const uint8_t *>(bytes), byte_count,
+                                static_cast<int>(lw), static_cast<int>(lh),
+                                row_pitch(r->format, lw));
   r->uploads++;
   r->last_upload_level = sub % r->levels;
 }

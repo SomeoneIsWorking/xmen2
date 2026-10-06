@@ -1,58 +1,51 @@
-#ifndef X2_AUTOSAVE_POLICY_H
-#define X2_AUTOSAVE_POLICY_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-#define X2_AUTOSAVE_IDLE_POLLS 64u
+namespace x2::save {
 
-typedef enum {
-  X2_AUTOSAVE_CHECKPOINT_NONE = 0,
-  X2_AUTOSAVE_CHECKPOINT_MAP_LOAD
-} X2AutosaveCheckpointKind;
+inline constexpr unsigned kAutosaveIdlePolls = 64u;
 
-typedef struct {
-  uint64_t id;
-  X2AutosaveCheckpointKind kind;
-} X2AutosaveCheckpoint;
+enum class AutosaveCheckpointKind { None = 0, MapLoad };
 
-typedef enum {
-  X2_AUTOSAVE_POLL_IDLE = 0,
-  X2_AUTOSAVE_POLL_DEFERRED,
-  X2_AUTOSAVE_POLL_AWAITING_RESULT,
-  X2_AUTOSAVE_POLL_FIRE
-} X2AutosavePollResult;
+struct AutosaveCheckpoint {
+  std::uint64_t id;
+  AutosaveCheckpointKind kind;
+};
 
-typedef struct {
-  uint64_t map_returns;
-  uint64_t successful_map_returns;
-  uint64_t scheduled;
-  uint64_t cancelled_menu;
-  uint64_t deferred_polls;
-  uint64_t control_deferred_polls;
-  uint64_t attempts;
-  uint64_t successes;
-  uint64_t failures;
-  X2AutosaveCheckpoint pending;
-  X2AutosaveCheckpoint active;
+enum class AutosavePollResult { Idle = 0, Deferred, AwaitingResult, Fire };
+
+struct AutosavePolicy {
+  std::uint64_t map_returns;
+  std::uint64_t successful_map_returns;
+  std::uint64_t scheduled;
+  std::uint64_t cancelled_menu;
+  std::uint64_t deferred_polls;
+  std::uint64_t control_deferred_polls;
+  std::uint64_t attempts;
+  std::uint64_t successes;
+  std::uint64_t failures;
+  AutosaveCheckpoint pending;
+  AutosaveCheckpoint active;
   unsigned idle_polls;
   int has_pending;
   int has_active;
-} X2AutosavePolicy;
+};
 
-void x2_autosave_policy_init(X2AutosavePolicy *policy);
-void x2_autosave_policy_map_return(X2AutosavePolicy *policy, int succeeded);
-void x2_autosave_policy_menu_show(X2AutosavePolicy *policy);
-/* One guest input poll. The checkpoint fires after X2_AUTOSAVE_IDLE_POLLS
+void autosave_policy_init(AutosavePolicy *policy);
+void autosave_policy_map_return(AutosavePolicy *policy, int succeeded);
+void autosave_policy_menu_show(AutosavePolicy *policy);
+/* One guest input poll. The checkpoint fires after kAutosaveIdlePolls
    consecutive polls in which the retail save manager is idle (mode 0) AND the
    player controls a character. A level's opening script can park the party
    out of sight under a control lock and set the flag that stops it from
    running again (Dead Zone's deadzone1.py); a snapshot taken inside that
    window restores an invisible party that no script ever moves back. */
-X2AutosavePollResult x2_autosave_policy_poll(X2AutosavePolicy *policy,
-                                             uint32_t manager_mode,
-                                             int player_controls,
-                                             X2AutosaveCheckpoint *checkpoint);
-int x2_autosave_policy_finish(X2AutosavePolicy *policy, uint64_t checkpoint_id,
-                              int succeeded);
+AutosavePollResult autosave_policy_poll(AutosavePolicy *policy,
+                                        std::uint32_t manager_mode,
+                                        int player_controls,
+                                        AutosaveCheckpoint *checkpoint);
+int autosave_policy_finish(AutosavePolicy *policy, std::uint64_t checkpoint_id,
+                           int succeeded);
 
-#endif
+} // namespace x2::save

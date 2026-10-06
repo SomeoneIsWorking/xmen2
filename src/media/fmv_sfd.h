@@ -1,27 +1,28 @@
-#ifndef X2_FMV_SFD_H
-#define X2_FMV_SFD_H
+#pragma once
 
-typedef struct AVCodecContext AVCodecContext;
-typedef struct AVCodecParserContext AVCodecParserContext;
-typedef struct AVFormatContext AVFormatContext;
-typedef struct AVPacket AVPacket;
+struct AVCodecContext;
+struct AVCodecParserContext;
+struct AVFormatContext;
+struct AVPacket;
 
-typedef struct {
+namespace x2::media {
+
+struct FmvSfd {
   AVCodecParserContext *video_parser;
   AVPacket *bootstrap_audio;
   AVPacket *bootstrap_video;
   int manual;
-} X2FmvSfd;
+};
 
-typedef int (*X2FmvSfdSendPacket)(void *userdata, const AVPacket *packet);
+using FmvSfdSendPacket = int (*)(void *userdata, const AVPacket *packet);
 
-void x2_fmv_sfd_configure_probe(AVFormatContext *format);
-int x2_fmv_sfd_prepare(AVFormatContext *format, X2FmvSfd *sfd);
-void x2_fmv_sfd_close(X2FmvSfd *sfd);
-int x2_fmv_sfd_send_video(X2FmvSfd *sfd, AVCodecContext *codec,
-                          const AVPacket *packet, X2FmvSfdSendPacket send,
-                          void *userdata);
-int x2_fmv_sfd_flush_video(X2FmvSfd *sfd, AVCodecContext *codec,
-                           X2FmvSfdSendPacket send, void *userdata);
+void fmv_sfd_configure_probe(AVFormatContext *format);
+int fmv_sfd_prepare(AVFormatContext *format, FmvSfd *sfd);
+void fmv_sfd_close(FmvSfd *sfd);
+int fmv_sfd_send_video(FmvSfd *sfd, AVCodecContext *codec,
+                       const AVPacket *packet, FmvSfdSendPacket send,
+                       void *userdata);
+int fmv_sfd_flush_video(FmvSfd *sfd, AVCodecContext *codec,
+                        FmvSfdSendPacket send, void *userdata);
 
-#endif
+} // namespace x2::media

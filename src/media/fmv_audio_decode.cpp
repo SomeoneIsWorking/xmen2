@@ -9,9 +9,11 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-#include <stdlib.h>
+#include <cstdlib>
 
-struct X2FmvAudioDecode {
+namespace x2::media {
+
+struct FmvAudioDecode {
   AVCodecContext *codec;
   SwrContext *resampler;
   AVFrame *frame;
@@ -21,7 +23,9 @@ struct X2FmvAudioDecode {
   int error;
 };
 
-static int queue_output(X2FmvAudioDecode *decode, uint8_t *output, int frames) {
+namespace {
+
+int queue_output(FmvAudioDecode *decode, uint8_t *output, int frames) {
   if (frames > 0 && decode->sink.queue_stereo_f32 &&
       !decode->sink.queue_stereo_f32(decode->sink.userdata,
                                      (const float *)output, (size_t)frames,
@@ -32,7 +36,7 @@ static int queue_output(X2FmvAudioDecode *decode, uint8_t *output, int frames) {
   return frames;
 }
 
-static int convert_frame(X2FmvAudioDecode *decode) {
+int convert_frame(FmvAudioDecode *decode) {
   int capacity = (int)av_rescale_rnd(
       swr_get_delay(decode->resampler, decode->codec->sample_rate) +
           decode->frame->nb_samples,
@@ -53,8 +57,8 @@ static int convert_frame(X2FmvAudioDecode *decode) {
   return result;
 }
 
-static X2FmvDrainResult receive_step(void *userdata) {
-  X2FmvAudioDecode *decode = (X2FmvAudioDecode *)userdata;
+X2FmvDrainResult receive_step(void *userdata) {
+  FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int result = avcodec_receive_frame(decode->codec, decode->frame);
   if (result == AVERROR(EAGAIN))
     return X2_FMV_DRAIN_NEEDS_INPUT;
@@ -69,7 +73,7 @@ static X2FmvDrainResult receive_step(void *userdata) {
   return X2_FMV_DRAIN_PROGRESS;
 }
 
-static int receive_all(X2FmvAudioDecode *decode) {
+int receive_all(FmvAudioDecode *decode) {
   int received = 0;
   for (;;) {
     X2FmvDrainResult result = receive_step(decode);
@@ -83,8 +87,8 @@ static int receive_all(X2FmvAudioDecode *decode) {
   }
 }
 
-static X2FmvFlushResult send_flush(void *userdata) {
-  X2FmvAudioDecode *decode = (X2FmvAudioDecode *)userdata;
+X2FmvFlushResult send_flush(void *userdata) {
+  FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int result = avcodec_send_packet(decode->codec, NULL);
   if (result >= 0 || result == AVERROR_EOF)
     return X2_FMV_FLUSH_ACCEPTED;
@@ -94,8 +98,8 @@ static X2FmvFlushResult send_flush(void *userdata) {
   return X2_FMV_FLUSH_FAILED;
 }
 
-static X2FmvDrainResult flush_tail(void *userdata) {
-  X2FmvAudioDecode *decode = (X2FmvAudioDecode *)userdata;
+X2FmvDrainResult flush_tail(void *userdata) {
+  FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int64_t delay = swr_get_delay(decode->resampler, decode->codec->sample_rate);
   int capacity;
   int result;
@@ -121,14 +125,15 @@ static X2FmvDrainResult flush_tail(void *userdata) {
   return result > 0 ? X2_FMV_DRAIN_PROGRESS : X2_FMV_DRAIN_COMPLETE;
 }
 
-static const X2FmvDecoderDrainOps g_drain_ops = {send_flush, receive_step,
-                                                 flush_tail};
+const X2FmvDecoderDrainOps g_drain_ops = {send_flush, receive_step, flush_tail};
 
-X2FmvAudioDecode *x2_fmv_audio_decode_create(AVCodecContext *codec,
-                                             const X2FmvAudioSink *sink,
-                                             int *error) {
-  X2FmvAudioDecode *decode =
-      static_cast<X2FmvAudioDecode *>(calloc(1, sizeof(*decode)));
+} // namespace
+
+FmvAudioDecode *fmv_audio_decode_create(AVCodecContext *codec,
+                                        const X2FmvAudioSink *sink,
+                                        int *error) {
+  FmvAudioDecode *decode =
+      static_cast<FmvAudioDecode *>(calloc(1, sizeof(*decode)));
   AVChannelLayout stereo = AV_CHANNEL_LAYOUT_STEREO;
   int result = 0;
   if (!decode) {
@@ -152,7 +157,7 @@ X2FmvAudioDecode *x2_fmv_audio_decode_create(AVCodecContext *codec,
       result = AVERROR(ENOMEM);
     if (error)
       *error = result;
-    x2_fmv_audio_decode_close(decode);
+    fmv_audio_decode_close(decode);
     return NULL;
   }
   if (error)
@@ -160,7 +165,7 @@ X2FmvAudioDecode *x2_fmv_audio_decode_create(AVCodecContext *codec,
   return decode;
 }
 
-void x2_fmv_audio_decode_close(X2FmvAudioDecode *decode) {
+void fmv_audio_decode_close(FmvAudioDecode *decode) {
   if (!decode)
     return;
   av_frame_free(&decode->frame);
@@ -169,8 +174,8 @@ void x2_fmv_audio_decode_close(X2FmvAudioDecode *decode) {
   free(decode);
 }
 
-int x2_fmv_audio_decode_send_packet(X2FmvAudioDecode *decode,
-                                    const AVPacket *packet) {
+int fmv_audio_decode_send_packet(FmvAudioDecode *decode,
+                                 const AVPacket *packet) {
   AVPacket aligned = *packet;
   const AVPacket *input = packet;
   int result;
@@ -197,18 +202,20 @@ int x2_fmv_audio_decode_send_packet(X2FmvAudioDecode *decode,
   return receive_all(decode) < 0 ? decode->error : 0;
 }
 
-const X2FmvDecoderDrainOps *x2_fmv_audio_decode_drain_ops(void) {
+const X2FmvDecoderDrainOps *fmv_audio_decode_drain_ops() {
   return &g_drain_ops;
 }
 
-int x2_fmv_audio_decode_sample_rate(const X2FmvAudioDecode *decode) {
+int fmv_audio_decode_sample_rate(const FmvAudioDecode *decode) {
   return decode ? decode->sample_rate : 0;
 }
 
-unsigned long x2_fmv_audio_decode_samples(const X2FmvAudioDecode *decode) {
+unsigned long fmv_audio_decode_samples(const FmvAudioDecode *decode) {
   return decode ? decode->decoded_samples : 0;
 }
 
-int x2_fmv_audio_decode_error(const X2FmvAudioDecode *decode) {
+int fmv_audio_decode_error(const FmvAudioDecode *decode) {
   return decode ? decode->error : AVERROR(EINVAL);
 }
+
+} // namespace x2::media
