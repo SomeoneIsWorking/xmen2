@@ -1,3 +1,4 @@
+#include "environment.h"
 #include "fmv_probe.h"
 
 #include <stdio.h>
@@ -15,7 +16,7 @@ int main(void) {
     decoded[row] = (uint8_t)(row * 7 + 3);
   memset(padded, 0xa5, sizeof(padded));
   memset(upload, 0, sizeof(upload));
-  setenv("X2_FMV_PROBE", "cine01.sfd", 1);
+  x2_guest_environment_set("X2_FMV_PROBE", "cine01.sfd");
   x2_fmv_probe_begin("movies/ntsc/eng/c/1/cine01.sfd");
   x2_fmv_probe_decoded(decoded, 3, 3, 12);
   for (row = 0; row < 3; ++row) {

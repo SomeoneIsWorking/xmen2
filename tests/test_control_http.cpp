@@ -6,10 +6,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 enum { BODY_BYTES = 3000, RECEIVE_BYTES = 8192 };
+
+/* A connected loopback TCP pair: what the control server's clients are. */
+static int socket_pair(x2_socket_t pair[2]) {
+  struct sockaddr_in at;
+  memset(&at, 0, sizeof at);
+  at.sin_family = AF_INET;
+  at.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  const x2_socket_t listener = x2_socket_open(AF_INET, SOCK_STREAM, 0);
+  if (x2_socket_is_invalid(listener))
+    return 0;
+  const int listening =
+      x2_socket_bind(listener, (struct sockaddr *)&at, sizeof at) == 0 &&
+      x2_socket_listen(listener, 1) == 0 && x2_socket_name(listener, &at) == 0;
+  pair[1] =
+      listening ? x2_socket_open(AF_INET, SOCK_STREAM, 0) : X2_SOCKET_INVALID;
+  const int connected =
+      !x2_socket_is_invalid(pair[1]) && x2_socket_connect(pair[1], &at) == 0;
+  pair[0] = connected ? x2_socket_accept(listener) : X2_SOCKET_INVALID;
+  x2_socket_close(listener);
+  return !x2_socket_is_invalid(pair[0]);
+}
 
 static int check(int condition, const char *what) {
   if (condition)
@@ -22,10 +41,10 @@ int main(void) {
   char body[BODY_BYTES + 1];
   char *received = static_cast<char *>(calloc(RECEIVE_BYTES, 1));
   size_t got = 0;
-  int pair[2];
+  x2_socket_t pair[2];
   int failures = 0;
 
-  if (!received || socketpair(AF_UNIX, SOCK_STREAM, 0, pair) != 0) {
+  if (!received || !x2_socket_startup() || !socket_pair(pair)) {
     fprintf(stderr, "FAIL: no socket pair\n");
     return 1;
   }
@@ -33,14 +52,15 @@ int main(void) {
     body[i] = static_cast<char>('a' + i % 26);
   body[BODY_BYTES] = 0;
   control_reply_text(pair[0], 200, "OK", "%s", body);
-  close(pair[0]);
+  x2_socket_close(pair[0]);
   for (;;) {
-    ssize_t k = read(pair[1], received + got, RECEIVE_BYTES - 1 - got);
+    x2_socket_ssize_t k =
+        x2_socket_recv(pair[1], received + got, RECEIVE_BYTES - 1 - got);
     if (k <= 0)
       break;
     got += static_cast<size_t>(k);
   }
-  close(pair[1]);
+  x2_socket_close(pair[1]);
 
   const char *start = strstr(received, "\r\n\r\n");
   failures += check(strstr(received, "Content-Length: 3000\r\n") != NULL,

@@ -4,7 +4,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if !defined(_WIN32)
 extern char **environ;
+#endif
+
+namespace {
+
+#if defined(_WIN32)
+// _putenv_s updates the CRT copy getenv reads and the process block a child
+// inherits; an empty value removes the variable.
+int environment_set(const char *name, const char *value, int overwrite) {
+  if (!overwrite && getenv(name)) {
+    return 0;
+  }
+  return _putenv_s(name, value) == 0 ? 0 : -1;
+}
+int environment_unset(const char *name) {
+  return _putenv_s(name, "") == 0 ? 0 : -1;
+}
+char **environment_entries() { return _environ; }
+#else
+int environment_set(const char *name, const char *value, int overwrite) {
+  return setenv(name, value, overwrite);
+}
+int environment_unset(const char *name) { return unsetenv(name); }
+char **environment_entries() { return environ; }
+#endif
+
+} // namespace
 
 static const char *const k_override_names[] = {
     "DISPLAY",
@@ -102,12 +129,12 @@ const char *x2_config_override_get(X2ConfigOverride variable) {
 int x2_config_override_set(X2ConfigOverride variable, const char *value,
                            int overwrite) {
   const char *name = x2_config_override_name(variable);
-  return name && value ? setenv(name, value, overwrite) : -1;
+  return name && value ? environment_set(name, value, overwrite) : -1;
 }
 
 int x2_config_override_unset(X2ConfigOverride variable) {
   const char *name = x2_config_override_name(variable);
-  return name ? unsetenv(name) : -1;
+  return name ? environment_unset(name) : -1;
 }
 
 int x2_config_override_from_name(const char *name, X2ConfigOverride *variable) {
@@ -129,12 +156,12 @@ const char *x2_guest_environment_get(const char *name) {
 int x2_guest_environment_set(const char *name, const char *value) {
   if (!name || !name[0])
     return -1;
-  return value ? setenv(name, value, 1) : unsetenv(name);
+  return value ? environment_set(name, value, 1) : environment_unset(name);
 }
 
 void x2_guest_environment_visit(X2GuestEnvironmentVisitor visitor, void *user) {
   if (!visitor)
     return;
-  for (char **entry = environ; entry && *entry; ++entry)
+  for (char **entry = environment_entries(); entry && *entry; ++entry)
     visitor(*entry, user);
 }

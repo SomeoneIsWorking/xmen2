@@ -71,10 +71,10 @@ jobs:
       - name: Compile platform-neutral native components
         run: CC=clang CXX=clang++ uv run --frozen python tools/ci.py native-components --target macos-arm64
 
-  windows-policy:
-    name: Windows policy (native host unsupported)
+  windows-x86_64:
+    name: Windows x86-64 native and JIT components (llvm-mingw)
     runs-on: windows-2025
-    timeout-minutes: 15
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -88,8 +88,19 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
           cache-dependency-glob: uv.lock
+      # The runner image ships MSYS2. FFmpeg's configure needs its sh and make;
+      # pkgconf reads the prefix's .pc files and glslc builds the shaders.
+      # llvm-mingw and every library come from tools/windows_deps.py.
+      - name: Install the Windows host build tools from MSYS2
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-shaderc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - run: uv sync --frozen
       - run: uv run --frozen python tools/ci.py policy --target windows-x86_64
+      - run: uv run --frozen python tools/ci.py native-components --target windows-x86_64
 
   android-arm64-policy:
     name: Android ARM64 policy (product JIT unsupported)

@@ -3,12 +3,12 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 #define EXE_BASE 0x00400000u
 #define IMAGE_SIZE 0x00700000u

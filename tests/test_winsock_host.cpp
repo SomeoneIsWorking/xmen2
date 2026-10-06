@@ -6,16 +6,12 @@
  * made and one it did not, an option that translates and one that must be
  * refused rather than passed through under a wrong number.
  */
-#include "../src/native/winsock_posix.h"
+#include "../src/native/platform_socket.h"
+#include "../src/native/winsock_host.h"
 #include "../src/native/winsock_resolve.h"
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 static int g_checks;
 static int g_failed;
@@ -30,14 +26,16 @@ static int g_failed;
   } while (0)
 
 static void errors(void) {
-  CHECK(winsock_error_from_errno(EWOULDBLOCK) == WSAEWOULDBLOCK);
+#if !defined(_WIN32)
+  CHECK(winsock_error_from_errno(EWOULDBLOCK) == WINSOCK_EWOULDBLOCK);
   /* A non-blocking connect under way is WOULDBLOCK on Windows. */
-  CHECK(winsock_error_from_errno(EINPROGRESS) == WSAEWOULDBLOCK);
-  CHECK(winsock_error_from_errno(ECONNREFUSED) == WSAECONNREFUSED);
-  CHECK(winsock_error_from_errno(EADDRINUSE) == WSAEADDRINUSE);
-  CHECK(winsock_error_from_errno(ENOENT) == WSAEINVAL);
-  winsock_set_last_error(WSAEMSGSIZE);
-  CHECK(winsock_last_error() == WSAEMSGSIZE);
+  CHECK(winsock_error_from_errno(EINPROGRESS) == WINSOCK_EWOULDBLOCK);
+  CHECK(winsock_error_from_errno(ECONNREFUSED) == WINSOCK_ECONNREFUSED);
+  CHECK(winsock_error_from_errno(EADDRINUSE) == WINSOCK_EADDRINUSE);
+  CHECK(winsock_error_from_errno(ENOENT) == WINSOCK_EINVAL);
+#endif
+  winsock_set_last_error(WINSOCK_EMSGSIZE);
+  CHECK(winsock_last_error() == WINSOCK_EMSGSIZE);
 }
 
 static void addresses(void) {
@@ -52,9 +50,25 @@ static void addresses(void) {
   CHECK(memcmp(back, guest, sizeof back) == 0);
   const uint8_t ipv6[16] = {23, 0};
   CHECK(!winsock_sockaddr_to_host(ipv6, 16, &host, &error) &&
-        error == WSAEAFNOSUPPORT);
+        error == WINSOCK_EAFNOSUPPORT);
   CHECK(!winsock_sockaddr_to_host(guest, 8, &host, &error) &&
-        error == WSAEFAULT);
+        error == WINSOCK_EFAULT);
+}
+
+/* inet_addr's forms, each against its expected network-order value. */
+static void dotted(void) {
+  uint32_t out = 0;
+  CHECK(winsock_parse_ipv4("192.168.1.20", &out) && out == htonl(0xc0a80114u));
+  CHECK(winsock_parse_ipv4("127.1", &out) && out == htonl(0x7f000001u));
+  CHECK(winsock_parse_ipv4("10.1.258", &out) && out == htonl(0x0a010102u));
+  CHECK(winsock_parse_ipv4("0x7f.0.0.01", &out) && out == htonl(0x7f000001u));
+  CHECK(winsock_parse_ipv4("255.255.255.255", &out) && out == 0xffffffffu);
+  CHECK(!winsock_parse_ipv4("256.0.0.1", &out));
+  CHECK(!winsock_parse_ipv4("1.2.3.4.5", &out));
+  CHECK(!winsock_parse_ipv4("1.2.3.x", &out));
+  CHECK(!winsock_parse_ipv4("08.0.0.1", &out));
+  CHECK(!winsock_parse_ipv4("", &out));
+  CHECK(!winsock_parse_ipv4("1..2", &out));
 }
 
 static void options(void) {
@@ -67,50 +81,60 @@ static void options(void) {
   CHECK(!winsock_sockopt_to_host(0xffff, 0x80, &level, &name));
 }
 
+static struct sockaddr_in loopback(uint16_t port_network_order) {
+  struct sockaddr_in at;
+  memset(&at, 0, sizeof at);
+  at.sin_family = AF_INET;
+  at.sin_port = port_network_order;
+  at.sin_addr.s_addr = htonl(0x7f000001u);
+  return at;
+}
+
 static void datagrams(void) {
   uint32_t error = 0;
   const int receiver = winsock_socket_open(2, 2, 0, &error);
   const int sender = winsock_socket_open(2, 2, 0, &error);
-  CHECK(receiver >= 0 && sender >= 0);
-  if (receiver < 0 || sender < 0) {
+  CHECK(receiver > 0 && sender > 0);
+  if (receiver <= 0 || sender <= 0) {
     return;
   }
-  CHECK(winsock_is_socket((uint32_t)receiver));
-  CHECK(winsock_blocking((uint32_t)receiver));
-  CHECK(winsock_set_blocking((uint32_t)receiver, 0, &error));
-  CHECK(!winsock_blocking((uint32_t)receiver));
+  const uint32_t r = (uint32_t)receiver, s = (uint32_t)sender;
+  CHECK(winsock_is_socket(r));
+  CHECK(winsock_blocking(r));
+  CHECK(winsock_set_blocking(r, 0, &error));
+  CHECK(!winsock_blocking(r));
 
-  struct sockaddr_in at;
-  socklen_t size = sizeof at;
-  memset(&at, 0, sizeof at);
-  at.sin_family = AF_INET;
-  at.sin_addr.s_addr = htonl(0x7f000001u);
-  CHECK(bind(receiver, (struct sockaddr *)&at, sizeof at) == 0);
-  CHECK(getsockname(receiver, (struct sockaddr *)&at, &size) == 0);
+  struct sockaddr_in at = loopback(0);
+  CHECK(winsock_bind(r, &at, &error));
+  CHECK(winsock_getsockname(r, &at, &error) && at.sin_port != 0);
 
-  WinsockFdSet read = {1, {(uint32_t)receiver}};
+  WinsockFdSet read = {1, {r}};
   CHECK(winsock_select(&read, NULL, NULL, 0, &error) == 0 && read.count == 0);
 
   char buffer[8] = {0};
-  CHECK(recv(receiver, buffer, sizeof buffer, 0) < 0 &&
-        winsock_error_from_errno(errno) == WSAEWOULDBLOCK);
+  CHECK(winsock_recv(r, buffer, sizeof buffer, 0, &error) < 0 &&
+        error == WINSOCK_EWOULDBLOCK);
 
-  CHECK(sendto(sender, "ping", 4, 0, (struct sockaddr *)&at, sizeof at) == 4);
-  read = (WinsockFdSet){2, {(uint32_t)sender, (uint32_t)receiver}};
+  CHECK(winsock_sendto(s, "ping", 4, 0, &at, &error) == 4);
+  read = (WinsockFdSet){2, {s, r}};
   CHECK(winsock_select(&read, NULL, NULL, 1000000, &error) == 1 &&
-        read.count == 1 && read.handles[0] == (uint32_t)receiver);
-  CHECK(recv(receiver, buffer, sizeof buffer, 0) == 4 &&
-        memcmp(buffer, "ping", 4) == 0);
+        read.count == 1 && read.handles[0] == r);
+  uint32_t pending = 0;
+  CHECK(winsock_pending(r, &pending, &error) && pending >= 4);
+  struct sockaddr_in from;
+  CHECK(winsock_recvfrom(r, buffer, sizeof buffer, 0, &from, &error) == 4 &&
+        memcmp(buffer, "ping", 4) == 0 &&
+        from.sin_addr.s_addr == htonl(0x7f000001u));
 
   const unsigned open = winsock_open_count();
-  CHECK(winsock_close((uint32_t)sender, &error));
+  CHECK(winsock_close(s, &error));
   CHECK(winsock_open_count() == open - 1);
-  CHECK(!winsock_is_socket((uint32_t)sender));
-  CHECK(!winsock_close((uint32_t)sender, &error) && error == WSAENOTSOCK);
-  read = (WinsockFdSet){1, {(uint32_t)sender}};
+  CHECK(!winsock_is_socket(s));
+  CHECK(!winsock_close(s, &error) && error == WINSOCK_ENOTSOCK);
+  read = (WinsockFdSet){1, {s}};
   CHECK(winsock_select(&read, NULL, NULL, 0, &error) < 0 &&
-        error == WSAENOTSOCK);
-  CHECK(winsock_close((uint32_t)receiver, &error));
+        error == WINSOCK_ENOTSOCK);
+  CHECK(winsock_close(r, &error));
 }
 
 static int all_loopback(const WinsockHost *host) {
@@ -128,7 +152,7 @@ static void names(void) {
   char machine[WINSOCK_HOST_NAME_BYTES];
   WinsockHost host;
   uint32_t error = 0;
-  CHECK(gethostname(machine, sizeof machine) == 0);
+  CHECK(winsock_host_name(machine, sizeof machine));
 
   CHECK(winsock_resolve("localhost", &host, &error));
   CHECK(strcmp(host.name, machine) == 0);
@@ -152,31 +176,40 @@ static void names(void) {
         host.addresses[0] == htonl(0x7f000001u));
   error = 0;
   CHECK(!winsock_resolve("no-such-host.invalid", &host, &error) &&
-        error == WSAHOST_NOT_FOUND);
+        error == WINSOCK_HOST_NOT_FOUND);
 }
 
-static int broadcast_reaches(int receiver, uint16_t port) {
-  const int sender = socket(AF_INET, SOCK_DGRAM, 0);
-  const int on = 1;
+static int send_broadcast(uint16_t port) {
+  uint32_t error = 0;
+  const int sender = winsock_socket_open(2, 2, 0, &error);
+  int level = 0, name = 0;
   struct sockaddr_in to;
-  char buffer[8] = {0};
   memset(&to, 0, sizeof to);
   to.sin_family = AF_INET;
   to.sin_port = port;
   to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-  setsockopt(sender, SOL_SOCKET, SO_BROADCAST, &on, sizeof on);
   const int sent =
-      sendto(sender, "bcast", 5, 0, (struct sockaddr *)&to, sizeof to) == 5;
-  close(sender);
-  WinsockFdSet read = {1, {(uint32_t)receiver}};
+      sender > 0 && winsock_sockopt_to_host(0xffff, 0x20, &level, &name) &&
+      winsock_set_option((uint32_t)sender, level, name, 1, &error) &&
+      winsock_sendto((uint32_t)sender, "bcast", 5, 0, &to, &error) == 5;
+  if (sender > 0) {
+    winsock_close((uint32_t)sender, &error);
+  }
+  return sent;
+}
+
+static int broadcast_reaches(uint32_t receiver, uint16_t port) {
   uint32_t error = 0;
+  char buffer[8] = {0};
+  const int sent = send_broadcast(port);
+  WinsockFdSet read = {1, {receiver}};
   return sent && winsock_select(&read, NULL, NULL, 500000, &error) == 1 &&
-         recv(receiver, buffer, sizeof buffer, 0) == 5;
+         winsock_recv(receiver, buffer, sizeof buffer, 0, &error) == 5;
 }
 
 /* A socket bound to the machine's LAN address hears that LAN's broadcasts on
    Windows; the game's transport binds exactly that way and finds hosts by
-   broadcast. The raw POSIX bind beside it is the instrument's negative. */
+   broadcast. */
 static void adapter_bind(void) {
   uint32_t local[WINSOCK_HOST_ADDRESSES], error = 0;
   if (!winsock_local_addresses(local, 1)) {
@@ -184,7 +217,6 @@ static void adapter_bind(void) {
     return;
   }
   const int game = winsock_socket_open(2, 2, 0, &error);
-  const int raw = socket(AF_INET, SOCK_DGRAM, 0);
   struct sockaddr_in at, seen;
   memset(&at, 0, sizeof at);
   at.sin_family = AF_INET;
@@ -192,15 +224,20 @@ static void adapter_bind(void) {
   CHECK(winsock_bind((uint32_t)game, &at, &error));
   CHECK(winsock_getsockname((uint32_t)game, &seen, &error) &&
         seen.sin_addr.s_addr == local[0] && seen.sin_port != 0);
-  CHECK(broadcast_reaches(game, seen.sin_port));
-
-  CHECK(bind(raw, (struct sockaddr *)&at, sizeof at) == 0);
-  socklen_t size = sizeof at;
-  CHECK(getsockname(raw, (struct sockaddr *)&at, &size) == 0);
-  CHECK(!broadcast_reaches(raw, at.sin_port));
-  close(raw);
-
+  CHECK(broadcast_reaches((uint32_t)game, seen.sin_port));
   CHECK(winsock_close((uint32_t)game, &error));
+
+#if !defined(_WIN32)
+  /* The instrument's negative: a raw POSIX bind to the same address does not
+     hear the broadcast, which is why winsock_bind widens it. */
+  const x2_socket_t raw = x2_socket_open(AF_INET, SOCK_DGRAM, 0);
+  CHECK(x2_socket_bind(raw, (struct sockaddr *)&at, sizeof at) == 0);
+  CHECK(x2_socket_name(raw, &seen) == 0);
+  CHECK(send_broadcast(seen.sin_port));
+  x2_pollfd poll = {raw, X2_POLL_IN, 0};
+  CHECK(x2_socket_poll(&poll, 1, 500) == 0);
+  x2_socket_close(raw);
+#endif
 
   /* An address that is not this machine's binds as given, and fails. */
   const int stranger = winsock_socket_open(2, 2, 0, &error);
@@ -208,18 +245,19 @@ static void adapter_bind(void) {
   at.sin_addr.s_addr = htonl(0xc0000201u);
   error = 0;
   CHECK(!winsock_bind((uint32_t)stranger, &at, &error) &&
-        error == WSAEADDRNOTAVAIL);
+        error == WINSOCK_EADDRNOTAVAIL);
   CHECK(winsock_close((uint32_t)stranger, &error));
 }
 
 int main(void) {
   errors();
   addresses();
+  dotted();
   options();
   datagrams();
   names();
   adapter_bind();
   CHECK(!winsock_is_socket(0) && !winsock_is_socket(0xffffffffu));
-  printf("winsock posix: %d check(s), %d failure(s)\n", g_checks, g_failed);
+  printf("winsock host: %d check(s), %d failure(s)\n", g_checks, g_failed);
   return g_failed ? 1 : 0;
 }

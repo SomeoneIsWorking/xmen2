@@ -11,6 +11,7 @@
  * This drives the same function the command line drives, so the refusal is
  * provable without running a process to its exit status.
  */
+#include "environment.h"
 #include "runtime_cvars.h"
 
 #include <lucent/cvar_c.h>
@@ -63,7 +64,7 @@ int main() {
     return 1;
   }
   const ScratchDirectory owned(config);
-  setenv("XDG_CONFIG_HOME", config, 1);
+  x2_guest_environment_set("XDG_CONFIG_HOME", config);
 
   char program[] = "test_runtime_cvars";
   char *argv[] = {program, nullptr};

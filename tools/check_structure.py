@@ -23,8 +23,8 @@ DEFAULT_LIMIT = 1200
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
     "src/native/kernel32.cpp": 3087,            # was 3624; virtual memory -> kernel32_virtual.cpp
-    "src/native/x86rt_native.cpp": 1865,        # checked memory probes extracted
-    "src/native/x2native.cpp": 2152,            # was 2329
+    "src/native/x86rt_native.cpp": 1856,        # was 1865; dladdr -> host_code_location.cpp
+    "src/native/x2native.cpp": 2027,            # was 2329, 2152; signals -> fault_signals_*.cpp
     "src/d3d8/d3d8_drawcall.cpp": 1650,         # was 1695; VS source -> d3d8_vs_draw.cpp
     "src/d3d8/d3d8_device.cpp": 1633,           # bindings -> d3d8_device_bindings.cpp
     "src/native/crt.cpp": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.cpp

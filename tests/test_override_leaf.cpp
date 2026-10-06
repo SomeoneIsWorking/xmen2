@@ -10,13 +10,17 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/wait.h>
 #include <unistd.h>
+#if defined(_WIN32)
+#include <process.h>
+#else
+#include <sys/wait.h>
+#endif
 
 enum {
   NAMED_SLOT = 3u,    /* a bound thunk this test registers as a leaf */
@@ -178,35 +182,52 @@ static void test_the_guard_is_silent_outside_a_leaf(void) {
   x86_override_leaf_forbid("released the guest lock");
 }
 
+static const char kAbortChild[] = "--leaf-breaks-contract";
+
+/* The child's whole run: a leaf that calls guest code. */
+static int leaf_breaks_contract(void) {
+  CPU c;
+  s_thunk_breaks_contract = 1;
+  (void)call_leaf(thunk_at(NAMED_SLOT), &c);
+  return 0;
+}
+
 /* Inside one, it aborts. Run in a child, since that is the process's end. */
-static void test_the_guard_aborts_inside_a_leaf(void) {
+static void test_the_guard_aborts_inside_a_leaf(const char *self) {
   fflush(NULL);
+#if defined(_WIN32)
+  /* The UCRT's abort() ends the process with status 3. */
+  const intptr_t status = _spawnl(_P_WAIT, self, self, kAbortChild, NULL);
+  expect(status == 3, "a leaf that called guest code did not abort");
+#else
+  (void)self;
   const pid_t child = fork();
   if (child == 0) {
-    CPU c;
-    s_thunk_breaks_contract = 1;
-    (void)call_leaf(thunk_at(NAMED_SLOT), &c);
-    _exit(0);
+    _exit(leaf_breaks_contract());
   }
   int status = 0;
   expect(child > 0 && waitpid(child, &status, 0) == child,
          "could not run the guard's child");
   expect(WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT,
          "a leaf that called guest code did not abort");
+#endif
 }
 
-int main(void) {
+int main(int argc, char **argv) {
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(ARENA, ARENA_SIZE, PROT_READ | PROT_WRITE) != 0) {
     fprintf(stderr, "could not map the test arena\n");
     return 1;
   }
   x86_register_thunk_leaf(thunk_at(NAMED_SLOT));
+  if (argc == 2 && strcmp(argv[1], kAbortChild) == 0) {
+    return leaf_breaks_contract();
+  }
   test_the_resolver_answers_registered_and_fastpath_thunks();
   test_a_thunk_leaf_runs_the_dispatchers_path();
   test_an_import_stub_runs_its_slots_thunk_leaf();
   test_the_guard_is_silent_outside_a_leaf();
-  test_the_guard_aborts_inside_a_leaf();
+  test_the_guard_aborts_inside_a_leaf(argv[0]);
   if (failures) {
     fprintf(stderr, "%u failure(s)\n", failures);
     return 1;

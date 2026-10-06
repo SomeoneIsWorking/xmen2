@@ -6,10 +6,10 @@
 #include "prompt_glyphs.h"
 #include "x86rt.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
 #define GUEST_BASE 0x71000000u
 #define MAP_BYTES 0x6000u

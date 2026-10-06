@@ -15,12 +15,12 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 static unsigned checks, failures, invalidations;
 volatile uint32_t x2_write_watch_addr;

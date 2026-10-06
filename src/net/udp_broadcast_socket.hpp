@@ -31,7 +31,7 @@ public:
 
   /* Bind `port` on every address. On failure, error() names the step. */
   bool open(uint16_t port);
-  bool is_open() const { return fd_ >= 0; }
+  bool is_open() const { return open_; }
 
   /* One datagram to every machine on the LAN. False on a send error. */
   bool broadcast(std::span<const uint8_t> datagram);
@@ -46,7 +46,9 @@ public:
 private:
   void fail(const char *step);
 
-  int fd_ = -1;
+  /* The host x2_socket_t, kept opaque so no socket header reaches callers. */
+  std::uintptr_t socket_ = 0u;
+  bool open_ = false;
   uint16_t port_ = 0u;
   std::string error_;
 };

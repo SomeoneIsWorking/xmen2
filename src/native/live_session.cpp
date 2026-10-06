@@ -59,7 +59,7 @@ static int publish(int running) {
   } else
     fputs("null", file);
   fputs("\n}\n", file);
-  if (fclose(file) != 0 || rename(next, path) != 0) {
+  if (fclose(file) != 0 || x2_replace_file(next, path) != 0) {
     host_dir_forget_for(next);
     return 0;
   }

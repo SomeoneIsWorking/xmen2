@@ -6,7 +6,10 @@
 #include "guest_memory.h"
 #include "x86rt_native.h"
 
-#if !GUEST_ARENA_WINDOW
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#elif !GUEST_ARENA_WINDOW
 #include "platform_posix.h"
 #include <sys/uio.h>
 #if defined(__ANDROID__)
@@ -23,7 +26,11 @@ static int process_read(uint32_t addr, void *dst, size_t n) {
   return guest_memory_try_read(addr, dst, n);
 #else
   const void *source = guest_memory_const_pointer(addr);
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  SIZE_T copied = 0;
+  return ReadProcessMemory(GetCurrentProcess(), source, dst, n, &copied) &&
+         copied == n;
+#elif defined(__APPLE__)
   mach_vm_size_t copied = 0;
   kern_return_t result = mach_vm_read_overwrite(
       mach_task_self(), (mach_vm_address_t)(uintptr_t)source, (mach_vm_size_t)n,

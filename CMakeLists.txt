@@ -35,6 +35,11 @@ endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+if(MINGW)
+    # MinGW-w64 declares gmtime_r and localtime_r only when asked for them.
+    add_compile_definitions(_POSIX_THREAD_SAFE_FUNCTIONS=200112L)
+endif()
+
 # Shared port infrastructure: the desktop picker uses Lucent's safe, tested
 # archive extraction rather than carrying a second ZIP implementation here.
 include(FetchContent)
@@ -45,20 +50,35 @@ FetchContent_Declare(lucent
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
+# The Windows halves of the src/native/platform_* boundaries; POSIX hosts
+# implement them inline in the headers.
+if(WIN32)
+    add_library(x2_platform STATIC
+        src/native/platform_mman_win32.cpp
+        src/native/platform_posix_win32.cpp)
+    target_include_directories(x2_platform PUBLIC src/native)
+    target_link_libraries(x2_platform PUBLIC ws2_32 iphlpapi)
+endif()
+
 # Unit executables compile shipping subsystem sources directly, so they must
 # use the same config/logger owners as the product rather than gaining test
 # replacements. This directory default is cleared before external shared
 # projects are added below.
+
 add_library(x2_runtime_services STATIC
     src/config/environment.cpp
     src/diagnostics/crash_report.cpp
     src/diagnostics/diagnostics_startup.cpp
+    src/diagnostics/host_code_location.cpp
     src/diagnostics/run_log.cpp
     src/native/x2_log.cpp)
 set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(x2_runtime_services PUBLIC src/config src/diagnostics
                            src/native)
 target_link_libraries(x2_runtime_services PUBLIC lucent::lucent)
+if(WIN32)
+    target_link_libraries(x2_runtime_services PUBLIC x2_platform)
+endif()
 link_libraries(x2_runtime_services)
 
 add_library(x2_runtime_config STATIC
@@ -202,6 +222,16 @@ elseif(ANDROID)
         message(FATAL_ERROR
             "x2native: shared android-port prefix omitted Freetype::Freetype")
     endif()
+elseif(WIN32)
+    # tools/build_windows.py configures with the llvm-mingw toolchain and the
+    # static prefix tools/windows_deps.py builds; nothing comes from the host.
+    find_package(Freetype CONFIG REQUIRED)
+    find_package(SDL3 CONFIG REQUIRED)
+    set(X2_SDL SDL3::SDL3-static)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
+                      libavformat libavcodec libavutil libswscale libswresample)
+    set(X2_FFMPEG_TARGET PkgConfig::X2_FFMPEG)
 else()
     # The runtime letters keyboard prompts in the shared key typeface.
     find_package(Freetype REQUIRED)
@@ -276,9 +306,9 @@ add_executable(test_web_request tests/test_web_request.cpp src/web/web_request.c
 target_include_directories(test_web_request PRIVATE src/web)
 add_test(NAME web_request COMMAND test_web_request)
 
-add_executable(test_winsock_posix tests/test_winsock_posix.cpp
-               src/native/winsock_posix.cpp src/native/winsock_resolve.cpp)
-add_test(NAME winsock_posix COMMAND test_winsock_posix)
+add_executable(test_winsock_host tests/test_winsock_host.cpp
+               src/native/winsock_host.cpp src/native/winsock_resolve.cpp)
+add_test(NAME winsock_host COMMAND test_winsock_host)
 
 add_executable(test_control_http tests/test_control_http.cpp
                src/native/control_http.cpp)
@@ -1111,16 +1141,26 @@ add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.cpp src/runtime/x86_abi/x87crt.cpp)
 
-add_library(guest_memory_test_impl OBJECT src/native/guest_memory.cpp src/native/guest_memory_arena.cpp)
-target_compile_definitions(guest_memory_test_impl PRIVATE X2_GUEST_ARENA_RESERVED=1
-    sysconf=x2_test_sysconf mmap=x2_test_mmap mprotect=x2_test_mprotect)
-add_executable(test_guest_memory tests/test_guest_memory.cpp
-    $<TARGET_OBJECTS:guest_memory_test_impl>)
-target_include_directories(test_guest_memory PRIVATE src/native)
-target_link_libraries(test_guest_memory PRIVATE pthread)
-foreach(_granule IN ITEMS 4096 16384 -1 0 2048 12288)
-    add_test(NAME guest_memory_${_granule} COMMAND test_guest_memory ${_granule})
-endforeach()
+add_executable(test_platform_mman tests/test_platform_mman.cpp)
+add_test(NAME platform_mman COMMAND test_platform_mman)
+
+# The granule seam redirects the libc calls platform_mman.h makes inline on
+# POSIX; Windows makes them out of line in x2_platform (test_platform_mman).
+if(NOT WIN32)
+    add_library(guest_memory_test_impl OBJECT src/native/guest_memory.cpp
+                src/native/guest_memory_arena.cpp)
+    target_compile_definitions(guest_memory_test_impl PRIVATE
+        X2_GUEST_ARENA_RESERVED=1
+        sysconf=x2_test_sysconf mmap=x2_test_mmap mprotect=x2_test_mprotect)
+    add_executable(test_guest_memory tests/test_guest_memory.cpp
+        $<TARGET_OBJECTS:guest_memory_test_impl>)
+    target_include_directories(test_guest_memory PRIVATE src/native)
+    target_link_libraries(test_guest_memory PRIVATE pthread)
+    foreach(_granule IN ITEMS 4096 16384 -1 0 2048 12288)
+        add_test(NAME guest_memory_${_granule}
+                 COMMAND test_guest_memory ${_granule})
+    endforeach()
+endif()
 
 add_executable(test_threads_ready tests/test_threads_ready.cpp
                src/native/threads_ready.cpp)
@@ -2009,7 +2049,7 @@ set(X2_NATIVE_SOURCES
     src/native/live_session.cpp
     src/native/ws2_32.cpp
     src/native/ws2_32_names.cpp
-    src/native/winsock_posix.cpp
+    src/native/winsock_host.cpp
     src/native/winsock_resolve.cpp
     src/native/lan_login.cpp
     src/native/shell32.cpp
@@ -2129,6 +2169,11 @@ set(X2_NATIVE_SOURCES
     src/vulkan/igvk_slots_lifecycle.cpp
     src/vulkan/igvk_slots_frame.cpp
 )
+if(WIN32)
+    list(APPEND X2_NATIVE_SOURCES src/native/fault_signals_win32.cpp)
+else()
+    list(APPEND X2_NATIVE_SOURCES src/native/fault_signals_posix.cpp)
+endif()
 if(ANDROID)
     add_library(x2native SHARED ${X2_NATIVE_SOURCES})
 else()
@@ -2209,7 +2254,10 @@ target_include_directories(test_guest_memory_window PRIVATE
     src/native src/runtime/x86_abi)
 target_compile_definitions(test_guest_memory_window PRIVATE
     X2_GUEST_ARENA_WINDOW=1 X86_NATIVE=1)
-target_link_libraries(test_guest_memory_window PRIVATE x86port_runtime)
+target_link_libraries(test_guest_memory_window PRIVATE x86port_runtime Threads::Threads)
+if(WIN32)
+    target_link_libraries(test_guest_memory_window PRIVATE x2_platform)
+endif()
 add_test(NAME guest_memory_window COMMAND test_guest_memory_window)
 
 # guest_teb over the real guest arena; the heap and the PE TLS directory are
@@ -2224,7 +2272,10 @@ add_executable(test_guest_teb tests/test_guest_teb.cpp src/native/guest_teb.cpp
 target_include_directories(test_guest_teb PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_guest_teb PRIVATE
     X2_GUEST_ARENA_WINDOW=1 X86_NATIVE=1)
-target_link_libraries(test_guest_teb PRIVATE x86port_runtime)
+target_link_libraries(test_guest_teb PRIVATE x86port_runtime Threads::Threads)
+if(WIN32)
+    target_link_libraries(test_guest_teb PRIVATE x2_platform)
+endif()
 add_test(NAME guest_teb COMMAND test_guest_teb)
 
 # Tests compile title-native call adapters directly. Any target that includes

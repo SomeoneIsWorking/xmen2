@@ -241,7 +241,7 @@ jobs:
           - **Checksums**: `SHA256SUMS.txt`
 
           ### Platform Notes:
-          - **Windows**: no package. The native Windows host is not implemented, so there is nothing to build for it; on Windows the 2005 retail release runs on its own.
+          - **Windows**: no package yet. The native Windows host builds but is not yet qualified on Windows; on Windows the 2005 retail release runs on its own.
           - **No Copyrighted Assets**: These packages contain no game content, audio, textures, or retail code. Supply your own legally obtained PC installation of *X-Men Legends II* (folder or ZIP containing `XMen2.exe` and its original DLLs).
           EOF
           if gh release view "$TAG" >/dev/null 2>&1; then

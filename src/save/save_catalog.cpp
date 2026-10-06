@@ -16,6 +16,11 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 #define NS_PER_SECOND INT64_C(1000000000)
 
 static int is_save_leaf(const char *leaf) {
@@ -25,11 +30,29 @@ static int is_save_leaf(const char *leaf) {
          !strcmp(leaf + 9, ".save");
 }
 
-static int mtime_ns(const struct stat *st, int64_t *out) {
 #if defined(_WIN32)
-  int64_t seconds = (int64_t)st->st_mtime;
-  int64_t nanoseconds = 0;
-#elif defined(__APPLE__)
+/* FILETIME counts 100 ns ticks from 1601; this many lie before 1970. */
+#define FILETIME_UNIX_EPOCH INT64_C(116444736000000000)
+
+/* A regular file's write time, as fstatat with AT_SYMLINK_NOFOLLOW sees it:
+   0 with *regular clear for a directory or reparse point. */
+static int windows_entry(const char *path, int *regular, int64_t *out) {
+  WIN32_FILE_ATTRIBUTE_DATA data;
+  if (!GetFileAttributesExA(path, GetFileExInfoStandard, &data)) {
+    errno = GetLastError() == ERROR_FILE_NOT_FOUND ? ENOENT : EIO;
+    return 0;
+  }
+  *regular = !(data.dwFileAttributes &
+               (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT));
+  const int64_t ticks =
+      (int64_t)(((uint64_t)data.ftLastWriteTime.dwHighDateTime << 32) |
+                data.ftLastWriteTime.dwLowDateTime);
+  *out = (ticks - FILETIME_UNIX_EPOCH) * 100;
+  return 1;
+}
+#else
+static int mtime_ns(const struct stat *st, int64_t *out) {
+#if defined(__APPLE__)
   int64_t seconds = (int64_t)st->st_mtimespec.tv_sec;
   int64_t nanoseconds = (int64_t)st->st_mtimespec.tv_nsec;
 #else
@@ -52,6 +75,7 @@ static int mtime_ns(const struct stat *st, int64_t *out) {
   *out = base + nanoseconds;
   return 1;
 }
+#endif
 
 static int is_newer(const X2SaveCandidate *candidate,
                     const X2SaveCandidate *current) {
@@ -63,7 +87,6 @@ static int is_newer(const X2SaveCandidate *candidate,
 int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out) {
   X2SaveCandidate candidate;
   struct dirent *entry;
-  struct stat st;
   DIR *dir;
   int directory_fd;
   int found = 0;
@@ -91,26 +114,30 @@ int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out) {
     if (!is_save_leaf(entry->d_name))
       continue;
 #if defined(_WIN32)
-    char filepath[MAX_PATH];
+    char filepath[PATH_MAX];
+    int regular = 0;
     int written =
         snprintf(filepath, sizeof filepath, "%s/%s", directory, entry->d_name);
     if (written <= 0 || (size_t)written >= sizeof filepath ||
-        stat(filepath, &st) != 0) {
+        !windows_entry(filepath, &regular, &candidate.mtime_ns)) {
       result = -1;
       break;
     }
+    if (!regular)
+      continue;
 #else
+    struct stat st;
     if (fstatat(directory_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
       result = -1;
       break;
     }
-#endif
     if (!S_ISREG(st.st_mode))
       continue;
     if (!mtime_ns(&st, &candidate.mtime_ns)) {
       result = -1;
       break;
     }
+#endif
     memcpy(candidate.leaf, entry->d_name, strlen(entry->d_name) + 1);
     if (!found || is_newer(&candidate, out)) {
       *out = candidate;

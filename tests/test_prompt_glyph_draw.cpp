@@ -11,6 +11,7 @@
  * the guest stack ABI, batch-colour pre-read and collapse-plus-super path
  * untested.
  */
+#include "environment.h"
 #include "guest_memory.h"
 #include "keycap_labels.h"
 #include "keycap_run.h"
@@ -23,11 +24,11 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
 
@@ -208,7 +209,7 @@ int main(void) {
   /* The feature gate caches on first read, so it is set before anything calls
      into the subsystem. Without it the override is inert by design and the
      whole test would pass while measuring nothing. */
-  setenv("X2_PROMPT_GLYPHS", "1", 1);
+  x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
   x2_runtime_config_init(0, NULL);
 
   if (guest_memory_init() != 0 ||

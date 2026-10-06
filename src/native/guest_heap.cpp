@@ -35,10 +35,10 @@
 #include "guest_memory.h"
 #include "x86rt_native.h"
 
+#include "platform_mman.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 
 #define MAGIC_USED 0x55EDB10Cu
 #define MAGIC_FREE 0xF2EEB10Cu

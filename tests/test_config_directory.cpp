@@ -21,7 +21,7 @@ int main(void) {
     return 1;
   }
 #if defined(_WIN32)
-  if (strcmp(path, "C:\\x2-config-test/xmen2") != 0) {
+  if (strcmp(path, "C:\\x2-config-test\\xmen2") != 0) {
 #elif defined(__APPLE__)
   if (strcmp(path, "/x2-home-test/Library/Application Support/xmen2") != 0) {
 #else

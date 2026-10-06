@@ -1,4 +1,5 @@
 #include "env_file.h"
+#include "environment.h"
 
 #include "platform_posix.h"
 #include <errno.h>
@@ -84,7 +85,7 @@ int main(int argc, char **argv) {
   if (mkdir(test_dir, 0700) != 0)
     return 2;
   atexit(cleanup);
-  unsetenv("X2_VERBOSE");
+  x2_guest_environment_set("X2_VERBOSE", nullptr);
 
   if (!strcmp(argv[1], "load")) {
     if (!setup_simple("X2_VERBOSE='path with spaces'\n"))
@@ -96,7 +97,7 @@ int main(int argc, char **argv) {
   } else if (!strcmp(argv[1], "preserve")) {
     if (!setup_simple("X2_VERBOSE=from-file\n"))
       return 2;
-    setenv("X2_VERBOSE", "from-launcher", 1);
+    x2_guest_environment_set("X2_VERBOSE", "from-launcher");
     rc = x2_load_project_env(NULL);
     got = getenv("X2_VERBOSE");
     if (rc != 1 || !got || strcmp(got, "from-launcher") != 0)

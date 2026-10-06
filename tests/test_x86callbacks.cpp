@@ -4,10 +4,10 @@
 #include "guest_memory.h"
 #include "x86callbacks.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
 static uint32_t seen[4];
 static int seen_count;

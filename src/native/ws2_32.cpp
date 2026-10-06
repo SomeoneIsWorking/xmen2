@@ -4,7 +4,7 @@
  * XMen2.exe imports twenty-five WS2_32 ordinals, and every one of them is the
  * Berkeley surface GameSpy's SDK is written against: UDP sockets, broadcast,
  * select, and a resolver. None is Windows-only in meaning, so each thunk here
- * reads the guest's arguments, hands the translation to winsock_posix.cpp, and
+ * reads the guest's arguments, hands the host call to winsock_host.cpp, and
  * returns what Winsock would. There is no listen or accept in the import
  * table; the game's sessions are datagrams.
  *
@@ -12,31 +12,20 @@
  * connect -- releases guest ownership while it waits, exactly as a Win32 wait
  * does, so the game's other threads keep running.
  *
- * The browser build answers WSAStartup with WSASYSNOTREADY: a page cannot open
- * a UDP socket, let alone broadcast one, and that is the Win32 answer for "no
- * network subsystem" rather than a socket layer that fails one call later.
+ * The browser build answers WSAStartup with WSASYSNOTREADY: a page cannot
+ * open a UDP socket, let alone broadcast one, and that is the Win32 answer for
+ * "no network subsystem" rather than a socket layer that fails one call later.
  */
 #include "guest_memory.h"
 #include "stdcall_import.h"
 #include "threads.h"
-#include "winsock_posix.h"
+#include "winsock_host.h"
 #include "x2_log.h"
 #include "x86rt_native.h"
 
-#include <arpa/inet.h>
-#include <errno.h>
+#include "platform_socket.h"
 #include <lucent/log_c.h>
-#include <netinet/in.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#ifdef MSG_NOSIGNAL
-#define SEND_FLAGS MSG_NOSIGNAL
-#else
-#define SEND_FLAGS 0
-#endif
 
 enum {
   WIN_FIONBIO = (int32_t)0x8004667e,
@@ -61,7 +50,7 @@ static int not_socket(CPU *C, uint32_t handle, int nargs) {
   if (winsock_is_socket(handle)) {
     return 0;
   }
-  ret_result(C, 0, 0, WSAENOTSOCK, nargs);
+  ret_result(C, 0, 0, WINSOCK_ENOTSOCK, nargs);
   return 1;
 }
 
@@ -87,14 +76,14 @@ void imp_WS2_32__115(CPU *C) {
   uint8_t info[WIN_GUEST_WSADATA];
   memset(info, 0, sizeof info);
 #ifdef __EMSCRIPTEN__
-  const uint32_t result = WSASYSNOTREADY;
+  const uint32_t result = WINSOCK_SYSNOTREADY;
 #else
-  const uint32_t result = 0;
+  const uint32_t result = winsock_host_ready() ? 0u : WINSOCK_SYSNOTREADY;
   info[0] = (uint8_t)want;
   info[1] = (uint8_t)(want >> 8);
   info[2] = 2;
   info[3] = 2;
-  strcpy((char *)info + 4, "WinSock 2.0 over POSIX sockets");
+  strcpy((char *)info + 4, "WinSock 2.0 over host sockets");
   strcpy((char *)info + 4 + 257, "Running");
 #endif
   if (!g_startups++) {
@@ -158,10 +147,9 @@ static void address_call(CPU *C, int connecting) {
     return;
   }
   const int waited = wait_begin(s);
-  const int rc = connect((int)s, (struct sockaddr *)&host, sizeof host);
-  const int err = errno;
+  const int connected = winsock_connect(s, &host, &error);
   wait_end(waited);
-  ret_result(C, rc == 0, 0, winsock_error_from_errno(err), 3);
+  ret_result(C, connected, 0, error, 3);
 }
 
 void imp_WS2_32__2(CPU *C) { address_call(C, 0); }
@@ -179,7 +167,7 @@ void imp_WS2_32__6(CPU *C) {
   if (!guest_memory_try_read32(length, &available) ||
       available < WIN_SOCKADDR_IN ||
       !guest_memory_span(name, WIN_SOCKADDR_IN)) {
-    ret_result(C, 0, 0, WSAEFAULT, 3);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 3);
     return;
   }
   if (!winsock_getsockname(s, &host, &error)) {
@@ -193,12 +181,8 @@ void imp_WS2_32__6(CPU *C) {
 
 /* int shutdown(SOCKET s, int how): SD_RECEIVE/SEND/BOTH are SHUT_RD/WR/RDWR. */
 void imp_WS2_32__22(CPU *C) {
-  const uint32_t s = A(0);
-  if (not_socket(C, s, 2)) {
-    return;
-  }
-  const int rc = shutdown((int)s, (int)A(1));
-  ret_result(C, rc == 0, 0, winsock_error_from_errno(errno), 2);
+  uint32_t error = 0;
+  ret_result(C, winsock_shutdown(A(0), (int)A(1), &error), 0, error, 2);
 }
 
 /* int ioctlsocket(SOCKET s, long cmd, u_long *argp) */
@@ -210,21 +194,21 @@ void imp_WS2_32__10(CPU *C) {
     return;
   }
   if (!guest_memory_try_read32(argp, &value)) {
-    ret_result(C, 0, 0, WSAEFAULT, 3);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 3);
   } else if (cmd == WIN_FIONBIO) {
     ret_result(C, winsock_set_blocking(s, value == 0, &error), 0, error, 3);
   } else if (cmd == WIN_FIONREAD) {
-    int pending = 0;
-    const int ok = ioctl((int)s, FIONREAD, &pending) == 0;
+    uint32_t pending = 0;
+    const int ok = winsock_pending(s, &pending, &error);
     if (ok) {
-      WR32(argp, (uint32_t)pending);
+      WR32(argp, pending);
     }
-    ret_result(C, ok, 0, winsock_error_from_errno(errno), 3);
+    ret_result(C, ok, 0, error, 3);
   } else {
     g_refused++;
     x2_log_error("ws2_32: ioctlsocket command 0x%08x is not translated\n",
                  (unsigned)cmd);
-    ret_result(C, 0, 0, WSAEINVAL, 3);
+    ret_result(C, 0, 0, WINSOCK_EINVAL, 3);
   }
 }
 
@@ -235,6 +219,7 @@ void imp_WS2_32__21(CPU *C) {
   const uint32_t s = A(0), optval = A(3), optlen = A(4);
   const int32_t level = (int32_t)A(1), name = A(2);
   int host_level = 0, host_name = 0, value = 0;
+  uint32_t error = 0;
   if (not_socket(C, s, 5)) {
     return;
   }
@@ -243,16 +228,15 @@ void imp_WS2_32__21(CPU *C) {
     x2_log_error("ws2_32: setsockopt level 0x%x option 0x%x is not "
                  "translated\n",
                  (unsigned)level, (unsigned)name);
-    ret_result(C, 0, 0, WSAENOPROTOOPT, 5);
+    ret_result(C, 0, 0, WINSOCK_ENOPROTOOPT, 5);
     return;
   }
   if (!optlen || optlen > 4 || !guest_memory_try_read(optval, &value, optlen)) {
-    ret_result(C, 0, 0, WSAEFAULT, 5);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
     return;
   }
-  const int rc =
-      setsockopt((int)s, host_level, host_name, &value, sizeof value);
-  ret_result(C, rc == 0, 0, winsock_error_from_errno(errno), 5);
+  ret_result(C, winsock_set_option(s, host_level, host_name, value, &error), 0,
+             error, 5);
 }
 
 /* send(s, buf, len, flags) and recv(s, buf, len, flags). */
@@ -263,19 +247,19 @@ static void stream_call(CPU *C, int sending) {
   }
   void *host = length ? guest_memory_span(buffer, length) : NULL;
   if (length && !host) {
-    ret_result(C, 0, 0, WSAEFAULT, 4);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 4);
     return;
   }
   const int flags = (int)(A(3) & 7u);
+  uint32_t error = 0;
   const int waited = wait_begin(s);
-  const ssize_t n = sending ? send((int)s, host, length, flags | SEND_FLAGS)
-                            : recv((int)s, host, length, flags);
-  const int err = errno;
+  const int64_t n = sending ? winsock_send(s, host, length, flags, &error)
+                            : winsock_recv(s, host, length, flags, &error);
   wait_end(waited);
   if (n > 0) {
     *(sending ? &g_sent : &g_received) += 1;
   }
-  ret_result(C, n >= 0, (uint32_t)n, winsock_error_from_errno(err), 4);
+  ret_result(C, n >= 0, (uint32_t)n, error, 4);
 }
 
 void imp_WS2_32__19(CPU *C) { stream_call(C, 1); }
@@ -296,16 +280,15 @@ void imp_WS2_32__20(CPU *C) {
       !winsock_sockaddr_to_host(static_cast<const uint8_t *>(
                                     guest_memory_span(A(4), WIN_SOCKADDR_IN)),
                                 (int32_t)A(5), &host, &error)) {
-    ret_result(C, 0, 0, error ? error : WSAEFAULT, 6);
+    ret_result(C, 0, 0, error ? error : WINSOCK_EFAULT, 6);
     return;
   }
   const int waited = wait_begin(s);
-  const ssize_t n = sendto((int)s, data, length, (int)(A(3) & 7u) | SEND_FLAGS,
-                           (struct sockaddr *)&host, sizeof host);
-  const int err = errno;
+  const int64_t n =
+      winsock_sendto(s, data, length, (int)(A(3) & 7u), &host, &error);
   wait_end(waited);
   g_sent += n >= 0;
-  ret_result(C, n >= 0, (uint32_t)n, winsock_error_from_errno(err), 6);
+  ret_result(C, n >= 0, (uint32_t)n, error, 6);
 }
 
 /* int recvfrom(SOCKET s, char *buf, int len, int flags,
@@ -314,8 +297,7 @@ void imp_WS2_32__17(CPU *C) {
   const uint32_t s = A(0), buffer = A(1), length = A(2), from = A(4),
                  fromlen = A(5);
   struct sockaddr_in host;
-  socklen_t size = sizeof host;
-  uint32_t available = 0;
+  uint32_t available = 0, error = 0;
   if (not_socket(C, s, 6)) {
     return;
   }
@@ -324,20 +306,19 @@ void imp_WS2_32__17(CPU *C) {
       (from && (!guest_memory_try_read32(fromlen, &available) ||
                 available < WIN_SOCKADDR_IN ||
                 !guest_memory_span(from, WIN_SOCKADDR_IN)))) {
-    ret_result(C, 0, 0, WSAEFAULT, 6);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 6);
     return;
   }
   const int waited = wait_begin(s);
-  const ssize_t n = recvfrom((int)s, data, length, (int)(A(3) & 7u),
-                             (struct sockaddr *)&host, &size);
-  const int err = errno;
+  const int64_t n =
+      winsock_recvfrom(s, data, length, (int)(A(3) & 7u), &host, &error);
   wait_end(waited);
   if (n >= 0 && from) {
     winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(from));
     WR32(fromlen, WIN_SOCKADDR_IN);
   }
   g_received += n >= 0;
-  ret_result(C, n >= 0, (uint32_t)n, winsock_error_from_errno(err), 6);
+  ret_result(C, n >= 0, (uint32_t)n, error, 6);
 }
 
 /* int select(int nfds, fd_set *read, fd_set *write, fd_set *except,
@@ -353,12 +334,12 @@ void imp_WS2_32__18(CPU *C) {
                         guest_memory_span(set, sizeof(WinsockFdSet)))
                   : NULL;
     if (set && !sets[i]) {
-      ret_result(C, 0, 0, WSAEFAULT, 5);
+      ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
       return;
     }
   }
   if (A(4) && !guest_memory_try_read(A(4), timeval, sizeof timeval)) {
-    ret_result(C, 0, 0, WSAEFAULT, 5);
+    ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
     return;
   }
   const int64_t timeout_us =

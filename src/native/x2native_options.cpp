@@ -57,6 +57,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
 
   memset(o, 0, sizeof *o);
   o->window = 1;
+  o->fault_selftest_child = -1;
   for (i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--no-window") == 0)
       o->window = 0;
@@ -92,6 +93,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
       o->override_selftest = 1;
     else if (strcmp(argv[i], "--fault-selftest") == 0)
       o->fault_selftest = 1;
+    else if (strncmp(argv[i], "--fault-selftest-child=", 23) == 0)
+      o->fault_selftest_child = atoi(argv[i] + 23);
     /* Runtime CVar overrides are consumed by x2_runtime_config_init, which
        re-scans argv. Recognise the token (and its value form) here so the
        unknown-option guard below does not reject it. */
@@ -118,7 +121,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
           "--vk --vk-selftest --vk-permissive\n"
           "         --d3d8 --d3d8-selftest "
           "--d3d8-permissive --dialog-selftest\n"
-          "         --fault-selftest "
+          "         --fault-selftest --fault-selftest-child=N "
           "--override-selftest\n"
           "         --set NAME=VALUE (repeatable runtime CVar override)\n"
           "         --env NAME=VALUE (repeatable diagnostic override)\n",
@@ -135,7 +138,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
      renderer; diagnostics and alternate renderers stay explicit. */
   if (!o->run && !o->selftest && !o->ark_probe && !o->vk && !o->vk_selftest &&
       !o->d3d8 && !o->d3d8_selftest && !o->dialog_selftest &&
-      !o->fault_selftest && !o->override_selftest) {
+      !o->fault_selftest && o->fault_selftest_child < 0 &&
+      !o->override_selftest) {
     o->d3d8 = 1;
     o->run = 1;
     o->product = 1;

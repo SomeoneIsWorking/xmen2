@@ -1,87 +1,74 @@
-# Native Windows release host is not implemented
+# Native Windows host: built and booting under Wine, not yet a release
 
 ## Finding
 
-The X-Men release workflow deliberately publishes Linux, macOS, Android, and
-WASM artifacts but has no Windows package. Its Windows CI job is policy-only:
-`tools/ci.py` rejects `native-components` and `release_binary` for
-`windows-x86_64` because the native host boundary is absent.
+`x2native.exe` cross-compiles for Windows x86-64 with llvm-mingw and boots the
+retail game under Wine. There is still no Windows package. The JIT runs about
+12x slower under Wine than on Linux, and no run on real Windows has been made.
 
-## Cause
+## Host boundary
 
-The shipping host currently depends on POSIX-only owners for executable memory
-and cache protection (`sys/mman.h`), file and directory operations, sockets,
-threading, signals, `/proc` diagnostics, and `dlopen`. CMake also links POSIX
-libraries directly in tests and runtime targets. The x86port AArch64 paths do
-not provide a Windows host ABI/executable-memory implementation. Adding a
-Windows workflow or ZIP without these owners would produce a policy-only or
-non-runnable artifact, not a release.
+Every host-dependent owner has a Windows implementation in the `x2_platform`
+library, which links `ws2_32` and `iphlpapi`:
 
-## Required work
+| Concern | Owner | Windows implementation |
+|---|---|---|
+| Guest arena, protection, page size | `platform_mman.h`, `platform_mman_win32.cpp` | `VirtualAlloc`/`VirtualProtect`/`VirtualFree` |
+| PE file map | `platform_file_map.{cpp,h}` | `CreateFile`/`MapViewOfFile` |
+| Threads, clocks, sleeps | `platform_threads.h` | SRW locks, condition variables, `CreateThread` |
+| CRT file calls, `realpath`, `getcwd`, atomic replace | `platform_posix.h`, `platform_posix_win32.cpp` | `_fullpath` with `/` separators, `MoveFileExA(REPLACE_EXISTING)` |
+| Directory listing | `platform_dirent.h` | `FindFirstFileA`/`FindNextFileA` |
+| Sockets | `platform_socket.h`, `winsock_host.{h,cpp}`, `winsock_resolve.cpp` | Winsock, `WSAPoll`, `GetAdaptersAddresses` |
+| Faults | `fault_report.cpp`, `fault_signals_win32.cpp` | vectored exception handler |
+| Host code symbols | `src/diagnostics/host_code_location.cpp` | `GetModuleHandleExA` in place of `dladdr` |
+| Save timestamps | `save_catalog.cpp` | `GetFileAttributesExA` (100 ns resolution) |
 
-Port the shared executable-memory/cache and host ABI boundaries first, then
-replace title-side POSIX file, thread, socket, signal, and diagnostic owners
-with Windows implementations. Add a real Windows runner that configures,
-builds, tests, packages, and launches a synthetic asset-free runtime before
-adding the artifact to the release workflow.
+Guest Winsock handles index a slot table (1..1023) over host sockets, so the
+`ws2_32` thunks never see a host descriptor.
 
-## Current evidence
+## Toolchain
 
-The Windows policy job passes only the explicit unsupported-target refusal.
-Linux AppImage, macOS `.app`, Android arm64-v8a, and Pages artifacts are
-independently built and verified. The falsifier is a Windows runner producing a
-signed or explicitly portable ZIP whose native binary passes the same runtime
-boundary and package checks.
+The toolchain is llvm-mingw (UCRT, static), not MSVC or clang-cl. This means one
+Clang for Linux, the Windows cross build and the Windows runner, and the
+JIT-common and SDL3 static libraries build unchanged. `tools/windows_deps.py`
+provisions the checksummed toolchain plus zlib, SDL3, SDL3_image, FreeType and
+FFmpeg into `build/deps/windows/x86_64`. `tools/build_windows.py` configures
+with `cmake/toolchains/llvm-mingw-x86_64.cmake`.
 
-The first title-side boundaries are now isolated in
-`src/native/platform_mman.h` and `src/native/platform_file_map.{c,h}`:
-guest-memory mapping, protection changes, page-size discovery, release, and
-read-only PE file mapping all have one platform owner. Their Windows branches
-use `VirtualAlloc`/`VirtualProtect`/`VirtualFree` and
-`CreateFile`/`MapViewOfFile`; the Linux paths keep the existing POSIX
-contracts. The focused guest-memory suite passes all seven mapping/protection
-cases, the file-map regression passes, and the PE loader now consumes the
-shared map. This is a portability step, not a Windows build claim: threads,
-sockets, signals, diagnostics, CMake dependency links, and the Windows
-dependency/toolchain job remain open.
+## Evidence (Wine 11 staging, Linux host)
 
-The native sources also now consume one `platform_strings.h` compatibility
-owner for case-insensitive comparisons, mapping to `_stricmp`/`_strnicmp` on
-Windows and the existing POSIX functions elsewhere. This removes the direct
-`strings.h` header blocker without changing comparison semantics; the native
-Linux target still compiles and links after the change.
+- `ninja -k 0` in a cross build directory builds `x2native.exe` (PE32+ x86-64)
+  and every test with no warnings.
+- Under Wine, `x2native.exe --fault-selftest` reports all five fault kinds.
+  `--selftest` against the retail install fails 0 of 92 checks.
+- The boot `--no-window --d3d8 --control=<port>` reaches `/status`. The renderer
+  is ready on Vulkan through winevulkan by 15 s. It has presented 1 frame at
+  25 s and 702 at 60 s. Linux presents 85 frames by 5 s and 15108 by 60 s.
+- CTest with `CMAKE_CROSSCOMPILING_EMULATOR=wine` passes every host-boundary
+  test. Three tests fail because of the cross host, not the product:
+  - `control_png` calls the Linux Python.
+  - `prompt_glyph_atlas` runs a Windows build tool on the Linux host.
+  - `web_touch_play` needs SDL video, which headless Wine does not have.
 
-Synchronization and timing now have the same boundary in
-`src/native/platform_threads.h`. Windows uses SRW locks, condition variables,
-`CreateThread`, high-resolution clocks, `Sleep`, and `SwitchToThread`, while
-POSIX builds retain `pthread`/`clock_gettime`/`nanosleep`. The native target,
-guest-memory tests, and guest-call-stack thread test pass on Linux; a Clang
-Windows-target syntax pass accepts the new Windows branch with Zig's SDK
-headers. This still does not prove a linked Windows executable because the
-remaining POSIX file, socket, signal, and CMake dependency owners are open.
+## Open work
 
-The remaining direct `unistd.h` includes in title/test sources now route
-through `platform_posix.h`, which maps the required CRT operations on Windows
-(`_read`, `_write`, `_close`, `_mkdir`, `_fullpath`, `_pipe`, and related file
-offset calls) while retaining the POSIX names on Linux. The full native Linux
-build and 149-test CTest run pass, with only the documented data/tool skips;
-this further narrows the Windows work to real host semantics rather than
-header portability.
+1. **JIT throughput.** In jit-common, `jc_code_publish`/`jc_code_begin_write`
+   on Windows call `VirtualProtect` over the whole 64 MiB code region on every
+   publish. `perf` puts 78.6% of the boot in Wine's `mprotect_range`; the JIT
+   ran 5.8M blocks in 5 s, against 71M on Linux. The fix belongs in jit-common:
+   flip only the written range, or dual-map the region through
+   `CreateFileMapping` with an RX and an RW view, as the POSIX dual-mapped memfd does.
+   It has to land in the jit-common dev checkout and then be pinned here.
+2. **Windows CI.** The `windows-x86_64` job in `asset-free.yml` runs
+   `tools/ci.py native-components --target windows-x86_64`. It installs MSYS2
+   `make`, `pkgconf` and `shaderc`, builds FFmpeg with MSYS2's `sh`, and runs
+   the host-boundary tests natively. actionlint passes it; it has not run on a
+   runner yet.
+3. **A native Windows run.** Nothing has been tested on a real Windows host:
+   the window path, input, audio and the speed of `VirtualProtect` on real
+   Windows.
+4. **Package.** After 1 to 3, add a portable ZIP to `release.yml` and record
+   the release in S022.
 
-The live control channel now has the same narrow socket owner in
-`src/native/platform_socket.h`. It centralizes Winsock startup, descriptor
-width, accept/send/receive/close, loopback bind/listen, and interrupt handling;
-route owners no longer expose POSIX `int` descriptors. The Linux control,
-screenshot, and `x2ctl` tests pass after this boundary change. A Windows
-package is still not claimed: the socket header needs to be compiled and
-linked as part of the remaining native host port, alongside signals,
-diagnostics, directory/stat operations, `dlopen`, and the CMake dependency
-selection.
-
-Directory enumeration now has one portable owner in
-`src/native/platform_dirent.h`. It maps `DIR`, `struct dirent`, `opendir`,
-`readdir`, `closedir`, and `rewinddir` across POSIX and Windows
-(`FindFirstFileA`/`FindNextFileA`), routing `kernel32`, `win_path`, and
-`save_catalog` away from raw `<dirent.h>`. The unused `<sys/wait.h>` include
-in `x2native.cpp` has also been removed. The complete native test suite
-(149 tests) continues to pass cleanly with all checks green.
+The falsifier is a Windows runner that builds the ZIP and whose `x2native.exe`
+passes the runtime-boundary and package checks.

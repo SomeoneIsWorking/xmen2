@@ -1,10 +1,10 @@
 #include "dinput8_controller_slots.h"
 #include "guest_memory.h"
 
+#include "platform_mman.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/mman.h>
 
 /* Large enough to cover the POLL side too: FUN_006285c0 reads its device
    array at manager+0xc and its per-frame polled mask at manager+0x129cc. */
