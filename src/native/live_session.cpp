@@ -38,7 +38,9 @@ static int publish(int running) {
   char recording_json[4096];
 
   snprintf(path, sizeof path, "%s/live.json", g_directory);
-  snprintf(next, sizeof next, "%s/live.json.new", g_directory);
+  /* Per process: concurrent runs each rename their own record into place. */
+  snprintf(next, sizeof next, "%s/live.json.%ld.new", g_directory,
+           (long)getpid());
   if (!x2_directory_create(g_directory))
     return 0;
   file = fopen(next, "w");
@@ -83,8 +85,8 @@ int live_session_start(int control_port, const char *input_recording) {
   snprintf(g_recording, sizeof g_recording, "%s",
            input_recording ? input_recording : "");
   if (!publish(1)) {
-    x2_log_error("live session: cannot publish %s: %s. The game is "
-                 "running, but automatic discovery will not find it.\n",
+    x2_log_error("live session: cannot publish %s: %s; refusing to run a "
+                 "control port nothing can discover.\n",
                  live_session_record_path(), strerror(errno));
     return 0;
   }
