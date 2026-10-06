@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Enforce source ownership by refusing new or growing host monoliths."""
+"""Enforce source ownership by refusing new or growing monoliths in host
+source and Python tooling."""
 
 from __future__ import annotations
 
@@ -7,7 +8,8 @@ import sys
 from pathlib import Path
 
 
-# The user set the cap for new host files at 1,200 lines (2026-09-25). The
+# The user set the cap for new host files at 1,200 lines (2026-09-25), and for
+# tools/ Python too (2026-10-06); no tools file was over it then. The
 # legacy entries below stay frozen at their own measured sizes, including
 # those under the cap: a known monolith still may not grow.
 DEFAULT_LIMIT = 1200
@@ -48,6 +50,7 @@ LEGACY_LIMITS = {
 
 
 SOURCE_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
+TOOL_SUFFIXES = {".py"}
 
 
 def violations(counts: dict[str, int]) -> list[str]:
@@ -70,6 +73,10 @@ def source_counts(root: Path) -> dict[str, int]:
         if relative.startswith("src/gen/"):
             continue
         counts[relative] = len(path.read_text(encoding="utf-8").splitlines())
+    for path in (root / "tools").rglob("*"):
+        if path.is_file() and path.suffix in TOOL_SUFFIXES:
+            relative = path.relative_to(root).as_posix()
+            counts[relative] = len(path.read_text(encoding="utf-8").splitlines())
     return counts
 
 
@@ -77,13 +84,15 @@ def selftest() -> int:
     # Read the legacy limit rather than repeating it: a ratchet then moves
     # both the rule and its selftest, instead of failing the selftest.
     legacy = LEGACY_LIMITS["src/native/kernel32.cpp"]
-    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.cpp": legacy}
-    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.cpp": legacy + 1}
+    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.cpp": legacy,
+            "tools/new.py": DEFAULT_LIMIT}
+    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.cpp": legacy + 1,
+           "tools/new.py": DEFAULT_LIMIT + 1}
     if violations(good):
         print("check_structure selftest: valid source was rejected", file=sys.stderr)
         return 1
     found = violations(bad)
-    if len(found) != 2 or not any(
+    if len(found) != 3 or not any(
         f"{DEFAULT_LIMIT + 1} lines (limit {DEFAULT_LIMIT})" in failure for failure in found
     ):
         print("check_structure selftest: growth was not detected", file=sys.stderr)
@@ -106,7 +115,8 @@ def main() -> int:
             print(f"  {failure}", file=sys.stderr)
         print("Extract a cohesive owner; do not raise the limit.", file=sys.stderr)
         return 1
-    print(f"check_structure: all host source files respect the {DEFAULT_LIMIT}-line cap")
+    print(f"check_structure: all host source and tools Python respect the "
+          f"{DEFAULT_LIMIT}-line cap")
     return 0
 
 
