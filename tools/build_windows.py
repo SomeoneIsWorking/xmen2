@@ -45,7 +45,7 @@ def configure_command(build: Path, build_type: str,
             f"-DLLVM_MINGW_ROOT={deps.llvm_mingw}",
             f"-DCMAKE_FIND_ROOT_PATH={deps.prefix.as_posix()}",
             f"-DCMAKE_PREFIX_PATH={deps.prefix.as_posix()}",
-            "-DZLIB_USE_STATIC_LIBS=ON",
+            f"-DZLIB_LIBRARY={deps.zlib_library.as_posix()}",
             f"-DCMAKE_BUILD_TYPE={build_type}",
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
             f"-DPython3_EXECUTABLE={sys.executable}"]

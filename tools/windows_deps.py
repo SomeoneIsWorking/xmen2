@@ -109,6 +109,11 @@ class WindowsDependencies:
     llvm_mingw: Path
     prefix: Path
 
+    @property
+    def zlib_library(self) -> Path:
+        """zlib's MinGW static name, which CMake 4.1's FindZLIB does not search."""
+        return self.prefix / "lib" / "libzs.a"
+
 
 def refuse(message: str) -> None:
     raise SystemExit(f"windows_deps: {message}")
@@ -256,6 +261,7 @@ def contract(toolchain: Path) -> str:
 
 def required_files(prefix: Path) -> list[Path]:
     return [prefix / "include/zlib.h",
+            prefix / "lib/libzs.a",
             prefix / "lib/cmake/SDL3/SDL3Config.cmake",
             prefix / "lib/cmake/SDL3_image/SDL3_imageConfig.cmake",
             prefix / "lib/cmake/freetype/freetype-config.cmake",
