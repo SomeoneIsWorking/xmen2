@@ -6,10 +6,13 @@
 #include <stdio.h>
 
 static int g_checks;
-#define CHECK(cond)                                                            \
+/* A check is a condition, optionally led by what it states. */
+static bool check_value(bool cond) { return cond; }
+static bool check_value(const char *, bool cond) { return cond; }
+#define CHECK(...)                                                             \
   do {                                                                         \
     g_checks++;                                                                \
-    assert(cond);                                                              \
+    assert(check_value(__VA_ARGS__));                                          \
   } while (0)
 
 static void check_layout_mode(void) {
@@ -81,12 +84,28 @@ static void check_hud_layout_shapes(void) {
     }
     CHECK(placement.potions[X2_HUD_POTION_ENERGY].left >
           placement.potions[X2_HUD_POTION_HEALTH].right);
-    /* ...and stay inside the band the touch layout keeps clear for them,
-       so the stick's reach below it never lands on a potion. */
+    /* The touch layout is handed this placement: no control lands on the
+       drawn HUD and the stick's reach stays off the potions. */
     X2Rect slots[kX2SlotCount];
-    CHECK(x2_layout_build(vp, slots));
-    CHECK(placement.potions[X2_HUD_POTION_ENERGY].bottom <=
-          slots[kX2SlotPotions].bottom);
+    X2Rect drawn[X2_HUD_POTIONS + 5];
+    unsigned drawn_count = 0;
+    CHECK(x2_layout_build(vp, &placement, slots));
+    drawn[drawn_count++] = placement.vitals;
+    for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+      drawn[drawn_count++] = placement.potions[i];
+    for (unsigned i = 0; i < 4; ++i)
+      drawn[drawn_count++] = placement.portraits[i];
+    for (int control = (int)kX2SlotStick; control < (int)kX2SlotCount;
+         ++control)
+      for (unsigned d = 0; d < drawn_count; ++d)
+        CHECK("no control overlaps the drawn HUD",
+              !x2_layout_rects_overlap(slots[control], drawn[d]));
+    {
+      const X2Rect reach = x2_layout_stick_reach(vp, slots);
+      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+        CHECK("the stick's reach stays off the potions",
+              !x2_layout_rects_overlap(reach, placement.potions[i]));
+    }
 
     /* Portraits in top-right */
     for (unsigned i = 0; i < 4; ++i) {
@@ -114,6 +133,35 @@ static void check_hud_scales(void) {
 
   x2_hud_settings_defaults(&base);
   CHECK(x2_hud_layout_build(vp, &base, -1.0f, &p_base));
+
+  /* At every HUD size the controls still clear the HUD. */
+  for (unsigned percent = X2_HUD_SCALE_MIN; percent <= X2_HUD_SCALE_MAX;
+       percent += 25) {
+    X2Rect slots[kX2SlotCount];
+    scaled = base;
+    scaled.vitals_scale_percent = percent;
+    scaled.potions_scale_percent = percent;
+    scaled.portraits_scale_percent = percent;
+    CHECK(x2_hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
+    CHECK(x2_layout_build(vp, &p_scaled, slots));
+    for (int control = (int)kX2SlotStick; control < (int)kX2SlotCount;
+         ++control) {
+      CHECK("no control on the HUD at any HUD scale",
+            !x2_layout_rects_overlap(slots[control], p_scaled.vitals));
+      for (unsigned i = 0; i < 4; ++i)
+        CHECK("no control on a portrait at any HUD scale",
+              !x2_layout_rects_overlap(slots[control], p_scaled.portraits[i]));
+      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+        CHECK("no control on a potion at any HUD scale",
+              !x2_layout_rects_overlap(slots[control], p_scaled.potions[i]));
+    }
+    {
+      const X2Rect reach = x2_layout_stick_reach(vp, slots);
+      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+        CHECK("the reach stays off the potions at any HUD scale",
+              !x2_layout_rects_overlap(reach, p_scaled.potions[i]));
+    }
+  }
 
   /* Scale vitals */
   scaled = base;

@@ -9,6 +9,9 @@
  */
 #include "../src/presentation/touch_layout.h"
 
+#include "../src/config/hud_settings.h"
+#include "../src/presentation/hud_layout.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -48,6 +51,35 @@ static const struct {
 
 static float area(X2Rect r) { return (r.right - r.left) * (r.bottom - r.top); }
 
+static int same_rect(X2Rect a, X2Rect b) {
+  return a.left == b.left && a.top == b.top && a.right == b.right &&
+         a.bottom == b.bottom;
+}
+
+static X2Rect bounds(const X2Rect *rects, unsigned count) {
+  X2Rect r = rects[0];
+  for (unsigned i = 1; i < count; ++i) {
+    r.left = fminf(r.left, rects[i].left);
+    r.top = fminf(r.top, rects[i].top);
+    r.right = fmaxf(r.right, rects[i].right);
+    r.bottom = fmaxf(r.bottom, rects[i].bottom);
+  }
+  return r;
+}
+
+/* The HUD owner's placement at a player-chosen HUD size. */
+static int hud_here(const X2LayoutViewport *viewport, unsigned scale_percent,
+                    X2HudPlacement *out) {
+  X2HudSettings settings;
+  x2_hud_settings_defaults(&settings);
+  settings.vitals_scale_percent = scale_percent;
+  settings.potions_scale_percent = scale_percent;
+  settings.portraits_scale_percent = scale_percent;
+  return x2_hud_layout_build(*viewport, &settings, -1.0f, out);
+}
+
+static const unsigned kHudScales[] = {X2_HUD_SCALE_MIN, 100, X2_HUD_SCALE_MAX};
+
 int main(void) {
   size_t v;
 
@@ -61,9 +93,11 @@ int main(void) {
         kViewports[v].safe_right, kViewports[v].safe_bottom};
     X2Rect slots[kX2SlotCount];
     const char *name = kViewports[v].name;
+    X2HudPlacement hud;
     int i, j;
 
-    CHECK(name, x2_layout_build(viewport, slots));
+    CHECK(name, hud_here(&viewport, 100, &hud));
+    CHECK(name, x2_layout_build(viewport, &hud, slots));
     if (g_failed)
       break;
 
@@ -85,6 +119,15 @@ int main(void) {
     for (i = 0; i < (int)kX2SlotCount; i++)
       for (j = i + 1; j < (int)kX2SlotCount; j++)
         CHECK(name, !x2_layout_rects_overlap(slots[i], slots[j]));
+
+    /* The HUD slots are the owner's rectangles: copied, not placed twice. */
+    CHECK("hud slot is the HUD owner's vitals",
+          same_rect(slots[(int)kX2SlotVitals], hud.vitals));
+    CHECK("hud slot is the HUD owner's potion row",
+          same_rect(slots[(int)kX2SlotPotions],
+                    bounds(hud.potions, X2_HUD_POTIONS)));
+    CHECK("hud slot is the HUD owner's portrait row",
+          same_rect(slots[(int)kX2SlotPortraits], bounds(hud.portraits, 4)));
 
     /* And the requested arrangement, stated as geometry rather than
        trusted to the comments: vitals and potions top-left, faces
@@ -167,6 +210,67 @@ int main(void) {
             slots[i].right - slots[i].left >= 48.0f);
   }
 
+  /* The controls clear the HUD at every size the player can choose. */
+  for (v = 0; v < sizeof kViewports / sizeof kViewports[0]; v++) {
+    X2LayoutViewport viewport = {
+        kViewports[v].width,      kViewports[v].height,
+        kViewports[v].safe_left,  kViewports[v].safe_top,
+        kViewports[v].safe_right, kViewports[v].safe_bottom};
+    const char *name = kViewports[v].name;
+    unsigned s;
+    for (s = 0; s < sizeof kHudScales / sizeof kHudScales[0]; s++) {
+      X2HudPlacement hud;
+      X2Rect slots[kX2SlotCount];
+      X2Rect bands[X2_HUD_POTIONS + 5];
+      int i, j;
+      unsigned n = 0;
+
+      if (!hud_here(&viewport, kHudScales[s], &hud) ||
+          !x2_layout_build(viewport, &hud, slots)) {
+        CHECK(name, 0);
+        continue;
+      }
+      bands[n++] = hud.vitals;
+      for (i = 0; i < X2_HUD_POTIONS; ++i)
+        bands[n++] = hud.potions[i];
+      for (i = 0; i < 4; ++i)
+        bands[n++] = hud.portraits[i];
+      for (i = (int)kX2SlotStick; i < (int)kX2SlotCount; i++)
+        for (j = 0; j < (int)n; j++)
+          CHECK(name, !x2_layout_rects_overlap(slots[i], bands[j]));
+      {
+        const X2Rect reach = x2_layout_stick_reach(viewport, slots);
+        for (i = 0; i < X2_HUD_POTIONS; ++i)
+          CHECK("stick reach clears a potion ring",
+                !x2_layout_rects_overlap(reach, hud.potions[i]));
+      }
+    }
+  }
+
+  /* No placement published: the HUD slots stay empty, the controls remain. */
+  {
+    X2LayoutViewport viewport = {1280.0f, 720.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    X2HudPlacement hud;
+    X2Rect none[kX2SlotCount], placed[kX2SlotCount];
+    CHECK("placement for the comparison", hud_here(&viewport, 100, &hud));
+    CHECK("layout without a placement", x2_layout_build(viewport, NULL, none));
+    CHECK("layout with the placement", x2_layout_build(viewport, &hud, placed));
+    CHECK("no placement invents no HUD rectangle",
+          area(none[(int)kX2SlotVitals]) == 0.0f &&
+              area(none[(int)kX2SlotPotions]) == 0.0f &&
+              area(none[(int)kX2SlotPortraits]) == 0.0f);
+    CHECK("no placement still places every control",
+          area(none[(int)kX2SlotStick]) > 0.0f &&
+              area(none[(int)kX2SlotLightAttack]) > 0.0f);
+    {
+      int i;
+      for (i = (int)kX2SlotStick; i < (int)kX2SlotCount; i++)
+        CHECK("the HUD only takes room, it never gives any back",
+              (none[i].right - none[i].left) >=
+                  (placed[i].right - placed[i].left) - 0.01f);
+    }
+  }
+
   /* The menu pad, over the same sweep: inside the safe region, no button on
      another, the d-pad under the left thumb and the face buttons under the
      right in the Xbox arrangement, each shoulder above its own cluster, and
@@ -233,10 +337,11 @@ int main(void) {
     X2LayoutViewport inverted = {100.0f, 100.0f, 80.0f, 0, 80.0f, 0};
     X2LayoutViewport nan_size = {NAN, 100.0f, 0, 0, 0, 0};
     X2LayoutViewport ok = {800.0f, 600.0f, 0, 0, 0, 0};
-    CHECK("empty viewport", !x2_layout_build(empty, slots));
-    CHECK("safe area wider than screen", !x2_layout_build(inverted, slots));
-    CHECK("non-finite dimension", !x2_layout_build(nan_size, slots));
-    CHECK("null destination", !x2_layout_build(ok, NULL));
+    CHECK("empty viewport", !x2_layout_build(empty, NULL, slots));
+    CHECK("safe area wider than screen",
+          !x2_layout_build(inverted, NULL, slots));
+    CHECK("non-finite dimension", !x2_layout_build(nan_size, NULL, slots));
+    CHECK("null destination", !x2_layout_build(ok, NULL, NULL));
   }
 
   /* The names are the denominator of every exhaustive check above. */

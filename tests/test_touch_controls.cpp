@@ -187,12 +187,9 @@ int main() {
                                          10.0F,   20.0F,  10.0F};
   controls.set_viewport({1000.0F, 600.0F, {20.0F, 10.0F, 20.0F, 10.0F}});
 
-  /* The probe points come from the LAYOUT, not from remembered pixels. A
-     test that hardcodes where a button used to be stops testing whether the
-     zone matches the drawn control the moment the layout moves -- which is
-     the exact drift this shared layout exists to end. */
+  /* Probe points come from the layout, not remembered pixels; no HUD yet. */
   X2Rect slots[kX2SlotCount];
-  if (!x2_layout_build(layout_viewport, slots)) {
+  if (!x2_layout_build(layout_viewport, nullptr, slots)) {
     std::cerr << "layout refused a viewport the controls accept\n";
     return 1;
   }
@@ -469,6 +466,74 @@ int main() {
     std::cerr << "viewport change did not release the old layout\n";
     return 1;
   }
+  /* Zones are laid out around the placement the HUD owner publishes. */
+  {
+    const X2LayoutViewport rotated_viewport{600.0F, 1000.0F, 10.0F,
+                                            20.0F,  10.0F,   20.0F};
+    X2HudPlacement hud{};
+    X2Rect drawn[X2_HUD_POTIONS + 5];
+    std::vector<lucent::touch::Zone> control_zones;
+    std::size_t drawn_count = 0;
+    hud.vitals = {20.0F, 30.0F, 260.0F, 90.0F};
+    hud.potions[0] = {20.0F, 100.0F, 100.0F, 180.0F};
+    hud.potions[1] = {110.0F, 100.0F, 190.0F, 180.0F};
+    for (int i = 0; i < 4; ++i) {
+      hud.portraits[i] = {300.0F + 50.0F * static_cast<float>(i), 30.0F,
+                          350.0F + 50.0F * static_cast<float>(i), 80.0F};
+    }
+    hud.selector = {-1000.0F, -1000.0F, -1000.0F, -1000.0F};
+    controls.set_hud_placement(&hud);
+    drawn[drawn_count++] = hud.vitals;
+    for (int i = 0; i < X2_HUD_POTIONS; ++i)
+      drawn[drawn_count++] = hud.potions[i];
+    for (int i = 0; i < 4; ++i)
+      drawn[drawn_count++] = hud.portraits[i];
+    for (const auto &zone : controls.zones()) {
+      if (zone.action != x2::input::TouchAction::CameraLeft) {
+        control_zones.push_back(zone.zone);
+      }
+    }
+    bool clear = true;
+    for (const auto &zone : control_zones) {
+      for (std::size_t d = 0; d < drawn_count; ++d) {
+        clear = clear &&
+                !x2_layout_rects_overlap(
+                    {zone.left, zone.top, zone.right, zone.bottom}, drawn[d]);
+      }
+    }
+    if (!clear) {
+      std::cerr << "a control zone was left on top of the published HUD\n";
+      return 1;
+    }
+    /* Republishing is a no-op, or every HUD redraw would drop held contacts. */
+    if (!controls.set_hud_placement(&hud).empty()) {
+      std::cerr << "an unchanged HUD placement released a captured control\n";
+      return 1;
+    }
+    /* Withdrawing restores the layout without a HUD. */
+    if (!controls.set_hud_placement(nullptr).empty()) {
+      std::cerr << "withdrawing the placement released a held control\n";
+      return 1;
+    }
+    X2Rect back[kX2SlotCount];
+    if (!x2_layout_build(rotated_viewport, nullptr, back)) {
+      std::cerr << "layout refused a viewport the controls accept\n";
+      return 1;
+    }
+    const lucent::touch::Zone *jump_zone = nullptr;
+    for (const auto &zone : controls.zones()) {
+      if (zone.action == x2::input::TouchAction::Jump) {
+        jump_zone = &zone.zone;
+      }
+    }
+    if (jump_zone == nullptr || jump_zone->left != back[kX2SlotJump].left ||
+        jump_zone->right != back[kX2SlotJump].right) {
+      std::cerr << "withdrawing the HUD placement did not restore the layout "
+                   "without it\n";
+      return 1;
+    }
+  }
+
   if (!portrait_regions() || !power_slots())
     return 1;
   std::cout

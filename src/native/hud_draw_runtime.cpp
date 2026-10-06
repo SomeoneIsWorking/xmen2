@@ -93,13 +93,17 @@ static int prepare_space(void) {
   return 1;
 }
 
-/* That mapping, plus the mobile layout when it is the one in use. */
+/* That mapping, plus the mobile layout when it is the one in use; the
+   placement is published so the touch zones lay out around it. */
 static int prepare(void) {
   const X2Settings *settings = x2_settings_store();
-  return prepare_space() &&
-         x2_hud_layout_mobile(&settings->hud, x2_touch_runtime_active()) &&
-         x2_hud_layout_build(g_viewport, &settings->hud, g_menu_row_top,
-                             &g_layout);
+  const int mobile =
+      prepare_space() &&
+      x2_hud_layout_mobile(&settings->hud, x2_touch_runtime_active()) &&
+      x2_hud_layout_build(g_viewport, &settings->hud, g_menu_row_top,
+                          &g_layout);
+  x2_touch_runtime_hud_placement(mobile ? &g_layout : NULL);
+  return mobile;
 }
 
 static void placement(unsigned group, X2HudSpace source, X2Rect target) {

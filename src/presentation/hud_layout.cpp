@@ -10,7 +10,7 @@ int x2_hud_layout_mobile(const X2HudSettings *settings, int touch_enabled) {
 int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
                         float row_top, X2HudPlacement *out) {
   X2Rect validated[kX2SlotCount];
-  if (!out || !x2_hud_settings_valid(s) || !x2_layout_build(v, validated))
+  if (!out || !x2_hud_settings_valid(s) || !x2_layout_build(v, NULL, validated))
     return 0;
   float width = v.width - v.safe_left - v.safe_right;
   float height = v.height - v.safe_top - v.safe_bottom;

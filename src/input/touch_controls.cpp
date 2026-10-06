@@ -181,6 +181,8 @@ std::vector<ActionEvent> TouchControls::set_viewport(Viewport viewport) {
   auto released = cancel();
   viewport_ = viewport;
   hud_ = {};
+  hud_placed_ = false;
+  hud_placement_ = {};
   rebuild_zones();
   return released;
 }
@@ -269,6 +271,24 @@ std::vector<ActionEvent> TouchControls::set_hud(const X2HudRegions &regions) {
 }
 
 std::vector<ActionEvent>
+TouchControls::set_hud_placement(const X2HudPlacement *placement) {
+  const X2HudPlacement next = placement ? *placement : X2HudPlacement{};
+  if (hud_placed_ == (placement != nullptr) &&
+      same_rects(std::span{&next.vitals, 1},
+                 std::span{&hud_placement_.vitals, 1}) &&
+      same_rects(next.potions, hud_placement_.potions) &&
+      same_rects(next.portraits, hud_placement_.portraits) &&
+      same_rects(std::span{&next.selector, 1},
+                 std::span{&hud_placement_.selector, 1}))
+    return {};
+  auto released = translate(router_.cancel());
+  hud_placed_ = placement != nullptr;
+  hud_placement_ = next;
+  rebuild_zones();
+  return released;
+}
+
+std::vector<ActionEvent>
 TouchControls::set_power_icons(const std::array<int, 4> &icons) {
   if (icons == power_icons_)
     return {};
@@ -299,7 +319,8 @@ void TouchControls::rebuild_zones() {
       viewport_.safe_area.left,  viewport_.safe_area.top,
       viewport_.safe_area.right, viewport_.safe_area.bottom};
   X2Rect slots[kX2SlotCount];
-  if (!x2_layout_build(layout_viewport, slots)) {
+  if (!x2_layout_build(layout_viewport, hud_placed_ ? &hud_placement_ : nullptr,
+                       slots)) {
     // No usable area: no zones. Distinct from "zones that cover nothing" --
     // the router is told there is nothing to route against.
     const std::vector<lucent::touch::Zone> empty;
@@ -345,7 +366,8 @@ void TouchControls::rebuild_zones() {
   // chord or a portrait tap never moves it.
   {
     const float left = layout_viewport.safe_left;
-    const float top = slots[kX2SlotVitals].bottom;
+    const float top =
+        hud_placed_ ? slots[kX2SlotVitals].bottom : layout_viewport.safe_top;
     const float right = layout_viewport.width - layout_viewport.safe_right;
     const float bottom = slots[kX2SlotStick].top;
     if (bottom > top && right > left)

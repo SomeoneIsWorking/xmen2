@@ -81,6 +81,7 @@ public:
 
   void cancel(X2TouchCancelCause cause);
   void set_hud_regions(const X2HudRegions *regions);
+  void set_hud_placement(const X2HudPlacement *placement);
   // True once per press of the port menu button.
   bool take_menu_request();
   void set_power_slots(const int icons[X2_POWER_SLOTS]);
@@ -554,11 +555,16 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   }
   publish(controls_.cancel());
   publish(controls_.set_hud({}));
+  publish(controls_.set_hud_placement(nullptr));
   contacts_.clear();
   release_menu();
   active_zones_.clear();
   skip_.release();
   touch_menu_.cancel();
+}
+
+void TouchRuntime::set_hud_placement(const X2HudPlacement *placement) {
+  publish(controls_.set_hud_placement(overlay_visible() ? placement : nullptr));
 }
 
 void TouchRuntime::set_hud_regions(const X2HudRegions *regions) {
@@ -655,6 +661,10 @@ void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
 
 void x2_touch_runtime_hud_regions(const X2HudRegions *regions) {
   x2::input::runtime.set_hud_regions(regions);
+}
+
+void x2_touch_runtime_hud_placement(const X2HudPlacement *placement) {
+  x2::input::runtime.set_hud_placement(placement);
 }
 
 int x2_touch_runtime_take_menu_request(void) {

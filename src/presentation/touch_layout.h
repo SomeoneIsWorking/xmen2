@@ -31,6 +31,9 @@ typedef struct X2Rect {
   float bottom;
 } X2Rect;
 
+/* The retail potion kinds, in the order CHud stacks them. */
+enum { X2_HUD_POTION_HEALTH = 0, X2_HUD_POTION_ENERGY = 1, X2_HUD_POTIONS = 2 };
+
 /* What the retail HUD drew this frame that a finger can press, in output
  * pixels; each mask bit says that entry was drawn. The potions are health,
  * then energy. The menu icons are the pause menu and team menu icons, in
@@ -40,7 +43,7 @@ typedef struct X2Rect {
 typedef struct X2HudRegions {
   X2Rect portraits[4];
   unsigned portrait_mask;
-  X2Rect potions[2];
+  X2Rect potions[X2_HUD_POTIONS];
   unsigned potion_mask;
   X2Rect menu_icons[X2_HUD_MENU_ICONS];
   unsigned menu_icon_mask;
@@ -57,6 +60,16 @@ typedef struct X2LayoutViewport {
   float safe_right;
   float safe_bottom;
 } X2LayoutViewport;
+
+/* Where the relocated retail HUD goes. The HUD owner (hud_layout.h) produces
+   it; the control layout copies it and fits the controls around it. */
+typedef struct {
+  X2Rect vitals;
+  /* One ring per potion, side by side under the vitals: square, so a touch
+     button's circle is inscribed in it. */
+  X2Rect potions[X2_HUD_POTIONS];
+  X2Rect portraits[4], selector;
+} X2HudPlacement;
 
 /*
  * Every placed thing, named. The order is the enumeration order and
@@ -102,12 +115,16 @@ int x2_layout_slot_is_hud(int slot);
 /*
  * Fill `out` with kX2SlotCount rectangles for this viewport.
  *
+ * The HUD slots are copied from `hud`, the HUD owner's placement, and the
+ * controls are fitted to avoid it. A NULL `hud` leaves the HUD slots empty.
+ *
  * Returns 0 without touching `out` when the viewport has no usable area --
  * a zero or negative safe region, a non-finite dimension. A caller that got 0
  * has no layout, which is a different fact from a layout of empty rectangles,
  * and the difference decides whether it should draw nothing or refuse.
  */
-int x2_layout_build(X2LayoutViewport viewport, X2Rect *out);
+int x2_layout_build(X2LayoutViewport viewport, const X2HudPlacement *hud,
+                    X2Rect *out);
 
 /*
  * Where a movement thumb may land: the lower-left of the screen, not just the
