@@ -193,6 +193,14 @@ row's top too (`x2_hud_layout_build`'s `row_top`), so the top band is one
 line even on a phone whose reported safe area starts lower than where the
 game draws its own icons.
 
+The HUD's three slots in the touch layout are the HUD owner's own placement:
+`hud_draw_runtime.cpp` publishes `x2_hud_layout_build`'s result to the touch
+runtime, and `x2_layout_build` copies it rather than computing rectangles of
+its own. The controls then fit around it: the stick shrinks to fit under the
+potions, and the port menu button shrinks to stop short of the portraits, or
+drops under them when there is no room. Without a placement (HUD not
+relocated) the HUD slots are empty and the controls keep their full size.
+
 The layout must leave an inset for cutouts/navigation bars, support at least the
 left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
