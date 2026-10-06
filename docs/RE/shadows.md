@@ -109,12 +109,32 @@ The explicit current policy is:
 - light: the first enabled, non-black directional light in the title's ordered
   light array. Point and spot lights do not silently become shadow lights;
 - projection/update: each frame recovers the camera view-projection from the
-  first eligible fixed draw, unprojects its eight D3D clip corners, fits one
-  orthographic directional map with 5% XY padding, and records every eligible
-  caster in the same frame;
-- quality: one sampleable depth target at the configured 512/1024/2048/4096
-  resolution (1024 default), raster bias 1.25 plus slope bias 1.75, receiver
-  depth bias 0.0015, 3x3 manual PCF, and 0.55 maximum darkening.
+  first eligible fixed draw and unprojects its eight D3D clip corners. The
+  frustum's view depth is split into 4 cascades with the practical scheme
+  (lambda 0.8 blend of log and linear splits). Each slice, extended back by a
+  10% blend band into the previous cascade, is bounded by a sphere whose
+  radius steps by an eighth of an octave, so its map size does not change with
+  camera rotation. Its orthographic light box is centred on that sphere with
+  the centre snapped to whole texels on all three light axes, so a camera move
+  under one texel leaves the matrix unchanged. The box's near plane reaches
+  back one view depth toward the light, so casters outside the camera view
+  still cast. Every eligible caster is drawn once per cascade;
+- quality: one sampleable depth atlas whose side is the configured
+  512/1024/2048/4096 resolution (2048 default), split into 2x2 tiles of half
+  that side, cascade `i`
+  in tile `(i % 2, i / 2)`, drawn with a per-tile viewport and scissor in the
+  one shadow command buffer. The receiver picks the cascade from the
+  fragment's view depth (world position against the camera's depth plane),
+  blends into the next over the last 10% of a cascade and fades the last one
+  out; beyond it there is no shadow. Each tap is a hardware comparison
+  (`sampler2DShadow`, LINEAR, LESS_OR_EQUAL), so a 3x3 grid of taps is
+  bilinear-filtered and clamped inside the tile. The grid spacing keeps the
+  finest cascade's 1.5-texel penumbra in world units where a coarser cascade
+  allows it (1 to 1.5 texels). Receiver bias scales with the cascade's texel:
+  depth bias of one texel plus normal-offset bias of 1.5 texels times
+  `1 - N.L` where the receiver has a normal (fixed lit draws; programmable
+  draws have none). The caster pass keeps raster bias 1.25 plus slope 1.75.
+  Maximum darkening is 0.55;
 
 These numeric values are visible enhancement policy, not reconstructed retail
 constants. The RmlUi Video page exposes an On/Off switch and resolution cycle,
@@ -137,16 +157,17 @@ position from the exact shipping shader output rather than reimplementing the
 bone shader or casting from undeformed source vertices.
 
 The shadow command buffer is submitted before the logical-scene command buffer.
-The receiver shader samples the resulting depth map in the ordinary scene pass;
+The receiver shader samples the resulting depth atlas in the ordinary scene pass;
 only afterward does `gpu_present_composite` aspect-fit the logical image and
 RmlUi draw over it. Guest D3D state is not mutated, and resolution changes
 recreate only the shadow target between frames.
 
 ### Limits
 
-This first generic policy does not honor authored `shadow` / `no_shadow`
-tags, select local lights, cascade a sun map, apply normal bias, or cast blended
-particles. Fixed emissive surfaces are excluded as receivers. Programmable
+This generic policy does not honor authored `shadow` / `no_shadow` tags,
+select local lights, or cast blended particles. Cascades cover the whole camera
+frustum (no distance cut-off short of the far plane) and every caster is drawn
+four times. Fixed emissive surfaces are excluded as receivers. Programmable
 packets no longer expose an authored material identity after VS execution, so
 their receiver admission is geometric rather than tag-aware. Adding authored
 classification belongs at Alchemy scene traversal while `igObject*` / node
@@ -172,12 +193,12 @@ shadow resource/pass failures. The 800x600 captured frame contains 81,795
 colours. This is positive title-scene coverage; it is not evidence that the
 generic policy matches unobserved authored shadow intent.
 
-The run report's `gpu shadow: last map spans` line gives the last map's world
-extent, its world units per texel and the camera view depth. A tutorial run
-(`stick-travel`, 2026-10-06) reported 7016 x 4893 units, 6.85 x 4.78 per
-texel, over a 4032-unit-deep view: fitting one 1024 map to the whole frustum
-leaves a hero's shadow about a dozen texels wide, which the binary 3x3 PCF
-draws as visible squares.
+The run report's `gpu shadow: last map spans` line gives each cascade's view
+depth range, world extent and world units per texel, then the camera view's
+depth range. Before the cascades a tutorial run (`stick-travel`, 2026-10-06)
+reported one 7016 x 4893 map, 6.85 x 4.78 per texel, over a 4032-unit-deep view:
+a hero's shadow was about a dozen texels wide, which the binary 3x3 PCF drew as
+visible squares.
 
 Retail decal parity still needs same-scene object-to-draw identity plus matching
 six-vertex bytes. That check remains separate from this enhancement.

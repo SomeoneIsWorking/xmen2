@@ -64,7 +64,7 @@ void x2_settings_defaults(X2Settings *settings) {
   settings->height = 720;
   settings->window_mode = X2_WINDOW_WINDOWED;
   settings->dynamic_shadows = 1;
-  settings->shadow_resolution = 1024;
+  settings->shadow_resolution = 2048;
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = X2_BOOT_NORMAL;
   settings->touch_controls = X2_TOUCH_CONTROLS_AUTO;

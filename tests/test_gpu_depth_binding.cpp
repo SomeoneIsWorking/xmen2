@@ -40,7 +40,8 @@ SDL_GPUTexture *x2_test_CreateGPUTexture(SDL_GPUDevice *device,
 }
 SDL_GPUSampler *x2_test_CreateGPUSampler(SDL_GPUDevice *device,
                                          const SDL_GPUSamplerCreateInfo *info) {
-  CHECK(device == DEVICE && !info->enable_compare);
+  CHECK(device == DEVICE && info->enable_compare &&
+        info->compare_op == SDL_GPU_COMPAREOP_LESS_OR_EQUAL);
   samplers += failure != 2;
   return failure == 2 ? NULL : SAMPLER;
 }

@@ -10,7 +10,9 @@ layout(location = 1) out vec2 v_uv;
    reading it from the vertex -- see texgen below. */
 layout(location = 2) out vec3 v_dir;
 layout(location = 3) out vec2 v_uv1;
+/* World position (w = 1 when valid) and world normal for the shadow lookup. */
 layout(location = 4) out vec4 v_shadow;
+layout(location = 5) out vec3 v_shadow_normal;
 
 /* SDL_GPU binds vertex uniform buffers at set 1. */
 layout(set = 1, binding = 0) uniform VertexState {
@@ -59,7 +61,7 @@ layout(set = 1, binding = 0) uniform VertexState {
        (direction, type), (attenuation, unused). Packed by hand because a
        std140 array of structs would pad every member to 16 bytes anyway. */
     vec4  light[8 * 5];
-    mat4  shadow_mvp;
+    mat4  shadow_unproject; /* clip to world, programmable draws */
     uint  shadow_enabled;
 } vs;
 
@@ -205,10 +207,21 @@ void d3d8_vertex_stage(vec4 in_pos, vec4 in_color, vec2 in_uv, vec3 in_normal,
         v_color = diffuse;
     }
     v_uv = in_uv;
-    v_shadow = vs.shadow_enabled != 0u
-        ? vs.shadow_mvp * (vs.programmable != 0u ? in_pos
-                                                : vec4(in_pos.xyz, 1.0))
-        : vec4(0.0);
+    v_shadow = vec4(0.0);
+    v_shadow_normal = vec3(0.0);
+    if (vs.shadow_enabled != 0u) {
+        if (vs.programmable != 0u) {
+            /* The VS 1.1 output is clip space; the camera's inverse takes it
+               back to the skinned world position. */
+            vec4 world = vs.shadow_unproject * in_pos;
+            if (abs(world.w) > 1e-7)
+                v_shadow = vec4(world.xyz / world.w, 1.0);
+        } else {
+            v_shadow = vec4((vs.world * vec4(in_pos.xyz, 1.0)).xyz, 1.0);
+            if (vs.has_normal != 0u)
+                v_shadow_normal = mat3(vs.world) * in_normal;
+        }
+    }
 
     /*
      * Texture-coordinate generation, in CAMERA space.

@@ -54,7 +54,7 @@ typedef struct {
   /* Five vec4s per light: diffuse, ambient, (position, range),
      (direction, type), (attenuation, unused). */
   float light[GPU_MAX_LIGHTS * 5][4];
-  float shadow_mvp[16];
+  float shadow_unproject[16];
   uint32_t shadow_enabled;
   uint32_t shadow_pad[3];
 } VertexUniforms;
@@ -62,7 +62,7 @@ typedef struct {
 /* The block each draw pushes, kept between draws rather than cleared for
    each: clearing its 1.1 KB was 9% of gpu_draw. Every field is written on
    every draw except the lighting block, read only when `lighting` is set, and
-   shadow_mvp, read only when `shadow_enabled` is -- and those gates are
+   shadow_unproject, read only when `shadow_enabled` is -- and those gates are
    written every draw (the fragment stage's own shadow gate, in the pixel
    block, is rebuilt from zero every draw). The pads stay zero from here. */
 static VertexUniforms g_vu;
@@ -116,7 +116,8 @@ void gpu_vertex_uniforms_push(SDL_GPUCommandBuffer *command, const GpuDraw *d,
     g_vu.nlights = 0;
   }
   if (shadow->enabled) {
-    memcpy(g_vu.shadow_mvp, shadow->matrix, sizeof g_vu.shadow_mvp);
+    memcpy(g_vu.shadow_unproject, shadow->world_from_clip,
+           sizeof g_vu.shadow_unproject);
     g_vu.shadow_enabled = 1;
   } else {
     g_vu.shadow_enabled = 0;

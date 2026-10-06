@@ -44,6 +44,9 @@ bool gpu_depth_binding_create(SDL_GPUDevice *device) {
       static_cast<SDL_GPUSamplerMipmapMode>(SDL_GPU_SAMPLERMIPMAPMODE_NEAREST);
   sampler.address_mode_u = sampler.address_mode_v = sampler.address_mode_w =
       SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+  /* The shader samples this slot through sampler2DShadow. */
+  sampler.enable_compare = true;
+  sampler.compare_op = SDL_GPU_COMPAREOP_LESS_OR_EQUAL;
   neutral.sampler = SDL_CreateGPUSampler(device, &sampler);
   if (!neutral.texture || !neutral.sampler) {
     gpu_depth_binding_destroy(device);
