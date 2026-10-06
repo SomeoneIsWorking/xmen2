@@ -20,8 +20,8 @@ States: `verified` means the stated outcome was observed with durable evidence;
 ## Current focus
 
 **S022 — native Windows host package and CI release.** `x2native.exe` builds
-with llvm-mingw and boots under Wine. The active work is the Windows runner
-job's tests and a native Windows run before a release artifact.
+with llvm-mingw and boots under Wine. The active work is a native Windows run
+before a release artifact.
 
 ## Capability inventory
 
@@ -2065,11 +2065,11 @@ every test with no warnings. Under Wine 11:
   Windows code regions are a dual-mapped section, so publishing never calls
   `VirtualProtect`.
 - An `abort()` writes the crash record.
+- The `windows-x86_64` CI job builds and passes every host-boundary test
+  natively on the runner (run `37489972297`).
 - CTest through `wine` passes every host-boundary test.
 
 Gap:
-- The `windows-x86_64` CI job builds on the runner; its host-boundary tests
-  are the open step.
 - No native Windows run has been made, and there is no release ZIP.
 
 Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and

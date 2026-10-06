@@ -46,6 +46,9 @@ with `cmake/toolchains/llvm-mingw-x86_64.cmake`.
   and 2027 by 60 s on a warm prefix; the whole-region `VirtualProtect` build
   presented 0 and 1260. `perf` of the boot is now flat: no `mprotect_range`.
 - An `abort()` writes the `*** CRASH SIGABRT` record (`run_log` under Wine).
+- The `windows-x86_64` job in `asset-free.yml` passes on a Windows runner
+  (run `37489972297`). The UCRT's `abort()` there fast-fails with
+  `0xC0000409` where Wine exits 3; the tests accept both.
 - CTest with `CMAKE_CROSSCOMPILING_EMULATOR=wine` passes every host-boundary
   test. Three tests fail because of the cross host, not the product:
   - `control_png` calls the Linux Python.
@@ -54,14 +57,9 @@ with `cmake/toolchains/llvm-mingw-x86_64.cmake`.
 
 ## Open work
 
-1. **Windows CI.** The `windows-x86_64` job in `asset-free.yml` runs
-   `tools/ci.py native-components --target windows-x86_64`. It installs MSYS2
-   `make`, `pkgconf` and `shaderc`, builds FFmpeg with MSYS2's `sh`, and runs
-   the host-boundary tests natively. On the runner the UCRT's `abort()`
-   fast-fails with `0xC0000409` where Wine exits 3; the tests accept both.
-2. **A native Windows run.** Nothing has been tested on a real Windows host:
+1. **A native Windows run.** Nothing has been tested on a real Windows host:
    the window path, input, audio and JIT speed on real Windows.
-3. **Package.** After 1 and 2, add a portable ZIP to `release.yml` and record
+2. **Package.** After 1, add a portable ZIP to `release.yml` and record
    the release in S022.
 
 The falsifier is a Windows runner that builds the ZIP and whose `x2native.exe`
