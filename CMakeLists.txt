@@ -341,6 +341,28 @@ target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
 
+# The touch menu's pure parts: the view of a retail menu snapshot, its layout,
+# what a tap delivers, and the scene-plane mapping the clicks cross.
+add_executable(test_touch_menu tests/test_touch_menu.cpp
+               src/input/touch_menu.cpp
+               src/input/touch_menu_layout.cpp
+               src/input/touch_menu_view.cpp
+               src/presentation/retail_scene_plane.cpp
+               src/presentation/hud_layout.cpp
+               src/presentation/touch_layout.cpp
+               src/config/hud_settings.cpp)
+target_include_directories(test_touch_menu PRIVATE src/input src/native
+                                           src/presentation src/config)
+target_link_libraries(test_touch_menu PRIVATE lucent::lucent)
+add_test(NAME touch_menu COMMAND test_touch_menu)
+
+# The retail menu model read from a fake guest image: classes, labels, flags,
+# navigation order and value pairing through the shipping reader.
+add_executable(test_retail_menu_model tests/test_retail_menu_model.cpp
+               src/native/retail_menu_model.cpp)
+target_include_directories(test_retail_menu_model PRIVATE src/native)
+add_test(NAME retail_menu_model COMMAND test_retail_menu_model)
+
 add_executable(test_thumb_stick tests/test_thumb_stick.cpp
                src/input/thumb_stick.cpp)
 target_link_libraries(test_thumb_stick PRIVATE lucent::lucent)
@@ -357,11 +379,20 @@ add_test(NAME pad_stick_dead_zone COMMAND test_pad_stick_dead_zone)
 # and the synthetic joystick, so it SKIPs (77) where neither exists.
 add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
+               # The injector, so the release-without-an-arrival case is driven
+               # through x2_touch_inject exactly as the control channel and the
+               # host pump are, rather than through a hand-built SDL event.
+               src/input/touch_inject.cpp
                src/input/touch_skip_button.cpp
                src/input/cutscene_skip.cpp
                src/input/touch_pad_publisher.cpp
                src/input/touch_menu_controls.cpp
                src/input/touch_pointer.cpp
+               src/input/touch_menu.cpp
+               src/input/touch_menu_layout.cpp
+               src/input/touch_menu_view.cpp
+               src/presentation/retail_scene_plane.cpp
+               src/presentation/hud_layout.cpp
                src/input/touch_visuals.cpp
                src/input/directinput_controller_sample.cpp
                src/input/touch_census.cpp
@@ -1768,6 +1799,8 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_menu.rcss"
+               "${CMAKE_BINARY_DIR}/ui/touch_menu.rcss" COPYONLY)
 # The touch buttons' own art, authored as SVG and rasterized by SDL_image at
 # load time. tools/ui_resource_files.py lists the same files for packaging.
 foreach(x2_touch_icon punch smash use jump menu)
@@ -1781,6 +1814,7 @@ endforeach()
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
+    src/ui/touch_menu_document.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
     src/ui/display_settings_document.cpp
@@ -2001,6 +2035,10 @@ set(X2_NATIVE_SOURCES
     src/native/stick_axis_override.cpp
     src/native/input_probe.cpp
     src/native/text_put.cpp
+    src/native/touch_menu_source.cpp
+    src/native/guest_memory_view.cpp
+    src/native/retail_menu_model.cpp
+    src/native/retail_menu_live.cpp
     src/input/touch_controls.cpp
     src/input/thumb_stick.cpp
     src/input/touch_runtime.cpp
@@ -2010,6 +2048,9 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_controls.cpp
     src/input/touch_pointer.cpp
     src/input/touch_visuals.cpp
+    src/input/touch_menu.cpp
+    src/input/touch_menu_layout.cpp
+    src/input/touch_menu_view.cpp
     src/input/touch_inject.cpp
     src/input/touch_census.cpp
     src/input/touch_pad.cpp
@@ -2023,6 +2064,7 @@ set(X2_NATIVE_SOURCES
     src/native/hud_portrait_position.cpp
     src/native/hud_portrait_position_runtime.cpp
     src/presentation/hud_layout.cpp
+    src/presentation/retail_scene_plane.cpp
     src/native/xbox_defaults.cpp
     src/native/dsound.cpp
     src/native/dsound_mixer.cpp
@@ -2038,6 +2080,7 @@ set(X2_NATIVE_SOURCES
     src/native/control.cpp
     src/native/control_http.cpp
     src/native/control_save_route.cpp
+    src/native/control_menu_route.cpp
     src/native/control_console.cpp
     src/native/retail_front_end.cpp
     src/native/campaign_snapshot.cpp

@@ -11,9 +11,12 @@ scratch/run/live.json.
     tools/live_case.py boot-continue          # Boot=Continue reaches the saved map
     tools/live_case.py pad-late               # pad attached after start works
     tools/live_case.py pad-persisted          # stored controller0 id adopted
+    tools/live_case.py menu-model             # GET /menu matches the drawn menus
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
-Artifacts (log, screenshots, profile) stay under scratch/run/cases/<case>/.
+Artifacts (log, screenshots, profile) stay under
+scratch/run/cases/<case>/<port>/, so concurrent runs on different ports never
+share a profile or a log.
 The run is killed BY PID at the end; nothing is left running.
 """
 
@@ -58,7 +61,7 @@ class Case:
     def __init__(self, name: str, port: int) -> None:
         self.name = name
         self.port = port
-        self.dir = CASES_DIR / name
+        self.dir = CASES_DIR / name / str(port)
         self.profile = self.dir / "profile"
         self.log_path = self.dir / "run.log"
         self.shot_dir = self.dir / "shots"
@@ -165,14 +168,10 @@ class Case:
         return body.decode(errors="replace") if code == 200 else ""
 
     def status_frames(self) -> int:
-        for line in self.get_text("/status").splitlines():
-            parts = line.replace(",", " ").split()
-            lowered = [p.lower() for p in parts]
-            if "frame" in lowered or "frames" in lowered:
-                digits = [int(p) for p in parts if p.isdigit()]
-                if digits:
-                    return digits[0]
-        return -1
+        code, body = self.http("/status")
+        if code != 200:
+            return -1
+        return int(json.loads(body).get("frames_presented", -1))
 
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
@@ -199,8 +198,12 @@ class Case:
                 refuse("the run exited early (rc=%s); log: %s"
                        % (self.proc.returncode, self.log_path))
             try:
-                code, _ = self.http("/status", timeout=2.0)
+                code, body = self.http("/status", timeout=2.0)
                 if code == 200:
+                    pid = json.loads(body).get("pid")
+                    if pid != self.proc.pid:
+                        refuse("port %d is answered by pid %s, not this "
+                               "run's pid %d" % (self.port, pid, self.proc.pid))
                     return
             except OSError:
                 time.sleep(0.5)
@@ -1168,18 +1171,9 @@ def png_mean_diff(a: Path, b: Path,
 
 
 INTRO_TAP_SECONDS = 6.0
-# The OPTIONS row, as fractions of the window. Read off the drawn menu, not
-# computed: the retail menu is authored art and not a layout this port owns.
-MENU_OPTIONS_ROW = (0.195, 0.728)
-# What the game itself does when that row is activated. The menu animates --
-# its idle frame-to-frame difference measures LARGER than the change a working
-# tap makes -- so a pixel delta cannot answer this and the game's own first
-# open of the package can.
+# The game's own first open of Options: the menu animates, so a pixel delta
+# cannot tell whether a row was activated.
 OPTIONS_PACKAGE = "menus/options.pkgb"
-# The main menu's column of rows, as fractions of the frame: static art,
-# unlike the animated backdrop behind it.
-MENU_COLUMN = (0.05, 0.15, 0.42, 0.85)
-
 
 def wait_movie_end(case: Case, seen: int, timeout: float) -> float | None:
     """When the (seen+1)-th movie printed its end summary, or None.
@@ -1202,7 +1196,8 @@ def keyboard_past_the_intro(case: Case, timeout: float) -> bool:
     """Reach the main menu by key, which is what a phone player cannot do.
 
     Getting there is not what this case tests; what a finger does once there
-    is. Returns whether the movies stopped coming.
+    is. Returns whether the movies stopped coming and the game's own menu is
+    the main menu.
     """
     deadline = time.monotonic() + timeout
     loads, quiet = case.log_text().count("movie: loaded native"), 0
@@ -1216,7 +1211,7 @@ def keyboard_past_the_intro(case: Case, timeout: float) -> bool:
         loads = now
     case.http("/key?name=Escape&hold=0.3")
     time.sleep(3.0)
-    return quiet >= 4
+    return quiet >= 4 and wait_menu(case, "main", 30).get("menu") == "main"
 
 
 def case_menu_touch(case: Case) -> None:
@@ -1260,46 +1255,33 @@ def case_menu_touch(case: Case) -> None:
                keyboard_past_the_intro(case, 300))
     case.shot("menu")
 
-    # The negative FIRST, so a run in which every tap "works" cannot pass.
-    opened_before = case.log_text().count(OPTIONS_PACKAGE)
-    case.http("/touch?x=0.80&y=0.10")
-    time.sleep(3.0)
-    case.check("a tap on empty sky activates nothing",
-               case.log_text().count(OPTIONS_PACKAGE) == opened_before,
-               "no menu package was opened")
-
-    pointer_beats = len(re.findall(
-        r"contact\(s\) became the retail GUI pointer", case.log_text()))
-    case.http("/touch?x=%g&y=%g" % MENU_OPTIONS_ROW)
-    case.check("a tap on the OPTIONS row opens the Options screen",
-               case.wait_log(OPTIONS_PACKAGE, 20),
-               "the game's own first open of %s" % OPTIONS_PACKAGE)
-    case.shot("after-options-tap")
-
-    # The census is the only account a phone or a browser gets of this, so it
-    # is asserted against the run that just happened rather than trusted. It
-    # is read from the periodic heartbeat, so the read waits for one printed
-    # AFTER the last tap: reading immediately gets the beat before it and
-    # undercounts a working run.
+    # The main menu is the touch menu's: its rows are covered by the
+    # touch-menu case. Here only the census's account of this run is checked.
+    shown = wait_touch_menu(case, "main", 30)
+    case.check("the touch menu covers the main menu", shown.get("visible") is True)
+    beats = len(re.findall(r"went to the touch menu", case.log_text()))
+    case.http("/touch?x=0.02&y=0.5")
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        if len(re.findall(r"contact\(s\) became the retail GUI pointer",
-                          case.log_text())) > pointer_beats:
+        if len(re.findall(r"went to the touch menu", case.log_text())) > beats:
             break
         time.sleep(1.0)
     report = case.log_text()
     pointers = [int(n) for n in re.findall(
         r"(\d+) contact\(s\) became the retail GUI pointer", report)]
+    menu_contacts = [int(n) for n in re.findall(
+        r"(\d+) contact event\(s\) went to the touch menu", report)]
     dropped = [int(n) for n in re.findall(
-        r"(\d+) of \d+ dropped before routing", report)]
-    case.check("the census counted the contacts reaching the retail pointer",
-               bool(pointers) and max(pointers) >= 6,
-               "%d at most, against 3 taps of 2 events each"
-               % max(pointers, default=0))
+        r"(\d+) of \d+ contact\(s\) were dropped before routing", report)]
+    case.check("the census counted the intro tap as the retail pointer",
+               bool(pointers) and max(pointers) >= 2,
+               "%d at most" % max(pointers, default=0))
+    case.check("and the menu tap as the touch menu's",
+               bool(menu_contacts) and max(menu_contacts) >= 2,
+               "%d at most" % max(menu_contacts, default=0))
     case.check("and reported none of them dropped",
                bool(dropped) and max(dropped) == 0,
                "%d at most" % max(dropped, default=-1))
-
 
 
 def live_viewport(case: Case, route: str = "/controls") -> tuple[float, float] | None:
@@ -1457,60 +1439,360 @@ def case_stick_travel(case: Case) -> None:
 
 
 def case_menu_pad(case: Case) -> None:
-    """The menu pad: the retail menus driven by the controller touch draws.
+    """The menu pad where the touch menu stands aside.
 
-    Off gameplay, touch play draws a d-pad and the Xbox face buttons, and the
-    menus answer them as they answer a controller. The discriminator is the
-    game's own first open of the Options package, which only an A on the
-    Options row can cause, and the Back that follows must leave Options: the
-    footer's Escape-less pad prompts are the screen's own evidence.
+    New Game raises the difficulty popup over the main menu; the touch menu
+    hides under a popup, touch play draws the d-pad and face buttons, and the
+    pad's B must close the popup.
     """
     case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     case.check("the run reached the main menu",
                keyboard_past_the_intro(case, 300))
-
+    main = wait_touch_menu(case, "main", 30)
+    new_game = touch_button(main, "row", "new game")
+    case.check("the touch menu offers NEW GAME", new_game is not None)
+    if new_game is None:
+        return
+    timeline = MenuTimeline(case, "timeline.txt")
+    tap_touch_button(case, main, new_game)
+    menu = timeline.until(lambda m: m.get("popup") is True, 20)
+    case.check("NEW GAME opened the game's difficulty popup",
+               menu.get("menu") == "main" and menu.get("popup") is True,
+               "menu %r popup %r" % (menu.get("menu"), menu.get("popup")))
+    timeline.until(lambda m: not m.get("touch_menu", {}).get("visible"), 5)
     controls = live_controls(case)
     viewport = live_viewport(case)
-    print("  menu pad: %s in %s" % (sorted(controls), viewport))
-    wanted = ("menu-down", "menu-a", "menu-b")
-    case.check("the main menu draws the menu pad",
-               viewport is not None and all(k in controls for k in wanted),
+    case.check("the touch menu stands aside there",
+               touch_menu(case).get("visible") is False)
+    case.check("and the menu pad is drawn instead",
+               viewport is not None and "menu-b" in controls,
                "drawn: %s" % sorted(controls))
     case.check("and none of the gameplay controls", "jump" not in controls)
-    if viewport is None or not all(k in controls for k in wanted):
+    case.shot("new-game")
+    if viewport is None or "menu-b" not in controls:
         return
-
-    # Main menu rows: Continue, New Game, Load Game, Danger Room, Review,
-    # Options. A is pressed on whichever row the pad left selected, so an
-    # Options open proves both the d-pad and A reached the menu.
-    opened_before = case.log_text().count(OPTIONS_PACKAGE)
-    for _ in range(5):
-        case.check("a d-pad Down was tapped",
-                   tap_control(case, controls["menu-down"], viewport))
-        time.sleep(0.8)
-    menu = case.shot("menu-options-row")
-    case.check("A was tapped", tap_control(case, controls["menu-a"], viewport))
-    case.check("the Options screen opened from the pad",
-               case.wait_log(OPTIONS_PACKAGE, 20) and
-               case.log_text().count(OPTIONS_PACKAGE) > opened_before)
-    time.sleep(2.0)
-    options = case.shot("options")
-
     case.check("B was tapped", tap_control(case, controls["menu-b"], viewport))
-    time.sleep(4.0)
-    after = case.shot("after-back")
-    # Not a whole-frame delta: the menu's animated backdrop moves as much as
-    # a screen change does. The menu column is static art, and the frame
-    # after B must match the main menu's column and not the Options panel.
-    to_menu = png_mean_diff(after, menu, MENU_COLUMN)
-    to_options = png_mean_diff(after, options, MENU_COLUMN)
-    print("  after B vs main menu %.2f, vs Options %.2f" % (to_menu, to_options))
-    case.check("B went back to the main menu",
-               to_menu * 2.0 < to_options,
-               "menu column differs %.2f from the main menu and %.2f from "
-               "Options" % (to_menu, to_options))
+    deadline = time.monotonic() + 20
+    back = read_menu(case)
+    while time.monotonic() < deadline and back.get("popup") is not False:
+        time.sleep(0.5)
+        back = read_menu(case)
+    case.check("the pad's B closed the popup on the game's main menu",
+               back.get("menu") == "main" and back.get("popup") is False,
+               "menu %r popup %r" % (back.get("menu"), back.get("popup")))
+    case.shot("after-back")
+
+
+MAIN_MENU_LABELS = ["new game", "load game", "danger room", "review",
+                    "options", "play online", "quit"]
+OPTIONS_MENU_LABELS = ["effects volume", "music volume", "combat music",
+                       "view angle", "view cycle", "view follow", "view shake",
+                       "subtitles", "vibration", "accept"]
+
+
+class MenuTimeline:
+    """GET /menu sampled until a condition holds, each sample written down."""
+
+    def __init__(self, case: Case, name: str) -> None:
+        self.case = case
+        self.path = case.dir / name
+        self.start = time.monotonic()
+
+    def until(self, done, timeout: float) -> dict:
+        deadline = time.monotonic() + timeout
+        menu = read_menu(self.case)
+        with self.path.open("a") as out:
+            while True:
+                shown = menu.get("touch_menu", {})
+                out.write("%6.2f frames=%d menu=%s popup=%s focus=%s "
+                          "touch=%s/%s\n" % (
+                              time.monotonic() - self.start,
+                              self.case.status_frames(), menu.get("menu"),
+                              menu.get("popup"), menu.get("focused_row"),
+                              shown.get("visible"), shown.get("menu")))
+                if done(menu) or time.monotonic() >= deadline:
+                    return menu
+                time.sleep(0.1)
+                menu = read_menu(self.case)
+
+
+def read_menu(case: Case) -> dict:
+    code, body = case.http("/menu")
+    if code != 200:
+        return {}
+    try:
+        return json.loads(body)
+    except ValueError:
+        return {}
+
+
+def wait_menu(case: Case, name: str, timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        menu = read_menu(case)
+        if menu.get("menu") == name and menu.get("rows") \
+                and menu.get("focused_row", -1) >= 0:
+            return menu
+        time.sleep(0.5)
+    return read_menu(case)
+
+
+def row_labels(menu: dict) -> list[str]:
+    return [row["label"].lower() for row in menu.get("rows", [])]
+
+
+def walk_rows_by_key(case: Case, menu: dict) -> list[int]:
+    """Press Down once per row and record where the game's own focus went."""
+    seen = []
+    for _ in range(len(menu.get("rows", []))):
+        case.http("/key?name=Down&hold=0.15")
+        time.sleep(0.8)
+        seen.append(read_menu(case).get("focused_row", -1))
+    return seen
+
+
+def case_menu_model(case: Case) -> None:
+    """GET /menu: the active retail menu read from the guest.
+
+    The labels are the game's localized text as drawn, and the row order is
+    checked against the game itself: one Down per row must move the game's own
+    focus to the next row the model listed, wrapping at the end.
+    """
+    case.prepare_profile(["boot.mode=normal"])
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    case.check("the run reached the main menu",
+               keyboard_past_the_intro(case, 300))
+    main = wait_menu(case, "main", 30)
+    (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
+    print("  main: %s" % row_labels(main))
+    case.check("/menu names the main menu and its class",
+               main.get("menu") == "main" and main.get("class") == "CMenuMain",
+               "%s %s" % (main.get("menu"), main.get("class")))
+    case.check("the main menu's rows are its English labels in order",
+               row_labels(main) == MAIN_MENU_LABELS, str(row_labels(main)))
+    start = main.get("focused_row", -1)
+    count = len(main.get("rows", []))
+    walked = walk_rows_by_key(case, main)
+    expected = [(start + i + 1) % count for i in range(count)] if count else []
+    case.check("Down visits the main rows in the listed order",
+               start >= 0 and bool(walked) and walked == expected,
+               "focus went %s, listed order predicts %s" % (walked, expected))
+
+    if "options" not in row_labels(read_menu(case)):
+        return
+    options = open_options(case)
+    (case.dir / "options.json").write_text(json.dumps(options, indent=1) + "\n")
+    print("  options: %s" % row_labels(options))
+    case.check("the Options rows are its English labels in order",
+               row_labels(options) == OPTIONS_MENU_LABELS,
+               str(row_labels(options)))
+    by_label = {row["label"].lower(): row for row in options.get("rows", [])}
+    volume = by_label.get("effects volume", {})
+    case.check("a volume row carries left/right commands and its bar's level",
+               volume.get("has_left_right") is True
+               and volume.get("fill") is not None,
+               "fill %s" % volume.get("fill"))
+    combat = by_label.get("combat music", {})
+    case.check("a toggle row carries the value it shows",
+               combat.get("value") in ("On", "Off"),
+               "value %r" % combat.get("value"))
+    start = options.get("focused_row", -1)
+    count = len(options.get("rows", []))
+    walked = walk_rows_by_key(case, options)
+    expected = [(start + i + 1) % count for i in range(count)] if count else []
+    case.check("Down visits the Options rows in the listed order",
+               start >= 0 and bool(walked) and walked == expected,
+               "focus went %s, listed order predicts %s" % (walked, expected))
+    case.shot("options")
+
+
+def open_options(case: Case) -> dict:
+    rows = row_labels(read_menu(case))
+    focus = read_menu(case).get("focused_row", -1)
+    for _ in range((rows.index("options") - focus) % len(rows)):
+        case.http("/key?name=Down&hold=0.15")
+        time.sleep(0.8)
+    case.http("/key?name=Return&hold=0.15")
+    return wait_menu(case, "options", 20)
+
+
+def case_options_back(case: Case) -> None:
+    """Escape leaves Options for the PC Advanced Options screen (sebas), whose
+    text the prompt glyphs must leave alone."""
+    case.prepare_profile(["boot.mode=normal"])
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    case.check("the run reached the main menu",
+               keyboard_past_the_intro(case, 300))
+    wait_menu(case, "main", 30)
+    case.check("Options opened", open_options(case).get("menu") == "options")
+    time.sleep(1.0)
+    case.http("/key?name=Escape&hold=0.15")
+    advanced = wait_menu(case, "sebas", 20)
+    case.check("Escape opened Advanced Options", advanced.get("menu") == "sebas",
+               str(advanced.get("menu")))
+    time.sleep(2.0)
+    case.check("the game survived drawing Advanced Options", case.alive())
+    case.shot("advanced")
+
+
+def touch_menu(case: Case) -> dict:
+    """The touch menu as GET /menu reports it: rows, buttons, viewport."""
+    return read_menu(case).get("touch_menu", {})
+
+
+def wait_touch_menu(case: Case, name: str, timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        shown = touch_menu(case)
+        if shown.get("visible") and shown.get("menu") == name:
+            return shown
+        time.sleep(0.5)
+    return touch_menu(case)
+
+
+def touch_button(shown: dict, part: str, label: str) -> dict | None:
+    for button in shown.get("buttons", []):
+        if button["part"] == part and button["label"].lower() == label:
+            return button
+    return None
+
+
+def tap_touch_button(case: Case, shown: dict, button: dict) -> bool:
+    """Tap a touch menu button's centre, in fractions of ITS viewport."""
+    return case.http("/touch?x=%g&y=%g" % (
+        (button["left"] + button["width"] * 0.5) / shown["viewport_width"],
+        (button["top"] + button["height"] * 0.5) / shown["viewport_height"])
+    )[0] == 200
+
+
+def touch_row(shown: dict, label: str) -> dict:
+    for row in shown.get("rows", []):
+        if row["label"].lower() == label:
+            return row
+    return {}
+
+
+def wait_row_change(case: Case, label: str, key: str, before,
+                    timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    row = {}
+    while time.monotonic() < deadline:
+        row = touch_row(touch_menu(case), label)
+        if row and row.get(key) != before:
+            return row
+        time.sleep(0.5)
+    return row
+
+
+def case_touch_menu(case: Case) -> None:
+    """The port's touch menu over the retail main and Options menus.
+
+    Each tap is judged by the game's own state as GET /menu reads it: the menu
+    the game has open, a volume bar's level, a toggle's value text. The
+    negative comes first, so a run where every tap "works" cannot pass.
+    """
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    case.check("the run reached the main menu",
+               keyboard_past_the_intro(case, 300))
+    main = wait_touch_menu(case, "main", 30)
+    (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
+    case.check("the touch menu is shown over the main menu",
+               main.get("visible") is True and main.get("menu") == "main",
+               str({k: main.get(k) for k in ("visible", "menu")}))
+    if not main.get("visible"):
+        return
+    print("  main rows: %s" % [row["label"] for row in main.get("rows", [])])
+    case.check("it offers the main menu's rows",
+               [row["label"].lower() for row in main["rows"]]
+               == MAIN_MENU_LABELS)
+    controls = live_controls(case)
+    case.check("and the menu pad is not drawn under it",
+               "menu-a" not in controls, "drawn: %s" % sorted(controls))
+    time.sleep(1.0)
+    case.shot("main")
+
+    opened_before = case.log_text().count(OPTIONS_PACKAGE)
+    title = {"left": 0.0, "top": 0.0, "width": main["viewport_width"],
+             "height": main["viewport_height"] * 0.02}
+    tap_touch_button(case, main, title)
+    time.sleep(3.0)
+    case.check("a tap on no button activates nothing",
+               case.log_text().count(OPTIONS_PACKAGE) == opened_before
+               and read_menu(case).get("menu") == "main")
+
+    options_button = touch_button(main, "row", "options")
+    case.check("the main menu has an OPTIONS button", options_button is not None)
+    if options_button is None:
+        return
+    case.check("OPTIONS was tapped",
+               tap_touch_button(case, main, options_button))
+    options = wait_touch_menu(case, "options", 20)
+    (case.dir / "options.json").write_text(json.dumps(options, indent=1)
+                                           + "\n")
+    case.check("the tap opened the game's Options menu",
+               read_menu(case).get("menu") == "options"
+               and options.get("visible") is True,
+               "the game's menu is %r" % read_menu(case).get("menu"))
+    if not options.get("visible"):
+        return
+    time.sleep(1.0)
+    case.shot("options")
+
+    volume = touch_row(options, "effects volume")
+    step = touch_button(options, "step-left", "effects volume")
+    case.check("the effects volume row has a step-left button",
+               step is not None and volume.get("fill") is not None)
+    if step is not None:
+        before = volume.get("fill")
+        tap_touch_button(case, options, step)
+        after = wait_row_change(case, "effects volume", "fill", before, 10)
+        case.check("its step-left lowered the game's effects volume",
+                   after.get("fill") is not None and before is not None
+                   and after["fill"] < before,
+                   "%s -> %s" % (before, after.get("fill")))
+        options = touch_menu(case)
+
+    toggle = touch_row(options, "combat music")
+    toggle_button = touch_button(options, "row", "combat music")
+    case.check("the combat music row shows its value",
+               toggle.get("value") in ("On", "Off") and toggle_button,
+               repr(toggle.get("value")))
+    if toggle_button:
+        before = toggle.get("value")
+        tap_touch_button(case, options, toggle_button)
+        after = wait_row_change(case, "combat music", "value", before, 10)
+        case.check("tapping it changed the game's value text",
+                   after.get("value") in ("On", "Off")
+                   and after.get("value") != before,
+                   "%r -> %r" % (before, after.get("value")))
+        time.sleep(1.0)
+        case.shot("options-changed")
+
+    options = touch_menu(case)
+    back = touch_button(options, "footer", "back")
+    case.check("Options offers the game's Back footer", back is not None,
+               str([b["label"] for b in options.get("buttons", [])
+                    if b["part"] == "footer"]))
+    if back is None:
+        return
+    tap_touch_button(case, options, back)
+    deadline = time.monotonic() + 20
+    left = read_menu(case).get("menu")
+    while time.monotonic() < deadline and left in (None, "options"):
+        time.sleep(0.5)
+        left = read_menu(case).get("menu")
+    case.check("Back left Options", left not in (None, "options"),
+               "the game's menu is now %r" % left)
+    time.sleep(2.0)
+    case.shot("after-back")
+    case.check("and the game is still running",
+               case.alive() and case.http("/status")[0] == 200)
 
 
 CASES = {
@@ -1521,6 +1803,9 @@ CASES = {
     "touch-pad": case_touch_pad,
     "menu-touch": case_menu_touch,
     "menu-pad": case_menu_pad,
+    "touch-menu": case_touch_menu,
+    "menu-model": case_menu_model,
+    "options-back": case_options_back,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

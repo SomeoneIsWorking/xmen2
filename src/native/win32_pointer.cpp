@@ -225,7 +225,16 @@ void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
 
   if (!pointer || !pointer->valid)
     return;
-  map_point(pointer->x, pointer->y, &client_x, &client_y, &screen_x, &screen_y);
+  if (pointer->client_space) {
+    client_x = (int32_t)pointer->x;
+    client_y = (int32_t)pointer->y;
+    screen_x = client_x;
+    screen_y = client_y;
+    x2_win32_pointer_client_to_screen(&screen_x, &screen_y);
+  } else {
+    map_point(pointer->x, pointer->y, &client_x, &client_y, &screen_x,
+              &screen_y);
+  }
   queued =
       x2_win32_mouse_motion(mouse, hwnd, client_x, client_y, screen_x, screen_y,
                             pointer->time_ms, mouse->buttons, modifiers());

@@ -45,6 +45,7 @@
 #include "settings.h"
 #include "settings_store.h"
 #include "touch_census.h"
+#include "touch_inject.h"
 #include "touch_runtime.h"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
@@ -323,6 +324,40 @@ int main() {
   const float empty_y = static_cast<float>(height) * 0.5F;
   send_finger(SDL_EVENT_FINGER_DOWN, 900, empty_x, empty_y, width, height);
   send_finger(SDL_EVENT_FINGER_UP, 900, empty_x, empty_y, width, height);
+
+  /*
+   * A RELEASE FOR A FINGER THAT NEVER ARRIVED.
+   *
+   * Sent through x2_touch_inject -- the same injector the control channel's
+   * `/touch?phase=up` and the real host pump both take -- with an id no down
+   * has ever used. The camera swipe covers the middle of the playfield, so a
+   * release handled as an arrival is inside a live zone: it published
+   * movement axes the guest never asked for and counted four zone actions
+   * for a finger that was never there. No device does this, which is exactly
+   * why nothing caught it; a driven run and a simulated cancellation do it
+   * every time.
+   *
+   * `census` is read here and asserted at the end of the run, where the
+   * instrument section already reads it.
+   */
+  X2TouchCensus orphan_release{};
+  x2_touch_census_read(&orphan_release);
+  const unsigned long orphan_zones_before = orphan_release.zone_presses;
+  const unsigned long orphan_axes_before = orphan_release.axes_published;
+  check(x2_touch_inject(4242, empty_x / static_cast<float>(width),
+                        empty_y / static_cast<float>(height),
+                        X2_TOUCH_PHASE_UP) == 0,
+        "an up for a finger this run never saw is refused, not routed",
+        "a release of nothing is not a contact");
+  x2_touch_census_read(&orphan_release);
+  check(orphan_release.zone_presses == orphan_zones_before,
+        "and it publishes no zone action from a contact that never began",
+        std::to_string(orphan_release.zone_presses - orphan_zones_before) +
+            " extra zone action(s)");
+  check(orphan_release.axes_published == orphan_axes_before,
+        "and no axis move reaches the guest from it",
+        std::to_string(orphan_release.axes_published - orphan_axes_before) +
+            " extra axis change(s)");
 
   /* The first contact routed through the shipping path is what attaches the
      pad. If the product does not attach one, nothing below can pass -- which

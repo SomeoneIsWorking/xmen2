@@ -3,6 +3,7 @@
 #include "control_command_bridge.h"
 #include "control_http.h"
 #include "control_input_route.h"
+#include "control_menu_route.hpp"
 #include "x2_log.h"
 #include <lucent/cvar_c.h>
 
@@ -137,12 +138,12 @@ void control_pump(CPU *cpu, double now) {
        copy here could only agree with the shipping path by luck. */
     g_cmd_ok = x2_touch_inject(1, (float)g_cmd_x, (float)g_cmd_y,
                                (X2TouchPhase)g_cmd_phase);
-    /* What the contact then DID is the touch census's account, not a second
-       tally here that could disagree with it. */
+    /* What the contact then did is the touch census's account. */
     snprintf(g_cmd_why, sizeof g_cmd_why,
              g_cmd_ok ? "the contact was routed"
-                      : "NOTHING routed it: there is no window, or the "
-                        "contact was not a finger event");
+                      : "NOTHING routed it: there is no window, the contact "
+                        "was not a finger event, or this is a release or "
+                        "cancel for a contact that never arrived");
   } else if (cmd == CMD_INPUT) {
     if (!g_probe)
       g_probe = (char *)malloc(PROBE_BYTES);
@@ -397,6 +398,8 @@ static void serve(x2_socket_t fd) {
     control_console_route(fd, query ? query : "");
   else if (!strcmp(path, "/save"))
     control_save_route(fd);
+  else if (!strcmp(path, "/menu"))
+    x2::control::menu_route(fd);
   else if (!strcmp(path, "/performance/reset"))
     control_performance_reset_route(fd);
   else if (!strcmp(path, "/performance/probe"))
@@ -423,6 +426,7 @@ static void serve(x2_socket_t fd) {
         "  GET /lan[?host=1|join=1]  LAN session status; re-form this "
         "game as a lobby, or join the LAN game this machine finds\n"
         "  GET /save         bounded retail save/load trace\n"
+        "  GET /menu         the active retail menu's rows, as JSON\n"
         "  GET /performance/reset  start a fresh frame-time window\n"
         "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "
         "probe (n=0 disarms)\n"

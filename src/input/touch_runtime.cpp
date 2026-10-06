@@ -7,10 +7,12 @@
 #include "../config/settings_store.h"
 #include "touch_census.h"
 #include "touch_controls.h"
+#include "touch_menu.hpp"
 #include "touch_menu_controls.h"
 #include "touch_pad.h"
 #include "touch_pad_publisher.h"
 #include "touch_pointer.h"
+#include "touch_runtime_menu.hpp"
 #include "touch_skip_button.h"
 #include "touch_source.h"
 #include "touch_visuals.h"
@@ -101,6 +103,11 @@ public:
   // gameplay -- a conversation's choices and a cinematic's lines are
   // answered with the pad too, beside the cinematic's own Skip button.
   bool menu_visible() const;
+  // The port's touch menu: touch play, a window, and a retail menu it
+  // replaces. It covers the screen, so neither pad is drawn under it.
+  bool touch_menu_shown() const;
+  void set_touch_menu(std::optional<TouchMenuView> view);
+  TouchMenuState touch_menu_state() const { return touch_menu_.state(); }
 
 private:
   struct Contact {
@@ -119,6 +126,9 @@ private:
   void release_menu();
   // A finger on the cinematic's skip button: the offered skip.
   bool route_to_skip(const SDL_TouchFingerEvent &finger);
+  // Every finger while the touch menu is shown.
+  void route_to_touch_menu(const SDL_TouchFingerEvent &finger);
+  void deliver(std::span<const TouchMenuDelivery> deliveries);
   void publish(std::span<const ActionEvent> actions);
   void count_contact(Uint32 event_type) const;
   bool window_size(int &width, int &height) const;
@@ -129,6 +139,7 @@ private:
   PortraitPointer portraits_;
   RetailPointer pointer_;
   SkipButton skip_;
+  TouchMenu touch_menu_;
   std::map<SDL_FingerID, Contact> contacts_;
   // Fingers the menu pad captured; every other finger outside gameplay is
   // the pointer's.
@@ -155,13 +166,68 @@ bool TouchRuntime::active() {
 }
 
 bool TouchRuntime::overlay_visible() const {
-  return window_ != nullptr && active() &&
+  return window_ != nullptr && active() && !touch_menu_shown() &&
          x2_gameplay_control_active(guest_clock_now_s());
 }
 
 bool TouchRuntime::menu_visible() const {
-  return window_ != nullptr && active() &&
+  return window_ != nullptr && active() && !touch_menu_shown() &&
          !x2_gameplay_control_active(guest_clock_now_s());
+}
+
+bool TouchRuntime::touch_menu_shown() const {
+  return window_ != nullptr && active() && touch_menu_.shown();
+}
+
+void TouchRuntime::set_touch_menu(std::optional<TouchMenuView> view) {
+  /* The game must be reading the pad before the first step or walk taps it. */
+  if (view && window_ != nullptr && !touch_menu_.shown()) {
+    touch_pad::ensure();
+    touch_pad::claim_player_one();
+  }
+  const auto owed = touch_menu_.set_view(std::move(view), SDL_GetTicks());
+  deliver(owed);
+}
+
+void TouchRuntime::deliver(std::span<const TouchMenuDelivery> deliveries) {
+  /* One synthetic contact for the touch menu's pad taps; a tap is a press the
+     publisher releases once the game has read it. */
+  constexpr std::int64_t kTouchMenuContact = -2;
+  constexpr std::uint32_t kTouchMenuZone = 0x7f000000u;
+  for (const TouchMenuDelivery &delivery : deliveries) {
+    if (delivery.kind == TouchMenuDelivery::Kind::click) {
+      pointer_.click_client(delivery.at.x, delivery.at.y);
+      x2_touch_census()->touch_menu_clicks++;
+      continue;
+    }
+    ActionEvent press;
+    press.contact_id = kTouchMenuContact;
+    press.zone_id =
+        kTouchMenuZone + static_cast<std::uint32_t>(delivery.button);
+    press.action = delivery.button;
+    press.value = 1.0F;
+    press.phase = lucent::touch::Phase::began;
+    ActionEvent release = press;
+    release.phase = lucent::touch::Phase::ended;
+    const std::array<ActionEvent, 2> tap{press, release};
+    x2_touch_census()->touch_menu_pad_taps++;
+    publish(tap);
+  }
+}
+
+void TouchRuntime::route_to_touch_menu(const SDL_TouchFingerEvent &finger) {
+  int width = 0;
+  int height = 0;
+  if (!window_size(width, height)) {
+    return;
+  }
+  const auto owed =
+      touch_menu_.contact(static_cast<std::int64_t>(finger.fingerID),
+                          {finger.x * static_cast<float>(width),
+                           finger.y * static_cast<float>(height)},
+                          phase_of(finger.type), SDL_GetTicks());
+  x2_touch_census()->touch_menu_contacts++;
+  deliver(owed);
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {
@@ -201,6 +267,7 @@ void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
+    touch_menu_.set_viewport({});
     return;
   }
   touch_pad::prepare_for_host();
@@ -225,6 +292,7 @@ void TouchRuntime::set_window(SDL_Window *window) {
                          viewport_.safe_right, viewport_.safe_bottom}};
   publish(controls_.set_viewport(layout));
   publish(menu_.set_viewport(layout));
+  touch_menu_.set_viewport(viewport_);
 }
 
 bool TouchRuntime::viewport(X2LayoutViewport &out) const {
@@ -342,6 +410,12 @@ bool TouchRuntime::route_to_controls(const SDL_Event &event) {
   }
   const SDL_TouchFingerEvent &finger = event.tfinger;
   const lucent::touch::Phase phase = phase_of(event.type);
+  const bool held = contacts_.find(finger.fingerID) != contacts_.end();
+  /* A release for a finger that never arrived (the control channel's
+     phase=up does this) is not a contact. */
+  if (!held && is_release(phase)) {
+    return false;
+  }
   Contact &contact = contacts_[finger.fingerID];
   contact.x = finger.x * static_cast<float>(width);
   contact.y = finger.y * static_cast<float>(height);
@@ -379,6 +453,25 @@ bool TouchRuntime::handle(const SDL_Event &event) {
       x2_touch_census()->ignored_no_window++;
     }
     return false;
+  }
+  if (touch_menu_shown()) {
+    if (!contacts_.empty()) {
+      cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+    }
+    if (!menu_contacts_.empty()) {
+      release_menu();
+    }
+    if (pointer_.release_if_held()) {
+      x2_touch_census()->pointer_events++;
+    }
+    if (!finger) {
+      return false;
+    }
+    /* It covers the retail screen: no contact reaches the retail pointer. */
+    if (!route_to_skip(event.tfinger)) {
+      route_to_touch_menu(event.tfinger);
+    }
+    return true;
   }
   if (!overlay_visible()) {
     if (!contacts_.empty()) {
@@ -465,6 +558,7 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   release_menu();
   active_zones_.clear();
   skip_.release();
+  touch_menu_.cancel();
 }
 
 void TouchRuntime::set_hud_regions(const X2HudRegions *regions) {
@@ -512,6 +606,12 @@ std::size_t TouchRuntime::visuals(X2TouchVisual *out,
   return overlay_visuals(zones, active_zones_, controls_.stick_deflection(),
                          controls_.stick_ring(), out, capacity);
 }
+
+void touch_runtime_set_menu(std::optional<TouchMenuView> view) {
+  runtime.set_touch_menu(std::move(view));
+}
+
+TouchMenuState touch_menu_state() { return runtime.touch_menu_state(); }
 
 } // namespace x2::input
 

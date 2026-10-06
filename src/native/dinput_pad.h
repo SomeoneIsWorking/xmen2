@@ -122,6 +122,10 @@ int dinput_pad_uses_xbox_glyphs(int pad);
 /* The d-pad as a DirectInput POV: hundredths of a degree clockwise from north,
    or 0xFFFFFFFF for centred, which is what DIJOYSTATE2's rgdwPOV holds. */
 uint32_t dinput_pad_pov(int pad);
+/* The same read, not counted, for diagnostics. */
+uint32_t dinput_pad_pov_uncounted(int pad);
+/* How many times the game has read the d-pad. */
+unsigned long dinput_pad_pov_read_count(void);
 
 /* X2_VIRTUAL_PAD: attach a synthetic gamepad so a headless run can exercise
    the whole controller path. Announced loudly -- a run with a synthetic pad

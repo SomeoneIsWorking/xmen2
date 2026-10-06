@@ -29,6 +29,30 @@
  */
 /* Releases that went through without waiting for a reader. */
 static unsigned long g_vbtn_straight_through;
+/* The d-pad's reads at its press, and a release waiting for the next one. */
+static unsigned long g_vhat_reads_at_set;
+static int g_vhat_release_pending;
+static double g_vhat_until;
+
+void virtual_hat_pressed(void) {
+  g_vhat_reads_at_set = dinput_pad_pov_read_count();
+  g_vhat_release_pending = 0;
+  g_vhat_until = 0.0;
+}
+
+static int center_hat(void) {
+#ifdef X2_WITH_SDL
+  g_vhat_release_pending = 0;
+  g_vhat_until = 0.0;
+  if (!SDL_SetJoystickVirtualHat(g_virt_js, 0, SDL_HAT_CENTERED))
+    return 0;
+  SDL_UpdateJoysticks();
+  SDL_UpdateGamepads();
+  return 1;
+#else
+  return 0;
+#endif
+}
 
 static int release_button(int i, int wait_for_a_reader) {
 #ifdef X2_WITH_SDL
@@ -84,6 +108,9 @@ int dinput_pad_virtual_release_now(const char *what) {
   for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
     if (!strcmp(what, g_vbtn_name[i]))
       return release_button(i, 0);
+  if (!strcmp(what, "up") || !strcmp(what, "down") || !strcmp(what, "left") ||
+      !strcmp(what, "right"))
+    return center_hat();
   return dinput_pad_virtual_release(what);
 #else
   (void)what;
@@ -103,11 +130,14 @@ int dinput_pad_virtual_release(const char *what) {
   }
   if (!strcmp(what, "up") || !strcmp(what, "down") || !strcmp(what, "left") ||
       !strcmp(what, "right")) {
-    if (!SDL_SetJoystickVirtualHat(g_virt_js, 0, SDL_HAT_CENTERED))
-      return 0;
-    SDL_UpdateJoysticks();
-    SDL_UpdateGamepads();
-    return 1;
+    if (SDL_GetJoystickHat(g_virt_js, 0) != SDL_HAT_CENTERED &&
+        dinput_pad_pov_read_count() == g_vhat_reads_at_set) {
+      g_vhat_release_pending = 1;
+      g_vhat_until = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
+      g_vpad_releases_deferred++;
+      return 1;
+    }
+    return center_hat();
   }
   for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++) {
     if (!strcmp(what, g_vaxis_name[i])) {
@@ -180,6 +210,14 @@ void virtual_expire(void) {
         SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
         changed = 1;
       }
+  }
+  if (g_vhat_release_pending &&
+      (dinput_pad_pov_read_count() != g_vhat_reads_at_set ||
+       now >= g_vhat_until)) {
+    g_vhat_release_pending = 0;
+    g_vhat_until = 0.0;
+    SDL_SetJoystickVirtualHat(g_virt_js, 0, SDL_HAT_CENTERED);
+    changed = 1;
   }
   for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
     if (g_vbtn_until[i] != 0.0 && now >= g_vbtn_until[i]) {

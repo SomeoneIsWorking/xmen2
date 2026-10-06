@@ -560,8 +560,12 @@ void gpu_frame_end(void) {
     g_output = NULL;
     return;
   }
+  /* A headless run draws the overlays into its own target, so its captures
+     show what a windowed run presents. */
   if (!g_offscreen)
     x2_ui_render(g_gpu, g_cmd, final_output, g_output_w, g_output_h, g_win);
+  else if (gpu_headless_active())
+    x2_ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
   /* Boot presentation policy: withhold the retail boot's branding (legal
      loading backdrop, splash art) by presenting black until the
      destination map is up; see src/presentation/boot_blackout.cpp. */
@@ -605,16 +609,7 @@ void gpu_frame_end(void) {
                      "cleanly after that many presented frames.\n",
                      limit);
     }
-    /*
-     * Said ONCE. The limit is a level, not an edge -- every frame after it
-     * satisfies the test -- and without this guard the line repeated for as
-     * long as the guest kept presenting. One run emitted 3,847 copies of it
-     * and they were interleaved through the shutdown report, which is how a
-     * report that HUNG midway looked like a report that had finished.
-     * The frame number in the line is still the FIRST one over the limit,
-     * which is the useful one; how far the guest ran after the stop was
-     * requested is the stopping path's business to report, not this one's.
-     */
+    /* Said once: the limit is a level, not an edge. */
     if (limit > 0 && (long)g_frames_presented >= limit && !g_frame_limit_hit) {
       x2_log_error("\ngpu: X2_MAX_FRAMES reached (%lu presented). "
                    "Stopping; the reports follow.\n",

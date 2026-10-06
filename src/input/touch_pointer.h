@@ -41,6 +41,9 @@ public:
   // by the caller's own PortraitPointer, so this only queues it.
   void resolved(lucent::touch::Point at, lucent::touch::Phase phase);
 
+  // A whole click at a guest client point: move, press, release.
+  void click_client(int client_x, int client_y);
+
   // Lets the button go where it was pressed. True when something was held:
   // the caller counts that as a pointer event, because it is one.
   bool release_if_held();

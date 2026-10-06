@@ -37,6 +37,9 @@ extern short g_vaxis_value[X2_VIRTUAL_AXIS_COUNT];
 int axis_is_trigger(int axis);
 short trigger_raw(double value);
 void virtual_expire(void);
+/* A virtual d-pad direction was pressed: its release waits for the game to
+   read the d-pad, as a button's does. */
+void virtual_hat_pressed(void);
 /* Build and open the synthetic SDL device. Idempotent only in the sense that
    its callers check g_virt_id first; it does not check for itself. */
 void virtual_attach(void);

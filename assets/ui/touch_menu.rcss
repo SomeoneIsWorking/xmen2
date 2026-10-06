@@ -1,0 +1,126 @@
+/*
+ * The touch menu: the retail menu's rows as finger-sized buttons, in the Port
+ * Settings palette (settings.rcss). Sizes are em of the body's font size, which
+ * the document sets from the layout's unit so type and boxes scale together;
+ * every box is placed by the document from the same layout contacts are
+ * tested against.
+ */
+*, *:before, *:after { box-sizing: border-box; }
+
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    font-family: "LatoLatin";
+    font-weight: normal;
+    color: #E0DBC8;
+    background-color: #0D0E0A;
+}
+
+#tm-panel {
+    position: absolute;
+    border-radius: 0.6em;
+    border: 0.08em #92875B;
+    background-color: #151610;
+}
+
+#tm-title {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    padding: 0 0.6em;
+    font-size: 1.35em;
+    font-weight: bold;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #C2A42D;
+    border-bottom: 0.08em #92875B;
+}
+
+#tm-list {
+    position: absolute;
+}
+
+.tm-cover {
+    position: absolute;
+    background-color: #151610;
+}
+
+.tm-button {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    padding: 0 0.9em;
+    border-radius: 0.55em;
+    border: 0.06em rgba(146, 135, 91, 55%);
+    background-color: rgba(217, 217, 217, 7%);
+    color: #E0DBC8;
+}
+
+.tm-button.focused {
+    border: 0.1em #C2A42D;
+    background-color: rgba(194, 164, 45, 15%);
+}
+
+.tm-button.pressed {
+    border: 0.1em #FFFFFF;
+    background-color: rgba(204, 184, 119, 35%);
+    color: #FFFFFF;
+}
+
+.tm-label {
+    flex: 1 1 auto;
+    font-size: 1.05em;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tm-value {
+    flex: 0 0 auto;
+    font-size: 1.0em;
+    color: #C2A42D;
+}
+
+.tm-bar {
+    flex: 0 0 auto;
+    position: relative;
+    width: 9em;
+    height: 0.7em;
+    border-radius: 0.35em;
+    background-color: rgba(224, 219, 200, 18%);
+}
+
+.tm-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    border-radius: 0.35em;
+    background-color: #C2A42D;
+}
+
+.tm-step {
+    justify-content: center;
+    padding: 0;
+    font-size: 1.8em;
+    font-weight: bold;
+}
+
+.tm-step .tm-glyph {
+    font-size: 1em;
+}
+
+.tm-footer {
+    justify-content: center;
+    padding: 0 0.6em;
+    background-color: rgba(194, 164, 45, 12%);
+    border: 0.08em #92875B;
+}
+
+.tm-footer .tm-label {
+    flex: 0 1 auto;
+    text-align: center;
+}

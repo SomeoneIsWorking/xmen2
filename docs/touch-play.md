@@ -62,8 +62,8 @@ phone player met: an intro no tap could skip and a menu no tap could press
 sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
 reach the retail world-click handler.
 
-**Every screen that is not gameplay draws the menu pad** -- the front end,
-the pause and team menus, the World Map, dialogue. The retail menus are
+**Every screen that is not gameplay and has no touch menu draws the menu pad**
+-- the team menu, the World Map, popups, dialogue. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -83,8 +83,30 @@ The port once made the footer's words themselves tappable instead, pairing
 each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
-Touch-native menus that replace the retail ones are future work; until then
-the controller is the one input every retail menu is complete for.
+
+**The main menu, Options and the PDA are replaced by the touch menu.** While
+touch play is the input and one of those classes is the active menu with no
+popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
+built from the live retail menu model (`GET /menu`): the title, one button per
+enabled row with its value or bar, step buttons on rows with left/right, and
+one button per footer prompt. It scrolls by drag, keeps to the safe area, scales
+with the shorter screen edge, and re-reads the model every 33 ms. A tap runs
+only the game's own input paths, never a guest call or write:
+
+- a row with a command: a retail mouse click at the centre of the row's own hit
+  box, so `CMenu::onMouse` focuses it and the item publishes `MENU_ACCEPT`;
+- a footer: a click on the `desctext` item carrying its `$MENU_` token, which
+  the game turns into that action;
+- a row without a command, or a step: the menu pad's Up/Down until the game's
+  own focus is on the row, then A, Left or Right.
+
+Mouse, keyboard and controller play never see it. The settings overlay hides
+it, and the touch menu hides the menu pad while it is up. Other menu classes
+keep the retail menu and the menu pad. Owners: `x2::input::TouchMenu` (taps,
+scroll, deliveries), `touch_menu_view` (the model to rows), `touch_menu_layout`
+(geometry), `x2::native::TouchMenuSource` (the model read on the event pump),
+`x2::presentation::RetailScenePlane` (scene to client),
+`x2::ui::TouchMenuDocument` (drawing). See [Menus](RE/menus.md).
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
@@ -242,6 +264,7 @@ already chose keeps player one.
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers, a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk and step) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
@@ -283,7 +306,8 @@ last line was continued by a tap on it. In control, the overlay shows the move
 stick, the four actions inside their own circles, the port menu button, and the power button with the game's own icon for the hero's power. The vitals,
 potions and party portraits stay clear. This is native UI presentation
 evidence, not Android touchscreen or performance qualification. A headless
-`--no-window` run draws no overlay, so its captures cannot stand in for this.
+`--no-window` run draws the port UI into its capture target, so its
+`/screenshot` shows the overlay and the touch menu.
 
 ## Driving it without a touchscreen
 

@@ -11,6 +11,7 @@ UI_FILES = (
     "NotoSans-Bold-keys.ttf",
     "settings.rcss",
     "touch_controls.rcss",
+    "touch_menu.rcss",
     # The touch buttons' authored art (assets/ui/touch_*.svg).
     "touch_punch.svg",
     "touch_smash.svg",

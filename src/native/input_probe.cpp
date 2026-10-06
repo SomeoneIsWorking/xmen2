@@ -563,7 +563,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
       text_put(out, n, &at,
                "host pad %d \"%s\": %d button(s), POV 0x%08x, "
                "down:",
-               pad, nm, nb, dinput_pad_pov(pad));
+               pad, nm, nb, dinput_pad_pov_uncounted(pad));
       for (b = 0; b < nb; b++)
         if (dinput_pad_button_uncounted(pad, b)) {
           text_put(out, n, &at, " %d", b);

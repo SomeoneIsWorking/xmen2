@@ -931,15 +931,12 @@ so a contact with no drawn control under it is now that pointer at its own
 position — the route the portrait tap already used. `x2::input::PointerOwner`
 is retail's one-button rule, shared by both rather than copied.
 
-Measured by `tools/live_case.py menu-touch`, 9 of 9, each half against a
-control that comes out the other way: a tap ended the first intro movie 6.5s
-in having been made at 6.0s, where the untouched movie runs 10.0s; a tap on
-empty sky opened nothing while a tap on the OPTIONS row produced the game's
-own first open of `menus/options.pkgb`; the census counted 6 contacts to the
-retail pointer and 0 dropped. Neither obvious measure would have worked: a
-skipped movie still reports its full 312 decoded frames, and the menu's idle
-frame-to-frame difference (11–19) is larger than the change a working tap
-makes (27).
+Measured by `tools/live_case.py menu-touch`, 9 of 9 on 2026-10-06: a tap
+ended the first intro movie 6.5s in having been made at 6.0s, where the
+untouched movie runs 10.0s; the census counted the intro tap as the retail
+pointer, a main-menu tap as the touch menu's, and 0 dropped. A skipped movie
+still reports its full 312 decoded frames, so the movie's end is timed from the
+log instead.
 
 Every earlier touch measurement had reached gameplay by keyboard first --
 `tools/web_touch_play.py` presses Escape and Enter while waiting for the gate
@@ -989,20 +986,28 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 Off gameplay, touch play draws the menu pad: a d-pad bottom left, the Xbox
 face buttons bottom right (A below, B right, X left, Y above), and a shoulder
 above each cluster, publishing through the same virtual pad as the gameplay
-controls. The retail menus are navigated with a controller exactly as on the
-Xbox, and the footers name that pad's buttons, so the prompts and the buttons
-beside them agree. A finger that begins off the pad is still the retail
-pointer. Conversations draw it beside their Skip button, and A advances
-their lines: in the tutorial's opening conversation ten idle seconds advanced
-nothing and three taps on A ended it. Measured by `tools/live_case.py
-menu-pad`, 12 of 12 on 2026-09-26:
-the main menu draws all ten buttons and none of the gameplay controls, five
-d-pad Downs and an A open Options, and B returns to the main menu, judged on
-the menu column's static art (11.5 from the main menu against 49.3 from
-Options). This replaced making the footer's words tappable, whose
-prompt-to-draw pairing by glyph count put the World Map's Back and Go on the
-level names that draw as many glyphs and left that screen with no way out
-(issue #190).
+controls. The footers name that pad's buttons, so the prompts and the buttons
+beside them agree. Conversations draw it beside their Skip button, and A
+advances their lines. Measured by `tools/live_case.py menu-pad`, 8 of 8 on
+2026-10-06: New Game's difficulty popup hides the touch menu, the pad's ten
+buttons are drawn and none of the gameplay controls, and the pad's B closes the
+popup. This replaced making the footer's words tappable, whose prompt-to-draw
+pairing by glyph count put the World Map's Back and Go on level names and left
+that screen with no way out (issue #190).
+
+The main menu, Options and the PDA are replaced in touch play by the port's
+touch menu: an opaque, finger-sized RmlUi list built from the live retail menu
+model, whose taps run only the game's own input -- a retail mouse click inside
+a row's or footer's own hit box, or the menu pad's Up/Down/Left/Right/A where
+the game has no click for the row. Measured by `tools/live_case.py
+touch-menu`, 15 of 15 on 2026-10-06: the main menu's seven rows are offered
+with no menu pad under them, a tap on no button activates nothing, OPTIONS
+opens the game's Options menu, Effects Volume's step-left lowers the game's
+level 1.0 -> 0.9, a tap on Combat Music turns the game's value On -> Off, and
+the Back footer returns the game to its main menu. Gap: the PDA is unmeasured
+live; team, shop, stash, codex, worldmap, danger room, review, region, automap,
+the online lists, Advanced Options (`sebas`) and `options_controller` still
+show the retail menu with the menu pad.
 
 The stick steers from the thumb, not from the ring. It measured its axes from
 the ring's geometric centre, so where the thumb happened to land was itself an

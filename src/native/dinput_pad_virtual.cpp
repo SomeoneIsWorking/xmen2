@@ -311,6 +311,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                SDL_GetError());
       return 0;
     }
+    virtual_hat_pressed();
     SDL_UpdateJoysticks();
     SDL_UpdateGamepads();
     snprintf(why, (size_t)whyn, "virtual d-pad direction %s is down", what);
