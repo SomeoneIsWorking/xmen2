@@ -74,7 +74,8 @@ void guest_free(uint32_t p) {
 }
 
 int pe_map_anon_low(uint32_t want, uint32_t size) {
-  return guest_memory_map_fixed(want, size, PROT_READ | PROT_WRITE);
+  return guest_memory_map_fixed(want, size,
+                                x2::native::kProtRead | x2::native::kProtWrite);
 }
 
 int pe_tls_directory(uint32_t base, PeTlsDirectory *out) {

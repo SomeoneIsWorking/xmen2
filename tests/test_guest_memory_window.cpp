@@ -79,20 +79,24 @@ int main(void) {
           "a page nothing has mapped grants nothing");
   }
 
-  check(guest_memory_map_fixed(base, 12288, PROT_NONE) == 0,
+  check(guest_memory_map_fixed(base, 12288, x2::native::kProtNone) == 0,
         "reserve exact guest range");
   check(page_permission(base) == 0,
         "a reserved page still grants nothing to generated code");
   check(!guest_memory_is_readable(base, 1) && !x86_peek32(base, &value),
         "reserved pages refuse diagnostic reads without trapping");
-  check(guest_memory_protect(base, 12288, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_protect(
+            base, 12288, x2::native::kProtRead | x2::native::kProtWrite) == 0,
         "commit full reserved allocation");
-  check(page_permission(base) == (PROT_READ | PROT_WRITE) &&
-            page_permission(base + 8192) == (PROT_READ | PROT_WRITE),
+  check(page_permission(base) ==
+                (x2::native::kProtRead | x2::native::kProtWrite) &&
+            page_permission(base + 8192) ==
+                (x2::native::kProtRead | x2::native::kProtWrite),
         "committing grants read and write on every page of the span");
-  check(guest_memory_protect(base + 4096, 4096, PROT_READ) == 0 &&
-            page_permission(base + 4096) == PROT_READ &&
-            page_permission(base) == (PROT_READ | PROT_WRITE),
+  check(guest_memory_protect(base + 4096, 4096, x2::native::kProtRead) == 0 &&
+            page_permission(base + 4096) == x2::native::kProtRead &&
+            page_permission(base) ==
+                (x2::native::kProtRead | x2::native::kProtWrite),
         "a read-only page loses write, and only that page");
 
   host = guest_memory_as<uint8_t>(base);
@@ -104,7 +108,7 @@ int main(void) {
             address == base + 17 && guest_memory_address(host + 17) == address,
         "native pointer round-trips through the shared mapper");
   before = invalidations;
-  check(guest_memory_protect(base + 4096, 4096, PROT_NONE) == 0 &&
+  check(guest_memory_protect(base + 4096, 4096, x2::native::kProtNone) == 0 &&
             page_permission(base + 4096) == 0,
         "decommit middle page");
   /* A decommit/recommit pair is how the game replaces what a span holds, so
@@ -118,11 +122,14 @@ int main(void) {
             guest_memory_is_readable(base + 8192, 4096),
         "neighboring pages remain readable");
   before = invalidations;
-  check(guest_memory_protect(base + 4096, 4096, PROT_READ | PROT_WRITE) == 0 &&
+  check(guest_memory_protect(base + 4096, 4096,
+                             x2::native::kProtRead | x2::native::kProtWrite) ==
+                0 &&
             x86_load32(base + 4095) == 0x76543210,
         "recommit preserves existing bytes");
   check(invalidations == before + 1, "and the recommit told it too");
-  check(guest_memory_map_fixed(base + 4096, 4096, PROT_READ) == -1 &&
+  check(guest_memory_map_fixed(base + 4096, 4096, x2::native::kProtRead) ==
+                -1 &&
             errno == EEXIST,
         "mapped allocation overlap refuses");
 
@@ -138,11 +145,14 @@ int main(void) {
   check(!guest_memory_is_readable(base + 4096, 1) &&
             page_permission(base + 4096) == 0,
         "partial release leaves a hole");
-  check(guest_memory_map_fixed(base + 4096, 4096, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(base + 4096, 4096,
+                               x2::native::kProtRead |
+                                   x2::native::kProtWrite) == 0,
         "a new allocation can occupy the released hole");
   check(x86_load32(base + 4096) == 0,
         "and reads zero, not what the previous mapping left there");
-  check(page_permission(base + 4096) == (PROT_READ | PROT_WRITE),
+  check(page_permission(base + 4096) ==
+            (x2::native::kProtRead | x2::native::kProtWrite),
         "the new mapping's permissions reach generated code");
 
   x86_store64_raw(base + 4092, UINT64_C(0x1122334455667788));
@@ -152,7 +162,8 @@ int main(void) {
         "full release drops every page of the range");
   check(!x86_peek32(base, &value), "released diagnostic read refuses");
 
-  check(guest_memory_map_fixed(base, 32768, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(
+            base, 32768, x2::native::kProtRead | x2::native::kProtWrite) == 0,
         "map a bulk file-sized guest buffer");
   host = guest_memory_as<uint8_t>(base);
   memcpy(host + 0x6038, "FONT_TABLE", sizeof "FONT_TABLE");
@@ -179,33 +190,36 @@ int main(void) {
       check(fwrite(payload, 1, payload_size, input) == payload_size &&
                 fseek(input, 0, SEEK_SET) == 0,
             "write the synthetic font-sized source file");
-      check(x2_guest_fread(base + 8, 1, payload_size, input) == payload_size &&
+      check(x2::native::guest_fread(base + 8, 1, payload_size, input) ==
+                    payload_size &&
                 guest_memory_try_read(base + 8 + 0x6038, font_name,
                                       sizeof font_name) &&
                 memcmp(font_name, "FONT_TABLE", sizeof font_name) == 0,
             "stdio read reaches a later guest page");
-      check(x2_guest_fwrite(base + 8, 1, payload_size, output) ==
+      check(x2::native::guest_fwrite(base + 8, 1, payload_size, output) ==
                     payload_size &&
                 fseek(output, 0, SEEK_SET) == 0 &&
                 fread(restored, 1, payload_size, output) == payload_size &&
                 memcmp(restored, payload, payload_size) == 0,
             "stdio write gathers a later guest page");
       check(fseek(input, 0, SEEK_SET) == 0 &&
-                x2_guest_read_fd(fileno(input), base + 8, payload_size) ==
+                x2::native::guest_read_fd(fileno(input), base + 8,
+                                          payload_size) ==
                     (ssize_t)payload_size,
             "file-descriptor read reaches a later guest page");
       check(fseek(output, 0, SEEK_END) == 0 &&
-                x2_guest_write_fd(fileno(output), base + 8, payload_size) ==
+                x2::native::guest_write_fd(fileno(output), base + 8,
+                                           payload_size) ==
                     (ssize_t)payload_size &&
                 fseek(output, payload_size, SEEK_SET) == 0 &&
                 fread(restored, 1, payload_size, output) == payload_size &&
                 memcmp(restored, payload, payload_size) == 0,
             "file-descriptor write gathers a later guest page");
       errno = 0;
-      check(x2_guest_fread(0, 1, 16, input) == 0 && errno == EFAULT,
+      check(x2::native::guest_fread(0, 1, 16, input) == 0 && errno == EFAULT,
             "a read into the null guest address is refused");
       errno = 0;
-      check(x2_guest_write_fd(fileno(output), UINT32_MAX, 2) == -1 &&
+      check(x2::native::guest_write_fd(fileno(output), UINT32_MAX, 2) == -1 &&
                 errno == EFAULT,
             "a write that runs past 4 GB is refused");
     }
@@ -223,13 +237,16 @@ int main(void) {
 
   /* The top of the window works, and everything above it is refused by name
      rather than reaching whatever the program has put there. */
-  check(guest_memory_map_fixed(last_page, 4096, PROT_READ | PROT_WRITE) == 0,
+  check(guest_memory_map_fixed(last_page, 4096,
+                               x2::native::kProtRead |
+                                   x2::native::kProtWrite) == 0,
         "the last page of the window maps");
   x86_store8_raw(GUEST_LAYOUT_LIMIT - 1u, 0x91);
   check(x86_load8(GUEST_LAYOUT_LIMIT - 1u) == 0x91,
         "and its final byte reads back");
   check(guest_memory_map_fixed(GUEST_LAYOUT_LIMIT, 4096,
-                               PROT_READ | PROT_WRITE) == -1,
+                               x2::native::kProtRead |
+                                   x2::native::kProtWrite) == -1,
         "a page past the window refuses to map");
   check(!guest_memory_is_readable(GUEST_LAYOUT_LIMIT, 1) &&
             !x86_peek32(GUEST_LAYOUT_LIMIT, &value),
@@ -254,7 +271,8 @@ int main(void) {
         "and still reports how far the run reached after the release");
 
   check(guest_memory_map_any(base, base + 8192, 4096, 4096,
-                             PROT_READ | PROT_WRITE, &address) == 0 &&
+                             x2::native::kProtRead | x2::native::kProtWrite,
+                             &address) == 0 &&
             address == base,
         "map-any preserves the requested guest range and alignment");
   check(guest_memory_release(address, 4096) == 0, "release map-any allocation");

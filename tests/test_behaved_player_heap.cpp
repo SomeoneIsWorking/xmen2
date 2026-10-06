@@ -322,7 +322,8 @@ static void test_corruption_refuses_without_mutation(void) {
 
 int main(void) {
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(ARENA_BASE, ARENA_SIZE, PROT_READ | PROT_WRITE) !=
+      guest_memory_map_fixed(ARENA_BASE, ARENA_SIZE,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     fprintf(stderr, "FAIL: could not map isolated guest arena\n");
     return 1;

@@ -156,7 +156,7 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeValidateInstall(
       !read_string(environment, archive_destination, destination,
                    sizeof destination))
     return JNI_FALSE;
-  return x2_install_picker_prepare_selection(
+  return x2::native::install_picker_prepare_selection(
              source_path, destination[0] ? destination : nullptr, reason,
              sizeof reason)
              ? JNI_TRUE

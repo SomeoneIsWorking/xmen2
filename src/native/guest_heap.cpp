@@ -174,7 +174,8 @@ static uint32_t find_fit(uint32_t n) {
 int guest_heap_init(uint32_t base, uint32_t size) {
   if (size < 0x10000u || (size & (ALIGN - 1u)))
     return -1;
-  if (guest_memory_map_fixed(base, size, PROT_READ | PROT_WRITE) != 0) {
+  if (guest_memory_map_fixed(
+          base, size, x2::native::kProtRead | x2::native::kProtWrite) != 0) {
     x2_log_error("guest_heap: could not place a %u-byte arena at "
                  "0x%08x; guest allocations have nowhere to live\n",
                  size, base);

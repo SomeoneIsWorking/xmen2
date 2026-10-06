@@ -84,9 +84,9 @@ int main(void) {
   int result;
   result = guest_memory_init();
   CHECK(result == 0);
-  result =
-      guest_memory_map_any(0x10000000u, 0x70000000u, 0x01000000u, IMAGE_SIZE,
-                           PROT_READ | PROT_WRITE, &mapped_base);
+  result = guest_memory_map_any(
+      0x10000000u, 0x70000000u, 0x01000000u, IMAGE_SIZE,
+      x2::native::kProtRead | x2::native::kProtWrite, &mapped_base);
   CHECK(result == 0);
 
   CHECK(native_stubs_registered("XMen2.exe", 0x00629bf0u));

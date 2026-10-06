@@ -152,7 +152,9 @@ static void test_manager_reset(void) {
 
 int main(void) {
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(ARENA, ARENA_SIZE, PROT_READ | PROT_WRITE) != 0) {
+      guest_memory_map_fixed(ARENA, ARENA_SIZE,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
+          0) {
     fprintf(stderr, "could not map test arena\n");
     return 1;
   }

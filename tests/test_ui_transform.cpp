@@ -86,7 +86,8 @@ int main(void) {
   CPU cpu;
   float mvp[16];
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(GUEST_PAGE, 0x1000u, PROT_READ | PROT_WRITE) !=
+      guest_memory_map_fixed(GUEST_PAGE, 0x1000u,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     fprintf(stderr,
             "test_ui_transform: could not map the guest page at "

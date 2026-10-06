@@ -87,8 +87,8 @@ static unsigned long g_pad_ok, g_pad_refused, g_probes, g_save_probes;
 void control_pump(CPU *cpu, double now) {
   int cmd;
 
-  x2_autosave_runtime_poll(cpu);
-  x2_lan_session_poll(cpu, now);
+  x2::native::autosave_runtime_poll(cpu);
+  x2::native::lan_session_poll(cpu, now);
   if (!g_port)
     return;
   control_console_pump(cpu);
@@ -171,7 +171,7 @@ void control_pump(CPU *cpu, double now) {
                "could not allocate the %u-byte save report buffer",
                PROBE_BYTES);
     } else {
-      g_probe_len = x2_save_trace_runtime_report(g_probe, PROBE_BYTES);
+      g_probe_len = x2::save::save_trace_runtime_report(g_probe, PROBE_BYTES);
       g_cmd_ok = g_probe_len != 0;
       if (g_cmd_ok)
         g_save_probes++;
@@ -393,7 +393,7 @@ static void serve(x2_socket_t fd) {
   else if (!strcmp(path, "/input"))
     route_input(fd, query ? query : "");
   else if (!strcmp(path, "/lan"))
-    x2_lan_session_route(fd, query ? query : "");
+    x2::native::lan_session_route(fd, query ? query : "");
   else if (!strcmp(path, "/console"))
     control_console_route(fd, query ? query : "");
   else if (!strcmp(path, "/save"))

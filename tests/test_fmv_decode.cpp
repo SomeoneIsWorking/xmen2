@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
   const char *audio_frames_text = getenv("X2_TEST_SFD_AUDIO_FRAMES");
   X2FmvAudioSink sink;
   AudioCounter audio = {0};
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   uint8_t *tight = NULL;
   uint8_t *pitched = NULL;
   size_t tight_size, pitch, pitched_size;
@@ -117,13 +117,13 @@ int main(int argc, char **argv) {
   sink.userdata = &audio;
   sink.queue_stereo_f32 = count_audio;
   sink.queued_seconds = empty_audio_queue;
-  player = x2_fmv_open(path, &sink, error, sizeof(error));
+  player = x2::media::fmv_open(path, &sink, error, sizeof(error));
   if (!player) {
     fprintf(stderr, "FMV decode: FAILED -- %s\n", error);
     return 1;
   }
-  width = x2_fmv_width(player);
-  height = x2_fmv_height(player);
+  width = x2::media::fmv_width(player);
+  height = x2::media::fmv_height(player);
   tight_size = (size_t)width * height * 4u;
   pitch = (size_t)width * 4u + 64u;
   pitched_size = pitch * (size_t)height;
@@ -131,9 +131,9 @@ int main(int argc, char **argv) {
   pitched = (uint8_t *)malloc(pitched_size);
   if (!tight || !pitched)
     failures++;
-  x2_fmv_play(player);
+  x2::media::fmv_play(player);
   for (step = 0; !failures && step < 180; ++step) {
-    int changed = x2_fmv_update(player, (double)step / 30.0);
+    int changed = x2::media::fmv_update(player, (double)step / 30.0);
     uint64_t hash;
     if (changed < 0) {
       failures++;
@@ -142,9 +142,9 @@ int main(int argc, char **argv) {
     if (!changed)
       continue;
     memset(pitched, 0xa5, pitched_size);
-    failures +=
-        !x2_fmv_copy_bgra(player, tight, tight_size, (size_t)width * 4u);
-    failures += !x2_fmv_copy_bgra(player, pitched, pitched_size, pitch);
+    failures += !x2::media::fmv_copy_bgra(player, tight, tight_size,
+                                          (size_t)width * 4u);
+    failures += !x2::media::fmv_copy_bgra(player, pitched, pitched_size, pitch);
     for (y = 0; y < height; ++y) {
       failures += memcmp(tight + (size_t)y * width * 4u,
                          pitched + (size_t)y * pitch, (size_t)width * 4u) != 0;
@@ -158,30 +158,33 @@ int main(int argc, char **argv) {
     changed_frames++;
   }
   for (step = 0;
-       !failures && x2_fmv_state(player) != X2_FMV_FINISHED && step < 1000;
+       !failures &&
+       x2::media::fmv_state(player) != x2::media::FmvState::Finished &&
+       step < 1000;
        ++step) {
-    if (x2_fmv_update(player, 1000000.0 + step) < 0)
+    if (x2::media::fmv_update(player, 1000000.0 + step) < 0)
       failures++;
   }
   failures += width != 640 || height != 480;
-  failures += x2_fmv_sample_rate(player) != 44100;
+  failures += x2::media::fmv_sample_rate(player) != 44100;
   failures += changed_frames < 90 || distinct_frames < 30;
   failures += picture_frames == 0;
   failures += audio.frames < 44100 || audio.sample_rate != 44100;
-  failures += x2_fmv_state(player) != X2_FMV_FINISHED;
-  failures += expected_video && x2_fmv_decoded_frames(player) != expected_video;
+  failures += x2::media::fmv_state(player) != x2::media::FmvState::Finished;
   failures +=
-      expected_audio && x2_fmv_decoded_audio_frames(player) != expected_audio;
-  failures += audio.frames != x2_fmv_decoded_audio_frames(player);
+      expected_video && x2::media::fmv_decoded_frames(player) != expected_video;
+  failures += expected_audio &&
+              x2::media::fmv_decoded_audio_frames(player) != expected_audio;
+  failures += audio.frames != x2::media::fmv_decoded_audio_frames(player);
   printf("FMV decode: %s -- %s, %dx%d, %d changed / %d distinct frames; "
          "all %d rows match tight and padded copies; drained %lu video / "
          "%llu audio frames%s\n",
          failures ? "FAILED" : "PASSED", base_name(path), width, height,
-         changed_frames, distinct_frames, height, x2_fmv_decoded_frames(player),
-         audio.frames,
+         changed_frames, distinct_frames, height,
+         x2::media::fmv_decoded_frames(player), audio.frames,
          expected_video && expected_audio ? " at source parity" : "");
   free(pitched);
   free(tight);
-  x2_fmv_close(player);
+  x2::media::fmv_close(player);
   return failures != 0;
 }

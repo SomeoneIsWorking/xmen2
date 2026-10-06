@@ -26,13 +26,21 @@
 
 #include <lucent/zip.h>
 
-#define X2_INSTALL_PATH_SIZE 4096
-static char g_directory[X2_INSTALL_PATH_SIZE];
-static char g_selected[X2_INSTALL_PATH_SIZE];
-static SDL_AtomicInt g_dialog_done;
-static int g_dialog_status;
+namespace x2::native {
 
-static int copy_string(char *destination, size_t capacity, const char *source) {
+#define X2_INSTALL_PATH_SIZE 4096
+
+namespace {
+
+char g_directory[X2_INSTALL_PATH_SIZE];
+
+char g_selected[X2_INSTALL_PATH_SIZE];
+
+SDL_AtomicInt g_dialog_done;
+
+int g_dialog_status;
+
+int copy_string(char *destination, size_t capacity, const char *source) {
   size_t length;
   if (!destination || !source)
     return 0;
@@ -43,9 +51,10 @@ static int copy_string(char *destination, size_t capacity, const char *source) {
   return 1;
 }
 
-int x2_install_picker_directory_from_executable(const char *path,
-                                                char *directory,
-                                                unsigned capacity) {
+} // namespace
+
+int install_picker_directory_from_executable(const char *path, char *directory,
+                                             unsigned capacity) {
   const char *slash;
   struct stat info;
   size_t length;
@@ -72,7 +81,9 @@ int x2_install_picker_directory_from_executable(const char *path,
   return 1;
 }
 
-static int preference_path(char *path, size_t capacity) {
+namespace {
+
+int preference_path(char *path, size_t capacity) {
   const char *base = x2_config_directory();
   int written;
   if (!base || !x2_config_directory_ensure())
@@ -81,7 +92,7 @@ static int preference_path(char *path, size_t capacity) {
   return written > 0 && (size_t)written < capacity;
 }
 
-static int saved_directory(void) {
+int saved_directory(void) {
   char path[X2_INSTALL_PATH_SIZE], line[X2_INSTALL_PATH_SIZE];
   FILE *file;
   if (!preference_path(path, sizeof path))
@@ -98,13 +109,13 @@ static int saved_directory(void) {
   if (!line[0])
     return 0;
   snprintf(path, sizeof path, "%s/XMen2.exe", line);
-  if (!x2_install_picker_directory_from_executable(path, g_directory,
-                                                   sizeof g_directory))
+  if (!install_picker_directory_from_executable(path, g_directory,
+                                                sizeof g_directory))
     return 0;
   return 1;
 }
 
-static void remember_directory(const char *directory) {
+void remember_directory(const char *directory) {
   char path[X2_INSTALL_PATH_SIZE];
   FILE *file;
   if (!directory || !preference_path(path, sizeof path))
@@ -119,9 +130,8 @@ static void remember_directory(const char *directory) {
   fclose(file);
 }
 
-static void SDLCALL file_dialog_callback(void *unused,
-                                         const char *const *filelist,
-                                         int filter) {
+void SDLCALL file_dialog_callback(void *unused, const char *const *filelist,
+                                  int filter) {
   (void)unused;
   (void)filter;
   g_dialog_status = 0;
@@ -133,7 +143,7 @@ static void SDLCALL file_dialog_callback(void *unused,
   SDL_SetAtomicInt(&g_dialog_done, 1);
 }
 
-static int prompt(SDL_Window *window) {
+int prompt(SDL_Window *window) {
   static const SDL_MessageBoxButtonData buttons[] = {
       {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Browse"},
       {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit"},
@@ -158,7 +168,7 @@ static int prompt(SDL_Window *window) {
   return button == 1;
 }
 
-static int error_prompt(SDL_Window *window, const char *reason) {
+int error_prompt(SDL_Window *window, const char *reason) {
   SDL_MessageBoxButtonData button = {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1,
                                      "Back"};
   SDL_MessageBoxData message = {
@@ -173,7 +183,7 @@ static int error_prompt(SDL_Window *window, const char *reason) {
   return SDL_ShowMessageBox(&message, NULL) != 0;
 }
 
-static int choose_file(SDL_Window *window) {
+int choose_file(SDL_Window *window) {
   static const SDL_DialogFileFilter filters[] = {
       {"X-Men Legends II executable", "exe"},
       {"ZIP archive", "zip"},
@@ -191,14 +201,14 @@ static int choose_file(SDL_Window *window) {
   return g_dialog_status;
 }
 
-static int is_zip_path(const char *path) {
+int is_zip_path(const char *path) {
   const char *extension = strrchr(path, '.');
   return extension && strcasecmp(extension, ".zip") == 0;
 }
 
-static int directory_from_folder(const char *folder, char *directory,
-                                 unsigned capacity, char *reason,
-                                 size_t reason_capacity) {
+int directory_from_folder(const char *folder, char *directory,
+                          unsigned capacity, char *reason,
+                          size_t reason_capacity) {
   std::error_code error;
   std::filesystem::path found;
   unsigned matches = 0;
@@ -236,14 +246,14 @@ static int directory_from_folder(const char *folder, char *directory,
   const std::string path = found.string();
   if (!x2_install_validate_executable(path.c_str(), reason, reason_capacity))
     return 0;
-  return x2_install_picker_directory_from_executable(path.c_str(), directory,
-                                                     capacity);
+  return install_picker_directory_from_executable(path.c_str(), directory,
+                                                  capacity);
 }
 
-static int directory_from_selection(const char *selection, char *directory,
-                                    unsigned capacity, char *reason,
-                                    size_t reason_capacity,
-                                    const char *archive_destination = nullptr) {
+int directory_from_selection(const char *selection, char *directory,
+                             unsigned capacity, char *reason,
+                             size_t reason_capacity,
+                             const char *archive_destination = nullptr) {
   std::error_code status_error;
   if (!selection || !*selection) {
     snprintf(reason, reason_capacity, "No XMen2.exe or ZIP was selected.");
@@ -261,8 +271,8 @@ static int directory_from_selection(const char *selection, char *directory,
   if (!is_zip_path(selection)) {
     if (!x2_install_validate_executable(selection, reason, reason_capacity))
       return 0;
-    if (x2_install_picker_directory_from_executable(selection, directory,
-                                                    capacity))
+    if (install_picker_directory_from_executable(selection, directory,
+                                                 capacity))
       return 1;
     snprintf(reason, reason_capacity,
              "That file is not XMen2.exe. Choose the executable or a ZIP "
@@ -278,7 +288,7 @@ static int directory_from_selection(const char *selection, char *directory,
                                           reason_capacity)
           : x2_install_archive_prepare(selection, executable, sizeof executable,
                                        reason, reason_capacity);
-  if (!extracted || !x2_install_picker_directory_from_executable(
+  if (!extracted || !install_picker_directory_from_executable(
                         executable, directory, capacity)) {
     if (!reason[0])
       snprintf(reason, reason_capacity,
@@ -288,11 +298,12 @@ static int directory_from_selection(const char *selection, char *directory,
   return 1;
 }
 
-int x2_install_picker_resolve_selection(const char *selection,
-                                        const char *archive_destination,
-                                        char *directory, unsigned capacity,
-                                        char *reason,
-                                        unsigned reason_capacity) {
+} // namespace
+
+int install_picker_resolve_selection(const char *selection,
+                                     const char *archive_destination,
+                                     char *directory, unsigned capacity,
+                                     char *reason, unsigned reason_capacity) {
   if (!directory || capacity < 2 || !reason || reason_capacity < 2)
     return 0;
   directory[0] = 0;
@@ -301,17 +312,16 @@ int x2_install_picker_resolve_selection(const char *selection,
                                   reason_capacity, archive_destination);
 }
 
-int x2_install_picker_prepare_selection(const char *selection,
-                                        const char *archive_destination,
-                                        char *reason,
-                                        unsigned reason_capacity) {
+int install_picker_prepare_selection(const char *selection,
+                                     const char *archive_destination,
+                                     char *reason, unsigned reason_capacity) {
   char directory[X2_INSTALL_PATH_SIZE];
-  return x2_install_picker_resolve_selection(selection, archive_destination,
-                                             directory, sizeof directory,
-                                             reason, reason_capacity);
+  return install_picker_resolve_selection(selection, archive_destination,
+                                          directory, sizeof directory, reason,
+                                          reason_capacity);
 }
 
-int x2_install_picker_choose(const char **directory) {
+int install_picker_choose(const char **directory) {
   SDL_Window *window;
   char candidate[X2_INSTALL_PATH_SIZE];
   char reason[512];
@@ -398,12 +408,12 @@ int x2_install_picker_choose(const char **directory) {
 #endif
 }
 
-int x2_install_picker_resolve_env(int appimage_product, int have_install_dir) {
+int install_picker_resolve_env(int appimage_product, int have_install_dir) {
   const char *current = x2_config_override_get(kX2ConfigGamePcDir);
   if (!appimage_product || have_install_dir || (current && current[0]))
     return 0;
   const char *picked = nullptr;
-  if (x2_install_picker_choose(&picked) != 0 || !picked) {
+  if (install_picker_choose(&picked) != 0 || !picked) {
     x2_log_error("x2native: no PC installation was selected; exiting.\n");
     return 1;
   }
@@ -414,3 +424,5 @@ int x2_install_picker_resolve_env(int appimage_product, int have_install_dir) {
   }
   return 0;
 }
+
+} // namespace x2::native

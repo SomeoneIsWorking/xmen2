@@ -151,7 +151,7 @@ static void collapse(CPU *C) {
  * through these same fields next, so an unreadable one is a broken model,
  * not a glyph to guess about.
  */
-static struct X2PromptVertexKey g_key;
+static struct x2::native::PromptVertexKey g_key;
 
 static void read_key(const CPU *C) {
   uint32_t batch, slot, base, count;
@@ -169,8 +169,8 @@ static void read_key(const CPU *C) {
   g_key.vertex = base + count;
 }
 
-static void retain(const struct X2PromptQuad *quads, unsigned count) {
-  if (!x2_prompt_quads_put(g_key, quads, count)) {
+static void retain(const struct x2::native::PromptQuad *quads, unsigned count) {
+  if (!x2::native::prompt_quads_put(g_key, quads, count)) {
     x2_log_error("PROMPT DRAW: reserved queue capacity was "
                  "lost inside one synchronous retail string; "
                  "atomic interception cannot continue.\n");
@@ -181,7 +181,7 @@ static void retain(const struct X2PromptQuad *quads, unsigned count) {
 
 static void intercept_glyph(CPU *C, uint16_t c) {
   const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(c);
-  struct X2PromptQuad q;
+  struct x2::native::PromptQuad q;
   float corners[4];
 
   if (!cell) {
@@ -218,7 +218,7 @@ static void intercept_keycap(CPU *C, uint16_t c) {
     g_cap.name_at = g_cursor_index;
   } else if (c == X2_KEYCAP_GLYPH_RIGHT) {
     uint16_t name[X2_KEYCAP_NAME_MAX];
-    struct X2PromptQuad quads[X2_KEYCAP_QUADS];
+    struct x2::native::PromptQuad quads[X2_KEYCAP_QUADS];
     const struct x2_keycap_art *art;
     const unsigned length = g_cursor_index - 1u - g_cap.name_at;
     float right[4];
@@ -264,9 +264,9 @@ struct PromptStringPlan {
 
 static struct PromptStringPlan plan_string(uint32_t s) {
   struct PromptStringPlan plan = {0};
-  uint16_t wide[X2_PROMPT_WALK_MAX];
+  uint16_t wide[x2::native::kPromptWalkMax];
   unsigned i, n, key_end = UINT_MAX; /* the open key's right edge */
-  for (n = 0; n < X2_PROMPT_WALK_MAX; n++) {
+  for (n = 0; n < x2::native::kPromptWalkMax; n++) {
     wide[n] = RD16(s + (uint32_t)n * 2u);
     if (!wide[n])
       break;
@@ -275,7 +275,7 @@ static struct PromptStringPlan plan_string(uint32_t s) {
     const uint16_t c = wide[i];
     if (x2_glyph_loop_emits_quad(c))
       plan.emitted++;
-    if (!x2_prompt_codepoint(c))
+    if (!x2::native::prompt_codepoint(c))
       continue;
     if (c == X2_KEYCAP_GLYPH_LEFT) {
       const unsigned run = x2_keycap_run_length(wide, n, i);
@@ -317,11 +317,11 @@ void x2_override_005ee780(CPU *C) {
   uint32_t s = glyph_loop_string(C);
   unsigned i;
 
-  x2_prompt_string_census(s);
+  x2::native::prompt_string_census(s);
   /* The cursor is armed only for a string carrying our codepoints, so
      every other string's quads take the untouched path. */
   if (x2_prompt_glyphs_enabled() && s &&
-      x2_string_has_prompt_glyph(s, X2_PROMPT_WALK_MAX)) {
+      x2::native::string_has_prompt_glyph(s, x2::native::kPromptWalkMax)) {
     struct PromptStringPlan plan = plan_string(s);
     uint32_t batch = RD32(C->reg[kX86pEsp] + 8u);
     uint32_t color;
@@ -348,7 +348,7 @@ void x2_override_005ee780(CPU *C) {
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
-    if (x2_prompt_quads_available() < plan.native) {
+    if (x2::native::prompt_quads_available() < plan.native) {
       g_queue_refused++;
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
@@ -384,7 +384,7 @@ __attribute__((constructor)) static void x2_prompt_draw_register(void) {
 }
 
 void x2_prompt_draw_report(void) {
-  x2_prompt_string_census_report();
+  x2::native::prompt_string_census_report();
   x2_log_error("PROMPT DRAW: %lu super-call(s) of the glyph loop\n",
                g_super_called);
   x2_log_error("PROMPT DRAW: %lu quad(s) intercepted for the port out of "

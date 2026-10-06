@@ -648,7 +648,7 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
 
 void imp_KERNEL32_ReadFile(CPU *C) {
   Handle *hh = k32_handle_get(A(0), H_FILE);
-  ssize_t n = x2_guest_read_fd(hh->fd, A(1), A(2));
+  ssize_t n = x2::native::guest_read_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
   ret_std(C, n < 0 ? 0u : 1u, 5);
@@ -656,7 +656,7 @@ void imp_KERNEL32_ReadFile(CPU *C) {
 
 void imp_KERNEL32_WriteFile(CPU *C) {
   Handle *hh = k32_handle_get(A(0), H_FILE);
-  ssize_t n = x2_guest_write_fd(hh->fd, A(1), A(2));
+  ssize_t n = x2::native::guest_write_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
   ret_std(C, n < 0 ? 0u : 1u, 5);
@@ -1865,7 +1865,8 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
        by the ones live at once. */
     uint32_t mapped_address;
     if (guest_memory_map_any(GUEST_VIEW_ARENA_BASE, GUEST_VIEW_ARENA_END,
-                             0x10000u, len, PROT_READ | PROT_WRITE,
+                             0x10000u, len,
+                             x2::native::kProtRead | x2::native::kProtWrite,
                              &mapped_address) != 0) {
       x2_log_error("kernel32: no room for a %zu byte view: the file-view "
                    "arena 0x%08x..0x%08x has no free span that size.\n",

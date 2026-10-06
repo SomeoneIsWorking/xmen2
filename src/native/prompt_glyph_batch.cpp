@@ -61,7 +61,7 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
  * own draws (issue #184).
  */
 void x2_prompt_glyph_batch_update_context_state(CPU *C) {
-  struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+  struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
   uint32_t vertex_array;
@@ -78,8 +78,8 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
     g_unreadable_array++;
     return;
   }
-  count = x2_prompt_quads_take_range(vertex_array, g_nonindexed_start,
-                                     g_nonindexed_primitives + 2u, quads);
+  count = x2::native::prompt_quads_take_range(
+      vertex_array, g_nonindexed_start, g_nonindexed_primitives + 2u, quads);
   if (!count)
     return;
   g_with_prompts++;

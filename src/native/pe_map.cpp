@@ -90,15 +90,16 @@ int pe_map(const char *path, PeImage *out) {
   /* One reservation for the whole image, then the sections are written into
      it. Reserving per-section would leave the gaps between them unmapped,
      and code reads across section boundaries (padding, jump tables). */
-  if (guest_memory_map_fixed(base, imgsize, PROT_READ | PROT_WRITE) != 0) {
+  if (guest_memory_map_fixed(
+          base, imgsize, x2::native::kProtRead | x2::native::kProtWrite) != 0) {
     /* Every libIG*.dll is linked for 0x10000000, so at most one of them
        gets its preferred base -- exactly as under the Windows loader.
        Relocation is fine because absolute references resolve against the
        module's OWN base; what would not be fine is relocating silently,
        so the new base is returned and the caller prints it. */
-    if (guest_memory_map_any(GUEST_MODULE_LO, GUEST_MODULE_HI,
-                             GUEST_MODULE_ALIGN, imgsize,
-                             PROT_READ | PROT_WRITE, &base) != 0) {
+    if (guest_memory_map_any(
+            GUEST_MODULE_LO, GUEST_MODULE_HI, GUEST_MODULE_ALIGN, imgsize,
+            x2::native::kProtRead | x2::native::kProtWrite, &base) != 0) {
       x2_log_error("pe_map: %s wants 0x%08x, which is taken, and no "
                    "free span of %u bytes was found below 4 GB. Guest "
                    "pointers are 32-bit, so there is nowhere else to "
@@ -171,7 +172,8 @@ void pe_unmap(PeImage *img) {
    asked for it would still work, and would make every address in a fault
    report unrecognisable. */
 int pe_map_anon_low(uint32_t want, uint32_t size) {
-  if (guest_memory_map_fixed(want, size, PROT_READ | PROT_WRITE) != 0) {
+  if (guest_memory_map_fixed(
+          want, size, x2::native::kProtRead | x2::native::kProtWrite) != 0) {
     x2_log_error("pe_map_anon_low: wanted 0x%08x, %s\n", want, strerror(errno));
     return -1;
   }

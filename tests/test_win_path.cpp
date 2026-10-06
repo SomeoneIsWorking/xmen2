@@ -17,10 +17,12 @@ static int g_save_notes;
 
 const char *x2_save_dir(void) { return X2_TEST_WIN_PATH_ROOT "/saves"; }
 
-void x2_save_trace_asset_open(const char *guest_path, int succeeded) {
+namespace x2::save {
+void save_trace_asset_open(const char *guest_path, int succeeded) {
   if (guest_path && succeeded)
     g_save_notes++;
 }
+} // namespace x2::save
 
 static void make_file(const char *path) {
   FILE *file = fopen(path, "wb");

@@ -33,7 +33,7 @@
 
 typedef struct {
   uint32_t info;
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   int failed;
   int needs_copy;
 } NativeMovie;
@@ -55,17 +55,17 @@ static struct {
   unsigned long load, unload, play, pause, check, next, frames;
 } g_movie_calls;
 
-static const char *movie_state_name(X2FmvState state) {
+static const char *movie_state_name(x2::media::FmvState state) {
   switch (state) {
-  case X2_FMV_READY:
+  case x2::media::FmvState::Ready:
     return "READY";
-  case X2_FMV_PLAYING:
+  case x2::media::FmvState::Playing:
     return "PLAYING";
-  case X2_FMV_PAUSED:
+  case x2::media::FmvState::Paused:
     return "PAUSED";
-  case X2_FMV_FINISHED:
+  case x2::media::FmvState::Finished:
     return "FINISHED";
-  case X2_FMV_FAILED:
+  case x2::media::FmvState::Failed:
     return "FAILED";
   default:
     return "?";
@@ -90,7 +90,7 @@ void x2_movie_beat_report(void) {
   if (g_native_movie.player) {
     x2_log_error("[HB]             the movie the guest holds is %s, and the "
                  "guest's own state word reads %u\n",
-                 movie_state_name(x2_fmv_state(g_native_movie.player)),
+                 movie_state_name(x2::media::fmv_state(g_native_movie.player)),
                  g_native_movie.info ? RD32(g_native_movie.info + INFO_STATE)
                                      : 0u);
   } else {
@@ -138,20 +138,20 @@ static double queued_movie_audio(void *userdata) {
 static void close_native_movie(void) {
   x2::media::fmv_probe_end();
   if (g_native_movie.player)
-    x2_fmv_report(g_native_movie.player);
-  x2_fmv_close(g_native_movie.player);
+    x2::media::fmv_report(g_native_movie.player);
+  x2::media::fmv_close(g_native_movie.player);
   movie_audio_close();
   memset(&g_native_movie, 0, sizeof(g_native_movie));
 }
 
-static X2FmvPlayer *movie_for(uint32_t info) {
+static x2::media::FmvPlayer *movie_for(uint32_t info) {
   return g_native_movie.info == info ? g_native_movie.player : NULL;
 }
 
 void x2_movie_report(void) {
   x2::media::fmv_probe_report();
   if (g_native_movie.player)
-    x2_fmv_report(g_native_movie.player);
+    x2::media::fmv_report(g_native_movie.player);
 }
 
 static void x2_movie_load(CPU *C) {
@@ -160,7 +160,7 @@ static void x2_movie_load(CPU *C) {
   const char *guest_path = guest_memory_as<const char>(path_address);
   const char *host_path;
   X2FmvAudioSink sink;
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   char error[256];
   int first_frame, replaced;
   g_movie_calls.load++;
@@ -179,7 +179,7 @@ static void x2_movie_load(CPU *C) {
   sink.queued_seconds = queued_movie_audio;
   error[0] = '\0';
   close_native_movie();
-  player = x2_fmv_open(host_path, &sink, error, sizeof(error));
+  player = x2::media::fmv_open(host_path, &sink, error, sizeof(error));
   k32_open_note(guest_path, player != NULL, replaced, host_path);
   if (!player) {
     x2_log_error("movie: native SFD load failed for '%s': %s\n", guest_path,
@@ -188,18 +188,18 @@ static void x2_movie_load(CPU *C) {
     return;
   }
   dsound_movie_audio_begin();
-  if (!movie_audio_open(x2_fmv_sample_rate(player))) {
+  if (!movie_audio_open(x2::media::fmv_sample_rate(player))) {
     x2_log_error("movie: cannot allocate the SFD audio queue\n");
-    x2_fmv_close(player);
+    x2::media::fmv_close(player);
     movie_return(C, 0, 1);
     return;
   }
   x2::media::fmv_probe_begin(guest_path);
-  first_frame = x2_fmv_update(player, 0.0);
-  if (first_frame < 0 || !x2_fmv_decoded_frames(player)) {
+  first_frame = x2::media::fmv_update(player, 0.0);
+  if (first_frame < 0 || !x2::media::fmv_decoded_frames(player)) {
     x2_log_error("movie: SFD '%s' produced no decodable video frame\n",
                  guest_path);
-    x2_fmv_close(player);
+    x2::media::fmv_close(player);
     movie_audio_close();
     x2::media::fmv_probe_end();
     movie_return(C, 0, 1);
@@ -208,11 +208,12 @@ static void x2_movie_load(CPU *C) {
   g_native_movie.info = info;
   g_native_movie.player = player;
   g_native_movie.needs_copy = 1;
-  WR32(info + INFO_WIDTH, (uint32_t)x2_fmv_width(player));
-  WR32(info + INFO_HEIGHT, (uint32_t)x2_fmv_height(player));
+  WR32(info + INFO_WIDTH, (uint32_t)x2::media::fmv_width(player));
+  WR32(info + INFO_HEIGHT, (uint32_t)x2::media::fmv_height(player));
   x2_log_info("movie: loaded native MPEG-1/ADX SFD '%s' at %dx%d, %d Hz\n",
-              guest_path, x2_fmv_width(player), x2_fmv_height(player),
-              x2_fmv_sample_rate(player));
+              guest_path, x2::media::fmv_width(player),
+              x2::media::fmv_height(player),
+              x2::media::fmv_sample_rate(player));
   movie_return(C, 1, 1);
 }
 
@@ -233,7 +234,7 @@ static void x2_movie_unload(CPU *C) {
 
 static void x2_movie_play(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   g_movie_calls.play++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10002040u);
@@ -245,7 +246,7 @@ static void x2_movie_play(CPU *C) {
     return;
   }
   WR32(info + INFO_STATE, 0u);
-  x2_fmv_play(player);
+  x2::media::fmv_play(player);
   movie_audio_play();
   movie_return(C, 1, 1);
 }
@@ -253,7 +254,7 @@ static void x2_movie_play(CPU *C) {
 static void x2_movie_pause(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t state = RD32(C->reg[kX86pEsp] + 8u);
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   g_movie_calls.pause++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x100020c0u);
@@ -265,15 +266,15 @@ static void x2_movie_pause(CPU *C) {
     return;
   }
   WR32(info + INFO_STATE, state);
-  x2_fmv_pause(player, state != 0u);
+  x2::media::fmv_pause(player, state != 0u);
   movie_audio_pause(state != 0u);
   movie_return(C, 1, 2);
 }
 
 static void x2_movie_check_state(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
-  X2FmvPlayer *player;
-  X2FmvState state;
+  x2::media::FmvPlayer *player;
+  x2::media::FmvState state;
   g_movie_calls.check++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10002140u);
@@ -284,17 +285,17 @@ static void x2_movie_check_state(CPU *C) {
     movie_return(C, 0, 1);
     return;
   }
-  state = x2_fmv_state(player);
-  if (state == X2_FMV_FINISHED)
+  state = x2::media::fmv_state(player);
+  if (state == x2::media::FmvState::Finished)
     WR32(info + INFO_STATE, 2u);
-  if (state == X2_FMV_FAILED)
+  if (state == x2::media::FmvState::Failed)
     WR32(info + INFO_STATE, 3u);
-  movie_return(C, state != X2_FMV_FAILED, 1);
+  movie_return(C, state != x2::media::FmvState::Failed, 1);
 }
 
 static void x2_movie_next_frame(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
-  X2FmvPlayer *player;
+  x2::media::FmvPlayer *player;
   uint32_t image, data, bytes;
   size_t pitch;
   int changed;
@@ -309,21 +310,23 @@ static void x2_movie_next_frame(CPU *C) {
     return;
   }
   dsound_movie_audio_tick();
-  changed = x2_fmv_update(player, movie_audio_played_seconds());
+  changed = x2::media::fmv_update(player, movie_audio_played_seconds());
   if (changed >= 0 && g_native_movie.needs_copy)
     changed = 1;
   if (changed > 0) {
     image = RD32(info + INFO_IMAGE);
     data = image ? RD32(image + IMAGE_DATA) : 0;
     bytes = image ? RD32(image + IMAGE_BYTES) : 0;
-    if (!x2_movie_image_pitch(x2_fmv_width(player), x2_fmv_height(player),
-                              bytes, &pitch))
+    if (!x2_movie_image_pitch(x2::media::fmv_width(player),
+                              x2::media::fmv_height(player), bytes, &pitch))
       pitch = 0;
     if (!data || !pitch ||
-        !x2_fmv_copy_bgra(player, guest_memory_pointer(data), bytes, pitch)) {
+        !x2::media::fmv_copy_bgra(player, guest_memory_pointer(data), bytes,
+                                  pitch)) {
       x2_log_error("movie: igImage storage is invalid for the %dx%d "
                    "native SFD frame (data=0x%08x bytes=%u)\n",
-                   x2_fmv_width(player), x2_fmv_height(player), data, bytes);
+                   x2::media::fmv_width(player), x2::media::fmv_height(player),
+                   data, bytes);
       g_native_movie.failed = 1;
       WR32(info + INFO_STATE, 3u);
       changed = -1;
@@ -333,9 +336,10 @@ static void x2_movie_next_frame(CPU *C) {
       g_native_movie.needs_copy = 0;
     }
   }
-  if (x2_fmv_state(player) == X2_FMV_FINISHED)
+  if (x2::media::fmv_state(player) == x2::media::FmvState::Finished)
     WR32(info + INFO_STATE, 2u);
-  else if (changed < 0 || x2_fmv_state(player) == X2_FMV_FAILED)
+  else if (changed < 0 ||
+           x2::media::fmv_state(player) == x2::media::FmvState::Failed)
     WR32(info + INFO_STATE, 3u);
   if (changed > 0) {
     g_movie_calls.frames++;

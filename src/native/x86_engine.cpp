@@ -67,7 +67,8 @@ static struct {
 static int map_return_page(char *reason, unsigned reason_len) {
   void *host;
   if (guest_memory_map_fixed(ENGINE_RETURN_PAGE, 0x1000u,
-                             PROT_READ | PROT_WRITE) != 0) {
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
+      0) {
     snprintf(reason, reason_len,
              "the engine's return page at 0x%08x is already mapped -- "
              "something else claimed a range this dispatcher owns",
@@ -94,7 +95,8 @@ int x2_engine_init(char *reason, unsigned reason_len) {
     /* The page table the memory owner keeps is handed to x86port as-is, so the
        two spellings of "readable" and "writable" have to be the same bits. */
     const GuestMemoryWindow window = guest_memory_window();
-    _Static_assert(PROT_READ == kX86pMemRead && PROT_WRITE == kX86pMemWrite,
+    _Static_assert(x2::native::kProtRead == kX86pMemRead &&
+                       x2::native::kProtWrite == kX86pMemWrite,
                    "guest_memory's page permissions are x86port's");
     g_engine.mem.host = window.host;
     g_engine.mem.lo = 0;

@@ -181,7 +181,7 @@ const char *x86_poison_name(uint32_t addr, const char **mod) {
 }
 
 static int poison_init(void) {
-  if (guest_memory_map_fixed(POISON_BASE, POISON_SIZE, PROT_NONE) != 0) {
+  if (guest_memory_map_fixed(POISON_BASE, POISON_SIZE, x2::native::kProtNone)) {
     x2_log_error("x2native: could not reserve the unbound-import page; "
                  "unresolved imports would read as plausible values\n");
     return -1;
@@ -479,16 +479,16 @@ static void case_unaligned_guest_memory(void) {
 static void case_guest_page_granularity(void) {
   /* These are two Win32 pages in one 16 KiB Apple Silicon VM granule. */
   const uint32_t live = 0x6fe01000u, decommitted = 0x6fe02000u;
-  int live_mapped =
-      guest_memory_map_fixed(live, 0x1000u, PROT_READ | PROT_WRITE) == 0;
-  int other_mapped =
-      guest_memory_map_fixed(decommitted, 0x1000u, PROT_READ | PROT_WRITE) == 0;
+  const int rw = x2::native::kProtRead | x2::native::kProtWrite;
+  const int none = x2::native::kProtNone;
+  int live_mapped = guest_memory_map_fixed(live, 0x1000u, rw) == 0;
+  int other_mapped = guest_memory_map_fixed(decommitted, 0x1000u, rw) == 0;
 
   check("adjacent Win32 pages map", live_mapped && other_mapped, 1u);
   if (live_mapped && other_mapped) {
     WR32(live + 4u, 0x51a7e123u);
     check("one Win32 page decommits",
-          guest_memory_protect(decommitted, 0x1000u, PROT_NONE) == 0, 1u);
+          guest_memory_protect(decommitted, 0x1000u, none) == 0, 1u);
     check("decommitted page is tracked",
           guest_memory_is_readable(decommitted, 1u), 0u);
     check("committed 4K sibling survives", RD32(live + 4u), 0x51a7e123u);
@@ -1518,8 +1518,8 @@ int main(int argc, char **argv) {
     atexit(x86_setjmp_report);
   }
   {
-    int r = x2_install_picker_resolve_env(options.appimage && options.product,
-                                          options.install_dir != NULL);
+    int r = x2::native::install_picker_resolve_env(
+        options.appimage && options.product, options.install_dir != NULL);
     if (r)
       return r == 1 ? 0 : 1; /* 1: nothing selected; 2: publish failed */
   }

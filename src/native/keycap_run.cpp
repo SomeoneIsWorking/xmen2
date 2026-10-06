@@ -31,10 +31,10 @@ unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
   return end - at + 1u;
 }
 
-static struct X2PromptQuad art_quad(const struct x2_keycap_art *art, float x0,
-                                    float x1, float y0, float y1,
-                                    uint32_t color) {
-  struct X2PromptQuad q;
+static struct x2::native::PromptQuad art_quad(const struct x2_keycap_art *art,
+                                              float x0, float x1, float y0,
+                                              float y1, uint32_t color) {
+  struct x2::native::PromptQuad q;
   q.x0 = x0;
   q.y0 = y0;
   q.x1 = x1;
@@ -51,7 +51,7 @@ static struct X2PromptQuad art_quad(const struct x2_keycap_art *art, float x0,
 
 void x2_keycap_quads(const float left[4], const float right[4],
                      const struct x2_keycap_art *label, uint32_t color,
-                     struct X2PromptQuad out[X2_KEYCAP_QUADS]) {
+                     struct x2::native::PromptQuad out[X2_KEYCAP_QUADS]) {
   const float x0 = left[0], x1 = right[2], y0 = left[1], y1 = left[3];
   const float dir = x1 >= x0 ? 1.0f : -1.0f;
   const float span = fabsf(x1 - x0);

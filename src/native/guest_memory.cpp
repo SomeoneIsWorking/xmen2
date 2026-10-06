@@ -182,7 +182,8 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
   uint32_t i;
   for (i = 0; i < count; i++) {
     g_perms[first + i] =
-        (uint8_t)(g_pages[first + i] & (PROT_READ | PROT_WRITE));
+        (uint8_t)(g_pages[first + i] &
+                  (x2::native::kProtRead | x2::native::kProtWrite));
   }
   return 0;
 }
@@ -206,12 +207,12 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
 
   for (; group < end; group += pages_per_host) {
     uint32_t i;
-    int protection = PROT_NONE;
+    int protection = x2::native::kProtNone;
     for (i = 0; i < pages_per_host; i++)
       if (g_pages[group + i] & PAGE_MAPPED)
         protection |= g_pages[group + i] & ~PAGE_MAPPED;
-    if (x2_protect(host_pointer(group * GUEST_PAGE_SIZE), g_host_page_size,
-                   protection) != 0)
+    if (x2::native::protect(host_pointer(group * GUEST_PAGE_SIZE),
+                            g_host_page_size, protection) != 0)
       return -1;
   }
   return 0;
@@ -285,11 +286,12 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   }
   zero_reused_pages(first, count);
 #else
-  void *host = x2_map_anonymous(host_pointer((uint32_t)start),
+  void *host =
+      x2::native::map_anonymous(host_pointer((uint32_t)start),
                                 (size_t)count * GUEST_PAGE_SIZE, protection);
-  if (host == X2_MAP_FAILED || (uintptr_t)host != start) {
-    if (host != X2_MAP_FAILED && host != NULL)
-      (void)x2_unmap(host, (size_t)count * GUEST_PAGE_SIZE);
+  if (host == x2::native::kMapFailed || (uintptr_t)host != start) {
+    if (host != x2::native::kMapFailed && host != NULL)
+      (void)x2::native::unmap(host, (size_t)count * GUEST_PAGE_SIZE);
     pthread_mutex_unlock(&g_pages_lock);
     errno = EEXIST;
     return -1;
@@ -381,8 +383,8 @@ int guest_memory_protect(uint32_t address, size_t size, int protection) {
   pthread_mutex_unlock(&g_pages_lock);
   return result;
 #else
-  result = x2_protect(host_pointer(first * GUEST_PAGE_SIZE),
-                      (size_t)count * GUEST_PAGE_SIZE, protection);
+  result = x2::native::protect(host_pointer(first * GUEST_PAGE_SIZE),
+                               (size_t)count * GUEST_PAGE_SIZE, protection);
   if (result != 0)
     return result;
   pthread_mutex_lock(&g_pages_lock);
@@ -409,8 +411,8 @@ int guest_memory_release(uint32_t address, size_t size) {
     return -1;
   }
 #else
-  if (x2_unmap(host_pointer(first * GUEST_PAGE_SIZE),
-               (size_t)count * GUEST_PAGE_SIZE) != 0) {
+  if (x2::native::unmap(host_pointer(first * GUEST_PAGE_SIZE),
+                        (size_t)count * GUEST_PAGE_SIZE) != 0) {
     pthread_mutex_unlock(&g_pages_lock);
     return -1;
   }
@@ -431,7 +433,7 @@ int guest_memory_is_readable(uint32_t address, size_t size) {
   for (i = 0; i < count; i++) {
     const unsigned page =
         atomic_load_explicit(&g_pages[first + i], memory_order_relaxed);
-    if (!(page & PAGE_MAPPED) || !(page & PROT_READ)) {
+    if (!(page & PAGE_MAPPED) || !(page & x2::native::kProtRead)) {
       readable = 0;
       break;
     }

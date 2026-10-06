@@ -274,13 +274,20 @@ target_include_directories(test_config_directory PRIVATE src/config)
 target_link_libraries(test_config_directory PRIVATE lucent::lucent)
 add_test(NAME config_directory COMMAND test_config_directory)
 
+# Each sandboxed test runs in its own build-tree directory that already holds
+# the scratch/ these tests write into; a fresh checkout has no source scratch/.
+function(x2_use_test_sandbox test_name)
+  set(sandbox ${CMAKE_BINARY_DIR}/test-sandbox/${test_name})
+  file(MAKE_DIRECTORY ${sandbox}/scratch)
+  set_tests_properties(${test_name} PROPERTIES WORKING_DIRECTORY ${sandbox})
+endfunction()
+
 add_executable(test_runtime_cvars tests/test_runtime_cvars.cpp
                src/config/runtime_cvars.cpp src/config/config_directory.cpp)
 target_include_directories(test_runtime_cvars PRIVATE src/config)
 target_link_libraries(test_runtime_cvars PRIVATE lucent::lucent)
 add_test(NAME runtime_cvars COMMAND test_runtime_cvars)
-set_tests_properties(runtime_cvars PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+x2_use_test_sandbox(runtime_cvars)
 
 add_executable(test_install_picker tests/test_install_picker.cpp
                src/native/install_picker.cpp src/native/install_archive.cpp
@@ -883,7 +890,7 @@ add_executable(test_input_record tests/test_input_record.cpp
 target_include_directories(test_input_record PRIVATE src/input src/native
                            src/config)
 add_test(NAME input_record COMMAND test_input_record)
-set_tests_properties(input_record PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+x2_use_test_sandbox(input_record)
 
 add_executable(test_dinput_system tests/test_dinput_system.cpp
                src/native/dinput_system.cpp tests/native_stubs.cpp)
@@ -1446,8 +1453,7 @@ add_executable(test_autosave_storage
     src/save/save_directory.cpp)
 target_include_directories(test_autosave_storage PRIVATE src/save src/native)
 add_test(NAME autosave_storage COMMAND test_autosave_storage)
-set_tests_properties(autosave_storage PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+x2_use_test_sandbox(autosave_storage)
 
 add_executable(test_autosave_format
     tests/test_autosave_format.cpp src/save/autosave_format.cpp)
@@ -1463,8 +1469,7 @@ add_executable(test_shadow_trace
     tests/test_shadow_trace.cpp tools/proxy_d3d8/shadow_trace.c)
 target_include_directories(test_shadow_trace PRIVATE tools/proxy_d3d8)
 add_test(NAME shadow_trace COMMAND test_shadow_trace)
-set_tests_properties(shadow_trace PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+x2_use_test_sandbox(shadow_trace)
 
 add_test(NAME shadow_trace_compare COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/shadow_trace_compare.py --selftest)

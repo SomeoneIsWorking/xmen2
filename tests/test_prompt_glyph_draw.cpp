@@ -196,7 +196,7 @@ static int rect_has_area(unsigned index) {
 static void expect(const uint16_t *codes, unsigned n, int want,
                    const char *what) {
   uint32_t at = guest_wide(codes, n);
-  int got = x2_string_has_prompt_glyph(at, 512u);
+  int got = x2::native::string_has_prompt_glyph(at, 512u);
   if (got != want) {
     printf("  FAIL  %s: classifier said %d, expected %d\n", what, got, want);
     failures++;
@@ -213,7 +213,9 @@ int main(void) {
   x2_runtime_config_init(0, NULL);
 
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(GUEST_PAGE, 0x1000, PROT_READ | PROT_WRITE) != 0) {
+      guest_memory_map_fixed(GUEST_PAGE, 0x1000,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
+          0) {
     fprintf(stderr,
             "test_prompt_glyph_draw: could not map guest page "
             "0x%08x in the guest address space.\n",
@@ -279,12 +281,12 @@ int main(void) {
     *(uint16_t *)guest_memory_pointer(at + 4) = X2_PAD_GLYPH_FACE_A;
     *(uint16_t *)guest_memory_pointer(at + 6) = 0;
     g_next += 8;
-    if (x2_string_has_prompt_glyph(at, 512u))
+    if (x2::native::string_has_prompt_glyph(at, 512u))
       fail("the walk read past the string's own NUL");
     else
       ok("the walk stops at the string's NUL");
   }
-  if (x2_string_has_prompt_glyph(0, 512u))
+  if (x2::native::string_has_prompt_glyph(0, 512u))
     fail("a null string pointer was classified as carrying a prompt");
   else
     ok("a null string pointer is not classified as a prompt");
@@ -317,19 +319,19 @@ int main(void) {
        from glyph-loop arg2+8, not the emitter's unrelated ECX. */
     static const uint16_t one[] = {X2_PAD_GLYPH_FACE_A};
     CPU cpu;
-    struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+    struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
     unsigned count;
     unsigned long emit_before = g_emitter_calls;
     uint32_t entry;
 
     uint32_t start;
 
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
     entry = g_stack - 32u;
     start = text_vertex();
     call_glyph_loop(&cpu, guest_wide(one, 1));
     /* One emitted glyph: the draw that submits it covers its six vertices. */
-    count = x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u, quads);
+    count = x2::native::prompt_quads_take_range(TEXT_ARRAY, start, 6u, quads);
     if (cpu.reg[kX86pEsp] != entry + 32u)
       fail("the retail glyph loop did not own its RET 0x1c ABI");
     else
@@ -363,23 +365,26 @@ int main(void) {
                                         'k'};
     static const uint16_t esc[] = {'E', 'S', 'C'};
     const struct x2_keycap_art *art = x2_keycap_label_art(esc, 3u);
-    struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+    struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
     CPU cpu;
     unsigned i, count, collapsed = 0, stock = 0;
     unsigned long emit_before = g_emitter_calls;
     uint32_t start;
 
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
     start = text_vertex();
     call_glyph_loop(&cpu, guest_wide(esc_back, 10));
     /* The key is keyed where its right edge (emitted glyph 4) was written:
        a draw that ends before that glyph does not own it. */
-    if (x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u * 4u, quads) ||
-        x2_prompt_quads_take_range(TEXT_ARRAY + 4u, start, 6u * 9u, quads))
+    if (x2::native::prompt_quads_take_range(TEXT_ARRAY, start, 6u * 4u,
+                                            quads) ||
+        x2::native::prompt_quads_take_range(TEXT_ARRAY + 4u, start, 6u * 9u,
+                                            quads))
       fail("a draw that does not submit the key's right edge took the key");
     else
       ok("only the draw submitting the key's right edge takes the key");
-    count = x2_prompt_quads_take_range(TEXT_ARRAY, start, 6u * 9u, quads);
+    count =
+        x2::native::prompt_quads_take_range(TEXT_ARRAY, start, 6u * 9u, quads);
     for (i = 0; i < 9u; i++) {
       collapsed +=
           (unsigned)(i < 5u && rect_collapsed((unsigned)emit_before + i));
@@ -415,10 +420,10 @@ int main(void) {
     unsigned count = 99u;
     unsigned long emit_before = g_emitter_calls;
 
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(spaced, 5));
     call_glyph_loop(&cpu, guest_wide(stray, 2));
-    count = x2_prompt_quads_pending();
+    count = x2::native::prompt_quads_pending();
     if (count || g_emitter_calls != emit_before + 6u ||
         !rect_has_area((unsigned)emit_before + 1u) ||
         !rect_has_area((unsigned)emit_before + 5u))
@@ -440,9 +445,9 @@ int main(void) {
     unsigned long emit_before = g_emitter_calls;
     uint32_t good_batch = g_batch;
     g_batch = 0x23456780u;
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    count = x2_prompt_quads_pending();
+    count = x2::native::prompt_quads_pending();
     if (count || g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||
         !rect_has_area((unsigned)emit_before + 1u))
@@ -460,27 +465,27 @@ int main(void) {
         X2_PAD_GLYPH_FACE_A,
         X2_PAD_GLYPH_FACE_B,
     };
-    struct X2PromptQuad filler = {0};
+    struct x2::native::PromptQuad filler = {0};
     CPU cpu;
     unsigned i, count = 0;
     unsigned long emit_before;
-    x2_prompt_quads_reset();
-    for (i = 0; i + 1u < X2_PROMPT_QUADS_MAX; i++) {
-      const struct X2PromptVertexKey key = {0u, i * 6u};
-      if (!x2_prompt_quads_put(key, &filler, 1u))
+    x2::native::prompt_quads_reset();
+    for (i = 0; i + 1u < x2::native::kPromptQuadsMax; i++) {
+      const struct x2::native::PromptVertexKey key = {0u, i * 6u};
+      if (!x2::native::prompt_quads_put(key, &filler, 1u))
         fail("the queue refused a filler before its stated capacity");
     }
     emit_before = g_emitter_calls;
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    count = x2_prompt_quads_pending();
-    if (count != X2_PROMPT_QUADS_MAX - 1u ||
+    count = x2::native::prompt_quads_pending();
+    if (count != x2::native::kPromptQuadsMax - 1u ||
         g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||
         !rect_has_area((unsigned)emit_before + 1u))
       fail("short queue capacity produced a partial native/stock string");
     else
       ok("short queue capacity keeps the whole string on the stock path");
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
   }
 
   {
@@ -493,9 +498,10 @@ int main(void) {
     CPU cpu;
     unsigned long emit_before = g_emitter_calls;
     WR32(TEXT_BATCH, 0x006a4c4cu);
-    x2_prompt_quads_reset();
+    x2::native::prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    if (x2_prompt_quads_pending() || g_emitter_calls != emit_before + 2u ||
+    if (x2::native::prompt_quads_pending() ||
+        g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||
         !rect_has_area((unsigned)emit_before + 1u))
       fail("a writer that is not the text batch was intercepted");

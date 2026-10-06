@@ -66,7 +66,8 @@ int x2_engine_selftest(void) {
   if (!x2_engine_active())
     return 1; /* nothing selected: nothing to prove */
 
-  if (guest_memory_map_fixed(SELFTEST_PAGE, 0x1000u, PROT_READ | PROT_WRITE) !=
+  if (guest_memory_map_fixed(SELFTEST_PAGE, 0x1000u,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
       0) {
     x2_log_error("[ENGINE] selftest: could not map its own page at "
                  "0x%08x -- the engine is UNVERIFIED for this run.\n",

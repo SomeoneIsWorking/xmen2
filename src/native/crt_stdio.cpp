@@ -122,7 +122,7 @@ void imp_MSVCR71_fclose(CPU *C) {
 }
 
 void imp_MSVCR71_fread(CPU *C) {
-  ret_c(C, (uint32_t)x2_guest_fread(A(0), A(1), A(2), crt_file(A(3))));
+  ret_c(C, (uint32_t)x2::native::guest_fread(A(0), A(1), A(2), crt_file(A(3))));
 }
 
 void imp_MSVCR71_fseek(CPU *C) {
@@ -191,7 +191,7 @@ void imp_MSVCR71_fwrite(CPU *C) {
     ret_c(C, A(2));
     return;
   }
-  ret_c(C, (uint32_t)x2_guest_fwrite(A(0), A(1), A(2), f));
+  ret_c(C, (uint32_t)x2::native::guest_fwrite(A(0), A(1), A(2), f));
 }
 void imp_MSVCR71_fgets(CPU *C) {
   char *r = fgets(AS(0), (int)A(1), crt_file(A(2)));

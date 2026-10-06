@@ -4,15 +4,25 @@
 
 #include <string.h>
 
-static X2BootModeDecision g_decision;
-static X2SaveCandidate g_latest;
-static int g_ready;
-static int g_continue_pending;
-static int g_catalog_failed;
+namespace x2::native {
+
+namespace {
+
+X2BootModeDecision g_decision;
+
+X2SaveCandidate g_latest;
+
+int g_ready;
+
+int g_continue_pending;
+
+int g_catalog_failed;
+
+} // namespace
 
 const X2BootModeDecision *
-x2_boot_mode_runtime_prepare(X2BootMode requested,
-                             const char *retail_save_directory) {
+boot_mode_runtime_prepare(X2BootMode requested,
+                          const char *retail_save_directory) {
   int latest_available = 0;
   if (g_ready)
     return &g_decision;
@@ -30,10 +40,12 @@ x2_boot_mode_runtime_prepare(X2BootMode requested,
   return &g_decision;
 }
 
-int x2_boot_mode_runtime_catalog_failed(void) { return g_catalog_failed; }
+int boot_mode_runtime_catalog_failed(void) { return g_catalog_failed; }
 
-const char *x2_boot_mode_runtime_continue_leaf(void) {
+const char *boot_mode_runtime_continue_leaf(void) {
   return g_continue_pending ? g_latest.leaf : NULL;
 }
 
-void x2_boot_mode_runtime_continue_started(void) { g_continue_pending = 0; }
+void boot_mode_runtime_continue_started(void) { g_continue_pending = 0; }
+
+} // namespace x2::native
