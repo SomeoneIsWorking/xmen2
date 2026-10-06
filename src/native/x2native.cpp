@@ -1548,13 +1548,10 @@ int main(int argc, char **argv) {
        valid browser launch into a startup refusal. */
     const int control_port = 0;
 #else
-    /* Only when asked. See control_start: the product used to force one open
-       on 8420, and a port already held refused the launch outright. */
+    /* Only when asked; see control_start. */
     const int control_port = control_start(options.control);
 #endif
-    /* A package does not own its working directory -- on Android it is not
-       even writable -- so its recordings belong with its other user data
-       rather than in a scratch/ path relative to wherever it was started. */
+    /* A package's recordings live with its user data, not its cwd. */
     if (options.appimage && x2_config_directory_ensure()) {
       char artifacts[512];
       snprintf(artifacts, sizeof artifacts, "%s/recordings",
@@ -1562,6 +1559,9 @@ int main(int argc, char **argv) {
       input_record_set_directory(artifacts);
       snprintf(artifacts, sizeof artifacts, "%s/run", x2_config_directory());
       live_session_set_directory(artifacts);
+    }
+    if (lucent_cvar_text("live.directory")[0] != '\0') {
+      live_session_set_directory(lucent_cvar_text("live.directory"));
     }
     if (options.input_record && !input_record_start(options.input_record)) {
       x2_log_error("x2native: input recording was requested but "

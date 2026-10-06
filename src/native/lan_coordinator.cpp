@@ -8,6 +8,7 @@
 #include "continue_runtime.h"
 #include "winsock_resolve.h"
 #include "x2_log.h"
+#include <lucent/cvar_c.h>
 
 #include <random>
 
@@ -68,6 +69,11 @@ void Coordinator::map_loaded(uint32_t map, bool succeeded) {
 
 void Coordinator::start_presence() {
   started_ = true;
+  if (lucent_cvar_flag("lan.presence", 1) == 0) {
+    x2_log_info("lan: presence is off: lan.presence=0");
+    set_status("presence off: lan.presence=0");
+    return;
+  }
   if (!presence_.start()) {
     x2_log_info("lan: presence is off: %s", presence_.error().c_str());
     set_status("presence off: " + presence_.error());

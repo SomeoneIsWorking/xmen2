@@ -75,6 +75,12 @@ int main() {
   check(lucent_cvar_number("jit.watchn", 0) == 7,
         "and the value it carried is the one the run reads");
 
+  check(lucent_cvar_flag("lan.presence", 0) != 0,
+        "LAN presence is on unless a run turns it off");
+  check(x2_runtime_config_apply_set_token("lan.presence=0") != 0 &&
+            lucent_cvar_flag("lan.presence", 1) == 0,
+        "a run can turn LAN presence off");
+
   check(x2_runtime_config_apply_set_token("input.touch_controls=2") == 0,
         "a player-settings key belongs to the other system and is refused");
   check(x2_runtime_config_apply_set_token("jit.wtachn=7") == 0,
