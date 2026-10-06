@@ -124,6 +124,11 @@ void retail_text_reads_as_a_player_sees_it() {
         "a letter-spaced title closes up");
   check(touch_menu_text("  new   game ") == "new game", "whitespace collapses");
   check(touch_menu_text("~05").empty(), "an escape alone is no text");
+  check(touch_menu_text("Recovers 33% of max $HP with a chance") ==
+            "Recovers 33% of max HP with a chance",
+        "a stat token draws as its name, as the retail shop shows it");
+  check(touch_menu_text("~02Limit:~~ 10") == "Limit: 10",
+        "the style reset escape is removed");
 }
 
 void the_view_carries_the_rows_values_and_footer() {
@@ -240,6 +245,15 @@ void the_team_party_is_its_heroes() {
         "a tap on Storm is a click on Storm's summary");
 }
 
+const MenuItem *find_item(const MenuSnapshot &menu, const std::string &name) {
+  for (const MenuItem &candidate : menu.items) {
+    if (candidate.name == name) {
+      return &candidate;
+    }
+  }
+  return nullptr;
+}
+
 /* CMenuShop's training tab as GET /menu read it in the jungle: the three
    tabs with training lit, the list box holding `entries` entries. */
 MenuSnapshot shop_menu(int entries, int top, int selected) {
@@ -257,6 +271,18 @@ MenuSnapshot shop_menu(int entries, int top, int selected) {
   MenuItem training = item(16, "shop_option03", "training", 409, 354, 468, 368);
   training.flags |= x2::menu::kItemFocusLit;
   menu.items.push_back(training);
+  MenuItem cost = item(31, "item_cost_value", "~0620000", 419, 53, 482, 67);
+  menu.items.push_back(item(30, "label_cost", "cost", 370, 54, 403, 68));
+  menu.items.push_back(item(24, "money_value", "2000", 50, 58, 108, 72));
+  menu.items.push_back(
+      item(26, "label_inventory_count", "gear", 360, 119, 403, 133));
+  menu.items.push_back(item(27, "inventory_count", "0/20", 419, 118, 482, 132));
+  menu.items.push_back(
+      item(28, "label_owner", "~02Limit:~~ 10", 216, 53, 290, 67));
+  menu.items.push_back(item(29, "item_desc",
+                            "Recovers 33% of max $HP with a chance", 215, 75,
+                            482, 123));
+  menu.items.push_back(cost);
   MenuItem list = item(46, "list", "", 215, 191, 482, 377);
   x2::menu::ListBoxState box;
   for (int i = 0; i < entries; ++i) {
@@ -270,8 +296,8 @@ MenuSnapshot shop_menu(int entries, int top, int selected) {
   list.list_box = box;
   list.focused = true;
   menu.items.push_back(list);
-  menu.rows = {5};
-  menu.focused = 5;
+  menu.rows = {static_cast<int>(menu.items.size()) - 1};
+  menu.focused = menu.rows[0];
   return menu;
 }
 
@@ -283,21 +309,21 @@ void the_shop_is_its_tabs_and_entries() {
   if (!view) {
     return;
   }
-  check(view->rows.size() == 33u && view->rows[0].label == "buy" &&
-            view->rows[2].label == "training" &&
-            view->rows[3].label == "Entry 0",
-        "the tabs, then one row per list entry");
-  check(view->rows[2].focused && !view->rows[0].focused,
-        "the lit tab is the open one");
-  check(view->focused_row == 9 && view->rows[9].focused,
+  check(view->tabs.size() == 3u && view->tabs[0].label == "buy" &&
+            view->tabs[2].label == "training" && view->tabs[2].lit &&
+            !view->tabs[0].lit,
+        "the tabs are a bar of their own with the open one lit");
+  check(view->rows.size() == 30u && view->rows[0].label == "Entry 0",
+        "the rows are the list's entries only");
+  check(view->focused_row == 6 && view->rows[6].focused,
         "the list's selection is the menu's focus");
   check(!view->focus_wraps, "the list's Up/Down does not wrap");
   bool tabs_inside = true;
   for (std::size_t i = 0; i < 3u; ++i) {
-    const auto &rect = menu.items[i + 2u].rect;
-    const auto scene = plane.to_scene(view->rows[i].click);
-    tabs_inside = tabs_inside && view->rows[i].clicks &&
-                  scene.x >= static_cast<float>(rect.left) &&
+    const auto &rect =
+        find_item(menu, "shop_option0" + std::to_string(i + 1))->rect;
+    const auto scene = plane.to_scene(view->tabs[i].click);
+    tabs_inside = tabs_inside && scene.x >= static_cast<float>(rect.left) &&
                   scene.x < static_cast<float>(rect.right) &&
                   scene.z >= static_cast<float>(rect.top) + 3.0F &&
                   scene.z < static_cast<float>(rect.bottom) - 3.0F;
@@ -305,7 +331,7 @@ void the_shop_is_its_tabs_and_entries() {
   check(tabs_inside, "a tab is clicked inside the box CMenuShop tests");
   bool rows_land = true;
   for (int entry = 4; entry < 27; ++entry) {
-    const auto &row = view->rows[static_cast<std::size_t>(entry + 3)];
+    const auto &row = view->rows[static_cast<std::size_t>(entry)];
     const auto scene = plane.to_scene(row.click);
     /* CMenuItemListBox::onMouse (0x005c0e10): (top edge - y) / row height. */
     const int window_row = (329 - static_cast<int>(std::floor(scene.z))) / 8;
@@ -314,8 +340,19 @@ void the_shop_is_its_tabs_and_entries() {
                 scene.x < 482.0F;
   }
   check(rows_land, "each entry in the window is clicked on its own row");
-  check(!view->rows[3 + 3].clicks && !view->rows[27 + 3].clicks,
+  check(!view->rows[3].clicks && !view->rows[27].clicks,
         "an entry outside the window has no row to click");
+  check(view->rows[6].value == "20000" && view->rows[5].value.empty(),
+        "the selected entry shows the cost the game priced it at");
+  check(view->facts.size() == 4u && view->facts[0].label == "cost" &&
+            view->facts[0].value == "20000" && view->facts[0].warn &&
+            view->facts[1].label == "money" && view->facts[1].value == "2000" &&
+            !view->facts[1].warn && view->facts[2].label == "gear" &&
+            view->facts[2].value == "0/20" && view->facts[3].label.empty() &&
+            view->facts[3].value == "Limit: 10",
+        "cost, money, gear and limit, as the game's own items show them");
+  check(view->detail == "Recovers 33% of max HP with a chance",
+        "the selected entry's description");
   check(view->footers.size() == 2u && view->footers[0].label == "Buy",
         "the shop's Buy and Accept footers");
 
@@ -333,20 +370,24 @@ void the_shop_is_its_tabs_and_entries() {
   MenuSnapshot live = shop_menu(30, 4, 6);
   touch.set_view(x2::input::build_touch_menu_view(live, plane), 0u);
   const auto visible = *x2::input::build_touch_menu_view(live, plane);
-  TouchMenu short_list;
-  short_list.set_viewport(viewport_1280x720());
-  const auto tabs = x2::input::build_touch_menu_view(shop_menu(3, 0, 0), plane);
-  short_list.set_view(tabs, 0u);
-  auto out = tap(short_list,
-                 find(short_list.layout(), TouchMenuPart::row, 0)->rect, 10u);
+  const TouchMenuLayout &layout = touch.layout();
+  const auto *tab = find(layout, TouchMenuPart::tab, 0);
+  const auto *first_row = find(layout, TouchMenuPart::row, 0);
+  check(tab != nullptr && first_row != nullptr &&
+            tab->rect.bottom <= layout.list.top &&
+            layout.detail.top >= layout.list.bottom &&
+            layout.detail.bottom <= layout.footer.top &&
+            tab->rect.bottom - tab->rect.top >= 48.0F,
+        "the tab bar sits above the list and the detail below it");
+  auto out = tap(touch, tab->rect, 10u);
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
-            out[0].at.x == tabs->rows[0].click.x &&
-            out[0].at.y == tabs->rows[0].click.y,
+            out[0].at.x == visible.tabs[0].click.x &&
+            out[0].at.y == visible.tabs[0].click.y,
         "a tap on a tab is a click on the tab");
-  const X2Rect entry_row = find(touch.layout(), TouchMenuPart::row, 9)->rect;
+  const X2Rect entry_row = find(touch.layout(), TouchMenuPart::row, 6)->rect;
   out = tap(touch, entry_row, 20u);
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
-            out[0].at.y == visible.rows[9].click.y,
+            out[0].at.y == visible.rows[6].click.y,
         "a tap on a shown entry is a click on its row");
 
   /* Entry 28 is below the window: walk the selection down to it, then stop. */
@@ -356,7 +397,10 @@ void the_shop_is_its_tabs_and_entries() {
                 25u);
   touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::ended,
                 25u);
-  const auto *far = find(touch.layout(), TouchMenuPart::row, 31);
+  const auto *pinned = find(touch.layout(), TouchMenuPart::tab, 0);
+  check(pinned != nullptr && pinned->rect.top == tab->rect.top,
+        "the tab bar does not scroll with the list");
+  const auto *far = find(touch.layout(), TouchMenuPart::row, 28);
   check(far != nullptr, "the far entry has a button");
   if (far == nullptr) {
     return;
@@ -365,8 +409,8 @@ void the_shop_is_its_tabs_and_entries() {
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
             out[0].button == TouchAction::MenuDown,
         "an entry outside the window is walked to with Down, not the wrap");
-  live.items[5].list_box->selected = 28;
-  live.items[5].list_box->top = 6;
+  live.items.back().list_box->selected = 28;
+  live.items.back().list_box->top = 6;
   out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 40u);
   check(out.empty(), "and only selected on arrival, as a click would");
 }

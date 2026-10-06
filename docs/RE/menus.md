@@ -572,12 +572,42 @@ the top edge, and its entry is `top + row`:
   not move the selection (`item+0x90` clear), publishes `MENU_ACCEPT` (4) for
   the left button and 8 for the right. So a click on the selected entry buys.
 
+What the shop shows beside its list is written by its selection update
+(`FUN_005d30d0`, run after every `onMouse` the base menu does not take): it
+blanks `label_cost`, `item_cost_value`, `item_desc`, `label_owner`,
+`inventory_count` and `label_inventory_count`, then, for the selected entry
+only, writes the description into `item_desc`, the owner or limit line into
+`label_owner` (`~02Limit:~~ 10`), and the price into `item_cost_value` as
+`"~%02d%d"`, style 6 when the party's money is below the price and 0
+otherwise. The price comes from `FUN_005a9b00` over the entry's handle (record
+`+0x58`, through `FUN_005bfc20` and `FUN_005a9f90`), and is a formula per kind:
+an item's own price through its definition, `(level / 10 + 1)^2 * 2000` for a
+level advance (the factor capped at 5), and powers for the skill entries. The
+game prices no entry it has not selected, so a reader has the selected
+entry's price and nothing else. `inventory_count` is the gear count and limit
+(`%d/%d`), and `money_value` holds the party's money.
+
+Text escapes in these items: `~NN` selects a style (`~06` is the
+cannot-afford red, `~02` the limit line, `~05` the footers), `~~` ends one, and
+a `$` token that is not a `$MENU_` prompt is drawn as its name (`$HP` as `HP`,
+seen in the retail shop's Health Pack description).
+
+Money: no console command named for it is among the executable's command
+strings (`set`, `setincrement`, `runscript`, `loadmap`, `openmenu`, ...); the
+game-variable registry was not searched for a money entry. The script function `setInventoryCount` (`0x49ed40`, table `0x68b368`) sets it when
+its first argument is `"MONEY"`, and the retail script
+`scripts/act1/genosha/genosha1/temp_addmoney.py` adds 2000 through it, so the
+console's `runscript act1/genosha/genosha1/temp_addmoney` gives money through
+the game's own path.
+
 Measured (Continue into `act2/jungle/jungle1`, `openmenu shop`): training tab
 lit with 12 entries (four heroes by level advance, bonus skill point,
 redistribute skills), 23 window rows of 8 units; a click on `buy` lit
 `shop_option01` and the list became 13 entries (Energy Pack .. Grab Bag); a
-click on Health Pack selected entry 1; `$MENU_OK Accept` closed the shop to
-gameplay.
+click on Health Pack selected entry 1 and the game priced it at 100; with
+2000 money from `temp_addmoney`, a click on the selected Health Pack bought one
+(money 2000 -> 1900, `pot_health_value` 3 -> 4); `$MENU_OK Accept` closed the
+shop to gameplay.
 
 ## What is NOT established
 
@@ -617,13 +647,15 @@ gameplay.
 - **A shop list longer than its window.** The jungle shop's lists hold at most
   13 entries against 23 rows, so walking the selection to an entry outside the
   window is unit-tested only.
-- **What a buy does with no money.** The measured run had 0 money; a click on
-  the selected entry was not driven.
+- **The price of an unselected shop entry.** The game computes it only on
+  selection (`FUN_005a9b00`); the touch menu shows the selected entry's price
+  and does not compute the others.
+- **`menu+0x18e8` beyond bit 0.** It read 0 when the shop opened and 2 after a
+  tab change and a purchase; only bit 0 (the stash) is used.
 - **The command-less main rows by touch** (`danger room`, `play online`) are
   reached by the pad walk and A; only the keyboard path has been measured.
-- **The `~NN` text escape.** Labels and footers carry `~` and two digits
-  (`~05Back`); the touch menu strips it. What it selects (colour or font) is
-  not read.
+- **The `~NN` text escape's table.** `~06` is the shop's cannot-afford red;
+  the other styles are not read. The touch menu strips the escapes.
 - **No title item on the PDA or the team menu.** Neither has a `label_<menu>`
   or `title*` item, so their touch menus have no header band.
 - **Navigation of a menu whose links are all 0** (`pause`): the model offers

@@ -48,6 +48,27 @@ void row_content(std::ostringstream &rml, const input::TouchMenuRow &row) {
   }
 }
 
+void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
+                    Scale scale) {
+  const input::TouchMenuLayout &layout = state.layout;
+  if (layout.detail.bottom <= layout.detail.top) {
+    return;
+  }
+  rml << "<div id='tm-detail' style='" << box(layout.detail, 0.0F, 0.0F, scale)
+      << "'><div class='tm-facts'>";
+  for (const input::TouchMenuFact &fact : state.view.facts) {
+    rml << "<span class='tm-fact'>";
+    if (!fact.label.empty()) {
+      rml << "<span class='tm-fact-label'>" << escape_rml(fact.label)
+          << "</span> ";
+    }
+    rml << "<span class='tm-fact-value" << (fact.warn ? " warn" : "") << "'>"
+        << escape_rml(fact.value) << "</span></span>";
+  }
+  rml << "</div><div class='tm-text'>" << escape_rml(state.view.detail)
+      << "</div></div>";
+}
+
 std::string markup(const input::TouchMenuState &state, Scale scale) {
   const input::TouchMenuLayout &layout = state.layout;
   const float pad = kPanelPad * layout.unit;
@@ -65,9 +86,20 @@ std::string markup(const input::TouchMenuState &state, Scale scale) {
   rml << "<div id='tm-list' style='" << box(layout.list, 0.0F, 0.0F, scale)
       << "'>";
   std::ostringstream footer;
+  std::ostringstream pinned;
   for (std::size_t i = 0; i < layout.buttons.size(); ++i) {
     const input::TouchMenuButton &button = layout.buttons[i];
     const bool pressed = state.pressed == static_cast<int>(i);
+    if (button.part == input::TouchMenuPart::tab) {
+      const input::TouchMenuTab &tab =
+          state.view.tabs[static_cast<std::size_t>(button.index)];
+      pinned << "<div class='tm-button tm-tab" << (tab.lit ? " lit" : "")
+             << (pressed ? " pressed" : "") << "' style='"
+             << box(button.rect, 0.0F, 0.0F, scale)
+             << "'><span class='tm-label'>" << escape_rml(tab.label)
+             << "</span></div>";
+      continue;
+    }
     if (button.part == input::TouchMenuPart::footer) {
       const input::TouchMenuFooter &action =
           state.view.footers[static_cast<std::size_t>(button.index)];
@@ -107,6 +139,8 @@ std::string markup(const input::TouchMenuState &state, Scale scale) {
     rml << "<div id='tm-title' style='" << box(layout.title, 0.0F, 0.0F, scale)
         << "'><span>" << escape_rml(state.view.title) << "</span></div>";
   }
+  rml << pinned.str();
+  detail_content(rml, state, scale);
   rml << footer.str();
   return rml.str();
 }

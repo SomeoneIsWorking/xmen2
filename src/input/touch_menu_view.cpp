@@ -10,6 +10,8 @@
 namespace x2::input {
 namespace {
 
+constexpr std::string_view kPromptToken = "$MENU_";
+
 bool is_space(char c) { return std::isspace(static_cast<unsigned char>(c)); }
 
 bool is_digit(char c) { return std::isdigit(static_cast<unsigned char>(c)); }
@@ -141,10 +143,19 @@ std::string touch_menu_text(std::string_view raw) {
       i += 3u;
       continue;
     }
-    if (raw[i] == '$') {
+    if (raw.substr(i, 2u) == "~~") {
+      i += 2u;
+      continue;
+    }
+    /* A $MENU_ token is a button prompt; any other "$HP" draws as "HP". */
+    if (raw.substr(i, kPromptToken.size()) == kPromptToken) {
       while (i < raw.size() && !is_space(raw[i])) {
         ++i;
       }
+      continue;
+    }
+    if (raw[i] == '$') {
+      ++i;
       continue;
     }
     kept.push_back(raw[i]);
