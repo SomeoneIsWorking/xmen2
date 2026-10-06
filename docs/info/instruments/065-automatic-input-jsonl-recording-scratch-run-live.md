@@ -15,4 +15,7 @@ A real headless product run published pid 2804444/port 8420, probe captured a 14
 
 ## Known failure modes
 
-(none recorded yet)
+- Concurrent launches shared the temporary `live.json.new`; one run's rename
+  took another's file, and the loser exited 2 right after `JIT ready`. Each run
+  now writes `live.json.<pid>.new` (`ctest -R live_session`). The record itself
+  still names whichever concurrent run published last.

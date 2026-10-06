@@ -567,6 +567,17 @@ add_test(NAME project_state
 set_tests_properties(project_state PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                      SKIP_RETURN_CODE 77)
+if(NOT WIN32)
+    add_executable(test_live_session tests/test_live_session.cpp
+                   src/native/live_session.cpp src/native/json_string.cpp
+                   src/native/host_dir_cache.cpp
+                   src/config/directory_create.cpp)
+    target_include_directories(test_live_session PRIVATE src/native src/config)
+    target_compile_definitions(test_live_session PRIVATE
+        X2_TEST_LIVE_SESSION_DIR="${CMAKE_BINARY_DIR}/test-live-session")
+    add_test(NAME live_session COMMAND test_live_session)
+endif()
+
 add_executable(test_settings tests/test_settings.cpp src/config/settings.cpp src/config/hud_settings.cpp
                src/config/input_assignments.cpp
                src/config/boot_mode.cpp)
