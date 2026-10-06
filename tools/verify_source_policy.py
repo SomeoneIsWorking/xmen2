@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import subprocess
 import tempfile
 
 from x2_source_policy import (
@@ -73,6 +74,8 @@ add_library(x2_rmlui_ui STATIC
     scratch.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=scratch) as directory:
         root = Path(directory)
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        (root / ".gitignore").write_text("/game/\n")
         retired_path = root / "src/x86watch.c"
         retired_path.parent.mkdir(parents=True)
         retired_path.touch()
@@ -80,7 +83,7 @@ add_library(x2_rmlui_ui STATIC
         install = root / "game/Docs/License.txt"
         install.parent.mkdir(parents=True)
         install.write_bytes(b"retail license: \xff")
-        if set(first_party_text(root)) != {"src/x86watch.c"}:
+        if set(first_party_text(root)) != {".gitignore", "src/x86watch.c"}:
             print("verify_source_policy selftest: asset tree entered source policy")
             return 1
     if not any(item.location == "src/x86watch.c" for item in retired):

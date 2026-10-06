@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import subprocess
 from typing import Mapping
 
 
@@ -29,7 +30,6 @@ RETIRED_STATIC_PATHS = (
     "src/recomp/gen/probe_stubs.S",
 )
 
-IGNORED_TREES = {".git", ".venv", "build", "scratch", "vendor", "game"}
 TEXT_SUFFIXES = {
     ".c",
     ".cc",
@@ -153,13 +153,20 @@ def text_violations(
     return violations
 
 
+def first_party_paths(root: Path) -> list[Path]:
+    """Tracked and untracked files that git does not ignore: .gitignore is the one list."""
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        check=True, capture_output=True,
+    ).stdout.decode()
+    return [root / name for name in listed.split("\0") if name]
+
+
 def first_party_text(root: Path) -> dict[str, str]:
     texts: dict[str, str] = {}
-    for path in root.rglob("*"):
+    for path in first_party_paths(root):
         relative_path = path.relative_to(root)
-        if any(part in IGNORED_TREES for part in relative_path.parts):
-            continue
-        if not path.is_file() or (
+        if path.is_symlink() or not path.is_file() or (
             path.suffix.lower() not in TEXT_SUFFIXES
             and path.name not in TEXT_NAMES
             and not path.name.startswith(".")
