@@ -1,6 +1,6 @@
 /*
  * d3d8_draw_range.h -- does a draw read outside the vertex stream bound to
- * it? See d3d8_draw_range.c for why the check exists and what it refuses.
+ * it? See d3d8_draw_range.cpp for why the check exists and what it refuses.
  */
 #ifndef D3D8_DRAW_RANGE_H
 #define D3D8_DRAW_RANGE_H

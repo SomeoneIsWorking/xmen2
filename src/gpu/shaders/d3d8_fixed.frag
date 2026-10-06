@@ -26,7 +26,7 @@ layout(set = 2, binding = 0) uniform sampler2D   tex0;
  * uses neither. Vulkan does not allow an unbound sampler a shader declares,
  * and a build without a validation layer does not fail -- it reads undefined
  * texels. The binding side supplies a 1x1 white cube when the draw has no
- * real one; see gpu_draw.c.
+ * real one; see gpu_draw.cpp.
  */
 layout(set = 2, binding = 1) uniform samplerCube texcube;
 layout(set = 2, binding = 2) uniform sampler2D tex1;

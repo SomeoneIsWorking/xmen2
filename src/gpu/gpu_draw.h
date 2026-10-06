@@ -5,7 +5,7 @@
  * state, no guest addresses, no D3D8 interfaces. The caller resolves the
  * engine's state into the plain description below and calls in with it, which
  * is what lets the whole draw path be driven, and proved, with no game running
- * (see gpu_selftest.c).
+ * (see gpu_selftest.cpp).
  *
  * What it is NOT: a D3D8 emulator. It offers the pipeline a fixed-function
  * title actually asks for -- a vertex format, transforms, two texture stages,
@@ -19,10 +19,6 @@
 #include "gpu_vs_program.h"
 
 #include <stdint.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* Opaque handles. 0 is "none" everywhere, so a zeroed description is a valid
    "nothing bound" rather than a dangling reference. */
@@ -329,7 +325,7 @@ void gpu_texture_destroy(GpuTexture t);
  * Sampling one is a SEPARATE question from storing one -- gpu_draw refuses a
  * cube bound to its texture stage by name, because the fixed-function shader
  * here has a 2D sampler and there is no way to sample a cube through it. See
- * gpu_draw.c.
+ * gpu_draw.cpp.
  */
 GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
                                    uint32_t levels);
@@ -397,9 +393,5 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
 int gpu_offscreen_next_no_clear(void);
 int gpu_offscreen_read(void *bgra_out, uint32_t bytes);
 void gpu_offscreen_end(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* GPU_DRAW_H */

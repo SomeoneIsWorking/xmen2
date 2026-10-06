@@ -1,5 +1,5 @@
 /* ADVAPI32: one registry read, answered "not found" because that is true.
-   See advapi32.c. */
+   See advapi32.cpp. */
 #ifndef X2_ADVAPI32_H
 #define X2_ADVAPI32_H
 

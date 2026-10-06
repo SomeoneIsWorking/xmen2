@@ -4,12 +4,12 @@ kind: claim
 status: holds
 created: 2026-09-03
 tags: 
-depends: src/native/crt_in_image_overrides.c
+depends: src/native/crt_in_image_overrides.cpp
 ---
 
 ## Claim
 
-XMen2.exe!0x0067217c is statically-linked MSVC _ftol2 and is now handled by a native override (src/native/crt_in_image_overrides.c) reusing x87_crt_ftol; the ~2.8% guest-wall block cluster 0x006721xx is gone from the in-game execution profile
+XMen2.exe!0x0067217c is statically-linked MSVC _ftol2 and is now handled by a native override (src/native/crt_in_image_overrides.cpp) reusing x87_crt_ftol; the ~2.8% guest-wall block cluster 0x006721xx is gone from the in-game execution profile
 
 ## Evidence
 

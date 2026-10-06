@@ -44,7 +44,7 @@ a 2.37 GiB app-private installation. The native runner's apparent
 retained registry lookup has no Android value, so opening `sounds/badaudio.wav`
 returned null. The native file-path override now retains the original body,
 supplies the selected install as virtual `C:\\` through the title's retained
-setter at the allocator-valid call seam, and verifies the result. `win_path.c`
+setter at the allocator-valid call seam, and verifies the result. `win_path.cpp`
 also folds case only below the validated selected root; trying to enumerate
 `/data` is forbidden to the app even for its own private source. An Android 13
 Waydroid trace resolves that first request to `.../Sounds/badaudio.wav`, maps

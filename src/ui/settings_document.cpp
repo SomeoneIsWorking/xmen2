@@ -20,7 +20,6 @@
 #include <string>
 #include <vector>
 
-extern "C" {
 #include "binding_rows.h"
 #include "dinput_pad.h"
 #include "dinput_system.h"
@@ -30,7 +29,6 @@ extern "C" {
 #include "transient_controller_assignment.h"
 #include "window_settings.h"
 #include "x2_log.h"
-}
 
 namespace x2::ui {
 namespace {

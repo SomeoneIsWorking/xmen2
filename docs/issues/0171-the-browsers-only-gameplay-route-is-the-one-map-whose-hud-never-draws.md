@@ -34,7 +34,7 @@ opened: 137 heartbeats, `never-seen` throughout.
 ## Cause
 
 The gate's signal is the retail game's own HUD decision — the native override
-on `0x005a43d0`, CHud's party-selector panel (`src/native/touch_hud_runtime.c`).
+on `0x005a43d0`, CHud's party-selector panel (`src/native/touch_hud_runtime.cpp`).
 That is deliberate and it is not the defect: it cannot drift from the retail
 rule because it *is* the retail rule.
 

@@ -23,7 +23,7 @@ and the boundary ring's last line is
 
 ## Cause
 
-`thread_main` in `src/native/threads.c` laid out the new thread's stack as
+`thread_main` in `src/native/threads.cpp` laid out the new thread's stack as
 "the argument, then the return address the thread routine returns to":
 
     C.esp = stack_base + stack_bytes - 16;
@@ -32,7 +32,7 @@ and the boundary ring's last line is
     x86_guest_call(&C, t->start);
 
 But `x86_guest_call` pushes the return address ITSELF -- that is the whole
-reason it exists (see the comment on it in `x86rt_native.c`, which was
+reason it exists (see the comment on it in `x86rt_native.cpp`, which was
 written after a missing push corrupted the stack across 51 static
 constructors). So the stack came out as
 

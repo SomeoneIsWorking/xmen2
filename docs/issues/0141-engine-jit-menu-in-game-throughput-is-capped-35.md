@@ -96,8 +96,8 @@ unchanged at 16.7 ms).
   `diff = step>>3 (+step,+step>>1,+step>>2 for bits 2,1,0)`, predictor `+/- diff`
   per bit 3 clamped `[-32768,32767]`. The tables at `0x006e95a8` (89-entry step)
   and `0x006e9588` (8-entry index) were dumped from the retail image and match
-  the canonical IMA tables byte-for-byte. `src/native/audio_adpcm.c` registers
-  native overrides on both; `src/native/audio_adpcm_verify.c` +
+  the canonical IMA tables byte-for-byte. `src/native/audio_adpcm.cpp` registers
+  native overrides on both; `src/native/audio_adpcm_verify.cpp` +
   `--set audio.adpcm_verify=1` re-runs the guest body from the same start state
   after every native decode and aborts on any output or state mismatch.
   `test_audio_adpcm` checks both overrides bit-for-bit against an independent
@@ -110,7 +110,7 @@ unchanged at 16.7 ms).
   2026-09-03.** MSVC's control-word-independent float->int64 helper
   (`fld st(0); fistp qword; fild; fsubp; add 0x7fffffff/adc`), a pure-x87 leaf
   whose body the JIT ran one instruction at a time through the interpreter
-  helper on every conversion. `src/native/crt_in_image_overrides.c` registers a
+  helper on every conversion. `src/native/crt_in_image_overrides.cpp` registers a
   native override on `XMen2.exe!0x0067217c` that reuses `x87_crt_ftol` (the
   imported-`_ftol` implementation -- identical observable contract: pop ST(0),
   truncate toward zero, int64 in EDX:EAX, `__cdecl`). `crt_in_image_overrides`
@@ -144,8 +144,8 @@ unchanged at 16.7 ms).
   (`base = [[this+8]+0x50]`, `stride = [this+0x38]`, `colour_off = [this+0x3b]`),
   keeping bytes 1 and 3 -- a **BGRA<->RGBA channel swap** for D3D vertex colour.
   Then it bumps `[this+0x60]` (dirty) and `[this+0x68]` (lock) per `flags`.
-  `src/native/vertex_color_swizzle.c` registers a native override;
-  `src/native/vertex_color_swizzle_verify.c` + `--set gfx.vtx_swizzle_verify=1`
+  `src/native/vertex_color_swizzle.cpp` registers a native override;
+  `src/native/vertex_color_swizzle_verify.cpp` + `--set gfx.vtx_swizzle_verify=1`
   snapshots the vertex span, re-runs the guest body, and aborts on any mismatch.
   `test_vertex_color_swizzle` checks the swap, the flag-bit tail, the non-colour
   type-1 path, and cdecl `esp` against an independent byte-level reference.
@@ -166,8 +166,8 @@ unchanged at 16.7 ms).
   times per frame), producing 6 hot blocks in XMen2.exe plus the two vector
   assignments totaling **20.9 million block entries (15.0% of all JIT
   execution)**.
-  `src/native/vertex_builder.c` registers a native override performing direct
-  memory copies and stride updates; `src/native/vertex_builder_verify.c` +
+  `src/native/vertex_builder.cpp` registers a native override performing direct
+  memory copies and stride updates; `src/native/vertex_builder_verify.cpp` +
   `--set gfx.vtx_builder_verify=1` verifies bit-for-bit equivalence against the
   guest body. Driven in-game for 500 frames with verify active: 0 disagreements.
   With the override active, all 8 top blocks leave `jit.profile` top 40 entirely
@@ -253,7 +253,7 @@ draw/skinning cost up but the crossing cost scales with it.
   Covered functions: `_ftol`, `_stricmp`, `_strcmpi`, `QueryPerformanceCounter`,
   `QueryPerformanceFrequency`, `toupper`, `tolower`, `strstr`, and `TlsGetValue`.
   Controlled by runtime CVar `engine.import_fastpath` (default enabled).
-  Unit tested in `tests/test_x86_import_fastpath.c`.
+  Unit tested in `tests/test_x86_import_fastpath.cpp`.
   In a 2000-frame in-game run (`act0/tutorial/tutorial1`), average frame wall time
   improved from 16.89 ms to 14.57 ms (-13.7% overall frame time), with average
   present framerate rising from ~59.2 FPS to ~68.6 FPS.
@@ -271,7 +271,7 @@ draw/skinning cost up but the crossing cost scales with it.
   Added runtime CVar `sg.attr_stack` (default enabled) in `src/config/runtime_cvars.cpp`.
   Added differential verification harness in `src/native/attr_stack_verify.{c,h}`
   (`sg.attr_stack_verify=1`), verified over 1,740 in-game frames with 0 divergences.
-  Added unit test suite in `tests/test_attr_stack.c` (test #76).
+  Added unit test suite in `tests/test_attr_stack.cpp` (test #76).
   In a 2000-frame in-game benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`):
   Average frame time reduced from 16.62 ms to 15.14 ms (-8.9%), with present
   framerate increasing from 57.4 FPS to 62.7 FPS (+9.2%).
@@ -280,7 +280,7 @@ draw/skinning cost up but the crossing cost scales with it.
   `XMen2.exe!0x0055b610` was entered ~2.8M times per 2000 frames to retrieve the
   global timer singleton (`0x007ac248`). Each call previously set up and tore down
   a full MSVC SEH exception frame via `x86_guest_body`.
-  In `src/native/startup.c`, `x2_override_0055b610` now directly returns `0x007ac248`
+  In `src/native/startup.cpp`, `x2_override_0055b610` now directly returns `0x007ac248`
   in `C->eax` and pops `ret` (`C->esp += 4u`) once the guard byte is set, skipping
   SEH construction and engine re-entry.
   Average frame time dropped further to 14.65 ms, with framerate rising to 64.7 FPS
@@ -298,13 +298,13 @@ draw/skinning cost up but the crossing cost scales with it.
   block-entry weight combined -- and each poll also made up to 24 guest->host
   COM crossings.
   `src/native/audio_channel_poll.{c,h}` runs the whole sweep natively, calling
-  `dsound.c`'s `dsound_buffer_is_playing` / `dsound_buffer_release_guest`
+  `dsound.cpp`'s `dsound_buffer_is_playing` / `dsound_buffer_release_guest`
   directly (no crossing). The retail `b_Release` body was refactored into the
   shared `dsound_buffer_release_guest` so both paths use one implementation.
   Runtime cvar `audio.channel_poll` (default on) A/Bs it;
   `audio.channel_poll_verify` runs the guest body, captures its guest-memory
   effects, rewinds, runs the native poll, and aborts on divergence -- clean over
-  an 800-frame driven run. Unit test `tests/test_audio_channel_poll.c` (test
+  an 800-frame driven run. Unit test `tests/test_audio_channel_poll.cpp` (test
   #77) covers every branch. With the override on, `0x00594524`/`0x00594578`
   leave the `jit.profile` top 40 entirely. Frame-time delta in this benchmark
   was within run-to-run noise (21.3 ms both ways; the ~2.5% cited earlier was a
@@ -393,7 +393,7 @@ killers remain open.
 A census of one Dead Zone run counted ~43M override hand-backs reached by a
 direct CALL, nearly all to six overrides (`_ftol2`, the timer accessor, the
 /GS cookie check, libIGSg's box driver/corners/classify). x86port `508f2c8`
-calls a consumer leaf inside the translated CALL; `src/native/override_leaf.c`
+calls a consumer leaf inside the translated CALL; `src/native/override_leaf.cpp`
 supplies them (xmen2 `e290a7a`, `jit.leaves=0` is the A/B). The same scene then
 completed ~48M calls in place (report line `OVERRIDE LEAVES`). The hand-back
 symbols (`x86_engine_run_host_at`, `x86_native_call_at`,
@@ -411,13 +411,13 @@ x86port's leaf resolver covers direct CALL only.
 x86port `c3eacff` gives each CALL through a register or memory a leaf site: the
 target it last called and that target's leaf, refilled at most four times.
 The consumer's resolver now also answers import thunks: the D3D8 methods named
-in `src/d3d8/d3d8_leaf_methods.c` and the leaf-safe fast-path imports
+in `src/d3d8/d3d8_leaf_methods.cpp` and the leaf-safe fast-path imports
 (`x86_import_fastpath_leaf_safe`; QueryPerformanceCounter is excluded because
 its timer pump can run guest callbacks). The vertex builder and
 `igMatrix44f::multiply` gained leaves. A per-thread guard in
-`override_leaf.c` aborts, naming the leaf, if one calls guest code
+`override_leaf.cpp` aborts, naming the leaf, if one calls guest code
 (`x2_engine_call`), releases the guest lock (`guest_unlock`) or waits
-(`guest_cond_wait_ms`); `tests/test_override_leaf.c` proves it fires.
+(`guest_cond_wait_ms`); `tests/test_override_leaf.cpp` proves it fires.
 
 In the same Dead Zone scene:
 
@@ -468,7 +468,7 @@ not an immediate. The remaining per-access cost was the bounds check, a
 `cmp`/`ja` pair of about 12 bytes. For a span covering the whole 32-bit space,
 that check only catches an access overrunning the top by less than its width.
 
-`src/native/guest_memory_arena.c` now maps a no-access page at 4 GB, or
+`src/native/guest_memory_arena.cpp` now maps a no-access page at 4 GB, or
 includes it in a reserved arena. It reports the page as
 `GuestMemoryWindow.guard_above`. x86port `3236ad1`
 (`X86pMem.guard_above`) then drops the check for every access no wider than

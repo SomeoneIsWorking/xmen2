@@ -59,7 +59,7 @@
 void x2_engine_enter_service(void);
 
 /* One host thunk / override crossing happened. A run counter for the shutdown
-   report; kept in x86_engine.c with the rest of g_engine. */
+   report; kept in x86_engine.cpp with the rest of g_engine. */
 void x2_engine_note_callout(void);
 
 int x2_engine_jump_selftest(unsigned int page, unsigned int stack);

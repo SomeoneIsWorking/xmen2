@@ -14,7 +14,7 @@ namespace x2::input {
 namespace {
 
 /* The one place an action becomes pad buttons. Derived from the Xbox release
-   bindings in src/native/xbox_defaults.c, never invented per screen; the
+   bindings in src/native/xbox_defaults.cpp, never invented per screen; the
    menu pad's buttons are the controller's own, one for one. A power
    is RT with the face button its slot pairs with (FUN_004fc970's table at
    0x006dc37c: slots 0..3 are LowAttack, HighAttack, Guard, Jump -- A, B, X,

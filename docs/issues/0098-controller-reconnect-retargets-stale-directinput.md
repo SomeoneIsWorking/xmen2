@@ -10,7 +10,7 @@ updated: 2026-08-22
 
 ## Root cause
 
-`DInputDevice` stored the reusable `dinput_pad` inventory slot, not the live DirectInput instance GUID. A new controller reusing that slot therefore revived the guest COM object for the disconnected controller. Separately, `dinput8.c` kept a process-lifetime cache of eight offered GUIDs: eight is the simultaneous inventory limit, not a bound on connection lifetimes. Once full, new GUIDs were never admitted into the cache and every input poll retriggered enumeration.
+`DInputDevice` stored the reusable `dinput_pad` inventory slot, not the live DirectInput instance GUID. A new controller reusing that slot therefore revived the guest COM object for the disconnected controller. Separately, `dinput8.cpp` kept a process-lifetime cache of eight offered GUIDs: eight is the simultaneous inventory limit, not a bound on connection lifetimes. Once full, new GUIDs were never admitted into the cache and every input poll retriggered enumeration.
 
 Prompt prose and the RmlUi controller label had related ownership errors: prompt mode followed any connected pad instead of the resolved player/source, and the settings document snapshotted the inventory only when rebuilt for another reason.
 

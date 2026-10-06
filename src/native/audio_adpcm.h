@@ -40,7 +40,7 @@ void x2_override_00616880(CPU *C);
  * saved start state (`pred0`/`idx0`, `channels` ints each at `pp`/`ip`) and
  * abort if the `out_bytes` of output or the written-back state differ from the
  * native results just produced (`native_pred`/`native_idx`). A no-op otherwise.
- * Lives in audio_adpcm_verify.c -- it needs the engine, which the decode path
+ * Lives in audio_adpcm_verify.cpp -- it needs the engine, which the decode path
  * and its unit test do not.
  */
 void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,

@@ -1,5 +1,5 @@
 /* The diagnostic census of strings reaching the retail glyph loop -- see
- * prompt_string_census.c. */
+ * prompt_string_census.cpp. */
 #ifndef X2_PROMPT_STRING_CENSUS_H
 #define X2_PROMPT_STRING_CENSUS_H
 

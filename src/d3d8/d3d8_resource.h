@@ -1,6 +1,6 @@
 /*
  * The resources the engine fills and draws from: textures, vertex buffers and
- * index buffers. See d3d8_resource.c for why each keeps a guest-addressable
+ * index buffers. See d3d8_resource.cpp for why each keeps a guest-addressable
  * staging copy and uploads on unlock.
  */
 #ifndef D3D8_RESOURCE_H
@@ -63,14 +63,14 @@ uint32_t d3d8_texture_last_upload_level(D3D8Object *o);
 /*
  * The dynamic-buffer census: Lock flags, what Unlock moves, and how often a
  * write after a draw requires a new backing generation before Present. See
- * the long comment at the counters in d3d8_resource.c.
+ * the long comment at the counters in d3d8_resource.cpp.
  */
 void d3d8_buffer_lock_counts(unsigned long *locks, unsigned long *discard,
                              unsigned long *nooverwrite, unsigned long *unlocks,
                              unsigned long *bytes, unsigned long *relocked,
                              unsigned long *generations);
 
-/* A draw is about to read this buffer -- see d3d8_resource.c. */
+/* A draw is about to read this buffer -- see d3d8_resource.cpp. */
 void d3d8_resource_note_drawn(D3D8Object *o);
 
 void d3d8_resource_report(void);

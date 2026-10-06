@@ -25,9 +25,7 @@
 #include "lan_nat_negotiation.hpp"
 #include "lan_presence.hpp"
 
-extern "C" {
 #include "x86rt.h"
-}
 
 #include <cstdint>
 #include <mutex>

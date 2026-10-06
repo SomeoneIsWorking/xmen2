@@ -11,7 +11,7 @@ updated: 2026-08-20
 REPORTED BY THE USER, 2026-08-19, playing with a pad. **The cause is confirmed
 in this port's own source, not a theory.**
 
-`src/native/pad_glyphs.c`:
+`src/native/pad_glyphs.cpp`:
 
     if (code >= 0x11u && code <= 0x14u) return X2_PAD_GLYPH_DPAD;
 
@@ -22,7 +22,7 @@ and the prompt is strictly LESS informative than the keyboard text it replaced
 -- `[UP] [DOWN] [LEFT] [RIGHT]` at least said which.
 
 The directions are not ambiguous in the data; only in the art. From
-`src/native/xbox_defaults.c` the port already binds them individually:
+`src/native/xbox_defaults.cpp` the port already binds them individually:
 
     0x11 POV X+  d-pad right   IncreaseHeroAggr
     0x12 POV X-  d-pad left    DecreaseHeroAggr

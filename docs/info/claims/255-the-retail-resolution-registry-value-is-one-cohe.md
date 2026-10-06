@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-24
 tags: registry,resolution,settings
-depends: src/native/registry_view.c#x2_registry_view_init, src/native/advapi32.c#imp_ADVAPI32_RegQueryValueExA, tests/test_registry_resolution.c#main
+depends: src/native/registry_view.c#x2_registry_view_init, src/native/advapi32.cpp#imp_ADVAPI32_RegQueryValueExA, tests/test_registry_resolution.c#main
 falsified_on: 2026-08-24
 ---
 

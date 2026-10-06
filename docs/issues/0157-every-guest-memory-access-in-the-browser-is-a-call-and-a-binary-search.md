@@ -61,7 +61,7 @@ so one guest `mov eax, [ebx+4]` costs two import calls and two binary searches.
 The array only grows: `change_range` splits a mapping on every protection
 change and nothing ever merges them back.
 
-The desktop backends have none of this. `guest_memory.c` reserves one 4 GiB
+The desktop backends have none of this. `guest_memory.cpp` reserves one 4 GiB
 arena with `mmap`, sets `g_guest_memory_base`, and a guest address is a host
 address plus a constant — `X86pMem`'s contiguous mode, which x86port already
 supports (`sparse == NULL`). The browser cannot `mmap`, so it took the sparse
@@ -133,7 +133,7 @@ for the walkers that loop but refused every `x86p_mem_resolve` longer than a
 page, so the bulk copy and fill behind REP MOVS/STOS silently fell back to
 element-at-a-time work on exactly the mappings that have a table.
 
-`src/native/guest_memory.c` is now the one owner for every host.
+`src/native/guest_memory.cpp` is now the one owner for every host.
 `guest_memory_sparse.c` is gone. On a host with no VM it `calloc`s a window
 covering the packed layout in the new `src/native/guest_layout.h` — one
 authority for where the image, the relocated modules, the guest reservations,

@@ -9,7 +9,7 @@
  *
  * A guest FILE* is either a small handle from this port's own table or a
  * pointer into the `_iob` array the guest reaches its standard streams
- * through; crt_stdio.c owns both. Neither is a host pointer, so every user
+ * through; crt_stdio.cpp owns both. Neither is a host pointer, so every user
  * goes through here. Aborts on a handle that is neither -- a stream the guest
  * never opened is a broken guest, not a stream to invent.
  */

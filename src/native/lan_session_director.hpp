@@ -30,9 +30,7 @@
  * the game half way through a lobby.
  */
 
-extern "C" {
 #include "x86rt.h"
-}
 
 #include "campaign_snapshot.hpp"
 

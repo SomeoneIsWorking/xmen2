@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-24
 tags: d3d8,lighting
-depends: src/d3d8/d3d8_light_selftest.c#d3d8_light_selftest, src/d3d8/d3d8_drawcall.c#d3d8_build_draw
+depends: src/d3d8/d3d8_light_selftest.cpp#d3d8_light_selftest, src/d3d8/d3d8_drawcall.cpp#d3d8_build_draw
 ---
 
 ## Claim

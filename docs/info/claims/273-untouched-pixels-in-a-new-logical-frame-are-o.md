@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-27
 tags: pc,native,macos,arm64,gpu,rendering,presentation
-depends: src/gpu/gpu_device.c#pass_begin, src/gpu/gpu_frame_init_selftest.c#gpu_frame_init_selftest
+depends: src/gpu/gpu_device.cpp#pass_begin, src/gpu/gpu_frame_init_selftest.cpp#gpu_frame_init_selftest
 ---
 
 ## Claim

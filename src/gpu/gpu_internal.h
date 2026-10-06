@@ -1,8 +1,8 @@
 /*
  * What the files inside src/gpu share, and nothing outside it may see.
  *
- * gpu_device.c owns the device, the swapchain and the frame; gpu_draw.c owns
- * resources and draws into that frame. They are one subsystem split by
+ * gpu_device.cpp owns the device, the swapchain and the frame; gpu_draw.cpp
+ * owns resources and draws into that frame. They are one subsystem split by
  * concern, so the alternative to this header is accessor functions that exist
  * only to launder the same pointers -- and those hide, rather than document,
  * the fact that the two files share a frame.
@@ -45,16 +45,16 @@ extern uint32_t g_swap_w, g_swap_h;
 /*
  * The depth/stencil target the current pass renders against, and its format.
  *
- * The pipeline has to declare the SAME format the pass attaches, so gpu_draw.c
- * needs to know it -- and it must ask rather than assume, because which depth
- * format exists is a property of the driver (D24_UNORM_S8_UINT is not
- * universal). SDL_GPU_TEXTUREFORMAT_INVALID means there is no depth target,
+ * The pipeline has to declare the SAME format the pass attaches, so
+ * gpu_draw.cpp needs to know it -- and it must ask rather than assume, because
+ * which depth format exists is a property of the driver (D24_UNORM_S8_UINT is
+ * not universal). SDL_GPU_TEXTUREFORMAT_INVALID means there is no depth target,
  * which is the truthful answer before the device exists and the one a draw has
  * to be told rather than guess.
  */
 SDL_GPUTextureFormat gpu_depth_format(void);
 
-/* How many frames have been presented. gpu_draw.c uses it to know which frame
+/* How many frames have been presented. gpu_draw.cpp uses it to know which frame
    a draw belongs to, for X2_FRAME_DUMP. */
 unsigned long gpu_frames_presented(void);
 SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h);
@@ -83,10 +83,10 @@ void gpu_pass_begin(void);
    for gpu_offscreen_*. NULL restores the swapchain. */
 void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h);
 
-/* Release every resource gpu_draw.c owns; called from gpu_device_destroy so
+/* Release every resource gpu_draw.cpp owns; called from gpu_device_destroy so
    the teardown order is the device's business, not a second lifetime. */
 void gpu_draw_shutdown(void);
-/* Flushes the opt-in texture-format capability diagnostic after gpu_device.c
+/* Flushes the opt-in texture-format capability diagnostic after gpu_device.cpp
    has established the SDL device. */
 void gpu_texture_flush_format_support_report(void);
 

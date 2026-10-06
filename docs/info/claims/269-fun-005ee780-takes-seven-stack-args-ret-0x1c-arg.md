@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: text,glyphs,prompts,renderer
-depends: src/native/prompt_glyph_draw.c#x2_override_005ee400, src/native/prompt_glyph_metrics.c#x2_prompt_glyph_publish_metrics
+depends: src/native/prompt_glyph_draw.cpp#x2_override_005ee400, src/native/prompt_glyph_metrics.cpp#x2_prompt_glyph_publish_metrics
 reconfirmed: 2026-08-26
 verified_at: 2026-08-26 23:22:15
 ---

@@ -25,13 +25,13 @@ The pause Players input handler `FUN_005cdb50` uses these same four vtable
 slots. Its shipped help in `UI/menus/pda.engb` describes the list as active or
 inactive cooperative controllers and prevents toggling the primary controller
 or the controller that opened the page. Therefore
-`src/native/player_participation.c` invokes only this API. The host never
+`src/native/player_participation.cpp` invokes only this API. The host never
 writes the singleton's flags or count, and the retail pause page cannot drift
 when opened because it reads the same owner.
 
 ## Host policy
 
-`src/input/player_participation_policy.c` owns the pure transition rules:
+`src/input/player_participation_policy.cpp` owns the pure transition rules:
 
 - P1 becomes active by default when eligible. Persistent settings require P1
   to have at least one device because a zero-primary-player state is not a

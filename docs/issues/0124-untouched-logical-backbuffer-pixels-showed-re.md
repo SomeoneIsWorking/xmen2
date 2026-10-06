@@ -20,7 +20,7 @@ falsify the initial diagnosis that the compositor's pillarbox clear was absent.
 
 ## Root cause
 
-`gpu_device.c::pass_begin` used `SDL_GPU_LOADOP_DONT_CARE` for the first colour
+`gpu_device.cpp::pass_begin` used `SDL_GPU_LOADOP_DONT_CARE` for the first colour
 pass when the game had not called `Clear`. The persistent logical scene target
 is larger than some game viewports, and loading/UI frames can touch only a
 small fraction of it. DONT_CARE does not define untouched pixels; Metal/Vulkan

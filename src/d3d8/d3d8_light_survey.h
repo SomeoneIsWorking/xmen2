@@ -1,7 +1,7 @@
 #ifndef D3D8_LIGHT_SURVEY_H
 #define D3D8_LIGHT_SURVEY_H
 
-/* X2_LIGHT_SURVEY -- see d3d8_light_survey.c. */
+/* X2_LIGHT_SURVEY -- see d3d8_light_survey.cpp. */
 #include "gpu_draw.h"
 
 /* Called with the finished draw, once its lighting is filled in. */

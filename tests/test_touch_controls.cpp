@@ -1,8 +1,6 @@
 #include "../src/input/touch_controls.h"
 
-extern "C" {
 #include "../src/presentation/touch_layout.h"
-}
 
 #include <algorithm>
 #include <array>

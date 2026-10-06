@@ -1,7 +1,7 @@
 /*
  * WINMM: the multimedia timers, run on the guest's own thread.
  *
- * See winmm.c for why they are deferred rather than threaded, and what that
+ * See winmm.cpp for why they are deferred rather than threaded, and what that
  * costs in resolution.
  */
 #ifndef X2_WINMM_H
@@ -24,7 +24,7 @@ void winmm_timers_pump_at(double now_s);
  * Milliseconds until the earliest timer is due, capped at `cap`; 0 if one is
  * due now, `cap` if there are no timers. A blocking wait uses this as its
  * timeout, because the waiting thread is the one that will fire the callback
- * that ends the wait -- see winmm.c.
+ * that ends the wait -- see winmm.cpp.
  */
 uint32_t winmm_next_due_ms(uint32_t cap);
 

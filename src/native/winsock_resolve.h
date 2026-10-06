@@ -21,10 +21,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 enum { WINSOCK_HOST_NAME_BYTES = 256, WINSOCK_HOST_ADDRESSES = 8 };
 
 typedef struct WinsockHost {
@@ -41,9 +37,5 @@ int winsock_resolve(const char *name, WinsockHost *out, uint32_t *error);
 /* The machine's own IPv4 addresses, primary first, without loopback. Returns
    the count; 0 when no adapter has an address. */
 unsigned winsock_local_addresses(uint32_t *out, unsigned max);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_WINSOCK_RESOLVE_H */

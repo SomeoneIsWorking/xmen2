@@ -1,4 +1,4 @@
-/* Harvested prompt-glyph rectangles. See prompt_glyph_draw.c. */
+/* Harvested prompt-glyph rectangles. See prompt_glyph_draw.cpp. */
 #ifndef X2_PROMPT_GLYPH_QUADS_H
 #define X2_PROMPT_GLYPH_QUADS_H
 

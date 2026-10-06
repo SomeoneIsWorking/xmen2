@@ -2,7 +2,7 @@
 """Refuse a touch owner that decides anything from the platform it built for.
 
 Touch is a DEVICE, not a package. Which controls a player gets is answered from
-the live event stream (`src/input/touch_source.c`) and from one setting, so a
+the live event stream (`src/input/touch_source.cpp`) and from one setting, so a
 Windows tablet, a Linux 2-in-1 and a phone all reach the same code. The moment
 one of these files asks `#ifdef __ANDROID__`, that stops being true for whoever
 is not on the platform the branch was written for -- silently, because the other
@@ -22,7 +22,7 @@ from pathlib import Path
 # The touch owners named by docs/touch-play.md and docs/codemap.md. Adding an
 # owner there means adding it here; a file listed and missing is a refusal.
 OWNERS = (
-    "src/input/touch_source.c",
+    "src/input/touch_source.cpp",
     "src/input/touch_source.h",
     "src/input/touch_controls.cpp",
     "src/input/touch_controls.h",
@@ -32,11 +32,11 @@ OWNERS = (
     "src/input/touch_pad_publisher.h",
     "src/input/touch_pointer.cpp",
     "src/input/touch_pointer.h",
-    "src/input/gameplay_control.c",
+    "src/input/gameplay_control.cpp",
     "src/input/gameplay_control.h",
-    "src/presentation/touch_layout.c",
+    "src/presentation/touch_layout.cpp",
     "src/presentation/touch_layout.h",
-    "src/native/touch_hud_runtime.c",
+    "src/native/touch_hud_runtime.cpp",
     "src/native/touch_hud_runtime.h",
     "src/ui/touch_document.cpp",
     "src/ui/touch_document.hpp",

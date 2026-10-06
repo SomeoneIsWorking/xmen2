@@ -14,7 +14,7 @@ The exact-input recording `scratch/recordings/input-20260822-093706-2867467.json
 
 ## Root cause
 
-The translator canonicalizes `??_V@YAXPAX@Z` as `imp_MSVCR71____V_YAXPAX_Z`. `crt.c` defined `imp_MSVCR71___V_YAXPAX_Z`, one underscore short, so the strong guest-free body and the generated weak abort stub were different ELF symbols. The MSVCRT alias repeated the same spelling error. This is a CRT import-binding defect exposed by the temporary retail menu, not menu or Space-key behavior.
+The translator canonicalizes `??_V@YAXPAX@Z` as `imp_MSVCR71____V_YAXPAX_Z`. `crt.cpp` defined `imp_MSVCR71___V_YAXPAX_Z`, one underscore short, so the strong guest-free body and the generated weak abort stub were different ELF symbols. The MSVCRT alias repeated the same spelling error. This is a CRT import-binding defect exposed by the temporary retail menu, not menu or Space-key behavior.
 
 ## Resolution
 

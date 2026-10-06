@@ -3,7 +3,7 @@
 
 /*
  * A guest thread's guest memory: its stack and its TIB, both out of the guest
- * arena. threads.c creates and reaps the records; this owns what each one
+ * arena. threads.cpp creates and reaps the records; this owns what each one
  * holds in the arena, so taking it and giving it back are one pair.
  */
 

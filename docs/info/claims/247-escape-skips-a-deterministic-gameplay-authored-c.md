@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: cutscene,player,input,live
-depends: src/native/cutscene_player.c#finish, src/native/behaved_player.c#behaved_player_step_context, src/native/cutscene_event_player.c#cutscene_event_player_step_owned_slot, src/native/conversation_player.c#conversation_player_advance, tools/live_case.py#case_cutscene_skip
+depends: src/native/cutscene_player.cpp#finish, src/native/behaved_player.cpp#behaved_player_step_context, src/native/cutscene_event_player.cpp#cutscene_event_player_step_owned_slot, src/native/conversation_player.cpp#conversation_player_advance, tools/live_case.py#case_cutscene_skip
 reconfirmed: 2026-08-27
 verified_at: 2026-08-27
 ---

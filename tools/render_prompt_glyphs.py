@@ -6,17 +6,17 @@
 
 This is the build-time half of the renderer-side prompt feature: the game's
 fonts stay untouched, and the port draws its own controller/keycap art at the
-text-renderer override (src/native/prompt_glyph_draw.c). The art comes from
+text-renderer override (src/native/prompt_glyph_draw.cpp). The art comes from
 the shared `port-assets` sets named by assets/buttons/glyphs.json -- the same
 manifest and the recovered metric semantics (18px design cell, advances
 19 / 4 / 4), so the label composition in
-prompt_labels.c keeps its exact meaning. What changes is WHO owns the pixels:
+prompt_labels.cpp keeps its exact meaning. What changes is WHO owns the pixels:
 a generated header in this repo, never a patched copy of a shipped font.
 
 A keyboard key is drawn whole from the shared keyboard set: the blank cap as a
 three-slice frame whose straight middle stretches to the width the game's text
 layout reserved, and the binding's name lettered at runtime in the set's own
-typeface (src/native/keycap_labels.c), because the game localizes key names.
+typeface (src/native/keycap_labels.cpp), because the game localizes key names.
 This header carries the frame and the set's label metrics; no pixel of a key
 comes from a game font.
 
@@ -50,14 +50,14 @@ from PIL import Image                                            # noqa: E402
 from resvg_py import svg_to_bytes                                # noqa: E402
 
 # Design units are FONT PIXELS: the shipped pack's cell and advances, which
-# prompt_labels.c's composition was verified against (#91).  The shared SVG
+# prompt_labels.cpp's composition was verified against (#91).  The shared SVG
 # raster remains an 18px source cell, but controller art uses the whole 19px
 # footprint already reserved by its advance.  Keeping those two concepts in
 # one CELL constant made the native quad unnecessarily smaller without buying
 # any layout spacing: the pen already moves by PAD_ADVANCE.  Keycap edges
 # keep their recovered widths: they carry LAYOUT ONLY, the margin either side
 # of the binding's name, and draw nothing themselves.  At run time a font's
-# design pixel is its capital height / SOURCE_CELL (prompt_glyph_metrics.c),
+# design pixel is its capital height / SOURCE_CELL (prompt_glyph_metrics.cpp),
 # so 18 design pixels are exactly the capitals of the text beside a prompt.
 SOURCE_CELL = 18
 PAD_ADVANCE = SOURCE_CELL + 1

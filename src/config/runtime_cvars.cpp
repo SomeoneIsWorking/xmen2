@@ -66,38 +66,39 @@ lucent::cvar::Var<bool> g_sg_attr_stack_verify{"sg.attr_stack_verify", false};
 
 /* on: native overrides for libIGSg.dll's bounding-box frustum test -- the
  * clip-space box corners (0x10047570), their classification (0x100478e0) and
- * the driver that calls both (0x10047470), box_cull.c. off restores full
+ * the driver that calls both (0x10047470), box_cull.cpp. off restores full
  * guest JIT execution of all three. */
 lucent::cvar::Var<bool> g_sg_box_cull{"sg.box_cull", true};
 
 /* on: after each native box_cull answer, re-run the guest's own body from the
  * same start state and abort on any difference in the output, EAX, ESP or x87
- * control state. The differential proof for box_cull.c; off in normal play. */
+ * control state. The differential proof for box_cull.cpp; off in normal play.
+ */
 lucent::cvar::Var<bool> g_sg_box_cull_verify{"sg.box_cull_verify", false};
 
 /* on: native overrides for libIGMath.dll's SSE vertex skinning -- weighted
- * blend (0x10022df0) and one bone per vertex (0x10022e80), skin.c. off
+ * blend (0x10022df0) and one bone per vertex (0x10022e80), skin.cpp. off
  * restores full guest JIT execution of both. */
 lucent::cvar::Var<bool> g_math_skin{"math.skin", true};
 
 /* on: after each native skinning answer, re-run the guest's own body from the
  * same start state and abort on any difference in the output vertices, the
  * argument slots it writes, ESP, EAX, ECX or EDX. The differential proof for
- * skin.c; off in normal play. */
+ * skin.cpp; off in normal play. */
 lucent::cvar::Var<bool> g_math_skin_verify{"math.skin_verify", false};
 
 /* on: native override for libIGMath.dll's igMatrix44f::multiply
- * (0x10019520), ig_matrix.c. off restores full guest JIT execution. */
+ * (0x10019520), ig_matrix.cpp. off restores full guest JIT execution. */
 lucent::cvar::Var<bool> g_math_matrix{"math.matrix", true};
 
 /* on: after each native multiply, re-run the guest's own body from the same
  * start state and abort on any difference in the product, ESP, EAX, ECX, EDX
- * or x87 control state. The differential proof for ig_matrix.c; off in
+ * or x87 control state. The differential proof for ig_matrix.cpp; off in
  * normal play. */
 lucent::cvar::Var<bool> g_math_matrix_verify{"math.matrix_verify", false};
 
 /* on: native override for libIGMath.dll's igMatrix44f::invert (0x1001b540)
- * with its adjoint and determinant, ig_matrix_invert.c. off restores full
+ * with its adjoint and determinant, ig_matrix_invert.cpp. off restores full
  * guest JIT execution. */
 lucent::cvar::Var<bool> g_math_invert{"math.invert", true};
 
@@ -151,7 +152,7 @@ lucent::cvar::Var<std::string> g_jit_map{"jit.map", ""};
  * The report names the pointers it finds on the stack; this is the run after
  * that, following one of them. Zero asks for nothing.
  *
- * REGISTERED BECAUSE THEY ARE READ. x86_engine_jit_diag.c read both names
+ * REGISTERED BECAUSE THEY ARE READ. x86_engine_jit_diag.cpp read both names
  * unconditionally on every watch report, and an unregistered name is refused
  * -- so arming jit.watch killed the run on its first report, which is the one
  * thing a diagnostic must never do to what it is diagnosing. */

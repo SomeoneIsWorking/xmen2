@@ -85,7 +85,7 @@ branches return that pointer in EAX and use `ret 4`.
 
 Single-player placement composes the local anchor (`+8,+c,+10`), local scale
 (`+14`), parent pointer (`+2c`), and parent's anchor/scale at the same offsets.
-`src/native/hud_portrait_position.c` preserves the distinct x87 spill boundaries
+`src/native/hud_portrait_position.cpp` preserves the distinct x87 spill boundaries
 at `005a16d0..005a1725`; algebraically rearranging the components can change
 rounding. The runtime wrapper owns this native branch and retains the original
 multiplayer branch. With `hud.verify`, the native output and return/stack
@@ -117,7 +117,7 @@ and a top: `00a0a10c/00a0a114` (hover 1, action `0x13`) and
 `005fc100` sets those two every frame and draws them 32 units square either
 side of the top centre. Tapping them in a running game showed that the left
 one opens the pause menu and the right one the team menu.
-`src/native/hud_draw_runtime.c` publishes both as touch regions through the
+`src/native/hud_draw_runtime.cpp` publishes both as touch regions through the
 same HUD-space mapping as the portraits.
 
 ## Retained scene transforms and authored art

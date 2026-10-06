@@ -1,7 +1,7 @@
 /*
  * The gamepads this host can see, as DirectInput needs to describe them.
  *
- * Separate from dinput_device.c on purpose. That file implements the
+ * Separate from dinput_device.cpp on purpose. That file implements the
  * IDirectInputDevice8 the game holds; this one owns the SDL side -- which pads
  * exist, what they are called, what GUID names each of them, and what their
  * sticks and buttons read right now. The split is what lets the SAME inventory
@@ -18,10 +18,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define DINPUT_PAD_MAX 8
 
 /*
@@ -34,7 +30,7 @@ extern "C" {
 enum {
   DINPUT_PAD_AXIS_X = 0, /* left stick X   */
   DINPUT_PAD_AXIS_Y,     /* left stick Y   */
-  DINPUT_PAD_AXIS_Z,     /* triggers, combined -- see dinput_pad.c */
+  DINPUT_PAD_AXIS_Z,     /* triggers, combined -- see dinput_pad.cpp */
   DINPUT_PAD_AXIS_RX,    /* right stick X  */
   DINPUT_PAD_AXIS_RY,    /* right stick Y  */
   DINPUT_PAD_AXIS_RZ,
@@ -175,9 +171,5 @@ void dinput_pad_poll_counts(struct X2PadPollCounts *out);
 void dinput_pad_device_counts(unsigned long *opens, unsigned long *closes);
 int dinput_pad_describe(int slot, const char **name, int *buttons,
                         int *xbox_glyphs);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* DINPUT_PAD_H */

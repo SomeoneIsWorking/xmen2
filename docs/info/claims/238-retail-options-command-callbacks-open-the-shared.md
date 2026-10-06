@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-22
 tags: ui,menu,rmlui
-depends: src/native/options_menu.c#open_settings
+depends: src/native/options_menu.cpp#open_settings
 falsified_on: 2026-08-24
 ---
 

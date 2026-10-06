@@ -56,7 +56,7 @@ INC/DEC_AGGR 16/17 -> the correspondingly named PC rows.
 
 ## Implemented bindable layout
 
-`src/native/xbox_defaults.c` joins that executable evidence to the authored
+`src/native/xbox_defaults.cpp` joins that executable evidence to the authored
 Xbox controller screen. C187 records the recovered core and C227 records the
 health-pack extension. It installs 22 assignments:
 
@@ -74,12 +74,12 @@ The d-pad order is executable evidence, not a reading of the diagram:
 the PC physical-name function maps POV Up/Down/Right/Left to codes
 `0x14/0x13/0x11/0x12`.
 
-`src/native/xbox_defaults.c` owns only the 22 evidence-derived tuples.
-`src/input/player_input.c` is the single publisher: it resolves each player's
+`src/native/xbox_defaults.cpp` owns only the 22 evidence-derived tuples.
+`src/input/player_input.cpp` is the single publisher: it resolves each player's
 persistent device assignment and writes the fixed table to slot 1 of the
 master, working, and menu sets through `input_bindings_write_player`. The pure
 test assigns pads to different players and proves the running sets receive the
-same canonical codes. `tests/test_xbox_defaults.c` separately pins every tuple
+same canonical codes. `tests/test_xbox_defaults.cpp` separately pins every tuple
 and rejects duplicate action rows.
 
 ## RmlUi player assignment
@@ -94,7 +94,7 @@ would give the guest editor and RmlUi two competing writers for the same slots.
 The binding row has two names with different contracts. Its `storage_key` is
 the exact identifier read from `FUN_0061b030` and must preserve executable ABI
 spellings such as `SreenGrab`; its `display_label` is the shipped English PC
-text from `igct.bnx`. `src/input/binding_rows.c` owns both in one descriptor
+text from `igct.bnx`. `src/input/binding_rows.cpp` owns both in one descriptor
 table. RmlUi presents the latter (`Ally` becomes `Energy Pack`, `TargetLock`
 becomes `Health Pack`, and `SreenGrab` becomes `Screenshot`), while the live
 probe reports the former so diagnostics continue to match registry data.

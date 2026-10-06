@@ -1,8 +1,8 @@
 /*
  * crt_internal.h -- the three things every CRT import stub needs.
  *
- * The stubs are split across files by subject (crt.c, crt_setjmp.c), and each
- * one reads its arguments off the guest stack and returns __cdecl the same
+ * The stubs are split across files by subject (crt.cpp, crt_setjmp.cpp), and
+ * each one reads its arguments off the guest stack and returns __cdecl the same
  * way. One definition here rather than a copy per file: two spellings of "the
  * first argument is at ESP+4" is the kind of duplication that stays correct
  * until one of them is fixed.
@@ -24,7 +24,7 @@ static inline void ret_c(CPU *C, uint32_t eax) {
 }
 
 /* Stop, naming the import and why it cannot be served. There is no plausible
-   value to return: see the abort-paths note in x86rt_native.c. */
+   value to return: see the abort-paths note in x86rt_native.cpp. */
 void crt_unimpl(const char *sym, const char *why);
 
 #endif

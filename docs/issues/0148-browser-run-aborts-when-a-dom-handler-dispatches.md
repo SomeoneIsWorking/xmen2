@@ -53,7 +53,7 @@ proxy to the browser main thread and each one records a pthread as its dispatch
 target. SDL's Emscripten joystick backend registers
 `gamepadconnected`/`gamepaddisconnected` in `EMSCRIPTEN_JoystickInit`, which the
 port reaches lazily from guest device enumeration
-(`dinput8.c::m_EnumDevices` -> `dinput_pad_refresh` ->
+(`dinput8.cpp::m_EnumDevices` -> `dinput_pad_refresh` ->
 `SDL_InitSubSystem(SDL_INIT_GAMEPAD)`), and its video path registers the whole
 key/mouse/focus/resize/visibility/pressure set. Once that thread exits, the next
 matching DOM event dispatches into a closed mailbox and aborts the page.
@@ -83,7 +83,7 @@ thread's mailbox was closed in the failing run is not yet identified.
 ## Correction
 
 The missing piece was which thread owns a registration. In the browser every
-guest thread has a pthread of its own (`src/native/threads.c`), and SDL's
+guest thread has a pthread of its own (`src/native/threads.cpp`), and SDL's
 video, joystick and sensor backends bind their DOM listeners to whichever
 thread first starts the subsystem. Those starts were lazy:
 - pads from the thread that first enumerates devices, and sensors when a pad

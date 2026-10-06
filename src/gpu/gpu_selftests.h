@@ -5,7 +5,7 @@
  * The host-renderer self-test entry points, declared once.
  *
  * Every one of these lives in a different translation unit and was, before
- * this header, forward-declared by hand in gpu_host_selftest.c. That block of
+ * this header, forward-declared by hand in gpu_host_selftest.cpp. That block of
  * loose declarations was the only thing tying a definition to its caller, so
  * nothing checked that the two agreed: a signature change in one file would
  * have compiled and linked against a stale declaration in the other.

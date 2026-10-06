@@ -16,7 +16,6 @@ static int checks;
     checks++;                                                                  \
   } while (0)
 
-extern "C" {
 const char *dinput_pad_persistent_id(int pad) {
   return pad >= 0 && pad < 2 ? pad_id[pad] : nullptr;
 }
@@ -46,7 +45,6 @@ int x2_transient_controller_player_for_pad(int pad) {
     if (transient_id[player] && transient_pad[player] == pad)
       return (int)player;
   return -1;
-}
 }
 
 int main() {

@@ -1,10 +1,6 @@
 #ifndef X2_CONFIG_ENVIRONMENT_H
 #define X2_CONFIG_ENVIRONMENT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* The complete .env whitelist: bootstrap inputs, bounded diagnostics, and
  * compatibility names consumed by runtime_cvars. Runtime behavior is read
  * through runtime_cvars/settings rather than this registry; callers cannot
@@ -101,9 +97,5 @@ typedef void (*X2GuestEnvironmentVisitor)(const char *entry, void *user);
 const char *x2_guest_environment_get(const char *name);
 int x2_guest_environment_set(const char *name, const char *value);
 void x2_guest_environment_visit(X2GuestEnvironmentVisitor visitor, void *user);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_CONFIG_ENVIRONMENT_H */

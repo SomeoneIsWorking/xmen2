@@ -4,7 +4,7 @@
 /*
  * The off-screen target a windowless run renders into, and reading it back.
  *
- * Split from gpu_device.c because it is a different question: that file owns
+ * Split from gpu_device.cpp because it is a different question: that file owns
  * the frame -- acquire, clear, draw, present -- while this owns WHERE the
  * frame goes when there is no swapchain, and how a harness gets the pixels
  * out. The frame path asks whether headless is active rather than reading the

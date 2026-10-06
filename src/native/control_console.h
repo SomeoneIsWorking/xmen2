@@ -13,12 +13,8 @@
  * point.
  *
  * The owner is x2::control::ConsoleChannel; these two functions are the C
- * boundary control.c calls through.
+ * boundary control.cpp calls through.
  */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #include "control_http.h"
 #include "x86rt.h"
@@ -27,9 +23,5 @@ void control_console_route(x2_socket_t fd, const char *query);
 
 /* Called from control_pump on the guest's input thread. */
 void control_console_pump(CPU *cpu);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

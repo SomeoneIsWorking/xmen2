@@ -1,10 +1,6 @@
 #ifndef X2_TOUCH_CENSUS_H
 #define X2_TOUCH_CENSUS_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* WHAT DID TOUCH ACTUALLY DO THIS RUN?
  *
  * Two platforms that ship this feature cannot run the host suite that proves
@@ -97,9 +93,5 @@ void x2_touch_census_read(X2TouchCensus *out);
    touchscreen than on one with three. */
 void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
                             int touch_capable);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_TOUCH_CENSUS_H */

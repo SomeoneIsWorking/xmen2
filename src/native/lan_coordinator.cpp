@@ -5,10 +5,8 @@
 #include "retail_front_end.hpp"
 #include "retail_net_session.hpp"
 
-extern "C" {
 #include "continue_runtime.h"
 #include "x2_log.h"
-}
 
 #include <random>
 #include <unistd.h>

@@ -12,12 +12,12 @@ updated: 2026-09-19
 # 0156 — every guest open enumerated every directory on its path
 
 - **State items:** S021
-- **Status:** fixed in `src/native/host_dir_cache.c`
+- **Status:** fixed in `src/native/host_dir_cache.cpp`
 
 ## What it was
 
 The guest asks for Windows paths and the host filesystem is case-sensitive, so
-`resolve_case_insensitive` in `src/native/win_path.c` resolved each path
+`resolve_case_insensitive` in `src/native/win_path.cpp` resolved each path
 component by listing its directory and comparing case-insensitively. One
 `opendir` plus a full `readdir` **per component, per open**, with nothing
 remembered between calls.
@@ -44,15 +44,15 @@ was never the comparing; it was doing the enumeration at all.
 `src/native/host_dir_cache.{c,h}` owns one listing per directory: a 256-bucket
 chained table keyed by directory path, each listing one block of names plus an
 offset array, so a listing is two allocations and forgetting one is two frees.
-`win_path.c` looks names up there instead of enumerating.
+`win_path.cpp` looks names up there instead of enumerating.
 
 A cached listing is only correct while the directory's names are unchanged, and
 this cache cannot see changes made behind its back, so the contract is on the
 callers: every place in the port that creates, removes or renames a name calls
 `host_dir_forget_for` with the path it touched. Those are `_mkdir` and a
-write-mode `fopen` in `crt.c`; `CreateFileA` with a creating disposition,
-`DeleteFileA`, `CreateDirectoryA` and `RemoveDirectoryA` in `kernel32.c`; the
-tree maker in `shell32.c`; and the save rename in `live_session.c`.
+write-mode `fopen` in `crt.cpp`; `CreateFileA` with a creating disposition,
+`DeleteFileA`, `CreateDirectoryA` and `RemoveDirectoryA` in `kernel32.cpp`; the
+tree maker in `shell32.cpp`; and the save rename in `live_session.cpp`.
 
 Deliberately not time-based and it does not re-stat. A stale entry would
 resolve a real file to a name that no longer exists, which is worse than the
@@ -76,7 +76,7 @@ inflating either side.
 
 ## The test
 
-`tests/test_win_path.c` covers both halves, because a timing cannot tell a
+`tests/test_win_path.cpp` covers both halves, because a timing cannot tell a
 cache that works from one that re-lists every time:
 
 - repeating a resolve must not enumerate again — asserted against

@@ -8,7 +8,7 @@
  * IDirect3DDevice8 call the game will ever make.
  *
  * It also answers a second question the port could not settle on its own:
- * what CAPABILITY BLOCK the engine really sees. src/d3d8/d3d8_caps.c is a
+ * what CAPABILITY BLOCK the engine really sees. src/d3d8/d3d8_caps.cpp is a
  * declared profile, the engine branches on it once and for the whole run, and
  * its header says the Wine oracle is what settles it -- so GetDeviceCaps is
  * logged here in the same words the port logs its own, and the two diff.
@@ -352,7 +352,7 @@ static void *wrap_alloc(void *real, const void **fwd_table, int nslots,
 /*
  * The REAL driver's capability block.
  *
- * src/d3d8/d3d8_caps.c is a DECLARED PROFILE and its header names what would
+ * src/d3d8/d3d8_caps.cpp is a DECLARED PROFILE and its header names what would
  * settle it: the stock game under Wine. This is that. Every field the port
  * promises and this machine does not is one `diff` line, and the engine
  * branches on these once and for the whole run -- so a difference here is a
@@ -442,7 +442,7 @@ static struct vbwrap *g_stream0;
 static DWORD g_stream0_stride, g_fvf, g_base_vertex;
 
 /* Position offset for an FVF, and its declared stride. Mirrors
-   d3d8_fvf_layout in src/d3d8/d3d8_drawcall.c -- position first, always at 0;
+   d3d8_fvf_layout in src/d3d8/d3d8_drawcall.cpp -- position first, always at 0;
    XYZRHW is four floats. Returns 0 for a format with no position (a shader
    declaration), which must NOT be read from offset zero. */
 static int fvf_pos(DWORD fvf, DWORD *pos_off) {

@@ -116,17 +116,16 @@ AlchemyControllerBridge &bridge() {
 
 } // namespace
 
-extern "C" void
-x2_alchemy_controller_observe(int host_slot,
-                              const X2DirectInputControllerSample *sample,
-                              int32_t axis_lo, int32_t axis_hi) {
+void x2_alchemy_controller_observe(int host_slot,
+                                   const X2DirectInputControllerSample *sample,
+                                   int32_t axis_lo, int32_t axis_hi) {
   if (sample != nullptr) {
     bridge().observe(host_slot, *sample, axis_lo, axis_hi);
   }
 }
 
-extern "C" void x2_alchemy_controller_sync_inventory(void) {
+void x2_alchemy_controller_sync_inventory(void) {
   bridge().synchronizeInventory();
 }
 
-extern "C" void x2_alchemy_controller_report(void) { bridge().report(); }
+void x2_alchemy_controller_report(void) { bridge().report(); }

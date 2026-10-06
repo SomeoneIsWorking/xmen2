@@ -1,7 +1,7 @@
 #ifndef X2_WIN_PATH_H
 #define X2_WIN_PATH_H
 
-/* Windows-to-host path and file-open policy is owned by win_path.c. Native
+/* Windows-to-host path and file-open policy is owned by win_path.cpp. Native
    bridges use this interface instead of growing their own drive-letter rules.
  */
 const char *win_path(const char *input);

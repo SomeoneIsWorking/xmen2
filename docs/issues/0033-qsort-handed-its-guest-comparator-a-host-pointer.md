@@ -19,7 +19,7 @@ which reads as a corrupt global table (`EAX` comes from `[[0x10151bd0]+0x10]`) a
 
 ## Cause
 
-`FUN_1005e3a0` is a **qsort comparator**. It takes two pointers, dereferences each to get an index, and looks the objects up in a table. `imp_MSVCR71_qsort` in `crt.c` held the element being inserted in a **host `malloc`** buffer and passed its address to the comparator:
+`FUN_1005e3a0` is a **qsort comparator**. It takes two pointers, dereferences each to get an index, and looks the objects up in a table. `imp_MSVCR71_qsort` in `crt.cpp` held the element being inserted in a **host `malloc`** buffer and passed its address to the comparator:
 
     unsigned char *tmp = malloc(sz);
     ...

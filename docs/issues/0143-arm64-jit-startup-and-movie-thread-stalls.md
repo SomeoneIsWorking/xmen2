@@ -22,8 +22,8 @@ found about 428 of 433 main-thread samples waiting for the guest lock. The
 Win32 wait boundary never recognized completed H_THREAD handles, and finite
 waits returned timeout after any early timer/condition wake. Thread completion
 now stays signaled for every waiter; finite waits recheck the object until their
-guest-clock deadline. The cohesive owner is `kernel32_wait.c`, with handle
-storage retained in `kernel32.c`.
+guest-clock deadline. The cohesive owner is `kernel32_wait.cpp`, with handle
+storage retained in `kernel32.cpp`.
 
 A separate longjmp defect resumed the most recently reused host-loop local
 instead of the selected saved guest continuation. The selected JmpSlot now

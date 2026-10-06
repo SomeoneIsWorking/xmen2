@@ -48,7 +48,7 @@ Record exact provenance in the file that adapts material from them.
 
 Worth recording, because it is the part that looks like a shortcut and is not.
 DXVK's objects are 64-bit host C++ objects; x86-32 guest code cannot call
-one. The boundary in `d3d8_com.c` -- 32-bit `__stdcall` vtables in
+one. The boundary in `d3d8_com.cpp` -- 32-bit `__stdcall` vtables in
 guest-addressable memory, synthetic callback addresses, this-pointer
 resolution, who-pops-what -- would have been needed either way, and it is what
 already exists. What DXVK would have replaced is the part still ahead:

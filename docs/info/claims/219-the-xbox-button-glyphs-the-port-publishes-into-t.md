@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-19
 tags: glyphs,fonts
-depends: tools/make_pad_font.py, src/native/pad_glyphs.c
+depends: tools/make_pad_font.py, src/native/pad_glyphs.cpp
 ---
 
 ## Claim

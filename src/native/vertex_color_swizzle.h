@@ -29,7 +29,7 @@ uint32_t vtx_color_swizzle_word(uint32_t w);
 void x2_override_10046ce0(CPU *C);
 
 /*
- * `gfx.vtx_swizzle_verify` differential gate (vertex_color_swizzle_verify.c).
+ * `gfx.vtx_swizzle_verify` differential gate (vertex_color_swizzle_verify.cpp).
  * `begin` snapshots the pre-swap vertex span and the two dirty/lock bytes;
  * `end` restores them, re-runs the guest body, and aborts on any mismatch with
  * the native result. Both are no-ops unless the flag is set. `VtxSwizzleVerify`

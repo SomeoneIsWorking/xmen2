@@ -2,7 +2,7 @@
 # calls and synchronous per-block WebAssembly compilation run on a pthread.
 target_sources(x2native PRIVATE src/web/web_main.cpp src/web/browser_log.cpp
                    src/web/web_request.cpp)
-set_source_files_properties(src/native/x2native.c PROPERTIES
+set_source_files_properties(src/native/x2native.cpp PROPERTIES
     COMPILE_DEFINITIONS main=x2native_main)
 if(NOT X2_WEB_PORT_SOURCE)
     message(FATAL_ERROR "x2native: web build requires shared/web-port source")

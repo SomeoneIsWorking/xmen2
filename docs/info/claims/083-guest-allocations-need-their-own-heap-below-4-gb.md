@@ -12,7 +12,7 @@ Guest allocations need their own heap below 4 GB; the host allocator cannot serv
 
 ## Evidence
 
-Measured: host malloc returned 0x55b49f308020 during libIGCore's DllMain. A guest pointer is 32 bits, so that address cannot be stored, and casting it would produce a pointer that looks valid and is not. src/native/guest_heap.c serves guest allocations from a 256 MB arena at 0x40000000; 6 battery checks cover fit-in-32-bits, non-overlap, full reclaim on free, coalescing and realloc-preserves-contents.
+Measured: host malloc returned 0x55b49f308020 during libIGCore's DllMain. A guest pointer is 32 bits, so that address cannot be stored, and casting it would produce a pointer that looks valid and is not. src/native/guest_heap.cpp serves guest allocations from a 256 MB arena at 0x40000000; 6 battery checks cover fit-in-32-bits, non-overlap, full reclaim on free, coalescing and realloc-preserves-contents.
 
 ## What would falsify it
 

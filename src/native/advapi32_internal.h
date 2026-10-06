@@ -1,6 +1,6 @@
 /* Internal to the ADVAPI32 subsystem: the flat store's shape, shared by
- * advapi32.c (guest imports + store), advapi32_enum.c (the RegEnum* imports)
- * and advapi32_host_store.c (the one boot-time host publication). Nothing
+ * advapi32.cpp (guest imports + store), advapi32_enum.c (the RegEnum* imports)
+ * and advapi32_host_store.cpp (the one boot-time host publication). Nothing
  * outside ADVAPI32 may include this.
  */
 #ifndef X2_ADVAPI32_INTERNAL_H
@@ -27,7 +27,7 @@ typedef struct {
    recorded as a value row with a name of "\x01" that nothing enumerates. */
 #define KEY_MARK "\001"
 
-/* The store, owned by advapi32.c. Lazy-loading on first touch is part of the
+/* The store, owned by advapi32.cpp. Lazy-loading on first touch is part of the
    contract -- every entry point here may run before any other. */
 void advapi32_store_load(void);
 void advapi32_store_save(void);

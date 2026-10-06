@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-18
 tags: input,alchemy
-depends: src/native/input_probe.c
+depends: src/native/input_probe.cpp
 ---
 
 ## Claim

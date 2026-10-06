@@ -13,7 +13,7 @@ updated: 2026-09-24
 
 - **State items:** S021
 - **Status:** resolved. The arena was resized to 65,536 blocks and 128 MB
-  (`src/native/x86_engine_jit_pool.c`), and a second route was measured
+  (`src/native/x86_engine_jit_pool.cpp`), and a second route was measured
   (below): neither evicts.
 - **Follows:** #157, which removed the cost that was hiding this one
 
@@ -72,7 +72,7 @@ count to move while the embedder count stays at zero.
 
 ## Why the arena is full
 
-`src/native/x86_engine_jit_pool.c` gives each browser worker
+`src/native/x86_engine_jit_pool.cpp` gives each browser worker
 `kCodeBytes = 32 MB` and `kCacheBlocks = 8192`. The same heartbeat reports
 **13.6 MB of code in use**, so the byte budget has more than twice the headroom
 it needs and the 8,192-block cap is what binds. The game's live working set of

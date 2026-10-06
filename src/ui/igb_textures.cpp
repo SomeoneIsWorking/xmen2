@@ -2,9 +2,7 @@
 
 #include "x2_log.h"
 
-extern "C" {
 #include <igb.h>
-}
 
 #include <algorithm>
 #include <cmath>

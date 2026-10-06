@@ -4,9 +4,7 @@
 #include <string>
 #include <vector>
 
-extern "C" {
 #include "settings.h"
-}
 
 namespace x2::ui {
 

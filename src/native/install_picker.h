@@ -1,10 +1,6 @@
 #ifndef X2_INSTALL_PICKER_H
 #define X2_INSTALL_PICKER_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Choose and remember the user's read-only PC installation for the AppImage
  * first-run flow. The returned directory is owned by this module. */
 int x2_install_picker_choose(const char **directory);
@@ -34,9 +30,5 @@ int x2_install_picker_resolve_selection(const char *selection,
                                         const char *archive_destination,
                                         char *directory, unsigned capacity,
                                         char *reason, unsigned reason_capacity);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_INSTALL_PICKER_H */

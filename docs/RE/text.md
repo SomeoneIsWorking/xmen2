@@ -59,7 +59,7 @@ vtable `+0x38` (e.g. from `FUN_0059c760`).
 ## The draw call pair (where strings become quads)
 
 Found by overriding `getTexture` and recording return addresses
-(`src/native/text_caller_probe.c`, `X2_TEXTURE_PROBE=1`): 2,439 calls,
+(`src/native/text_caller_probe.cpp`, `X2_TEXTURE_PROBE=1`): 2,439 calls,
 eight distinct return sites, two of which are 1,207 calls each --
 `0x005ee63d` and `0x005ee663`, both inside `FUN_005ee780`.
 
@@ -91,7 +91,7 @@ engine has bound for this text -- the binding established by `FUN_005ee620`.
 The retail engine measures and positions the string; the port owns the new
 pixels and submits them before the stock ASCII in the same semantic text draw:
 
-1. `prompt_glyph_metrics.c` publishes width, height, advance, offset and
+1. `prompt_glyph_metrics.cpp` publishes width, height, advance, offset and
    baseline for the port's private codepoints, sized from each font's own
    capitals: one design pixel is 1/18 of the modal `A`..`Z` box height of
    that (already text-scaled) record, and each cell is centred on the
@@ -102,7 +102,7 @@ pixels and submits them before the stock ASCII in the same semantic text draw:
    the modal height of the third face is 27 -- its accented capitals -- which
    is why the mode is taken over `A`..`Z`. It writes no UVs, so the game font
    never becomes the pixel owner.
-2. `prompt_glyph_draw.c` follows the stock wide-string loop and intercepts
+2. `prompt_glyph_draw.cpp` follows the stock wide-string loop and intercepts
    each private-codepoint call to **`FUN_005ee400`**. Before the loop begins it
    validates the batch colour, every codepoint and capacity for the whole
    string. It then keeps the engine's text-plane rectangle and batch colour,
@@ -110,25 +110,25 @@ pixels and submits them before the stock ASCII in the same semantic text draw:
    the retail emitter with `x1=x0` and `y1=y0`. That collapsed call draws no
    stock-font pixels but preserves the engine's vertex and finalizer contract,
    including for a string containing only one controller glyph.
-3. `prompt_glyph_batch.c` brackets
+3. `prompt_glyph_batch.cpp` brackets
    `Gap::Gfx::igDxVisualContext::drawNonIndexed` at libIGGfx `0x100352d0`.
    Its nested `updateContextState` override at `0x10034e60` super-calls first,
    then submits the queued SVG quads with the engine's finalized transform.
    Control returns to the stock draw for the ordinary text around them.
-4. `gpu_prompt_glyphs.c` owns the retained RGBA textures and vertex buffer
+4. `gpu_prompt_glyphs.cpp` owns the retained RGBA textures and vertex buffer
    and submits a `GpuDraw` per texture from the queued rectangles. The
    pixels come from the shared `port-assets` sets: controller icons and the
    blank key cap rasterised at build time into the generated, port-owned
    atlas (`tools/render_prompt_glyphs.py` -> `src/gen/prompt_glyph_atlas.h`),
-   and key names lettered at run time (`keycap_labels.c`) in the set's own
+   and key names lettered at run time (`keycap_labels.cpp`) in the set's own
    typeface, because the game localizes them (`ENTER` arrives as `Enter`).
    No shipped font contributes pixels to either.
 
 A keyboard binding composes as `KEYCAP_LEFT name KEYCAP_RIGHT` (0x9a, 0x9b;
-`keycap_run.c` owns that grammar for both the composer and the drawer). The
+`keycap_run.cpp` owns that grammar for both the composer and the drawer). The
 two edges carry layout only: the margins either side of the name, at a cell
 height that makes the cap stand 1.25 times the capitals. At the right edge
-`prompt_glyph_draw.c` collapses every stock quad in the run and queues one key
+`prompt_glyph_draw.cpp` collapses every stock quad in the run and queues one key
 over the whole span: the cap as a three-slice frame whose straight middle
 stretches, and the lettered name centred on it, narrowed only if it would not
 fit. The stock letters were drawn over a darkened, luminance-inverted cap
@@ -136,13 +136,13 @@ before this, which vanished on a dark panel.
 
 ## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
 
-`src/native/prompt_glyph_draw.c` sits on the glyph loop and classifies every
+`src/native/prompt_glyph_draw.cpp` sits on the glyph loop and classifies every
 string. On a boot-direct tutorial run (`X2_BOOT_MAP=act0/tutorial/tutorial1`,
 `X2_MAX_FRAMES=1200`, `--no-window --d3d8 --run`, `X2_PROMPT_GLYPHS=1`):
 
 * 4,581 strings reached `FUN_005ee780`
 * **1,142 of them carried 13,704 prompt codepoints**, in exactly the shape
-  `prompt_labels.c` composed at the time:
+  `prompt_labels.cpp` composed at the time:
 
       0090 0091 0091 0091 0091 0091 0092 0092 0092 0092 0092 0045 006e 0074 0065 0072 0093
       KEYCAP_LEFT  MIDDLE x5            REWIND x5             "Enter"      KEYCAP_RIGHT
@@ -161,7 +161,7 @@ every ordinary one.
 | `FUN_005ef2e0` | markup -> wide line buffers. The widening is a plain `MOVZX AX,BL` at `0x005ef7b3`, so a 0x90 byte becomes wchar 0x0090 unchanged |
 | `FUN_005ee780` | walks that wide buffer |
 
-The token-resolver census lives in `prompt_labels.c` and reports with its
+The token-resolver census lives in `prompt_labels.cpp` and reports with its
 denominators (`FUN_004bd720` ran 5,448 times, handed OUR buffer back 2,285
 times). Its 1,142 consumptions at `0x005ef757` equal the 1,142 strings the
 glyph-loop detector sees -- two independent instruments agreeing.
@@ -261,9 +261,9 @@ callsite probe separated the draw that matters from an adjacent indexed draw:
 the stock text plane returns inside libIGGfx `drawNonIndexed` at `0x10035489`,
 whose owning body begins at **`0x100352d0`**.
 
-`prompt_glyph_batch.c` overrides that outer body only to bracket its lifetime.
+`prompt_glyph_batch.cpp` overrides that outer body only to bracket its lifetime.
 When its nested `updateContextState` at **`0x10034e60`** runs, the override
-super-calls the engine body first. `ui_transform.c` independently mirrors the
+super-calls the engine body first. `ui_transform.cpp` independently mirrors the
 converted projection, world and view outputs of `computeMatrix_Dx` at
 **`0x1003ec10`**, then publishes the complete engine-owned MVP. The port
 submits the queued SVG rectangles in the stock `(x,0,y)` text plane at that
@@ -271,7 +271,7 @@ point, before control returns to `drawNonIndexed` and the stock ASCII is
 submitted. No matrix is reconstructed from lowered D3D state.
 
 The port-owned atlas is RGBA, retained and uploaded by
-`gpu_prompt_glyphs.c`. Each harvested rectangle becomes two triangles with
+`gpu_prompt_glyphs.cpp`. Each harvested rectangle becomes two triangles with
 the engine batch colour and the generated atlas UVs. Failure to read the
 batch colour or reserve a complete string keeps that entire string on the
 retail path. Failure to obtain all three engine matrices or submit through the
@@ -337,7 +337,7 @@ UV and split the draw in the D3D8 layer.
 
 That negative is not trustworthy and the conclusion is withdrawn. Two defects,
 both readable in the deleted probe
-(`git show fa2ace8 -- src/d3d8/d3d8_drawcall.c`):
+(`git show fa2ace8 -- src/d3d8/d3d8_drawcall.cpp`):
 
 1. **It capped the interesting case.** `n = req->num_vertices > 256u ? 256u :
    req->num_vertices` truncated every draw at 256 vertices, silently and with

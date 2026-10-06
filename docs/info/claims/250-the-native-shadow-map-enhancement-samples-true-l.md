@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: graphics,shadows,native
-depends: src/gpu/gpu_shadow.c, src/gpu/shadow_policy.c, src/gpu/gpu_shadow_selftest.c, src/gpu/shaders/shadow_depth.frag, src/gpu/shaders/d3d8_fixed.frag
+depends: src/gpu/gpu_shadow.cpp, src/gpu/shadow_policy.cpp, src/gpu/gpu_shadow_selftest.cpp, src/gpu/shaders/shadow_depth.frag, src/gpu/shaders/d3d8_fixed.frag
 ---
 
 ## Claim

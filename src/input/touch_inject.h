@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Contact phases, for the injector below. They are the SDL finger events by
    another name, kept separate so a caller needs no SDL headers. */
 typedef enum {
@@ -27,9 +23,5 @@ typedef enum {
  * second copy of it. Returns what the routing returned.
  */
 int x2_touch_inject(int64_t contact_id, float x, float y, X2TouchPhase phase);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_TOUCH_INJECT_H */

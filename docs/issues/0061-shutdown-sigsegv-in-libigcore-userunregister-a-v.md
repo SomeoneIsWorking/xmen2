@@ -83,7 +83,7 @@ between them.
 ### Note (2026-08-12)
 INSTRUMENT ADDED, and one mistake made and undone.
 
-guest_engine_thread_report() (src/native/threads.c) reads the igThreadManager
+guest_engine_thread_report() (src/native/threads.cpp) reads the igThreadManager
 out of guest memory and prints the array address, the count, and each thread's
 id and refcount -- at zero as well, with the addresses that produced it.
 
@@ -196,7 +196,7 @@ KERNEL32.dll!TlsGetValue. If the lookup returns NULL, pthread_self ALLOCATES a
 fresh 0x38-byte handle for the caller.
 
 So the vendored pthreads-win32 identifies a thread by Win32 TLS, and this port
-switches Win32 TLS per guest coroutine (k32_tls_switch in kernel32.c). Each
+switches Win32 TLS per guest coroutine (k32_tls_switch in kernel32.cpp). Each
 guest coroutine therefore gets its own pthread handle -- which is the CORRECT
 emulation, because a coroutine here stands for a Windows thread, and on Windows
 each thread genuinely has its own TLS.
@@ -234,7 +234,7 @@ coroutine holds beside the registered thread's id:
 The registered thread's id is the handle in TLS slot 0. The MAIN thread is slot
 16 and held a DIFFERENT handle. Same guest thread, two TLS arrays.
 
-Why: kernel32.c initialised its TLS pointer to g_tls_store[0], and the main
+Why: kernel32.cpp initialised its TLS pointer to g_tls_store[0], and the main
 thread ran on that array until the scheduler attached the main thread and
 switched it to slot 16. Everything the main thread wrote to TLS before that
 point went into slot 0 and then became invisible to it. The engine's
@@ -249,8 +249,8 @@ That is a correctness bug well beyond this crash and it is the reason the crash
 was intermittent -- whether it bit depended on what guest thread 0 had done to
 the shared array.
 
-Fix: kernel32.c starts on the main thread's own slot, via GUEST_MAIN_TLS_SLOT
-in threads.h, with a #error in threads.c if the two files ever disagree.
+Fix: kernel32.cpp starts on the main thread's own slot, via GUEST_MAIN_TLS_SLOT
+in threads.h, with a #error in threads.cpp if the two files ever disagree.
 
 VERIFIED. After the fix the same report reads:
 
@@ -264,4 +264,4 @@ reports fully written and no fault. That timeout is NOT explained by this fix
 and should not be filed under it.
 
 ### Resolution (2026-08-12)
-The main thread ran on TLS slot 0 until the scheduler attached it to slot 16, so everything it put in TLS before that -- including the engine pthread_self handle -- became invisible to it, and getCallingThread returned NULL into a caller that dereferences it. Slot 0 is also guest thread 0's, so the old default aliased the two. kernel32.c now starts on the main thread's own slot (GUEST_MAIN_TLS_SLOT, with a #error if the two files disagree). Verified: the registered thread's id and the main thread's handle are now the same value 0x7100a2a8, and three smoke_loop runs produced no SIGSEGV.
+The main thread ran on TLS slot 0 until the scheduler attached it to slot 16, so everything it put in TLS before that -- including the engine pthread_self handle -- became invisible to it, and getCallingThread returned NULL into a caller that dereferences it. Slot 0 is also guest thread 0's, so the old default aliased the two. kernel32.cpp now starts on the main thread's own slot (GUEST_MAIN_TLS_SLOT, with a #error if the two files disagree). Verified: the registered thread's id and the main thread's handle are now the same value 0x7100a2a8, and three smoke_loop runs produced no SIGSEGV.

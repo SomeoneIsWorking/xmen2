@@ -83,5 +83,5 @@ Directory enumeration now has one portable owner in
 `readdir`, `closedir`, and `rewinddir` across POSIX and Windows
 (`FindFirstFileA`/`FindNextFileA`), routing `kernel32`, `win_path`, and
 `save_catalog` away from raw `<dirent.h>`. The unused `<sys/wait.h>` include
-in `x2native.c` has also been removed. The complete native test suite
+in `x2native.cpp` has also been removed. The complete native test suite
 (149 tests) continues to pass cleanly with all checks green.

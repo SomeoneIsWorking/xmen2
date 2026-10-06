@@ -7,7 +7,7 @@ created: 2026-08-19
 
 ## Instrument
 
-src/native/script_trace.c + X2_SCRIPTS=1 -- names every BehavEd script the run launches, records each launch caller, and traces startConversation, lockControls, the conversation-manager start (with flags, current line and the seen-line bitmap), the bitmap reset, and the tutorial spawner callback
+src/native/script_trace.cpp + X2_SCRIPTS=1 -- names every BehavEd script the run launches, records each launch caller, and traces startConversation, lockControls, the conversation-manager start (with flags, current line and the seen-line bitmap), the bitmap reset, and the tutorial spawner callback
 
 ## Validated by
 

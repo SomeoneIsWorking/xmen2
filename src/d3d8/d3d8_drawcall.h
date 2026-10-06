@@ -1,6 +1,6 @@
 /*
  * The device's state, turned into a draw the GPU layer can execute.
- * See d3d8_drawcall.c for why this is separate from d3d8_device.c.
+ * See d3d8_drawcall.cpp for why this is separate from d3d8_device.cpp.
  */
 #ifndef D3D8_DRAWCALL_H
 #define D3D8_DRAWCALL_H
@@ -10,10 +10,6 @@
 #include "d3d8_state.h"
 #include "d3d8_texture_provenance.h"
 #include "gpu_draw.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 enum {
   D3DPT_POINTLIST = 1,
@@ -91,7 +87,7 @@ void d3d8_combine_transform(const D3D8State *s, float out[16]);
 void d3d8_worldview_transform(const D3D8State *s, float out[16]);
 
 /* 1 if the draw path reads this render state. The report asks, rather than
-   keeping its own list -- see d3d8_drawcall.c for the drift that caused. */
+   keeping its own list -- see d3d8_drawcall.cpp for the drift that caused. */
 int d3d8_drawcall_reads_state(uint32_t which);
 void d3d8_drawcall_report(void);
 /* Draws that enabled a texture stage beyond stage 0, and the most extra
@@ -104,7 +100,7 @@ void d3d8_drawcall_combiner_args(unsigned long *dflt, unsigned long *other,
 
 /*
  * Arm the per-draw frame table for the next gameplay frame (F9 in a live run).
- * See d3d8_drawcall.c -- only a person watching can say which frame is wrong.
+ * See d3d8_drawcall.cpp -- only a person watching can say which frame is wrong.
  */
 void d3d8_frame_table_arm(void);
 
@@ -114,9 +110,5 @@ void d3d8_frame_table_install_signal(void);
 
 /* Feeds a rigid palette and a corrupt one through the shipping probe. */
 int d3d8_constants_probe_selftest(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* D3D8_DRAWCALL_H */

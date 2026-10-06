@@ -26,7 +26,7 @@ corresponds to Xbox White.
 
 ## Resolution
 
-`src/input/binding_rows.c` is one descriptor owner for both contracts. RmlUi
+`src/input/binding_rows.cpp` is one descriptor owner for both contracts. RmlUi
 uses its display labels and the live probe uses its storage keys. The focused C
 test calls the production API and pins the three discriminators plus bounds;
 `tools/binding_rows.py` compares all 42 keys with `XMen2.exe` and all 42 labels

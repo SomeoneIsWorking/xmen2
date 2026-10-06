@@ -7,7 +7,7 @@ created: 2026-08-07
 
 ## Instrument
 
-boundary ring caller field (src/native/x86rt_native.c, trace builds)
+boundary ring caller field (src/native/x86rt_native.cpp, trace builds)
 
 ## Validated by
 

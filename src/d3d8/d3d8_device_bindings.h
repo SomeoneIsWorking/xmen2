@@ -6,7 +6,7 @@
  * the reference it holds on each (issue #38).
  *
  * The setters are declared rather than static because the vtable is built in
- * d3d8_device.c.
+ * d3d8_device.cpp.
  */
 #include <stdint.h>
 

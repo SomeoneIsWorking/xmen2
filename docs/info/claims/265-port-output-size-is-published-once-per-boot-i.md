@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-25
 tags: native,presentation,resolution,registry,d3d8,rmlui,settings
-depends: src/presentation/display_mode_seed.c#x2_display_mode_seed_boot, src/native/advapi32_host_store.c#advapi32_host_set_string, src/d3d8/d3d8_d3d8.c#d3d8_GetAdapterDisplayMode
+depends: src/presentation/display_mode_seed.cpp#x2_display_mode_seed_boot, src/native/advapi32_host_store.cpp#advapi32_host_set_string, src/d3d8/d3d8_d3d8.cpp#d3d8_GetAdapterDisplayMode
 falsified_on: 2026-08-27
 ---
 

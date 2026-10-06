@@ -9,10 +9,10 @@
  * override -- is x86_engine_dispatch.{c,h}, kept
  * separate so these predicates stay testable without linking the whole engine.
  *
- * Split from x86_engine.c so the decision -- and specifically its independence
- * from the guest-call stack -- can be tested without building the whole
- * engine. An earlier fixed-depth shadow stack dropped its current frame during
- * deep boot nesting: overrides then ran as raw guest code (the font,
+ * Split from x86_engine.cpp so the decision -- and specifically its
+ * independence from the guest-call stack -- can be tested without building the
+ * whole engine. An earlier fixed-depth shadow stack dropped its current frame
+ * during deep boot nesting: overrides then ran as raw guest code (the font,
  * boot-splash and prompt-glyph overrides never fired; the native FMV override
  * did not either, so the intro played through the guest's MMX decoder).
  */

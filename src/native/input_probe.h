@@ -8,7 +8,7 @@ struct X86pCpu;
 /*
  * A snapshot of the GAME's input state, not the host's.
  *
- * dinput_pad.c can say whether SDL and DirectInput delivered a button; only
+ * dinput_pad.cpp can say whether SDL and DirectInput delivered a button; only
  * this can say whether the game's own binding table turned it into an action.
  * The two questions look the same from a log and are one layer apart, and the
  * gap between them is where a press that arrives still does nothing.

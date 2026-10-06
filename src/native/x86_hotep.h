@@ -1,5 +1,5 @@
 /*
- * The hot-guest-body probe. See x86_hotep.c.
+ * The hot-guest-body probe. See x86_hotep.cpp.
  *
  * Unarmed it costs one predictable branch per dispatch and answers nothing --
  * deliberately: a probe that never counted must not print a plausible zero.

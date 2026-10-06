@@ -12,10 +12,6 @@
 
 #include "x86_engine_jit_pool.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * Ask for a snapshot at the next guest boundary, and say whether one was
  * already pending. The heartbeat thread cannot read JIT state itself -- only
@@ -39,9 +35,5 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
  * JIT and a JIT that did nothing are different answers.
  */
 void x86_engine_report_jit_totals(const X86EngineJitPool *jit);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

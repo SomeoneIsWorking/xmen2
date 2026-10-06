@@ -12,9 +12,7 @@
  * reimplementing what they do.
  */
 
-extern "C" {
 #include "x86rt.h"
-}
 
 #include <cstdint>
 #include <string>

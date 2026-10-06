@@ -80,14 +80,14 @@ SOURCE_RULES = {
     "src/config/runtime_cvars.h": (
         (r"engine\s+string|jit\.verify", "an execution selector or oracle knob remains"),
     ),
-    "src/native/x86_engine.c": (
+    "src/native/x86_engine.cpp": (
         (
             r"x86p_engine_resolve|kX86pEngineInterpreter",
             "the product can explicitly select the diagnostic interpreter",
         ),
         (r"x86p_jit_engine_set_verify", "the product can shadow-run the test oracle"),
     ),
-    "src/native/x2native_options.c": (
+    "src/native/x2native_options.cpp": (
         (r"\bengine\s*=", "the CLI exposes an engine selector"),
     ),
     "src/runtime/x86_abi/x86rt.h": (
@@ -208,7 +208,7 @@ def selftest() -> int:
     if source_text_violations(source_text):
         print("runtime_boundary selftest: clean source fixture was rejected")
         return 1
-    source_text["src/native/x2native_options.c"] = 'parse("engine=retired");\n'
+    source_text["src/native/x2native_options.cpp"] = 'parse("engine=retired");\n'
     violations = source_text_violations(source_text)
     if not any("selector" in violation.reason for violation in violations):
         print("runtime_boundary selftest: selector leak was not detected")

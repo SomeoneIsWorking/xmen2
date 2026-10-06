@@ -1,9 +1,9 @@
 /*
  * Guest threads.
  *
- * See threads.c for the whole design. The one thing a caller needs to know
+ * See threads.cpp for the whole design. The one thing a caller needs to know
  * here: exactly ONE guest thread executes at a time, under a global lock, and
- * that lock is released only at the points named in threads.c.
+ * that lock is released only at the points named in threads.cpp.
  */
 #ifndef X2_THREADS_H
 #define X2_THREADS_H
@@ -18,7 +18,7 @@ void guest_unlock(void);
 /*
  * A preemption point: if another guest thread is waiting for the lock, drop
  * it, let the scheduler choose, and take it back. Called from the dispatch
- * boundary every `quantum` crossings -- see threads.c for why a model that
+ * boundary every `quantum` crossings -- see threads.cpp for why a model that
  * only releases at syscalls cannot schedule two spinning threads.
  */
 void guest_quantum(void);
@@ -65,7 +65,7 @@ void guest_blocking_end(void);
 /*
  * Is any OTHER guest thread able to use the lock right now -- waiting on it,
  * parked in a cond wait, suspended-but-runnable, or created and never run?
- * The hand-off in threads_yield.c and the quantum in threads.c both ask it
+ * The hand-off in threads_yield.cpp and the quantum in threads.cpp both ask it
  * before giving up a turn; the answer is a snapshot, never a promise.
  */
 int scheduler_has_waiter(void);
@@ -133,7 +133,7 @@ int guest_thread_join(uint32_t handle, uint32_t ms);
 /*
  * CloseHandle on a thread handle. kernel32 REUSES handle numbers, so a record
  * that kept its handle for ever would be matched by a later thread's handle --
- * see the note in threads.c, and issue #50. A finished thread's stack and TIB
+ * see the note in threads.cpp, and issue #50. A finished thread's stack and TIB
  * are returned to the guest heap here.
  */
 void guest_thread_handle_closed(uint32_t handle);
@@ -145,12 +145,12 @@ void guest_thread_exit(uint32_t code);
    ever actually contended -- a threading model nothing contends is one that
    has never been exercised. */
 /*
- * The main thread's TLS slot, shared with kernel32.c.
+ * The main thread's TLS slot, shared with kernel32.cpp.
  *
  * It has to be a constant BOTH files agree on, because kernel32 must select
  * the main thread's TLS array from the very first TlsSetValue -- before the
  * scheduler has attached the main thread and can switch to it. See the note on
- * g_tls in kernel32.c for what the default of slot 0 cost.
+ * g_tls in kernel32.cpp for what the default of slot 0 cost.
  */
 #define GUEST_MAIN_TLS_SLOT 16
 

@@ -12,7 +12,7 @@ Direct x2native invocation loads the project .env without letting an unrelated c
 
 ## Evidence
 
-Shipping src/native/env_file.c is linked into x2native. Four CTests exercise file load, explicit-variable preservation, malformed refusal, and a discriminator with conflicting cwd/executable .env files that requires the executable project's value. Full ctest passes 38/38. Real default run logs 0 variables loaded from the repo .env and 3 launcher variables preserved, reaches 15 frames / 30 draws with 0 refused.
+Shipping src/native/env_file.cpp is linked into x2native. Four CTests exercise file load, explicit-variable preservation, malformed refusal, and a discriminator with conflicting cwd/executable .env files that requires the executable project's value. Full ctest passes 38/38. Real default run logs 0 variables loaded from the repo .env and 3 launcher variables preserved, reaches 15 frames / 30 draws with 0 refused.
 
 ## What would falsify it
 

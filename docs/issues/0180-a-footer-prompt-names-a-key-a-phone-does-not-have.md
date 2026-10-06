@@ -32,7 +32,7 @@ In touch play the key's glyphs are collapsed where the emitter writes them,
 the action's words slide into the space they left, and the rectangle those
 words landed in is published as a control. A contact inside it presses the
 DirectInput code the prompt named — not a key name round-tripped through a
-scancode table, the code itself, retained when `prompt_labels.c` composed the
+scancode table, the code itself, retained when `prompt_labels.cpp` composed the
 cap and `FUN_006281f0` had just named the binding.
 
 Nothing about the retail layout, font or wording changes, and the control

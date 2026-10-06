@@ -15,7 +15,7 @@ lookup (0x00456440) speculatively on every /input poll, at any moment. That
 retail code stricmps the NAME FIELD of every conversation-table node it walks,
 and a manager that has not started a conversation yet still holds NULL names --
 so a poll landing during map construction faulted inside host strcasecmp
-(crt.c imp_MSVCR71__stricmp). Production never does this: the conversation
+(crt.cpp imp_MSVCR71__stricmp). Production never does this: the conversation
 update override reaches FN_SLOT_OF only after its own visible gate.
 
 ## Evidence

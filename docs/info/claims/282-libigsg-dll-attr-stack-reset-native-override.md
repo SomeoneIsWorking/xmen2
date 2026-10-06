@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-04
 tags: pc,native,jit,performance,libIGSg,attr-stack
-depends: src/native/attr_stack.c#x2_override_10034d30, src/native/attr_stack.c#x2_override_10034d10, src/native/attr_stack_verify.c#attr_stack_verify_end
+depends: src/native/attr_stack.cpp#x2_override_10034d30, src/native/attr_stack.cpp#x2_override_10034d10, src/native/attr_stack_verify.cpp#attr_stack_verify_end
 ---
 
 ## Claim
@@ -28,7 +28,7 @@ executes the native override, restores initial values, executes the guest body
 via `x86_guest_body`, and asserts bit-for-bit equivalence across all fields.
 Verified across 1,740 in-game frames with zero assertion divergences.
 
-Unit tested in `tests/test_attr_stack.c` (test #76) covering all struct offsets, multi-stack loops, pointer resets, and stack balance (`C.esp`).
+Unit tested in `tests/test_attr_stack.cpp` (test #76) covering all struct offsets, multi-stack loops, pointer resets, and stack balance (`C.esp`).
 
 Measured in a 2000-frame unpaced in-game benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`):
 - With guest execution (`--set sg.attr_stack=0`): 2005 frames in 34.95s, avg frame time 16.62 ms, p50 3.29 ms, 57.4 FPS.

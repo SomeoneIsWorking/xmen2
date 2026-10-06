@@ -267,7 +267,7 @@ this route on the desktop.
 
 1. ~~**Name the reason and the size.**~~ Done above; and the route through the
    title's own message is **dead**: the port now logs the guest's stdout
-   (`crt_console.c`) and the title still prints nothing, because Alchemy's
+   (`crt_console.cpp`) and the title still prints nothing, because Alchemy's
    `igOutput::toStandardOut` is inert in this retail build. The arguments had
    to be read off the stack.
 2. Original note, kept because the diagnostic gap it names was real: `igMemoryPool::allocationFailure` takes
@@ -314,7 +314,7 @@ otherwise intact still wedges, the suspicion of `SuspendThread` is wrong.
 
 `KERNEL32!Sleep` was not counted anywhere in this port, so the heartbeat's wait
 line read "+0" through a stall whose HOTEP split was 4,948 ms of every 5,000 ms
-inside that exact call. Sleep now lives in `src/native/kernel32_wait.c` with the
+inside that exact call. Sleep now lives in `src/native/kernel32_wait.cpp` with the
 other blocking waits and feeds the same counters, and a bounded census beside
 them names the guest call sites that called it. That census found one site:
 `libIGCore+0x6431d`, which is `igPthreadThread::internalSleep`, asking for
@@ -325,19 +325,19 @@ passes.
 
 That sleeper was the wedge, through this port rather than through the title.
 `scheduler_has_waiter()` counted any thread in a condition wait as a thread the
-guest lock could be handed to, and the hand-off promise in `threads_yield.c`
+guest lock could be handed to, and the hand-off promise in `threads_yield.cpp`
 (added for #149) then waits until somebody else has taken a turn. A thread
 parked on an 83.3 ms deadline cannot take one, so every quantum yield waited
 out that deadline and the whole product advanced at the sleeper's 12 Hz. It is
 also why the browser's frame rate was terrible wherever the title ran a second
 thread.
 
-`src/native/threads_ready.c` now owns the rule, as a pure function of the
+`src/native/threads_ready.cpp` now owns the rule, as a pure function of the
 thread record and the clock: a condition waiter is a candidate when a broadcast
 has already reached it or its deadline has passed, never merely because it is
 parked. `guest_cond_broadcast` marks parked waiters ready, which is what keeps
 #149's promise meaningful for the threads it was written for.
-`tests/test_threads_ready.c` holds the rule to its negatives — a sleeper with
+`tests/test_threads_ready.cpp` holds the rule to its negatives — a sleeper with
 time left and an unsignalled untimed wait are both NOT ready.
 
 Measured on the same Zen route, retail `#play`:

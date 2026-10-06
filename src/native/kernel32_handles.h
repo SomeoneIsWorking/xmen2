@@ -61,7 +61,7 @@ Handle *k32_handle_get(uint32_t handle, int kind);
 
 /* The blocking waits' own counters: how many, how long they asked
    the scheduler to sleep, how long they slept, and the worst the
-   sleep overshot by. See the note in kernel32_wait.c. */
+   sleep overshot by. See the note in kernel32_wait.cpp. */
 void kernel32_wait_counts(unsigned long *sleeps, unsigned long long *asked_ms,
                           unsigned long long *slept_ms,
                           unsigned long *worst_oversleep_ms);

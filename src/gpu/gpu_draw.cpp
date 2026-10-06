@@ -1,0 +1,1015 @@
+#include "../native/x2_log.h"
+/* See gpu_draw.h. */
+#include "gpu_device.h"
+#include "gpu_draw.h"
+#include "gpu_draw_trace.h"
+#include "gpu_host_timer.h"
+#include "gpu_index_storage.h"
+#include "gpu_internal.h"
+#include "gpu_pipeline.h"
+#include "gpu_readback.h"
+#include "gpu_shadow.h"
+#include "gpu_staging_ring.h"
+#include "gpu_texture_format.h"
+#include "gpu_upload_batch.h"
+#include "gpu_vertex_uniforms.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifndef X2_WITH_SDL
+
+/* Without SDL there is no GPU at all. Every entry point REFUSES rather than
+   returning a handle that cannot be used -- a build with no graphics must not
+   be able to look like one that draws nothing. */
+static int no_sdl(const char *what) {
+  x2_log_error("gpu: %s -- this build has no SDL, so there is no GPU.\n", what);
+  return 0;
+}
+GpuBuffer gpu_buffer_create(GpuBufferKind k, uint32_t n) {
+  (void)k;
+  (void)n;
+  return (GpuBuffer)no_sdl("buffer create");
+}
+int gpu_buffer_upload(GpuBuffer b, uint32_t o, const void *d, uint32_t n) {
+  (void)b;
+  (void)o;
+  (void)d;
+  (void)n;
+  return no_sdl("buffer upload");
+}
+void gpu_buffer_destroy(GpuBuffer b) { (void)b; }
+uint64_t gpu_buffer_serial(GpuBuffer b) {
+  (void)b;
+  return 0;
+}
+GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat f, uint32_t l) {
+  (void)w;
+  (void)h;
+  (void)f;
+  (void)l;
+  return (GpuTexture)no_sdl("texture create");
+}
+void gpu_texture_request_format_support_report(void) {
+  no_sdl("texture format query");
+}
+void gpu_texture_flush_format_support_report(void) {}
+void gpu_draw_diagnostic_disable_depth(int enabled) { (void)enabled; }
+int gpu_texture_upload(GpuTexture t, uint32_t l, const void *d, uint32_t n) {
+  (void)t;
+  (void)l;
+  (void)d;
+  (void)n;
+  return no_sdl("texture upload");
+}
+void gpu_texture_destroy(GpuTexture t) { (void)t; }
+GpuTexture gpu_texture_create_cube(uint32_t s, GpuFormat f, uint32_t l) {
+  (void)s;
+  (void)f;
+  (void)l;
+  return (GpuTexture)no_sdl("cube texture create");
+}
+int gpu_texture_upload_face(GpuTexture t, uint32_t fc, uint32_t l,
+                            const void *d, uint32_t n) {
+  (void)t;
+  (void)fc;
+  (void)l;
+  (void)d;
+  (void)n;
+  return no_sdl("cube texture upload");
+}
+int gpu_texture_is_cube(GpuTexture t) {
+  (void)t;
+  return 0;
+}
+int gpu_draw(const GpuDraw *d) {
+  (void)d;
+  return no_sdl("draw");
+}
+void gpu_draw_report(void) {}
+void gpu_draw_counts(unsigned long *s2, unsigned long *r) { *s2 = *r = 0; }
+
+#else /* X2_WITH_SDL */
+
+/* ---- resources --------------------------------------------------------- */
+
+/*
+ * Handles are indices, not pointers.
+ *
+ * The guest holds these indirectly (a D3D8 resource object carries one), and
+ * an index into a table this file owns means a stale handle is CAUGHT -- the
+ * generation counter makes a released handle report itself rather than
+ * addressing whatever took its slot.
+ */
+typedef struct {
+  SDL_GPUBuffer *buf;
+  SDL_GPUTexture *tex;
+  uint32_t bytes;
+  uint32_t w, h;
+  GpuFormat fmt;
+  uint32_t levels;
+  uint32_t faces;   /* 1 for a 2D texture, 6 for a cube */
+  int cube_refused; /* this cube's draw refusal was reported */
+  int kind;         /* GpuBufferKind, or 0 for a texture */
+  int live;
+  uint64_t serial; /* a vertex buffer's contents, new at creation and every
+                      upload: see gpu_pass_binds.h */
+  GpuIndexStorage index; /* an index buffer's region; `buf` is its chunk */
+} Res;
+
+static uint64_t g_buffer_serial;
+
+static unsigned long g_vs_frame = (unsigned long)-1;
+static int g_diagnostic_disable_depth;
+
+void gpu_draw_diagnostic_disable_depth(int enabled) {
+  g_diagnostic_disable_depth = enabled != 0;
+  if (g_diagnostic_disable_depth)
+    x2_log_error("gpu: DEBUG depth comparison is disabled. This run "
+                 "cannot establish correct occlusion.\n");
+}
+
+/* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
+   any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
+   reads it; see gpu_frame_draws_so_far(). */
+unsigned long gpu_frame_draws_so_far(void) {
+  return gpu_draw_trace_draws_so_far();
+}
+
+int gpu_frame_had_programmable(void) {
+  /* gpu_frame_end increments the presented count before the capture hook. */
+  return g_vs_frame + 1u == gpu_frames_presented();
+}
+
+#define MAX_RES 4096
+static Res g_res[MAX_RES];
+static int g_nres;
+
+static Res *res_get(uint32_t h, int want_texture, const char *what) {
+  Res *r;
+  if (!h || h > (uint32_t)g_nres) {
+    x2_log_error("gpu: %s given handle %u, which was never created.\n", what,
+                 h);
+    return NULL;
+  }
+  r = &g_res[h - 1];
+  if (!r->live) {
+    x2_log_error("gpu: %s given handle %u, which has been destroyed.\n", what,
+                 h);
+    return NULL;
+  }
+  if (want_texture != (r->tex != NULL)) {
+    x2_log_error("gpu: %s given handle %u, which is a %s.\n", what, h,
+                 r->tex ? "texture" : "buffer");
+    return NULL;
+  }
+  return r;
+}
+
+static uint32_t res_alloc(void) {
+  int i;
+  for (i = 0; i < g_nres; i++)
+    if (!g_res[i].live) {
+      memset(&g_res[i], 0, sizeof g_res[i]);
+      return (uint32_t)i + 1;
+    }
+  if (g_nres == MAX_RES) {
+    x2_log_error("gpu: more than %d live resources.\n", MAX_RES);
+    return 0;
+  }
+  memset(&g_res[g_nres], 0, sizeof g_res[0]);
+  return (uint32_t)++g_nres;
+}
+
+GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
+  SDL_GPUBufferCreateInfo ci;
+  uint32_t h;
+  Res *r;
+
+  if (!g_gpu) {
+    x2_log_error("gpu: no device; no buffer.\n");
+    return 0;
+  }
+  if (!bytes) {
+    x2_log_error("gpu: a zero-byte buffer was asked for. Refusing: the "
+                 "guest's size calculation is wrong, and a zero buffer "
+                 "would fail at the draw instead.\n");
+    return 0;
+  }
+  if (!(h = res_alloc()))
+    return 0;
+  r = &g_res[h - 1];
+
+  if (kind == GPU_BUF_INDEX) {
+    if (!gpu_index_storage_create(&r->index, bytes))
+      return 0;
+    r->buf = r->index.buffer;
+  } else {
+    memset(&ci, 0, sizeof ci);
+    ci.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+    ci.size = bytes;
+    r->buf = SDL_CreateGPUBuffer(g_gpu, &ci);
+  }
+  if (!r->buf) {
+    x2_log_error("gpu: SDL_CreateGPUBuffer(%u) failed: %s\n", bytes,
+                 SDL_GetError());
+    return 0;
+  }
+  r->bytes = bytes;
+  r->kind = kind;
+  r->live = 1;
+  r->serial = ++g_buffer_serial;
+  return h;
+}
+
+/* How many uploads ran; their time is gpu_host_timer's. */
+static unsigned long g_uploads;
+/* Copy command buffers, owned by gpu_upload_batch and read back here so the
+   report can say whether the frame's uploads actually shared one. */
+
+/*
+ * Upload through the destination resource's retained transfer buffer.
+ *
+ * SDL_GPU has no "write straight into a GPU buffer": the data goes into a
+ * mapped transfer buffer and a copy pass moves it. gpu_staging_ring owns
+ * where those bytes go and the cycling rule; this owner records the copy
+ * command and its timing.
+ */
+static int upload_bytes(Res *r, uint32_t offset, const void *data,
+                        uint32_t bytes) {
+  GpuStagingWrite staged;
+  SDL_GPUCopyPass *cp;
+  SDL_GPUTransferBufferLocation src;
+  SDL_GPUBufferRegion dr;
+  unsigned long long t0 = gpu_host_timer_ns(), t1;
+  uint32_t base = 0;
+
+  if (r->kind == GPU_BUF_INDEX) {
+    if (!gpu_index_storage_prepare_write(&r->index))
+      return 0;
+    r->buf = r->index.buffer;
+    base = r->index.region.offset;
+  }
+  staged = gpu_staging_write(g_gpu, data, bytes);
+  if (!staged.buffer)
+    return 0;
+  t1 = gpu_host_timer_ns();
+
+  cp = gpu_upload_batch_pass(g_gpu);
+  if (!cp)
+    return 0;
+  memset(&src, 0, sizeof src);
+  memset(&dr, 0, sizeof dr);
+  src.transfer_buffer = staged.buffer;
+  src.offset = staged.offset;
+  dr.buffer = r->buf;
+  dr.offset = base + offset;
+  dr.size = bytes;
+  /*
+   * Preserve the bytes captured by draws already recorded against this
+   * buffer. D3D8 dynamic buffers are commonly drawn, discarded and filled
+   * again before Present; the frame command buffer is still open while this
+   * copy command buffer is submitted. Without cycling, the copy overwrites
+   * the backing storage both the earlier and later draws reference, so both
+   * render the last actor's vertices. SDL_GPU cycling gives subsequent
+   * commands a new backing allocation when the buffer is already bound.
+   *
+   * Bytes outside dr are undefined after a cycle. Every caller either
+   * uploads the full resource or draws only the uploaded prefix.
+   *
+   * An index buffer is a region of a chunk other buffers share, and cycling
+   * the chunk would discard theirs. gpu_index_storage_prepare_write has
+   * already moved it to a region no open command buffer reads, which is the
+   * same guarantee, so its upload is written in place.
+   */
+  SDL_UploadToGPUBuffer(cp, &src, &dr, r->kind != GPU_BUF_INDEX);
+  r->serial = ++g_buffer_serial;
+  gpu_host_timer_upload(t0, t1);
+  g_uploads++;
+  return 1;
+}
+
+int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
+                      uint32_t bytes) {
+  Res *r = res_get(b, 0, "buffer upload");
+  if (!r)
+    return 0;
+  if (!bytes)
+    return 1;
+  if ((uint64_t)offset + bytes > r->bytes) {
+    /* Not clamped. An out-of-range upload means the guest's idea of the
+       buffer's size differs from ours, and writing the part that fits
+       would leave the rest of the geometry as whatever was there. */
+    x2_log_error("gpu: upload of %u bytes at %u is outside a %u byte "
+                 "buffer. Refusing.\n",
+                 bytes, offset, r->bytes);
+    return 0;
+  }
+  return upload_bytes(r, offset, data, bytes);
+}
+
+uint64_t gpu_buffer_serial(GpuBuffer b) {
+  if (!b || b > (uint32_t)g_nres || !g_res[b - 1].live)
+    return 0;
+  return g_res[b - 1].serial;
+}
+
+void gpu_buffer_destroy(GpuBuffer b) {
+  Res *r = res_get(b, 0, "buffer destroy");
+  if (!r)
+    return;
+  if (r->kind == GPU_BUF_INDEX)
+    gpu_index_storage_destroy(&r->index);
+  else
+    SDL_ReleaseGPUBuffer(g_gpu, r->buf);
+  r->live = 0;
+}
+
+/* The 2D and the cube path differ in exactly two fields, so they share this
+   and cannot drift apart in the rest. */
+static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
+                                 uint32_t levels, uint32_t faces) {
+  SDL_GPUTextureCreateInfo ci;
+  SDL_GPUTextureFormat sf = gpu_texture_sdl_format(fmt);
+  uint32_t handle;
+  Res *r;
+
+  if (!g_gpu) {
+    x2_log_error("gpu: no device; no texture.\n");
+    return 0;
+  }
+  if (sf == SDL_GPU_TEXTUREFORMAT_INVALID) {
+    x2_log_error("gpu: texture format %d is not one this backend "
+                 "has.\n",
+                 (int)fmt);
+    return 0;
+  }
+  if (!w || !h) {
+    x2_log_error("gpu: a %ux%u texture was asked for.\n", w, h);
+    return 0;
+  }
+  if (faces == 6 && w != h) {
+    x2_log_error("gpu: a %ux%u cube texture was asked for; cube faces "
+                 "are square.\n",
+                 w, h);
+    return 0;
+  }
+  if (!(handle = res_alloc()))
+    return 0;
+  r = &g_res[handle - 1];
+
+  memset(&ci, 0, sizeof ci);
+  ci.type = (faces == 6) ? SDL_GPU_TEXTURETYPE_CUBE : SDL_GPU_TEXTURETYPE_2D;
+  ci.format = sf;
+  ci.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+  ci.width = w;
+  ci.height = h;
+  ci.layer_count_or_depth = faces;
+  ci.num_levels = levels ? levels : 1;
+  r->tex = SDL_CreateGPUTexture(g_gpu, &ci);
+  if (!r->tex) {
+    x2_log_error("gpu: SDL_CreateGPUTexture(%ux%u, %u face(s)) failed: "
+                 "%s\n",
+                 w, h, faces, SDL_GetError());
+    return 0;
+  }
+  r->w = w;
+  r->h = h;
+  r->bytes = gpu_texture_level_bytes(fmt, w, h);
+  r->fmt = fmt;
+  r->levels = ci.num_levels;
+  r->faces = faces;
+  r->live = 1;
+  return handle;
+}
+
+GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
+                              uint32_t levels) {
+  return texture_create(w, h, fmt, levels, 1);
+}
+
+GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
+                                   uint32_t levels) {
+  return texture_create(size, size, fmt, levels, 6);
+}
+
+int gpu_texture_is_cube(GpuTexture t) {
+  if (!t || t > (uint32_t)g_nres)
+    return 0;
+  return g_res[t - 1].live && g_res[t - 1].tex && g_res[t - 1].faces == 6;
+}
+
+int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
+                            const void *data, uint32_t bytes) {
+  GpuStagingWrite staged;
+  SDL_GPUCopyPass *cp;
+  SDL_GPUTextureTransferInfo src;
+  SDL_GPUTextureRegion dr;
+  Res *r = res_get(t, 1, "texture upload");
+  uint32_t lw, lh;
+  const void *upload_data = data;
+  uint32_t upload_bytes = bytes;
+  uint8_t *expanded = NULL;
+  unsigned long long t0, t1;
+
+  if (!r)
+    return 0;
+  if (level >= r->levels) {
+    x2_log_error("gpu: upload to level %u of a %u-level texture.\n", level,
+                 r->levels);
+    return 0;
+  }
+  if (face >= r->faces) {
+    x2_log_error("gpu: upload to face %u of a texture with %u face(s).\n", face,
+                 r->faces);
+    return 0;
+  }
+  lw = r->w >> level;
+  if (!lw)
+    lw = 1;
+  lh = r->h >> level;
+  if (!lh)
+    lh = 1;
+  if (r->fmt == GPU_FMT_BGR8) {
+    uint32_t source_bytes = lw * lh * 3u;
+    upload_bytes = lw * lh * 4u;
+    if (bytes != source_bytes) {
+      x2_log_error("gpu: BGR8 upload is %u byte(s), expected %u for "
+                   "%ux%u.\n",
+                   bytes, source_bytes, lw, lh);
+      return 0;
+    }
+    expanded = malloc(upload_bytes);
+    if (!expanded)
+      return 0;
+    gpu_bgr8_to_bgra8(data, expanded, lw * lh);
+    upload_data = expanded;
+  }
+  t0 = gpu_host_timer_ns();
+
+  staged = gpu_staging_write(g_gpu, upload_data, upload_bytes);
+  free(expanded);
+  if (!staged.buffer)
+    return 0;
+  t1 = gpu_host_timer_ns();
+
+  cp = gpu_upload_batch_pass(g_gpu);
+  if (!cp)
+    return 0;
+  memset(&src, 0, sizeof src);
+  memset(&dr, 0, sizeof dr);
+  src.transfer_buffer = staged.buffer;
+  src.offset = staged.offset;
+  dr.texture = r->tex;
+  dr.mip_level = level;
+  dr.layer = face;
+  dr.w = lw;
+  dr.h = lh;
+  dr.d = 1;
+  SDL_UploadToGPUTexture(cp, &src, &dr, false);
+  gpu_host_timer_upload(t0, t1);
+  g_uploads++;
+  return 1;
+}
+
+int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
+                       uint32_t bytes) {
+  return gpu_texture_upload_face(t, 0, level, data, bytes);
+}
+
+void gpu_texture_destroy(GpuTexture t) {
+  Res *r = res_get(t, 1, "texture destroy");
+  if (!r)
+    return;
+  SDL_ReleaseGPUTexture(g_gpu, r->tex);
+  r->live = 0;
+}
+
+/* ---- the draw ---------------------------------------------------------- */
+
+typedef struct {
+  uint32_t texture_op;
+  uint32_t alpha_test;
+  float alpha_ref;
+  uint32_t is_cube;
+  uint32_t color_arg1, color_arg2;
+  uint32_t alpha_op, alpha_arg1, alpha_arg2;
+  uint32_t pad[3]; /* std140: vec4 starts on a 16-byte row */
+  float tfactor[4];
+  uint32_t stage1_enabled, stage1_color_op;
+  uint32_t stage1_color_arg1, stage1_color_arg2;
+  uint32_t stage1_alpha_op, stage1_alpha_arg1, stage1_alpha_arg2;
+  uint32_t stage1_pad;
+  uint32_t shadow_enabled;
+  float shadow_bias;
+  float shadow_darkness;
+  float shadow_texel_x;
+  float shadow_texel_y;
+  float shadow_pad[3];
+} PixelUniforms;
+
+/* GpuTexArg -> the shader's 0 diffuse / 1 texture / 2 factor, with
+   GPU_TA_DEFAULT taking the slot's own D3D8 default. */
+static uint32_t arg_of(int a, uint32_t dflt) {
+  switch (a) {
+  case GPU_TA_DIFFUSE:
+    return 0u;
+  case GPU_TA_TEXTURE:
+    return 1u;
+  case GPU_TA_TFACTOR:
+    return 2u;
+  case GPU_TA_CURRENT:
+    return 3u;
+  default:
+    return dflt;
+  }
+}
+
+static unsigned long g_draws, g_refused, g_depth_ignored;
+static unsigned long g_refused_index_range;
+
+/* The 1x1 white texture an untextured draw binds. Created once, never inside
+   an open render pass -- see gpu_draw. */
+static GpuTexture g_white, g_white_cube;
+
+static uint32_t index_count(GpuPrimitive p, uint32_t prims) {
+  switch (p) {
+  case GPU_PRIM_TRIANGLELIST:
+    return prims * 3u;
+  case GPU_PRIM_TRIANGLESTRIP:
+    return prims + 2u;
+  case GPU_PRIM_LINELIST:
+    return prims * 2u;
+  }
+  return 0;
+}
+
+static int refuse(const char *why) {
+  x2_log_error("gpu: draw REFUSED -- %s\n", why);
+  g_refused++;
+  return 0;
+}
+
+int gpu_draw(const GpuDraw *d) {
+  PipeKey key;
+  SDL_GPUGraphicsPipeline *pipe;
+  SDL_GPUBufferBinding vb, ib;
+  SDL_GPUTextureSamplerBinding tsb;
+  PixelUniforms pu;
+  GpuShadowSample shadow;
+  Res *vres, *ires = NULL, *tres = NULL, *tres1 = NULL, *cres = NULL;
+  SDL_GPUSampler *smp, *smp1;
+  unsigned long long t0 = gpu_host_timer_ns();
+  uint32_t n;
+  int depth_test;
+
+  if (!g_cmd)
+    return refuse("no frame is open");
+  if (!(vres = res_get(d->vertices, 0, "draw"))) {
+    g_refused++;
+    return 0;
+  }
+  if (!d->vertex_stride)
+    return refuse("a vertex stride of zero");
+  if (d->pos_offset < 0)
+    return refuse("no position in the vertex format");
+  if (!(n = index_count(d->prim, d->prim_count)))
+    return refuse("a primitive type this backend does not have");
+  if (d->indices && !(ires = res_get(d->indices, 0, "draw"))) {
+    g_refused++;
+    return 0;
+  }
+  /* Where the draw starts in the chunk its indices share. */
+  const uint32_t isz = d->index_is_32bit ? 4u : 2u;
+  const uint32_t chunk_first_index =
+      ires ? d->first_index + ires->index.region.offset / isz : 0u;
+  /*
+   * A combiner stage does NOT imply a bound texture.
+   *
+   * SELECTARG2 over the texture factor samples nothing, so demanding a real
+   * handle here refused 1,043 draws a run the moment those stages stopped
+   * being bypassed -- the sky dome among them, which is how a fix for a
+   * white sky produced a white sky with fewer draws in it. The placeholder
+   * below covers the slot the shader declares; the combiner simply does not
+   * read it.
+   */
+  if (d->texop != GPU_TEXOP_NONE && d->texture) {
+    if (!(tres = res_get(d->texture, 1, "draw"))) {
+      g_refused++;
+      return 0;
+    }
+    /*
+     * A cube bound to the texture stage is refused, not sampled as its
+     * first face.
+     *
+     * The fixed-function fragment shader declares a 2D sampler; there is
+     * no combination of bindings that makes it sample a cube. Substituting
+     * face 0 would draw the geometry with a plausible-looking wrong
+     * reflection, which reads as an art bug. Once per texture, with the
+     * count in the report, so a scene full of them says so once.
+     */
+    if (tres->faces != 1 && d->texgen == GPU_TEXGEN_NONE) {
+      /*
+       * A cube with NO generated direction is still refused.
+       *
+       * Cube sampling itself is implemented now, but a cube is addressed
+       * by a direction and this draw has none -- its texture coordinates
+       * are a 2D pair, if it has any at all. Sampling face 0, or
+       * building a direction out of the UVs, would draw a
+       * plausible-looking wrong reflection, which reads as an art bug
+       * and is exactly what this refusal exists to prevent.
+       */
+      if (!tres->cube_refused) {
+        x2_log_error("gpu: a CUBE texture (handle %u, %ux%u) was "
+                     "bound with NO texture-coordinate generator, so there "
+                     "is no direction to sample it with and the draw is "
+                     "refused. (Cube sampling itself is implemented -- see "
+                     "GpuTexGen; this is a draw that did not ask for it.)\n",
+                     d->texture, tres->w, tres->h);
+        tres->cube_refused = 1;
+      }
+      g_refused++;
+      return 0;
+    }
+  }
+  if (d->texop1 != GPU_TEXOP_NONE && d->texture1) {
+    if (!(tres1 = res_get(d->texture1, 1, "draw stage 1"))) {
+      g_refused++;
+      return 0;
+    }
+    if (tres1->faces != 1)
+      return refuse("texture stage 1 binds a cube; only 2D is evidenced");
+  }
+
+  /*
+   * Everything that can allocate or submit happens BEFORE the render pass
+   * opens.
+   *
+   * Creating the placeholder texture inside an open pass submits a copy-pass
+   * command buffer of its own, and the draw that triggered it was silently
+   * lost -- the very first draw produced nothing while every later one
+   * worked, because by then the texture existed. Nothing here is an
+   * optimisation; it is the order the API requires.
+   */
+  if (!tres) {
+    if (!g_white) {
+      static const uint32_t px = 0xFFFFFFFFu;
+      g_white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
+      if (g_white)
+        gpu_texture_upload(g_white, 0, &px, sizeof px);
+    }
+    if (!g_white)
+      return refuse("no placeholder texture could be made");
+    if (!(tres = res_get(g_white, 1, "draw"))) {
+      g_refused++;
+      return 0;
+    }
+  }
+  /*
+   * The shader declares BOTH a 2D sampler and a cube one, so both are bound
+   * on every draw whatever it uses. An unbound sampler a shader declares is
+   * a Vulkan validation error, and a build with no validation layer does not
+   * fail -- it reads undefined texels, which is the kind of wrong that only
+   * appears on somebody else's driver. Made here, before the pass opens, for
+   * the same reason g_white is: creating a texture submits a copy pass.
+   */
+  if (!g_white) {
+    /* Needed even by a textured draw now: a CUBE draw leaves the 2D slot
+       with nothing real to bind, and the shader declares it. */
+    static const uint32_t px = 0xFFFFFFFFu;
+    g_white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
+    if (g_white)
+      gpu_texture_upload(g_white, 0, &px, sizeof px);
+  }
+  if (!g_white)
+    return refuse("no placeholder texture could be made");
+  if (!g_white_cube) {
+    static const uint32_t px = 0xFFFFFFFFu;
+    unsigned f;
+    g_white_cube = gpu_texture_create_cube(1, GPU_FMT_BGRA8, 1);
+    for (f = 0; f < 6 && g_white_cube; f++)
+      gpu_texture_upload_face(g_white_cube, f, 0, &px, sizeof px);
+  }
+  if (!g_white_cube)
+    return refuse("no placeholder cube texture could be made");
+  if (!(cres = res_get(g_white_cube, 1, "draw"))) {
+    g_refused++;
+    return 0;
+  }
+  if (!tres1 && !(tres1 = res_get(g_white, 1, "draw stage 1"))) {
+    g_refused++;
+    return 0;
+  }
+  /* The real cube, when this draw has one, replaces the placeholder -- and
+     then the 2D slot takes the placeholder instead. */
+  if (tres && tres->faces == 6) {
+    cres = tres;
+    tres = res_get(g_white, 1, "draw");
+  }
+
+  if (d->programmable)
+    g_vs_frame = gpu_frames_presented();
+  memset(&key, 0, sizeof key); /* padding too: the key is memcmp'd */
+  key.stride = d->vertex_stride;
+  key.pos_offset = d->pos_offset;
+  key.pos_is_float4 = (d->pretransformed || d->programmable) ? 1 : 0;
+  key.color_is_float4 = d->programmable ? 1 : 0;
+  key.specular_is_float4 = d->programmable ? 1 : 0;
+  key.color_offset = d->color_offset;
+  key.specular_offset = d->specular_offset;
+  key.uv_offset = d->uv_offset;
+  key.normal_offset = d->normal_offset;
+  key.prim = (int)d->prim;
+  key.blend_enable = d->blend_enable;
+  key.src_blend = (int)d->src_blend;
+  key.dst_blend = (int)d->dst_blend;
+  depth_test = d->depth_test && !g_diagnostic_disable_depth;
+  key.depth_test = depth_test;
+  key.depth_write = d->depth_write;
+  key.depth_func = (int)d->depth_func;
+  key.cull = (int)d->cull;
+  key.pretransformed = d->pretransformed;
+  if (d->vs_program) {
+    key.vs_program = 1;
+    key.vs_inputs = d->vs_program->inputs;
+  }
+
+  if (d->blend_enable && (!gpu_blend_supported(d->src_blend) ||
+                          !gpu_blend_supported(d->dst_blend)))
+    return refuse("a blend factor this backend does not have");
+  if (depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
+      !g_depth_ignored++)
+    x2_log_error("gpu: the depth test is requested and this device has "
+                 "no depth format, so it is IGNORED. Everything draws "
+                 "in submission order. Reported once.\n");
+
+  if (!gpu_draw_trace_consider(d, gpu_frames_presented()))
+    return 1;
+
+  if (!(pipe = gpu_pipeline_for(&key))) {
+    g_refused++;
+    return 0;
+  }
+  if (!(smp = gpu_sampler_for(
+            d->texture_clamp, d->texture_point, d->texture_min_filter,
+            d->texture_mip, d->texture_lod_bias, d->texture_max_anisotropy))) {
+    g_refused++;
+    return 0;
+  }
+  if (!(smp1 = gpu_sampler_for(d->texture_clamp1, d->texture_point1,
+                               d->texture_min_filter1, d->texture_mip1,
+                               d->texture_lod_bias1,
+                               d->texture_max_anisotropy1))) {
+    g_refused++;
+    return 0;
+  }
+
+  if (ires)
+    gpu_index_storage_note_draw(&ires->index);
+  if (!ires || (uint64_t)(d->first_index + n) * isz <= ires->bytes)
+    gpu_shadow_record(d, vres->buf, vres->serial, ires ? ires->buf : NULL,
+                      chunk_first_index, tres->tex, smp, n);
+  gpu_shadow_sample(d, &shadow);
+
+  gpu_pass_begin();
+  if (!g_pass)
+    return refuse("the render pass could not be opened");
+  if (gpu_pass_binds_pipeline_changed(gpu_pass_binds(), pipe))
+    SDL_BindGPUGraphicsPipeline(g_pass, pipe);
+
+  if (gpu_pass_binds_vertex_changed(gpu_pass_binds(), vres->buf,
+                                    vres->serial)) {
+    memset(&vb, 0, sizeof vb);
+    vb.buffer = vres->buf;
+    vb.offset = 0;
+    SDL_BindGPUVertexBuffers(g_pass, 0, &vb, 1);
+  }
+
+  gpu_vertex_uniforms_push(g_cmd, d, &shadow);
+
+  memset(&pu, 0, sizeof pu);
+  pu.texture_op = (uint32_t)d->texop;
+  pu.alpha_test = d->alpha_test ? 1u : 0u;
+  pu.alpha_ref = d->alpha_ref;
+  pu.is_cube = (d->texgen != GPU_TEXGEN_NONE && d->texture &&
+                gpu_texture_is_cube(d->texture))
+                   ? 1u
+                   : 0u;
+  /* GPU_TA_DEFAULT resolves HERE, to D3D8's default for that slot, so a
+     zeroed draw keeps the meaning it had before these fields existed. The
+     shader sees only 0 diffuse / 1 texture / 2 factor. */
+  pu.color_arg1 = arg_of(d->color_arg1, 1u);
+  pu.color_arg2 = arg_of(d->color_arg2, 0u);
+  pu.alpha_op = d->alpha_op ? (uint32_t)d->alpha_op : pu.texture_op;
+  pu.alpha_arg1 = arg_of(d->alpha_arg1, 1u);
+  pu.alpha_arg2 = arg_of(d->alpha_arg2, 0u);
+  memcpy(pu.tfactor, d->texture_factor, sizeof pu.tfactor);
+  pu.stage1_enabled = d->texop1 != GPU_TEXOP_NONE;
+  pu.stage1_color_op = (uint32_t)d->texop1;
+  pu.stage1_color_arg1 = arg_of(d->color_arg1_1, 1u);
+  pu.stage1_color_arg2 = arg_of(d->color_arg2_1, 3u);
+  pu.stage1_alpha_op =
+      d->alpha_op1 ? (uint32_t)d->alpha_op1 : (uint32_t)d->texop1;
+  pu.stage1_alpha_arg1 = arg_of(d->alpha_arg1_1, 1u);
+  pu.stage1_alpha_arg2 = arg_of(d->alpha_arg2_1, 3u);
+  pu.shadow_enabled = shadow.enabled ? 1u : 0u;
+  pu.shadow_bias = shadow.depth_bias;
+  pu.shadow_darkness = shadow.darkness;
+  pu.shadow_texel_x = shadow.texel_size[0];
+  pu.shadow_texel_y = shadow.texel_size[1];
+  SDL_PushGPUFragmentUniformData(g_cmd, 0, &pu, sizeof pu);
+
+  /* The sampler is bound even when the draw is untextured: the fragment
+     shader declares one, so an unbound sampler is a validation error and,
+     without a validation layer, undefined pixels. */
+  {
+    SDL_GPUTextureSamplerBinding tsb2[4];
+    memset(tsb2, 0, sizeof tsb2);
+    tsb2[0].texture = tres->tex;
+    tsb2[0].sampler = smp;
+    tsb2[1].texture = cres->tex;
+    tsb2[1].sampler = smp;
+    tsb2[2].texture = tres1->tex;
+    tsb2[2].sampler = smp1;
+    tsb2[3] = gpu_shadow_binding(shadow.enabled);
+    const void *const pairs[2 * kGpuPassFragmentSamplers] = {
+        tsb2[0].texture, tsb2[0].sampler, tsb2[1].texture, tsb2[1].sampler,
+        tsb2[2].texture, tsb2[2].sampler, tsb2[3].texture, tsb2[3].sampler};
+    if (gpu_pass_binds_samplers_changed(gpu_pass_binds(), pairs,
+                                        kGpuPassFragmentSamplers))
+      SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, kGpuPassFragmentSamplers);
+  }
+  (void)tsb;
+
+  if (ires) {
+    /*
+     * The index range has to FIT the buffer that is bound.
+     *
+     * Vulkan says so, and a validation layer will say so -- but only if
+     * one is loaded, and only into a log nobody reads during a 60fps run.
+     * Without the layer the draw reads past the end of the buffer and the
+     * result is garbage geometry, which is how issue #38's broken text
+     * looked: a panel that draws perfectly and letters that do not.
+     *
+     * Refused, with every number that identifies the caller, rather than
+     * clamped. Clamping would draw a SHORTER version of whatever the
+     * engine asked for -- a subtly wrong picture that leads nowhere.
+     */
+    uint64_t need = (uint64_t)(d->first_index + n) * isz;
+    if (need > ires->bytes) {
+      static unsigned long told;
+      if (told++ < 4)
+        x2_log_error("gpu: draw REFUSED -- the index range runs off the end "
+                     "of the bound index buffer.\n"
+                     "  %u index/indices of %u byte(s) from index %u needs "
+                     "%llu byte(s); the buffer is %u.\n"
+                     "  gpu handle %u.\n"
+                     "  primitive %d, %u primitive(s), base vertex %d. "
+                     "Either the engine bound the wrong buffer or this "
+                     "layer sized it wrong.%s\n",
+                     n, isz, d->first_index, (unsigned long long)need,
+                     ires->bytes, (unsigned)d->indices, d->prim, d->prim_count,
+                     (int)d->base_vertex,
+                     told == 4 ? " (further ones are counted only)" : "");
+      g_refused++;
+      g_refused_index_range++;
+      return 0;
+    }
+    if (gpu_pass_binds_index_changed(gpu_pass_binds(), ires->buf, isz)) {
+      memset(&ib, 0, sizeof ib);
+      ib.buffer = ires->buf;
+      ib.offset = 0;
+      SDL_BindGPUIndexBuffer(g_pass, &ib,
+                             d->index_is_32bit
+                                 ? SDL_GPU_INDEXELEMENTSIZE_32BIT
+                                 : SDL_GPU_INDEXELEMENTSIZE_16BIT);
+    }
+    SDL_DrawGPUIndexedPrimitives(g_pass, n, 1, chunk_first_index,
+                                 (Sint32)d->base_vertex, 0);
+  } else {
+    SDL_DrawGPUPrimitives(g_pass, n, 1, d->first_vertex, 0);
+  }
+  g_draws++;
+  /* Accepted draws only. A refused draw escapes the timer: it reports
+     itself loudly and consumes a negligible share, so chasing timing
+     through every early-return refusal would add an instrument to the very
+     paths the run tells us never fire. State scores the accepted cost of a
+     frame, which is the number a hotspot story has to rest on. */
+  gpu_host_timer_draw(t0);
+  return 1;
+}
+
+void gpu_draw_counts(unsigned long *submitted, unsigned long *refused) {
+  *submitted = g_draws;
+  *refused = g_refused;
+}
+
+/*
+ * The frame-phase profiler's draw side, for the heartbeat.
+ *
+ * The counterpart (frame wall time, submit count) lives in gpu_device.cpp; the
+ * two together are what attribute a frame's host cost. Deltas of these across
+ * a heartbeat period are easier to trust than the run's totals, which is how
+ * the heartbeat reads every counter.
+ */
+void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
+                   unsigned long long *upload_alloc_ns,
+                   unsigned long long *upload_record_ns,
+                   unsigned long long *transfer_creates, unsigned long *uploads,
+                   unsigned long *submits) {
+  GpuHostTimes times = gpu_host_timer_totals();
+  *draw_ns = times.draw_ns;
+  *upload_ns = times.upload_ns;
+  *upload_alloc_ns = times.upload_alloc_ns;
+  *upload_record_ns = times.upload_record_ns;
+  /* The ring owns the allocation count, so the report cannot drift from what
+     the driver was actually asked for. */
+  gpu_staging_ring_stats(NULL, transfer_creates, NULL);
+  *uploads = g_uploads;
+  *submits = gpu_upload_batch_submits();
+}
+
+/* What the driver was asked to allocate for staging, from its owner. */
+static unsigned long staging_allocs(void) {
+  unsigned long long allocs = 0;
+  gpu_staging_ring_stats(NULL, &allocs, NULL);
+  return (unsigned long)allocs;
+}
+
+void gpu_draw_report(void) {
+  const unsigned long batches = gpu_upload_batch_submits();
+  GpuHostTimes times = gpu_host_timer_totals();
+  x2_log_info(
+      "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
+      "(%d still cached; the device teardown empties the cache, so these "
+      "differ whenever the engine released the device first)\n",
+      g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
+  x2_log_info("        of those draws, %lu kept the pass's pipeline, %lu "
+              "its vertex buffer, %lu its index buffer and %lu its samplers, "
+              "none bound again\n",
+              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->vertices_kept,
+              gpu_pass_binds()->indices_kept, gpu_pass_binds()->samplers_kept);
+  if (g_draws)
+    x2_log_info("        %lu upload(s) using %lu transfer-buffer alloc(s), "
+                "batched into %lu command buffer(s)\n",
+                g_uploads, staging_allocs(), batches);
+  if (g_draws && gpu_host_timer_armed())
+    x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
+                "total (%.3f alloc+copy, %.3f record)\n",
+                (double)times.draw_ns * 1e-9, (double)times.upload_ns * 1e-9,
+                (double)times.upload_alloc_ns * 1e-9,
+                (double)times.upload_record_ns * 1e-9);
+  if (g_draws && !gpu_host_timer_armed())
+    x2_log_info("        draw and upload host time not timed "
+                "(gpu.host_timing=1 times it)\n");
+  if (!g_draws)
+    x2_log_info("        NOTHING was drawn. Either no draw call reached this "
+                "backend, or every one was refused above.\n");
+  if (g_refused_index_range)
+    x2_log_info("        %lu of those ran off the end of their index buffer -- "
+                "see issue #38; each said which numbers did not fit.\n",
+                g_refused_index_range);
+  if (g_depth_ignored)
+    x2_log_info("        %lu draw(s) asked for a depth test there is no target "
+                "for; they drew in submission order.\n",
+                g_depth_ignored);
+  gpu_draw_trace_report();
+  gpu_shadow_report();
+  gpu_index_storage_report();
+}
+
+void gpu_draw_shutdown(void) {
+  int i;
+  if (!g_gpu)
+    return;
+  gpu_shadow_shutdown();
+  gpu_offscreen_end();
+  gpu_pipeline_shutdown();
+  /* The staging pages belong to the device that is going away, and this is
+     the upload owner: the device teardown does not need to know they
+     exist. */
+  gpu_staging_ring_destroy(g_gpu);
+  for (i = 0; i < g_nres; i++)
+    if (g_res[i].live) {
+      if (g_res[i].buf && g_res[i].kind != GPU_BUF_INDEX)
+        SDL_ReleaseGPUBuffer(g_gpu, g_res[i].buf);
+      if (g_res[i].tex)
+        SDL_ReleaseGPUTexture(g_gpu, g_res[i].tex);
+      g_res[i].live = 0;
+    }
+  g_nres = 0;
+  gpu_index_storage_shutdown(g_gpu);
+  /*
+   * The placeholder texture's HANDLE is an index into the table just
+   * emptied, so keeping it across a device teardown means the next device's
+   * first untextured draw looks up a handle that no longer exists and is
+   * refused -- "draw given handle 2, which was never created". Found by the
+   * depth self-test, which is the first thing to create a second device in
+   * one process; the game does the same on any Reset.
+   */
+  g_white = 0;
+  g_white_cube = 0;
+}
+
+#endif /* X2_WITH_SDL */

@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 /* Presentation policy for the boot's own branding, composed by the console
- * command override in startup.c:
+ * command override in startup.cpp:
  *
  *   - an env-gated trace of the boot's console commands, so a boot question
  *     ("who loads the legal map?") is answered from a run instead of guessed;

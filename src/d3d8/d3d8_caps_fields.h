@@ -2,7 +2,7 @@
  * D3DCAPS8, field by field, ONCE -- so the port and the stock game can be
  * asked the same question in the same words.
  *
- * src/d3d8/d3d8_caps.c is a DECLARED PROFILE: every bit is a promise to the
+ * src/d3d8/d3d8_caps.cpp is a DECLARED PROFILE: every bit is a promise to the
  * engine, and igCapabilityManager reads it once and branches on it for the
  * rest of the run. Its own header says so, and says what settles it: "any
  * engine behaviour that depends on a bit here and does not match the Wine

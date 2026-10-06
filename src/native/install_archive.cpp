@@ -134,10 +134,11 @@ bool accept_preparation(const std::filesystem::path &preparing,
 
 } // namespace
 
-extern "C" int
-x2_install_archive_prepare_to(const char *archive, const char *destination_text,
-                              char *executable, unsigned executable_capacity,
-                              char *reason, unsigned reason_capacity) {
+int x2_install_archive_prepare_to(const char *archive,
+                                  const char *destination_text,
+                                  char *executable,
+                                  unsigned executable_capacity, char *reason,
+                                  unsigned reason_capacity) {
   if (!archive || !*archive || !destination_text || !*destination_text ||
       !executable || executable_capacity < 2 || !reason || reason_capacity < 2)
     return 0;
@@ -188,7 +189,7 @@ x2_install_archive_prepare_to(const char *archive, const char *destination_text,
   return 1;
 }
 
-extern "C" int x2_install_archive_extract_unpublished(
+int x2_install_archive_extract_unpublished(
     const char *archive, const char *destination_text, char *executable,
     unsigned executable_capacity, char *reason, unsigned reason_capacity,
     x2_install_archive_progress progress, void *progress_context) {
@@ -230,10 +231,9 @@ extern "C" int x2_install_archive_extract_unpublished(
   return 1;
 }
 
-extern "C" int x2_install_archive_prepare(const char *archive, char *executable,
-                                          unsigned executable_capacity,
-                                          char *reason,
-                                          unsigned reason_capacity) {
+int x2_install_archive_prepare(const char *archive, char *executable,
+                               unsigned executable_capacity, char *reason,
+                               unsigned reason_capacity) {
   const char *base = x2_config_directory();
   if (!base || !x2_config_directory_ensure()) {
     std::snprintf(reason, reason_capacity,

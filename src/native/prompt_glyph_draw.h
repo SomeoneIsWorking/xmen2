@@ -1,4 +1,4 @@
-/* Prompt glyphs at the text renderer -- see prompt_glyph_draw.c. */
+/* Prompt glyphs at the text renderer -- see prompt_glyph_draw.cpp. */
 #ifndef X2_PROMPT_GLYPH_DRAW_H
 #define X2_PROMPT_GLYPH_DRAW_H
 

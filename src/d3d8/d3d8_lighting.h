@@ -4,7 +4,7 @@
 /*
  * D3DRS_LIGHTING: the material, the light table, and what a draw is lit by.
  *
- * Split from d3d8_drawcall.c, which translates the rest of the state machine.
+ * Split from d3d8_drawcall.cpp, which translates the rest of the state machine.
  * Lighting is its own concern because it has its own layout knowledge
  * (D3DMATERIAL8 is 17 floats, D3DLIGHT8 26 dwords, both read by offset in ONE
  * place), its own diagnostics, and its own survey of what the engine actually

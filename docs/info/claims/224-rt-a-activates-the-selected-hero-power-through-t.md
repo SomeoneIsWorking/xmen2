@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-20
 tags: input,pad,gameplay
-depends: src/native/dinput_pad.c#dinput_pad_axis, src/native/xbox_defaults.c
+depends: src/native/dinput_pad.cpp#dinput_pad_axis, src/native/xbox_defaults.cpp
 ---
 
 ## Claim

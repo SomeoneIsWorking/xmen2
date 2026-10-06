@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Extract a selected ZIP into a prepared user-data tree, validate the unique
  * XMen2.exe, and atomically replace the earlier accepted ZIP extraction. The
  * previous valid tree survives every preparation failure. */
@@ -32,9 +28,5 @@ int x2_install_archive_extract_unpublished(
     const char *archive, const char *destination, char *executable,
     unsigned executable_capacity, char *reason, unsigned reason_capacity,
     x2_install_archive_progress progress, void *progress_context);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_INSTALL_ARCHIVE_H */

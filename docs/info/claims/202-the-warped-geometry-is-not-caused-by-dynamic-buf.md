@@ -13,7 +13,7 @@ The warped geometry is NOT caused by dynamic-buffer upload ordering: no buffer i
 
 ## Evidence
 
-src/d3d8/d3d8_resource.c marks every vertex and index buffer at draw time (d3d8_resource_note_drawn, called from fill_request) and buf_Unlock counts an unlock whose buffer was drawn from in the SAME presented frame. That is the exact hazard: gpu_buffer_upload (src/gpu/gpu_draw.c:207-222) acquires its own command buffer and submits it immediately while the frame's command buffer stays open until Present (src/gpu/gpu_device.c:676), so a mid-frame upload reaches the GPU BEFORE every draw of that frame. Measured in a run driven into gameplay by hand (scratch/logs/f9probe.log): 12994 unlocks, 12762 of them D3DLOCK_DISCARD, 457 MB moved -- and 0 rewrote a buffer this frame's draws had already read, 0 relocked within one frame. The earlier counter (relocked-in-one-frame) did not answer this and was replaced.
+src/d3d8/d3d8_resource.cpp marks every vertex and index buffer at draw time (d3d8_resource_note_drawn, called from fill_request) and buf_Unlock counts an unlock whose buffer was drawn from in the SAME presented frame. That is the exact hazard: gpu_buffer_upload (src/gpu/gpu_draw.cpp:207-222) acquires its own command buffer and submits it immediately while the frame's command buffer stays open until Present (src/gpu/gpu_device.cpp:676), so a mid-frame upload reaches the GPU BEFORE every draw of that frame. Measured in a run driven into gameplay by hand (scratch/logs/f9probe.log): 12994 unlocks, 12762 of them D3DLOCK_DISCARD, 457 MB moved -- and 0 rewrote a buffer this frame's draws had already read, 0 relocked within one frame. The earlier counter (relocked-in-one-frame) did not answer this and was replaced.
 
 ## What would falsify it
 

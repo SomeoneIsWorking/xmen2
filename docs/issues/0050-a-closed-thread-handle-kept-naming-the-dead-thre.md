@@ -31,7 +31,7 @@ the live one that needed them.
 ## Root cause
 
 kernel32 hands out small table indices as handles and `CloseHandle` frees the
-slot, so the NEXT `_beginthreadex` is given the same number. `threads.c` kept
+slot, so the NEXT `_beginthreadex` is given the same number. `threads.cpp` kept
 `t->handle` for ever, and `by_handle()` scans in creation order -- so it
 matched the DEAD thread first. `ResumeThread` woke a corpse (returning "was not
 suspended", which is true and useless), and the new decoder stayed suspended

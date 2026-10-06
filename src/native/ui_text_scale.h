@@ -3,7 +3,7 @@
 
 /* The factor every glyph the engine loads is scaled by. `ui.text_scale` in
    x2native.conf, X2_TEXT_SCALE in the environment, or AUTO (0) -- which holds
-   the share of the screen the text has at 800x600. See ui_text_scale.c for
+   the share of the screen the text has at 800x600. See ui_text_scale.cpp for
    the measurement this rests on. */
 float x2_ui_text_scale(void);
 

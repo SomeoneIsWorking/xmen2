@@ -56,7 +56,7 @@ STATIC_POLICY_OWNERS = {
     "tools/x2_source_policy.py",
 }
 
-CONFIG_OWNER = "src/config/environment.c"
+CONFIG_OWNER = "src/config/environment.cpp"
 PRODUCT_SOURCE_GROUPS = ("x2_runtime_services", "x2_rmlui_ui")
 DIRECT_ENVIRONMENT = re.compile(
     r"\b(?:getenv|secure_getenv|_wgetenv|setenv|unsetenv)\s*\(|"

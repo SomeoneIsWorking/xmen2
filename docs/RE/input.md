@@ -60,13 +60,13 @@ per-axis gate was the only thing in the way.
 
 ## The port's answer
 
-`src/native/stick_axis_override.c` overrides `FUN_0061a4c0` for the eight
+`src/native/stick_axis_override.cpp` overrides `FUN_0061a4c0` for the eight
 signed calls only: any non-zero value is stored, with the retail side effects
 (held bit, signed store, `ST(0)` return, `EAX` = `slots`). The sign-0 calls run
 the retail body unchanged.
 
 The dead zone the 0.75 used to supply moves to where both components of a
-stick are known: the pad sample (`dinput_pad_sample.c`) applies a radial dead
+stick are known: the pad sample (`dinput_pad_sample.cpp`) applies a radial dead
 zone with XInput's recommended radii (`pad_stick_dead_zone.h`) and rescales
 past it. The synthetic pad that the touch stick drives is exempt, because the
 touch stick has its own dead zone (`src/input/thumb_stick.cpp`).

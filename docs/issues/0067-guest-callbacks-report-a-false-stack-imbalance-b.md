@@ -12,7 +12,7 @@ updated: 2026-08-14
 
 Every full smoke run reported that DirectInput's
 `enumerateMouseAndKeyboard` callback returned with ESP eight bytes higher,
-calling it a `ret N` whose arguments the host never pushed. `dinput.c` had in
+calling it a `ret N` whose arguments the host never pushed. `dinput.cpp` had in
 fact reserved and written both callback arguments.
 
 ## Root cause

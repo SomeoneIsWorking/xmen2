@@ -118,7 +118,7 @@ conversation -- that would be a bandaid over an unidentified cause.
 
 ## Tools this produced
 
-* `src/native/script_trace.c` -- every script launch by name, plus
+* `src/native/script_trace.cpp` -- every script launch by name, plus
   startConversation/lockControls/conversation-start/reset with their results.
 * `tools/script_commands.py` -- the 289-entry BehavEd command table.
 
@@ -160,7 +160,7 @@ confirmation of #82's fix on paths it had never been tested on.
 The fix is at the missing initialization boundary, not in conversation code.
 The retail BehavEd command `startFirstMission` (FUN_004a7b10) resets the
 relevant managers and assigns Magneto, Cyclops, Wolverine and Storm before it
-launches `menus/new_game`. `src/native/startup.c` now calls that exact function
+launches `menus/new_game`. `src/native/startup.cpp` now calls that exact function
 and replaces only its later movie/hardcoded-map script.
 
 Live regression after the fix:

@@ -19,7 +19,7 @@ Escape to skip in-game cutscenes; this happened on its own.
 ## Root cause
 
 `x2_conversation_resume_map_return()` armed an automatic skip on EVERY
-successful Continue map return (`src/native/autosave_runtime.c`), with
+successful Continue map return (`src/native/autosave_runtime.cpp`), with
 nothing testing whether the restored save had actually been taken inside a
 conversation. For ten guest-clock seconds afterwards the armed policy did
 two things:
@@ -55,8 +55,8 @@ only supposed to load the latest save and thats it"*.
 
 The whole resume mechanism is DELETED -- `conversation_resume.{c,h}`,
 `conversation_resume_policy.{c,h}`, their unit test, the CMake wiring, the
-`autosave_runtime.c` arm, the `continue_runtime.c` pending/cancel calls, the
-`conversation.c` observe/advance/report calls, and the
+`autosave_runtime.cpp` arm, the `continue_runtime.cpp` pending/cancel calls, the
+`conversation.cpp` observe/advance/report calls, and the
 `x2_conversation_resume_sequence_active()` term in `wait_scope_allows()`.
 Continue now loads the save and does nothing else.
 

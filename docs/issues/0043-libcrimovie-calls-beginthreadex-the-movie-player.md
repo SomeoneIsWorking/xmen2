@@ -63,7 +63,7 @@ the fake timer id would have been (issue #42).
 
 Option A, because every subsystem after the movie will want it.
 
-`src/native/threads.c`. The register file is a plain struct on the C stack, so
+`src/native/threads.cpp`. The register file is a plain struct on the C stack, so
 it is already per-thread and costs nothing. Everything ELSE this host owns is
 single-threaded by an assumption nobody wrote down -- the kernel32 handle
 table, the guest heap's free lists, the VirtualAlloc reservation table, the

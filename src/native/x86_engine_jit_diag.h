@@ -9,8 +9,8 @@
  *                                     current guest bytes: the discriminator
  *                                     between a wrong emitter and a stale
  *                                     translation the guest has overwritten.
- * Its own file so x86_engine.c owns the run loop and canonical CPU context, not
- * this policy as well.
+ * Its own file so x86_engine.cpp owns the run loop and canonical CPU context,
+ * not this policy as well.
  */
 
 struct X86pJitEngine;

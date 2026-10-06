@@ -3,10 +3,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 enum {
   X2_DIRECTINPUT_AXIS_COUNT = 6,
   X2_DIRECTINPUT_BUTTON_COUNT = 10,
@@ -32,9 +28,5 @@ int x2_directinput_controller_capture(int pad, int32_t axis_lo, int32_t axis_hi,
 void x2_directinput_controller_write(
     const X2DirectInputControllerSample *sample, unsigned char *out,
     uint32_t out_size);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

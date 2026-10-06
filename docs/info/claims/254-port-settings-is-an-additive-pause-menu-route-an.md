@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-24
 tags: ui,menu,rmlui
-depends: src/native/options_menu.c#x2_override_005f4900, tools/make_port_pause_menu.py#derive_pause_menu, tests/test_options_menu.c#main
+depends: src/native/options_menu.cpp#x2_override_005f4900, tools/make_port_pause_menu.py#derive_pause_menu, tests/test_options_menu.cpp#main
 ---
 
 ## Claim

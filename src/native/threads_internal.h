@@ -4,11 +4,11 @@
 /*
  * The seam between the thread table and the things that only READ it.
  *
- * threads.c owns the records, their lifetimes and the lock that orders them.
+ * threads.cpp owns the records, their lifetimes and the lock that orders them.
  * The heartbeat and shutdown reports own nothing: they walk the table and
  * print it. Keeping them in the same file grew one owner past the point where
  * "what does a report see" and "who may change a record" were separable
- * questions, so the reports moved out (thread_report.c) and this header is
+ * questions, so the reports moved out (thread_report.cpp) and this header is
  * the whole of what they are allowed to touch.
  */
 

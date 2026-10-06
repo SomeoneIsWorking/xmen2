@@ -33,10 +33,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define BOX_CULL_CORNERS 8u
 #define BOX_CULL_CORNER_FLOATS (BOX_CULL_CORNERS * 4u)
 
@@ -123,9 +119,5 @@ uint16_t box_cull_guard_band_status(uint16_t status, BoxCullGuardBand guard);
 int box_cull_bounded_verdict(const float min[3], const float extent[3],
                              const float matrix[16], float zero,
                              BoxCullVerdict *out);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_BOX_CULL_H */

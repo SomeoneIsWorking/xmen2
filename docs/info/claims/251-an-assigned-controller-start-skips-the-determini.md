@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: cutscene,input,live
-depends: src/native/cutscene_player.c#x2_override_004a00d0, src/native/cutscene_player.c#call_action_mask, src/input/player_input.c#x2_player_input_publish, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report, src/native/cutscene_skip_publication.c#cutscene_skip_publication_classify
+depends: src/native/cutscene_player.cpp#x2_override_004a00d0, src/native/cutscene_player.cpp#call_action_mask, src/input/player_input.cpp#x2_player_input_publish, src/native/cutscene_skip_probe.cpp#cutscene_skip_probe_report, src/native/cutscene_skip_publication.cpp#cutscene_skip_publication_classify
 reconfirmed: 2026-08-22
 verified_at: 2026-08-22 17:13:43
 ---

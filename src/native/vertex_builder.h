@@ -23,7 +23,7 @@ void x2_override_005840a0(CPU *C);
 int x2_vertex_builder_leaf(CPU *C);
 
 /*
- * `gfx.vtx_builder_verify` differential gate (vertex_builder_verify.c).
+ * `gfx.vtx_builder_verify` differential gate (vertex_builder_verify.cpp).
  * When enabled, snapshots builder state before the native append, re-runs
  * the guest body, and aborts on any disagreement.
  */

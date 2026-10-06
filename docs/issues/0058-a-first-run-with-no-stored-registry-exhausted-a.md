@@ -20,7 +20,7 @@ build runs fine, because the game then walks far fewer keys.
 
 ## Cause
 
-`src/native/advapi32.c` held open keys in a fixed 32-entry table and returned
+`src/native/advapi32.cpp` held open keys in a fixed 32-entry table and returned
 0 from `key_open` when it filled. The game does not call `RegCloseKey` for
 most of what it opens -- on Windows that is a leak nobody notices, because
 there is no such limit -- so on the first run, where it CREATES the whole

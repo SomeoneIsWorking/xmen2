@@ -3,11 +3,9 @@
 #include "lan_coordinator.hpp"
 #include "lan_session_director.hpp"
 
-extern "C" {
 #include "control_query.h"
 #include "guest_body.h"
 #include "x86rt_native.h"
-}
 
 #include <array>
 
@@ -32,25 +30,25 @@ __attribute__((constructor)) void register_main_menu_exit_script() {
 
 } // namespace
 
-extern "C" void x2_lan_session_poll(CPU *cpu, double now) {
+void x2_lan_session_poll(CPU *cpu, double now) {
   x2::lan::coordinator().poll(*cpu, now);
 }
 
-extern "C" void x2_lan_session_map_loaded(uint32_t map, int succeeded) {
+void x2_lan_session_map_loaded(uint32_t map, int succeeded) {
   x2::lan::coordinator().map_loaded(map, succeeded != 0);
 }
 
-extern "C" const char *x2_lan_session_join_label(void) {
+const char *x2_lan_session_join_label(void) {
   return x2::lan::coordinator().join_label();
 }
 
-extern "C" void x2_lan_join_command(CPU *cpu) {
+void x2_lan_join_command(CPU *cpu) {
   x2::lan::coordinator().join_chosen();
   /* A retail menu command is void and takes nothing: just its RET. */
   cpu->reg[kX86pEsp] += 4u;
 }
 
-extern "C" void x2_lan_session_route(x2_socket_t fd, const char *query) {
+void x2_lan_session_route(x2_socket_t fd, const char *query) {
   x2::lan::SessionDirector &director = x2::lan::session_director();
   using Role = x2::lan::SessionDirector::Role;
   std::array<char, 8> value{};

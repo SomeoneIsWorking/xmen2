@@ -13,7 +13,7 @@ updated: 2026-08-25
 Retail ships no Continue row. Its six authored main-menu rows contain New Game,
 Load Game, Danger Room, Review, Options and a nonfunctional Online Multiplayer
 entry; two rows also have hardcoded special handling outside their commands.
-`src/native/continue_runtime.c` retains `CMenuMain::Show` at 0x005c9260 and
+`src/native/continue_runtime.cpp` retains `CMenuMain::Show` at 0x005c9260 and
 then applies one reversible six-row plan. A valid catalog gives Continue, New
 Game, Load Game, Danger Room, Review, Options; without one it restores New Game
 through Options and hides the last row. It shifts original command handles,
@@ -62,7 +62,7 @@ save command rather than a stable checkpoint.
 
 ## Autosave root cause and implemented boundary
 
-`src/save/autosave_storage.c` publishes a retail-compatible `autosave.save`:
+`src/save/autosave_storage.cpp` publishes a retail-compatible `autosave.save`:
 128-byte header, little-endian payload length and serializer payload. It uses an
 exclusive same-directory temporary, complete-write checks, file fsync, atomic
 rename and directory fsync. Injected failures at every pre-rename phase prove
@@ -80,7 +80,7 @@ controlling a character (#191: an opening script can hold the party out of
 sight under a control lock). Each checkpoint
 is attempted once; a later successful map return is required after failure.
 
-`src/native/autosave_runtime.c` calls the exact retail serializer owner from
+`src/native/autosave_runtime.cpp` calls the exact retail serializer owner from
 0x0046dce0 and its vslot `+0x208` into the observed 0x2fc00-byte payload. The
 payload must begin with the observed `\n[SAVEGAMEBEGIN: <description>]` tag;
 the shared parser extracts that description into the NUL-padded 128-byte retail
@@ -111,7 +111,7 @@ published `autosave.save`. No alternate leaf or corrupt-newest fallback is
 allowed if a future validation fails.
 
 ### Reopened (2026-08-25)
-Regression reported 2026-08-25: Boot=Continue traversed the menus again. Root cause is repository history, not save selection: commit 78e22e1 had already live-proven direct x2_continue_boot_dispatch -> start_latest_load with zero menu/main_back opens, but the later unsafe-history rewrite reset past that commit and its selective clean replay omitted this seam while retaining the older menu-mediated startup.c. Recovered only the direct boot seam into continue_runtime.{c,h} and startup.c, preserving start_latest_load as the single mode-3 owner; the wiring selftest now rejects the menu-only composition. Awaiting a fresh default-path live observation before resolving again.
+Regression reported 2026-08-25: Boot=Continue traversed the menus again. Root cause is repository history, not save selection: commit 78e22e1 had already live-proven direct x2_continue_boot_dispatch -> start_latest_load with zero menu/main_back opens, but the later unsafe-history rewrite reset past that commit and its selective clean replay omitted this seam while retaining the older menu-mediated startup.cpp. Recovered only the direct boot seam into continue_runtime.{c,h} and startup.cpp, preserving start_latest_load as the single mode-3 owner; the wiring selftest now rejects the menu-only composition. Awaiting a fresh default-path live observation before resolving again.
 
 ### Resolved (2026-08-25, second reopening)
 

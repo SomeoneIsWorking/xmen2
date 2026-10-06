@@ -16,11 +16,9 @@
  * spin's local or the registers it clobbered, so the device logic that follows
  * runs exactly as retail does.
  */
-extern "C" {
 #include "guest_body.h"
 #include "x2_log.h"
 #include "x86rt_native.h"
-}
 
 #include <cstdint>
 

@@ -7,9 +7,7 @@
 
 #include <sstream>
 
-extern "C" {
 #include "resolution_ladder.h"
-}
 
 namespace x2::ui {
 namespace {

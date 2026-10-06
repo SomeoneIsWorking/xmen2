@@ -3,8 +3,8 @@
 Gameplay cutscenes in the shipped title are not owned by the conversation
 manager. They are control-lock epochs composed from BehavEd fibers, the
 title's timed entity-event player, and deterministic conversation payloads.
-The native owner is `src/native/cutscene_player.c`; its
-`cutscene_dialogue.c` component owns dialogue suppression while conversation
+The native owner is `src/native/cutscene_player.cpp`; its
+`cutscene_dialogue.cpp` component owns dialogue suppression while conversation
 code remains a payload adapter only.
 
 ## Authored boundary
@@ -30,11 +30,11 @@ control-lock epoch alone is not ownership.
 `004d8b30` executes a selected context. The scheduler lives at manager
 `+0x3a080`, with 30 context slots and a `{float deadline, context-slot}`
 min-heap. Ordinary execution retains retail's strict `deadline < now` rule.
-The exact-step seam in `src/native/behaved_player.c` removes and resumes only
+The exact-step seam in `src/native/behaved_player.cpp` removes and resumes only
 an owned context, independent of its deadline, while preserving foreign heap
 pairs.
 
-`src/native/behaved_context.c` is the native port of `004d8b30`, not a wrapper
+`src/native/behaved_context.cpp` is the native port of `004d8b30`, not a wrapper
 around its runtime-translated retail body. It owns the command-graph loop: current-context
 publication/restoration, variable substitution for the seven-slot retail
 argument list, handler dispatch, named-result assignment, conditional edges,
@@ -123,7 +123,7 @@ super-call their retained retail guest bodies through the JIT.
 The tutorial's remaining non-dialogue audio is exactly two authored
 `sound("PLAY_SOUND", "char/night_m/p4_power", "", "")` commands. Retail
 handler `004a7130` only presents that audio and returns zero with a caller-clean
-`RET`. `src/native/cutscene_script_audio.c` suppresses that exact handler only
+`RET`. `src/native/cutscene_script_audio.cpp` suppresses that exact handler only
 when the current context published by `004d8b30` belongs to the synchronous
 player. The handler's explicit parameter is an argument-list pointer, not the
 context; treating it as context was falsified live when both commands reached

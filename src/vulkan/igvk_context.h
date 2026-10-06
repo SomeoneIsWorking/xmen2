@@ -108,7 +108,7 @@ void igvk_slot(int slot, void (*fn)(CPU *), const char *name);
 /* ---- the slot modules ------------------------------------------------ */
 
 /*
- * Each module binds the slots it owns. igvk_context.c calls these in order;
+ * Each module binds the slots it owns. igvk_context.cpp calls these in order;
  * the list there IS the inventory of what the backend implements, so adding a
  * module means adding one line in one place.
  */

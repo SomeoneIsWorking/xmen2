@@ -8,7 +8,7 @@
 /*
  * Is this thread able to take the guest lock NOW?
  *
- * The scheduler's hand-off promise (threads_yield.c) makes a yielding thread
+ * The scheduler's hand-off promise (threads_yield.cpp) makes a yielding thread
  * wait until somebody else has taken a turn. That is only sound when somebody
  * else CAN: a thread parked in an 83 ms Sleep is in a condition wait, and
  * treating it as a candidate made every quantum yield wait out its deadline,

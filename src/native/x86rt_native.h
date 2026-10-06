@@ -15,10 +15,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 struct X86pCpu;
 
 typedef struct X86Module {
@@ -86,7 +82,7 @@ const char *x86_native_name_at(uint32_t addr);
 /* The MAPPED entry point of the function containing `addr`, and its name.
    An approximation -- the export table has entry points, not sizes, and names
    only what the image exports -- so check the name before acting on it. See
-   the note in x86rt_native.c. */
+   the note in x86rt_native.cpp. */
 uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out);
 
 /* A guest-callable address for a native C function, so engine code can call
@@ -150,8 +146,8 @@ int x86_override_at(uint32_t addr, const char **module, uint32_t *linked_ep);
 
 /*
  * Register a NATIVE implementation of a guest entry point, declared in C where
- * the override belongs (src/native/startup.c, movie.c, reportbox.c, ...) --
- * The dispatcher consults this table before ordinary guest execution, so
+ * the override belongs (src/native/startup.cpp, movie.cpp, reportbox.cpp, ...)
+ * -- The dispatcher consults this table before ordinary guest execution, so
  * direct, vtable, and callback dispatch all reach the native function.
  *
  * `module` is the module that owns the entry point and `linked_ep` is the
@@ -271,7 +267,7 @@ const char *x86_crossings_what(void);
  * thread is still busy -- a 60 Hz timer thread produced 3,582 crossings per
  * five seconds while the thread that was actually stuck had not crossed in
  * minutes, so its last act was long gone from the ring (issue #158). Per
- * thread, the answer survives. Implemented by threads.c, which owns the
+ * thread, the answer survives. Implemented by threads.cpp, which owns the
  * records the heartbeat walks.
  */
 void guest_thread_note_crossing(const char *what, uint32_t guest_addr,
@@ -297,9 +293,5 @@ X86Module *x86_modules(void);
 
 /* X2_EPCOUNT: how often a dispatched body is entered. Reports at zero. */
 void x86_epcount_report(void);
-
-#ifdef __cplusplus
-} /* extern "C" */
-#endif
 
 #endif /* X86RT_NATIVE_H */

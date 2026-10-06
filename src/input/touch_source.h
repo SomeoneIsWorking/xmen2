@@ -17,10 +17,6 @@
 
 union SDL_Event;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Classify one host event. Events from every other device kind are ignored,
    not counted as not-touch: a controller being plugged in is not the player
    picking it up. */
@@ -32,9 +28,5 @@ void x2_touch_source_set_own_pad(unsigned int joystick_id);
 int x2_touch_source_is_touch(void);
 /* Tests and a re-entered window own no history. */
 void x2_touch_source_reset(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_TOUCH_SOURCE_H */

@@ -36,7 +36,7 @@ blocker, it is the first thing a player sees.
 
 ## Done: the save folder exists, and the game writes to it
 
-`src/native/shell32.c` implements `SHGetFolderPathA` for the four per-user data
+`src/native/shell32.cpp` implements `SHGetFolderPathA` for the four per-user data
 CSIDLs and refuses every other one BY NUMBER -- each of those means something
 specific, and a program that asked for the Windows directory and got a save
 folder would write into it.

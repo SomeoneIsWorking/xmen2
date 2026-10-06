@@ -1,5 +1,5 @@
 /*
- * SHELL32: where the game's saves go. See shell32.c for why it is a virtual
+ * SHELL32: where the game's saves go. See shell32.cpp for why it is a virtual
  * drive and not a host path.
  */
 #ifndef X2_SHELL32_H

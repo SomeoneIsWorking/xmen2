@@ -11,7 +11,7 @@ updated: 2026-08-26
 ## Root cause
 
 Win32's allocator commits and decommits 4 KiB pages. Apple Silicon applies
-`mprotect` at 16 KiB granularity. `guest_memory.c` had made its logical page
+`mprotect` at 16 KiB granularity. `guest_memory.cpp` had made its logical page
 table 16 KiB too, so `VirtualFree(0x068bb000, 0x5000, MEM_DECOMMIT)` rounded
 down to `0x068b8000` and removed access from the still-live allocator header at
 `0x068b9004`. The next `igArenaMemoryPool::getHighestAddress` read faulted.
@@ -24,7 +24,7 @@ unaligned x86 load or guest allocator arithmetic.
 
 ## Fix and verification
 
-`guest_memory.c` now records mapping and protection at the Windows 4 KiB page
+`guest_memory.cpp` now records mapping and protection at the Windows 4 KiB page
 size. On Apple Silicon it derives each 16 KiB host protection from the union of
 the four logical pages: the group stays accessible while any member is
 accessible. `VirtualQuery` and `guest_memory_is_readable` still see exact 4 KiB

@@ -1,10 +1,6 @@
 #ifndef X2_TOUCH_LAYOUT_H
 #define X2_TOUCH_LAYOUT_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include <stdint.h>
 
 /*
@@ -18,7 +14,7 @@ extern "C" {
  * they were drawn.
  *
  * So the HUD elements and the touch zones are computed HERE, together, from
- * one viewport. `touch_hud_runtime.c` moves the retail scene objects to these
+ * one viewport. `touch_hud_runtime.cpp` moves the retail scene objects to these
  * rectangles and `touch_controls.cpp` routes contacts against the same ones.
  * Neither computes a rectangle of its own.
  *
@@ -160,9 +156,5 @@ int x2_layout_build_menu(X2LayoutViewport viewport, X2Rect *out);
    the HUD and the controls do not sit on top of each other is worth asserting
    in a test at every aspect ratio, not just believing at one. */
 int x2_layout_rects_overlap(X2Rect a, X2Rect b);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_TOUCH_LAYOUT_H */

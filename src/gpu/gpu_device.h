@@ -140,7 +140,7 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
 /*
  * Frames actually presented. The game's own measure of progress, which is what
  * makes it a better schedule for a scripted run than the wall clock -- see
- * X2_INPUT_SCRIPT's `f` form in dinput_device.c.
+ * X2_INPUT_SCRIPT's `f` form in dinput_device.cpp.
  */
 unsigned long gpu_frames_presented(void);
 

@@ -86,9 +86,8 @@ RequiredFile regular_file_at(const std::filesystem::path &directory,
 
 } // namespace
 
-extern "C" int x2_install_validate_executable(const char *executable,
-                                              char *reason,
-                                              unsigned reason_capacity) {
+int x2_install_validate_executable(const char *executable, char *reason,
+                                   unsigned reason_capacity) {
   if (reason && reason_capacity)
     reason[0] = 0;
   if (!executable || !*executable)

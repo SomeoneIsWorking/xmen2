@@ -16,10 +16,6 @@
  */
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 enum {
   GPU_VS_MAX_INSTRUCTIONS = 128,
   /* Attribute locations; a WebGPU pipeline has sixteen. */
@@ -97,10 +93,6 @@ typedef struct {
    pipeline's layout and the shader's copy of the type, together. */
 void gpu_vs_program_set_input(GpuVsProgram *program, unsigned index,
                               GpuVsInputType type, uint16_t offset);
-
-#ifdef __cplusplus
-}
-#endif
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>

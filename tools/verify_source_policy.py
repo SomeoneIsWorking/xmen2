@@ -22,8 +22,8 @@ def selftest() -> int:
     src/native/main.c
 )
 add_library(x2_runtime_services STATIC
-    src/config/environment.c
-    src/native/x2_log.c
+    src/config/environment.cpp
+    src/native/x2_log.cpp
 )
 add_library(x2_rmlui_ui STATIC
     src/ui/settings.cpp
@@ -32,8 +32,8 @@ add_library(x2_rmlui_ui STATIC
     parsed = shipping_sources(cmake)
     expected = {
         "src/native/main.c",
-        "src/config/environment.c",
-        "src/native/x2_log.c",
+        "src/config/environment.cpp",
+        "src/native/x2_log.cpp",
         "src/ui/settings.cpp",
     }
     if set(parsed) != expected:

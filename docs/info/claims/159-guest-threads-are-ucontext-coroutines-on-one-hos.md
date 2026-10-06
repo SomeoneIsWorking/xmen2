@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-12
 tags: threads,scheduling,macos,arm64
-depends: src/native/threads.c#guest_quantum, src/native/threads.c#guest_cond_wait_ms
+depends: src/native/threads.cpp#guest_quantum, src/native/threads.cpp#guest_cond_wait_ms
 ---
 
 ## Claim

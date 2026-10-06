@@ -9,10 +9,6 @@ struct SDL_GPUDevice;
 struct SDL_GPUTexture;
 struct SDL_Window;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* The pause menu's distinct Port Settings command shows this document, and
     F2 toggles it from anywhere (settings_overlay_state owns that key).
     Returns non-zero when the UI consumed an event and the guest input layer
@@ -26,9 +22,5 @@ void x2_ui_render(struct SDL_GPUDevice *device,
                   struct SDL_GPUTexture *swapchain, uint32_t width,
                   uint32_t height, struct SDL_Window *window);
 void x2_ui_gpu_shutdown(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

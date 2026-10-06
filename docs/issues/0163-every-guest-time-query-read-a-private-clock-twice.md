@@ -33,9 +33,9 @@ places read `clock_gettime(CLOCK_MONOTONIC)` for themselves:
 
 | site | import |
 |---|---|
-| `kernel32.c` `imp_KERNEL32_QueryPerformanceCounter` | QueryPerformanceCounter |
-| `kernel32.c` `imp_KERNEL32_GetTickCount` | GetTickCount |
-| `x86_import_fastpath.c` `import_qpc` | QueryPerformanceCounter, JIT fast path |
+| `kernel32.cpp` `imp_KERNEL32_QueryPerformanceCounter` | QueryPerformanceCounter |
+| `kernel32.cpp` `imp_KERNEL32_GetTickCount` | GetTickCount |
+| `x86_import_fastpath.cpp` `import_qpc` | QueryPerformanceCounter, JIT fast path |
 
 The consequence is exactly the one the header predicts. `guest_clock` owns an
 idle skew that jumps forward over intervals in which no guest thread could
@@ -71,14 +71,14 @@ check that cannot fail is worse than no check.
 
 ## What proves it
 
-`tests/test_guest_clock.c` (8 checks). The discriminator is the idle skip,
+`tests/test_guest_clock.cpp` (8 checks). The discriminator is the idle skip,
 because it is the only thing a private reading gets wrong: a raw
 CLOCK_MONOTONIC is monotonic, agrees with the seconds view well inside a
 millisecond, and has nanosecond resolution either way. Making
 `guest_clock_ns()` ignore the skew fails the test with "the five-second skip
 moved the counter by 110 ns".
 
-`test_x86_import_fastpath` now links the real `guest_clock.c` rather than
+`test_x86_import_fastpath` now links the real `guest_clock.cpp` rather than
 stubbing it, so the fast path's QPC answers through the shipping owner.
 
 ## The browser effect, measured — and it is small

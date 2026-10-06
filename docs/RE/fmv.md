@@ -8,7 +8,7 @@ found the same stream combination in every file:
 - 640×480 MPEG-1 video (`mpeg1video`, YUV420P)
 - 44.1 kHz stereo CRI ADX ADPCM (`adpcm_adx`)
 
-`src/media/fmv_policy.c` is the production gate for that exact combination.
+`src/media/fmv_policy.cpp` is the production gate for that exact combination.
 It refuses another container or codec by name; this is not a general media
 player whose untested formats happen to open.
 
@@ -50,36 +50,36 @@ invented pitch.
 
 ## Host ownership and timing
 
-`src/media/fmv_player.c` owns FFmpeg demux, MPEG-1 decode, BGRA conversion, and
-bounded video queueing. `src/media/fmv_audio_decode.c` owns ADX receive,
+`src/media/fmv_player.cpp` owns FFmpeg demux, MPEG-1 decode, BGRA conversion, and
+bounded video queueing. `src/media/fmv_audio_decode.cpp` owns ADX receive,
 stereo-F32 resampling, sink queueing, and the resampler tail. Video uses
 `AVFrame.best_effort_timestamp`; missing
 or non-monotonic values use the stream frame duration and a monotonic fallback.
 This is required by the shipped stream: FFmpeg's command-line decode reported
 a non-monotonic DTS while still decoding its frames correctly.
 
-`src/audio/movie_audio.c` owns one locked stereo-F32 streaming voice. The
+`src/audio/movie_audio.cpp` owns one locked stereo-F32 streaming voice. The
 existing DirectSound SDL callback mixes it with the game's other voices, and
 the existing silent timed device advances it in windowless runs. The decoder
 knows only the queue callback and queued duration, not SDL.
 
-`src/media/fmv_decoder_drain.c` owns the shared EOF contract. Sending a NULL
+`src/media/fmv_decoder_drain.cpp` owns the shared EOF contract. Sending a NULL
 packet, receiving `AVERROR_EOF`, and emptying the optional converter tail are
 three distinct states. Output backpressure may end one update without declaring
 the decoder drained; the next update resumes receive before finish is allowed.
 
-`src/native/movie.c` is only the guest ABI bridge. The six replaced functions
+`src/native/movie.cpp` is only the guest ABI bridge. The six replaced functions
 remain in the retail image and execute through the JIT when selected for A/B
 comparison; `X2_SPIN=spin` independently selects the retained decoder
 rendezvous loop.
 
-`src/media/fmv_probe.c` is the opt-in production-path verifier. When
+`src/media/fmv_probe.cpp` is the opt-in production-path verifier. When
 `X2_FMV_PROBE` matches a movie path, it retains the selected decoded BGRA frame
 and compares every visible row after the padded `igImage` copy and again at the
 successful D3D8 level-0 upload. It reports all denominators and mismatch rows;
 the focused test deliberately changes one padded row and one upload row to
 prove both comparisons can report the other answer.
-`src/d3d8/d3d8_texture_luma.c` separately owns the existing texture-luma
+`src/d3d8/d3d8_texture_luma.cpp` separately owns the existing texture-luma
 diagnostic extracted from the resource implementation. The validated row-chain
 instrument is recorded as I068.
 

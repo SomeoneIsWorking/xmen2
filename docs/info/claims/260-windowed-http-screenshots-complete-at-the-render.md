@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-24
 tags: control,screenshot,gpu
-depends: src/native/control.c#control_frame_pump, src/gpu/gpu_capture.c#gpu_capture_submit_frame, src/gpu/gpu_device.c#gpu_frame_end
+depends: src/native/control.cpp#control_frame_pump, src/gpu/gpu_capture.cpp#gpu_capture_submit_frame, src/gpu/gpu_device.cpp#gpu_frame_end
 ---
 
 ## Claim

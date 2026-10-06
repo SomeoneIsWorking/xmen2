@@ -22,7 +22,7 @@
  * never reaches it.
  *
  * Inputs are the guest's own vertex bytes, bound as attributes 0-15 with a
- * format per input (gpu_vs_program.c); every one is declared, because a
+ * format per input (gpu_vs_program.cpp); every one is declared, because a
  * WebGPU pipeline must feed every location its shader reads.
  */
 layout(location = 0) in vec4 vs11_in0;

@@ -5,10 +5,6 @@
 
 struct X86pCpu;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef int (*X86ImportFastpathHandler)(struct X86pCpu *cpu);
 
 /*
@@ -42,9 +38,5 @@ int x86_import_fastpath_register_at(uint32_t addr,
    x86_import_fastpath_dispatch from inside a translated block: it never runs
    guest code or releases the guest lock. 0 while the fast path is disabled. */
 int x86_import_fastpath_leaf_safe(uint32_t addr);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_X86_IMPORT_FASTPATH_H */

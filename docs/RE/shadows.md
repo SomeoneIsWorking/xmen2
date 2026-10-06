@@ -52,9 +52,9 @@ not a user quality setting.
 
 ## Current native ownership
 
-`src/d3d8/d3d8_drawcall.c` resolves each ordinary D3D draw into `GpuDraw` using
+`src/d3d8/d3d8_drawcall.cpp` resolves each ordinary D3D draw into `GpuDraw` using
 the title's row-vector `world * view * projection` convention.
-`src/gpu/gpu_draw.c` owns fixed-function pipeline translation and execution.
+`src/gpu/gpu_draw.cpp` owns fixed-function pipeline translation and execution.
 The title decal arrives there as ordinary geometry, just as it does in retail.
 The exact fixed-function signature is:
 
@@ -125,7 +125,7 @@ and persistence lives in `video.dynamic_shadows` /
 
 `shadow_policy.{c,h}` owns classification and matrices without SDL resources.
 `gpu_shadow.{c,h}` owns the sampleable depth target, depth pipelines, separate
-command buffer, counters, and complete pass lifetime. `gpu_draw.c` publishes
+command buffer, counters, and complete pass lifetime. `gpu_draw.cpp` publishes
 the exact draw-time SDL buffer generation, texture, sampler, and resolved packet
 state; the shadow owner never retains a mutable guest buffer handle for replay.
 

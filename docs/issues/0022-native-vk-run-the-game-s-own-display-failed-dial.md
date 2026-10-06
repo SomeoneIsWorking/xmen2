@@ -52,7 +52,7 @@ whether this still reproduces.
 ### Note (2026-08-06)
 THE DECIDING FUNCTION IS NAMED, and the trail is three hops with no guessing left in it.
 
-MessageBoxA now reports its caller (src/native/win32_sdl.c) -- the text alone said what the game concluded, never which check concluded it:
+MessageBoxA now reports its caller (src/native/win32_sdl.cpp) -- the text alone said what the game concluded, never which check concluded it:
 
     *** MessageBox [Display failed!]
         raised from 0x004035a7

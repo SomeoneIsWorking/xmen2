@@ -5,10 +5,6 @@
 
 struct X86pCpu;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef struct {
   int active;
   uint32_t self;
@@ -37,9 +33,5 @@ typedef struct {
 void attr_stack_verify_begin(AttrStackVerify *v, uint32_t self);
 void attr_stack_verify_end(const struct X86pCpu *C, AttrStackVerify *v,
                            uint32_t self);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* X2_ATTR_STACK_VERIFY_H */

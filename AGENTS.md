@@ -46,7 +46,7 @@ The remaining mobile release gate is measured device performance; see
 placement are decided by the device the player is touching RIGHT NOW, never by
 the platform the binary was built for: an Android player holding a controller
 wants neither, and a desktop player on a touchscreen wants both. The answer is
-observed from the host event stream (`src/input/touch_source.c`) and forced at
+observed from the host event stream (`src/input/touch_source.cpp`) and forced at
 either end by one setting (`input.touch_controls`: OFF / AUTO / ALWAYS), on
 every platform. A contact under a drawn control feeds the same virtual
 DirectInput pad as every other controller path; a contact with no drawn
@@ -160,17 +160,17 @@ not a second product or an implementation surface.
 Guest x86-32 is read from the user's authenticated PE images and translated on
 demand into host instructions by `shared/x86port`'s JIT:
 
-- **`src/native/guest_modules.c` + `pe_map.c`** discover the required images at
+- **`src/native/guest_modules.cpp` + `pe_map.cpp`** discover the required images at
   runtime, map/relocate them, and bind their IAT slots.
 - **`shared/x86port`** owns x86 decode, semantics, host-code emission, and its
   runtime block cache. This repository pins and consumes the canonical shared
   implementation; title-specific CPU semantics do not belong here.
-- **`src/native/x86_engine*.c` + `x86_dispatch.c`** compose bounded JIT runs,
+- **`src/native/x86_engine*.c` + `x86_dispatch.cpp`** compose bounded JIT runs,
   thread/call context, native hand-back predicates, import thunks, diagnostics,
   and scoped calls to an override's original guest body.
 - **`src/native/`** owns title-specific native overrides and host services.
   Overrides are keyed by module identity plus linked address because the
-  `libIG*.dll` images reuse linked bases. `guest_heap.c` provides the guest's
+  `libIG*.dll` images reuse linked bases. `guest_heap.cpp` provides the guest's
   32-bit-addressable arena; the DLL-named owners implement the Win32/CRT/SDL
   boundaries.
 - **Test-only interpretation** belongs in an independently linked x86port test
@@ -191,13 +191,13 @@ The host is governed by this repository's cohesive-owner boundaries and
 `docs/codemap.md`. `src/config/` owns persistent data and storage location;
 `src/presentation/` owns window-mode transitions; `src/input/` resolves player
 assignments and publishes them into guest binding sets; `src/ui/` owns only the
-RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
+RmlUi lifetime and documents. `win32_sdl.cpp` and `gpu_device.cpp` compose those
 owners at the SDL event and render boundaries; they do not absorb their policy.
 New behavior goes to the smallest existing owner, or establishes a narrow new
 owner and updates the codemap in the same change. External projects may provide
 attributed provenance, but never substitute for a local contract or regression.
 
-Save paths keep the same split: `shell32.c` owns the writable profile root used
+Save paths keep the same split: `shell32.cpp` owns the writable profile root used
 by config and registry storage, while `src/save/save_directory.{c,h}` owns the
 one title-specific retail leaf directory below it. Catalog, Continue, boot and
 autosave consume that authority; none rebuilds `Activision/X-Men Legends 2/Save`.
@@ -209,7 +209,7 @@ override.
 The AppImage setup boundary is locally owned: SDL3 dialog/file-picker mechanics
 live in `src/native/install_picker.cpp`, resource location lives in
 `src/ui/ui_resources.cpp`, and release staging lives in
-`tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
+`tools/package_appimage.py` plus `packaging/`. `x2native.cpp` only composes the
 setup result into the existing asset mapping path.
 
 The Android setup boundary follows the same pattern: `shared/android-port`
@@ -224,25 +224,25 @@ The touch boundary is platform-neutral and owned here, not by any package. It
 keeps the title's safe-area-aware action vocabulary and virtual layout in
 `src/input/touch_controls.cpp`; platform SDL/Activity event acquisition, visual
 feedback, and guest input publication remain outside that owner.
-`src/input/touch_source.c` owns the which-device-is-in-use classification and is
+`src/input/touch_source.cpp` owns the which-device-is-in-use classification and is
 exercised without a window, a pad or a running game. `lucent::touch::Router` owns contact capture,
 multi-touch, and cancellation. `src/presentation/touch_hud_layout.c` owns the
-pure edge-relocation policy and `src/native/touch_hud_runtime.c` scopes it
+pure edge-relocation policy and `src/native/touch_hud_runtime.cpp` scopes it
 around the retained CHud bodies; portrait taps re-enter the existing retail
 mouse handler. `touch_document.cpp` owns action labels and pressed feedback,
 drawn with the shared gamepad prompt glyphs and, for powers, the game's own
-icons (`power_slots_runtime.c` publishes them; `igb_textures.cpp` loads them).
+icons (`power_slots_runtime.cpp` publishes them; `igb_textures.cpp` loads them).
 
 Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
 persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
 Normal/Menu/Continue decision, `boot_mode_runtime.{c,h}` owns the one boot
 request and latest-save leaf, `boot_menu_transition.{c,h}` owns the exact
-retail main-menu call, and `startup.c` only composes those owners.
+retail main-menu call, and `startup.cpp` only composes those owners.
 
 Exact input capture belongs to `src/input/input_record.{c,h}` and runs only
 after physical, scripted, control-channel and modal-UI policy produce the state
 the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
-`x2native.c` only composes those owners.
+`x2native.cpp` only composes those owners.
 
 In-game cutscene skipping belongs to `src/native/cutscene_player.{c,h}`. It
 owns the control-lock epoch, composes exact steps from the ported BehavEd
@@ -262,7 +262,7 @@ owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
 `fmv_audio_decode.{c,h}` owns ADX receive/resampling, while
 `fmv_decoder_drain.{c,h}` owns the shared flush/backpressure/EOF contract.
 `src/audio/movie_audio.{c,h}` owns the single streaming voice mixed by
-DirectSound. `src/native/movie.c`
+DirectSound. `src/native/movie.cpp`
 only bridges the evidenced `igCriMovieCodec` methods and writes the guest
 runtime `igImage`, leaving libMovie's scene, texture upload, lifetime, and
 callback behavior intact. See `docs/RE/fmv.md`; no media asset belongs in git.
@@ -321,6 +321,6 @@ namespaces, with an `extern "C"` shim only where a C translation unit calls in.
   test. Never open the host playback device or run paced just because a test
   needs a window. Where silence would change behaviour -- the game advances
   cutscenes off DirectSound play cursors -- preserve advancing play cursors;
-  do not merely disable audio (`dsound.c`).
-- **One clock the guest can see** (`guest_clock.c`). `--unbounded` skips only
+  do not merely disable audio (`dsound.cpp`).
+- **One clock the guest can see** (`guest_clock.cpp`). `--unbounded` skips only
   scheduler idle waits; it never scales guest time.

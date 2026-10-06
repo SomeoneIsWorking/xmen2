@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-03
 tags: 
-depends: src/native/x86_engine_dispatch.c#x86_engine_jit_dispatch
+depends: src/native/x86_engine_dispatch.cpp#x86_engine_jit_dispatch
 ---
 
 ## Claim
@@ -13,7 +13,7 @@ engine=jit inline dispatch (jit.inline_dispatch) cuts host-import wall-time shar
 
 ## Evidence
 
-A/B on identical driven input path 2026-09-03, X2_HOTEP=64 wall-time split + present counts, numbers recorded in docs/issues/0141 (scratch logs since GC'd); x86port d5d3b00 + src/native/x86_engine_dispatch.c
+A/B on identical driven input path 2026-09-03, X2_HOTEP=64 wall-time split + present counts, numbers recorded in docs/issues/0141 (scratch logs since GC'd); x86port d5d3b00 + src/native/x86_engine_dispatch.cpp
 
 ## What would falsify it
 

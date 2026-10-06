@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: native,fmv,graphics,issue-95
-depends: src/media/fmv_probe.c#x2_fmv_probe_upload, src/native/movie.c#x2_movie_next_frame, src/d3d8/d3d8_resource.c#d3d8_texture_level_unlocked
+depends: src/media/fmv_probe.cpp#x2_fmv_probe_upload, src/native/movie.cpp#x2_movie_next_frame, src/d3d8/d3d8_resource.cpp#d3d8_texture_level_unlocked
 ---
 
 ## Claim

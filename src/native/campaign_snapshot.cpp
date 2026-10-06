@@ -56,16 +56,14 @@ struct X2CampaignSnapshot {
   x2::save::CampaignSnapshot snapshot;
 };
 
-extern "C" X2CampaignSnapshot *x2_campaign_snapshot_create(void) {
+X2CampaignSnapshot *x2_campaign_snapshot_create(void) {
   return new X2CampaignSnapshot();
 }
 
-extern "C" int x2_campaign_snapshot_capture(X2CampaignSnapshot *snapshot,
-                                            const CPU *cpu) {
+int x2_campaign_snapshot_capture(X2CampaignSnapshot *snapshot, const CPU *cpu) {
   return snapshot && cpu && snapshot->snapshot.capture(*cpu);
 }
 
-extern "C" uint32_t
-x2_campaign_snapshot_address(const X2CampaignSnapshot *snapshot) {
+uint32_t x2_campaign_snapshot_address(const X2CampaignSnapshot *snapshot) {
   return snapshot ? snapshot->snapshot.address() : 0u;
 }

@@ -41,7 +41,7 @@ WebLua capture never held a word of it. The only trace was a profile:
 `_emscripten_err` and the UTF-8 decoder behind it were about 1.7% of the guest
 worker, reached from `WEBGPU_INTERNAL_UncapturedErrorCallback`.
 
-`src/native/sdl_host_setup.c` now routes SDL's log through the port's logger,
+`src/native/sdl_host_setup.cpp` now routes SDL's log through the port's logger,
 on channel `sdl`.
 
 ## Fix

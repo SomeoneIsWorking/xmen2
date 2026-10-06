@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: graphics,d3d8,architecture
-depends: src/d3d8/d3d8_report.c#d3d8_host_report
+depends: src/d3d8/d3d8_report.cpp#d3d8_host_report
 ---
 
 ## Claim

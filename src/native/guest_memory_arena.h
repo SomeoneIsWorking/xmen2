@@ -1,7 +1,7 @@
 /*
  * guest_memory_arena.h -- the host span that holds the guest's address space.
  *
- * guest_memory.c owns the pages inside the space; this owns where the space
+ * guest_memory.cpp owns the pages inside the space; this owns where the space
  * is: a program-memory window in the browser, a reserved and rebased arena on
  * hosts that will not lend the low 4 GB, or the host's own addresses. It also
  * owns the no-access guard above a whole-space span, which lets the JIT drop
@@ -14,10 +14,6 @@
 #include "guest_memory.h"
 
 #include <stdint.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #if GUEST_ARENA_WINDOW
 /* Only what the layout places, because every byte of the window is real
@@ -60,9 +56,5 @@ typedef struct GuestArena {
 
 /* Obtain the span. 0 on success; -1 with errno set and the reason logged. */
 int guest_arena_acquire(GuestArena *arena);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif

@@ -85,7 +85,7 @@ def scan_overrides(root: Path | str) -> Iterator[Override]:
         # The declaration in x86rt_native.h is not a .c file, so any mention in
         # a source that is not a readable call is worth naming: a registration
         # built from a macro or a variable would otherwise vanish silently.
-        if mentions > len(calls) and path.name not in {"x86rt_native.c"}:
+        if mentions > len(calls) and path.name not in {"x86rt_native.cpp"}:
             unreadable.append(f"{path.relative_to(root)} "
                               f"({mentions} mention(s), {len(calls)} readable)")
     if not found:
