@@ -4,6 +4,7 @@
  * game, and the scene-plane mapping a delivered click crosses.
  */
 #include "../src/input/touch_menu.hpp"
+#include "../src/input/touch_menu_parts.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -280,8 +281,9 @@ MenuSnapshot shop_menu(int entries, int top, int selected) {
   menu.items.push_back(
       item(28, "label_owner", "~02Limit:~~ 10", 216, 53, 290, 67));
   menu.items.push_back(item(29, "item_desc",
-                            "Recovers 33% of max $HP with a chance", 215, 75,
-                            482, 123));
+                            "Recovers 33% of max $HP with a chance for 66% "
+                            "based on\nBody\n",
+                            215, 75, 482, 123));
   menu.items.push_back(cost);
   MenuItem list = item(46, "list", "", 215, 191, 482, 377);
   x2::menu::ListBoxState box;
@@ -351,8 +353,11 @@ void the_shop_is_its_tabs_and_entries() {
             view->facts[2].value == "0/20" && view->facts[3].label.empty() &&
             view->facts[3].value == "Limit: 10",
         "cost, money, gear and limit, as the game's own items show them");
-  check(view->detail == "Recovers 33% of max HP with a chance",
-        "the selected entry's description");
+  check(
+      view->detail ==
+          std::vector<std::string>{
+              "Recovers 33% of max HP with a chance for 66% based on", "Body"},
+      "the selected entry's description, in the game's own lines");
   check(view->footers.size() == 2u && view->footers[0].label == "Buy",
         "the shop's Buy and Accept footers");
 
@@ -413,6 +418,122 @@ void the_shop_is_its_tabs_and_entries() {
   live.items.back().list_box->top = 6;
   out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 40u);
   check(out.empty(), "and only selected on arrival, as a click would");
+}
+
+/* CMenuCodex as GET /menu read it from gameplay: fifteen heroes, the list
+   (mode 0) or the loaded entry's name and description (mode 1). */
+MenuSnapshot codex_menu(std::uint32_t mode, int selected) {
+  MenuSnapshot menu;
+  menu.address = 0x27129014u;
+  menu.name = "codex";
+  menu.menu_class = "CMenuCodex";
+  menu.mode = mode;
+  menu.items.push_back(item(1, "title", "Codex", 29, 404, 298, 418));
+  menu.items.push_back(
+      item(2, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
+  menu.items.push_back(
+      item(3, "desctext3", "~05$MENU_DETAILS Details", 215, 21, 294, 35));
+  MenuItem name = item(4, "name", "~03Wolverine", 29, 404, 298, 418);
+  MenuItem desc = item(5, "desc",
+                       "A loner and a man without a memory, Wolverine was\n"
+                       "discovered by James MacDonald Hudson\n\n",
+                       29, 122, 298, 391);
+  MenuItem list = item(6, "list", "", 29, 122, 298, 391);
+  x2::menu::ListBoxState box;
+  for (int i = 0; i < 15; ++i) {
+    box.entries.push_back("Hero " + std::to_string(i));
+  }
+  box.selected = selected;
+  box.visible_rows = 11;
+  box.row_height = 24;
+  box.hit = {29, 122, 298, 391};
+  list.list_box = box;
+  if (mode == 0u) {
+    name.flags |= x2::menu::kItemHidden;
+    desc.flags |= x2::menu::kItemHidden;
+  } else {
+    list.flags |= x2::menu::kItemHidden;
+  }
+  menu.items.push_back(name);
+  menu.items.push_back(desc);
+  menu.items.push_back(list);
+  menu.rows = {static_cast<int>(menu.items.size()) - 1};
+  menu.focused = menu.rows[0];
+  return menu;
+}
+
+void the_codex_lists_its_heroes_and_reads_one() {
+  const RetailScenePlane plane = plane_1280x720();
+  const MenuSnapshot list = codex_menu(0u, 3);
+  const auto view = x2::input::build_touch_menu_view(list, plane);
+  check(view.has_value() && view->rows.size() == 15u &&
+            view->title == "Codex" && view->focused_row == 3,
+        "the codex list is its heroes, titled, with the selection focused");
+  if (!view) {
+    return;
+  }
+  bool accepts = true;
+  for (const auto &row : view->rows) {
+    accepts = accepts && !row.clicks && row.press_on_arrival;
+  }
+  check(accepts, "a codex entry is walked to and accepted, which loads it");
+  check(view->footers.size() == 2u && view->footers[1].label == "Details",
+        "the codex's Back and Details footers");
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 5)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "a tap below the selection walks down to it");
+  const MenuSnapshot arrived = codex_menu(0u, 5);
+  out = touch.set_view(x2::input::build_touch_menu_view(arrived, plane), 20u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "and accepts it on arrival");
+
+  const MenuSnapshot reading = codex_menu(1u, 3);
+  const auto read = x2::input::build_touch_menu_view(reading, plane);
+  check(read.has_value() && read->rows.empty() && read->title == "Wolverine" &&
+            read->detail ==
+                std::vector<std::string>{
+                    "A loner and a man without a memory, Wolverine was",
+                    "discovered by James MacDonald Hudson"},
+        "Details reads the loaded entry's name and its lines");
+  if (!read) {
+    return;
+  }
+  TouchMenuView longer = *read;
+  for (int i = 0; i < 30; ++i) {
+    longer.detail.push_back("line " + std::to_string(i));
+  }
+  touch.set_view(longer, 30u);
+  const TouchMenuLayout &layout = touch.layout();
+  check(layout.reading && layout.detail.top == layout.list.top &&
+            layout.detail.bottom == layout.list.bottom &&
+            layout.max_scroll > 0.0F,
+        "the text takes the list's place and scrolls when it is longer");
+  const float top = layout.detail_text_top;
+  const float x = 0.5F * (layout.list.left + layout.list.right);
+  const float y = layout.list.bottom - 10.0F;
+  touch.contact(4, {x, y}, lucent::touch::Phase::began, 40u);
+  touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::moved, 40u);
+  out = touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::ended, 40u);
+  check(out.empty() && touch.layout().detail_text_top == top - 200.0F,
+        "a drag scrolls the text and presses nothing");
+
+  const MenuSnapshot other = codex_menu(2u, 3);
+  check(!x2::input::build_touch_menu_view(other, plane),
+        "a codex mode not read keeps the retail screen");
+}
+
+void the_games_line_breaks_are_kept() {
+  using x2::input::menu_text_lines;
+  check(menu_text_lines("~03One\n\n  two ~~\n") ==
+            std::vector<std::string>{"One", "two"},
+        "each line read as a player sees it, empty lines dropped");
+  check(menu_text_lines("").empty(), "no text is no lines");
 }
 
 /* A click delivered at a row's client point lands inside the box
@@ -620,6 +741,8 @@ int main() {
   a_tap_delivers_the_games_own_input();
   the_team_party_is_its_heroes();
   the_shop_is_its_tabs_and_entries();
+  the_codex_lists_its_heroes_and_reads_one();
+  the_games_line_breaks_are_kept();
   a_drag_scrolls_and_does_not_press();
   if (failures) {
     std::printf("touch_menu: %d of %d check(s) failed\n", failures, checks);

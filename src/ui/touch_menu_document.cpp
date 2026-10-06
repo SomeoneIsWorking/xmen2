@@ -55,18 +55,35 @@ void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
     return;
   }
   rml << "<div id='tm-detail' style='" << box(layout.detail, 0.0F, 0.0F, scale)
-      << "'><div class='tm-facts'>";
-  for (const input::TouchMenuFact &fact : state.view.facts) {
-    rml << "<span class='tm-fact'>";
-    if (!fact.label.empty()) {
-      rml << "<span class='tm-fact-label'>" << escape_rml(fact.label)
-          << "</span> ";
+      << "'>";
+  if (!state.view.facts.empty()) {
+    rml << "<div class='tm-facts'>";
+    for (const input::TouchMenuFact &fact : state.view.facts) {
+      rml << "<span class='tm-fact'>";
+      if (!fact.label.empty()) {
+        rml << "<span class='tm-fact-label'>" << escape_rml(fact.label)
+            << "</span>";
+      }
+      rml << "<span class='tm-fact-value" << (fact.warn ? " warn" : "") << "'>"
+          << escape_rml(fact.value) << "</span></span>";
     }
-    rml << "<span class='tm-fact-value" << (fact.warn ? " warn" : "") << "'>"
-        << escape_rml(fact.value) << "</span></span>";
+    rml << "</div>";
   }
-  rml << "</div><div class='tm-text'>" << escape_rml(state.view.detail)
-      << "</div></div>";
+  rml << "</div>";
+  /* Whole lines only: the backend does not clip, and read text scrolls. */
+  const float height = layout.detail_line_height;
+  for (std::size_t i = 0; i < state.view.detail.size(); ++i) {
+    const float line_top =
+        layout.detail_text_top + static_cast<float>(i) * height;
+    if (line_top < layout.detail.top ||
+        line_top + height > layout.detail.bottom) {
+      continue;
+    }
+    const X2Rect line{layout.detail.left, line_top, layout.detail.right,
+                      line_top + height};
+    rml << "<div class='tm-text' style='" << box(line, 0.0F, 0.0F, scale)
+        << "'>" << escape_rml(state.view.detail[i]) << "</div>";
+  }
 }
 
 std::string markup(const input::TouchMenuState &state, Scale scale) {

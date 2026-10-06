@@ -157,7 +157,6 @@ body {
 .tm-facts {
     display: flex;
     justify-content: space-between;
-    margin-bottom: 0.4em;
 }
 
 .tm-fact-label {
@@ -177,6 +176,7 @@ body {
 }
 
 .tm-text {
+    position: absolute;
+    padding: 0.15em 0.8em 0 0.8em;
     font-size: 0.95em;
-    line-height: 1.3em;
 }

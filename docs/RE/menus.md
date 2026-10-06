@@ -609,6 +609,52 @@ click on Health Pack selected entry 1 and the game priced it at 100; with
 (money 2000 -> 1900, `pot_health_value` 3 -> 4); `$MENU_OK Accept` closed the
 shop to gameplay.
 
+## The codex (`CMenuCodex`) and its list (`CMenuItemListCodex`)
+
+`CMenuCodex` (vtable `0x69e6d4`) is the hero codex `openmenu codex` opens. Its
+init (`FUN_005b0f30`) loads `data/codex.xmlb` into the list; `FUN_005b0a60`
+keeps the list at `menu+0x18dc`, shows mode 0's group and hides `desctext2`
+(`$MENU_ACCEPT Select`), so the retail screen never offers Accept. Its items:
+`model` (the turning hero), `title` `Codex`, `list`, `desc` (a text box with the
+entry's description in the game's own `\n` lines), `name` (`~03` and the
+hero's name), `up_arrow`/`down_arrow`, and the footers `desctext1`
+`$MENU_BACK Back`, `desctext3` `$MENU_DETAILS Details` and `desctext5`
+`$DPAD_DN Scroll`.
+
+`menu+0x18d8` is the mode: 0 the list, 1 the description (`desc`, `name` and
+the Scroll footer shown, the list hidden). The update (`FUN_005b1780`):
+
+- when the published input carries `MENU_ACCEPT` (input manager vfunc `+0x160`,
+  `FUN_005d4d60`: bit 4 of the bits vfunc `+0x140` returns) and the list
+  exists, it calls the input manager's vfunc `+0xe8` with 6 and loads the
+  selected entry: `FUN_005bfc70` takes the selected record's handle (record
+  `+0x58`), and `FUN_005b0ba0` passes it to `FUN_005adcf0` for the item named
+  at `0x69e674` and sets `menu+0x18e1`, so the next update runs
+  `FUN_005b1340`. Selecting an entry alone loads nothing: `desc` and `name`
+  keep the last accepted entry;
+- when it carries `MENU_DETAILS` (bit 9, action 9), it flips the mode, hiding
+  one group and showing the other (`FUN_005acf30`), and refreshes the list.
+
+Its `onMouse` (`0x5b0c80`, a region Ghidra had not made a function): a
+`WM_LBUTTONUP` on `desctext3` publishes action 9; button presses inside
+`(0x146,0x3f)-(0x1e5,0x13f)`, the model's area, publish axis 2 at -1.0/+1.0
+(turn the model); in mode 1 the wheel and clicks on the arrows publish axis 3
+(scroll the description). Then it runs the base `CMenu::onMouse`. `Back`
+closes the codex from either mode.
+
+`CMenuItemListCodex` (vtable `0x6a0724`) differs from `CMenuItemListBox` only in
+its parse (`+0x44`, `0x5c3b40`) and destructor: the entry getter, `onMouse`,
+the stepping and every field above are the list box's, so a click on an
+unselected entry walks the selection to it and a click on the selected entry
+publishes `MENU_ACCEPT`, which is what loads it.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu codex`): 15 entries
+(Magneto .. Scarlet Witch) in an 11-row window; one click on Bishop selected
+it and Details showed Magneto, the entry loaded at open; a second click on the
+selected Bishop and then Details showed Bishop. The menu pad's Down walked the
+selection to Scarlet Witch (entry 14), moving the window's top to 4, and A then
+Details showed her description. Wolverine's description is 21 lines.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
@@ -640,10 +686,14 @@ shop to gameplay.
 - **`item+0x57` mode bits** and **`item+0x56` filter** are parsed, not
   understood.
 - **The writer of the pool-2 generation `pool[0]`.**
-- **`ListCodex` and the other list subclasses' entries, popup text and
-  buttons, and a bar's value text** are not read. `CMenuItemListBox` entries
-  are; a subclass that overrides the entry getter (`+0xe4`) is not assumed to
-  share the record table.
+- **The other list subclasses' entries, popup text and buttons, and a bar's
+  value text** are not read. `CMenuItemListBox` and `CMenuItemListCodex`
+  entries are; a subclass that overrides the entry getter (`+0xe4`) is not
+  assumed to share the record table.
+- **The codex's description scroll and model turn** (axes 3 and 2) are not
+  driven by the touch menu; it shows the whole description itself and no
+  model. `FUN_005b1340`, `FUN_005adcf0` and the manager's vfunc `+0xe8` are
+  not read.
 - **A shop list longer than its window.** The jungle shop's lists hold at most
   13 entries against 23 rows, so walking the selection to an entry outside the
   window is unit-tested only.

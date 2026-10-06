@@ -42,6 +42,23 @@ menu_item_centre(const menu::SceneRect &rect,
                           0.5F * static_cast<float>(rect.top + rect.bottom)});
 }
 
+std::vector<std::string> menu_text_lines(std::string_view raw) {
+  std::vector<std::string> lines;
+  std::size_t start = 0;
+  while (start <= raw.size()) {
+    std::size_t end = raw.find('\n', start);
+    if (end == std::string_view::npos) {
+      end = raw.size();
+    }
+    std::string line = touch_menu_text(raw.substr(start, end - start));
+    if (!line.empty()) {
+      lines.push_back(std::move(line));
+    }
+    start = end + 1u;
+  }
+  return lines;
+}
+
 const menu::MenuItem *find_menu_item(const menu::MenuSnapshot &menu,
                                      std::string_view name) {
   for (const menu::MenuItem &item : menu.items) {
@@ -84,6 +101,38 @@ void append_menu_footers(const menu::MenuSnapshot &menu,
     if (auto footer = footer_of(item, plane)) {
       view->footers.push_back(std::move(*footer));
     }
+  }
+}
+
+void append_list_entries(const menu::MenuItem &list,
+                         const presentation::RetailScenePlane &plane,
+                         ListTap tap, TouchMenuView *view) {
+  const menu::ListBoxState &box = *list.list_box;
+  view->focus_wraps = false;
+  const float centre_x =
+      0.5F * static_cast<float>(box.hit.left + box.hit.right);
+  for (std::size_t i = 0; i < box.entries.size(); ++i) {
+    const int entry = static_cast<int>(i);
+    const int window_row = entry - box.top;
+    TouchMenuRow row;
+    row.label = touch_menu_text(box.entries[i]);
+    row.clicks = tap == ListTap::select && box.row_height > 0 &&
+                 window_row >= 0 && window_row < box.visible_rows;
+    row.press_on_arrival = tap == ListTap::accept;
+    row.focused = entry == box.selected;
+    row.slot = list.slot;
+    row.entry = entry;
+    if (row.clicks) {
+      /* The list counts rows down from its box's top edge. */
+      const float y = static_cast<float>(box.hit.bottom) -
+                      static_cast<float>(window_row * box.row_height) -
+                      0.5F * static_cast<float>(box.row_height);
+      row.click = plane.to_client({centre_x, y});
+    }
+    if (row.focused) {
+      view->focused_row = static_cast<int>(view->rows.size());
+    }
+    view->rows.push_back(std::move(row));
   }
 }
 

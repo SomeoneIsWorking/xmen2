@@ -73,38 +73,7 @@ void append_facts(const menu::MenuSnapshot &menu, TouchMenuView *view) {
   }
   const menu::MenuItem *description = find_menu_item(menu, kDescription);
   if (description != nullptr && menu_item_shown(*description)) {
-    view->detail = touch_menu_text(description->label);
-  }
-}
-
-void append_entries(const menu::MenuItem &list,
-                    const presentation::RetailScenePlane &plane,
-                    TouchMenuView *view) {
-  const menu::ListBoxState &box = *list.list_box;
-  const float centre_x =
-      0.5F * static_cast<float>(box.hit.left + box.hit.right);
-  for (std::size_t i = 0; i < box.entries.size(); ++i) {
-    const int entry = static_cast<int>(i);
-    const int window_row = entry - box.top;
-    TouchMenuRow row;
-    row.label = touch_menu_text(box.entries[i]);
-    row.clicks =
-        box.row_height > 0 && window_row >= 0 && window_row < box.visible_rows;
-    row.press_on_arrival = false;
-    row.focused = entry == box.selected;
-    row.slot = list.slot;
-    row.entry = entry;
-    if (row.clicks) {
-      /* The list counts rows down from its box's top edge. */
-      const float y = static_cast<float>(box.hit.bottom) -
-                      static_cast<float>(window_row * box.row_height) -
-                      0.5F * static_cast<float>(box.row_height);
-      row.click = plane.to_client({centre_x, y});
-    }
-    if (row.focused) {
-      view->focused_row = static_cast<int>(view->rows.size());
-    }
-    view->rows.push_back(std::move(row));
+    view->detail = menu_text_lines(description->label);
   }
 }
 
@@ -121,9 +90,8 @@ build_shop_view(const menu::MenuSnapshot &menu,
     return std::nullopt;
   }
   TouchMenuView view = start_menu_view(menu);
-  view.focus_wraps = false;
   append_tabs(menu, plane, &view);
-  append_entries(*list, plane, &view);
+  append_list_entries(*list, plane, ListTap::select, &view);
   append_facts(menu, &view);
   /* The game prices only the selected entry. */
   const menu::MenuItem *cost = find_menu_item(menu, kCost);

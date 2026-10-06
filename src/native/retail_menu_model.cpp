@@ -182,10 +182,12 @@ struct MenuModeEntry {
   std::uint32_t offset;
 };
 
-/* CMenuTeam::onMouse (0x005e25c0) switches on menu+0x18d8; CMenuShop::onMouse
-   (0x005d3400) picks its stash tabs on menu+0x18e8 bit 0. */
+/* CMenuTeam::onMouse (0x005e25c0) and CMenuCodex::onMouse (0x005b0c80) switch
+   on menu+0x18d8; CMenuShop::onMouse (0x005d3400) picks its stash tabs on
+   menu+0x18e8 bit 0. */
 inline constexpr MenuModeEntry kMenuModes[] = {
     {"CMenuTeam", 0x18d8u},
+    {"CMenuCodex", 0x18d8u},
     {"CMenuShop", 0x18e8u},
 };
 
@@ -553,7 +555,10 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
         field_u32(header, kItemLinks + static_cast<std::uint32_t>(i) * 4u);
   }
   *getter = field_u32(header, kItemGamevarGetter);
-  if (out->item_class == ItemClass::list_box) {
+  /* CMenuItemListCodex overrides only the list box's parse (+0x44) and
+     destructor, so its entries, window and onMouse are the list box's. */
+  if (out->item_class == ItemClass::list_box ||
+      out->item_class == ItemClass::list_codex) {
     out->list_box.emplace();
     if (!read_list_box(address, header, &*out->list_box)) {
       return false;

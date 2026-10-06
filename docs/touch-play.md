@@ -84,8 +84,8 @@ each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
-**The main menu, Options, the PDA, the team menu's party screen and the shop
-are replaced by the touch menu.** While touch play is the input and one of those
+**The main menu, Options, the PDA, the team menu's party screen, the shop and
+the codex are replaced by the touch menu.** While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
@@ -115,7 +115,13 @@ game's tab, an entry the game's
 list window shows is a click on its row (a click selects, a click on the
 selected entry buys), and an entry outside that window is reached with the menu
 pad's Up/Down, the game's own list stepping, and only selected. The stash keeps
-the retail screen.
+the retail screen. The codex (`touch_menu_codex`) lists its heroes; a tap walks
+the game's selection to an entry with the menu pad and presses A, because the
+codex loads an entry only on `MENU_ACCEPT`. Its Details footer switches the
+game to the description, which the touch menu shows in the list's place, the
+loaded entry's name as the title and the game's own lines, scrolled by drag;
+that scroll is the touch menu's own, and the game's description scroll is not
+read or driven. The hero model the retail codex turns is not shown.
 
 Mouse, keyboard and controller play never see it. The settings overlay hides
 it, and the touch menu hides the menu pad while it is up. Other menu classes
@@ -289,7 +295,7 @@ already chose keeps player one.
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's tabs and list entries included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's tabs and list entries and the codex's list and description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.

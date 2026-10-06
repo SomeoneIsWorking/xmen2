@@ -69,9 +69,11 @@ struct TouchMenuView {
   std::vector<TouchMenuFooter> footers;
   /* Pinned above the rows; they do not scroll. */
   std::vector<TouchMenuTab> tabs;
-  /* Pinned below the rows: the game's text about the focused row. */
+  /* Pinned below the rows: the game's text about the focused row, in the
+     game's own lines. A view with no rows is read: its lines fill the list's
+     place and scroll there. */
   std::vector<TouchMenuFact> facts;
-  std::string detail;
+  std::vector<std::string> detail;
   /* Index into `rows` of the menu's own focus, or -1. */
   int focused_row = -1;
   /* The game's Up/Down wraps from the last row to the first. */

@@ -88,6 +88,8 @@ constexpr std::uint32_t kVtMenuTeam = 0x006a2c94u;
 constexpr std::uint32_t kVtCharSummary = 0x006a0244u;
 constexpr std::uint32_t kVtMenuShop = 0x0069eb4cu;
 constexpr std::uint32_t kVtListBox = 0x006a062cu;
+constexpr std::uint32_t kVtMenuCodex = 0x0069e6d4u;
+constexpr std::uint32_t kVtListCodex = 0x006a0724u;
 constexpr std::uint32_t kListStore = 0x25000000u;
 
 std::uint32_t rebased(std::uint32_t linked) {
@@ -487,21 +489,22 @@ void test_team_menu() {
 
 /* A shop-shaped menu: one list box of three entries drawn from the shared
    record table, the second selected, the window scrolled by one. */
-FakeGuest build_shop(std::uint32_t entries) {
+FakeGuest build_list_menu(std::uint32_t entries, std::uint32_t menu_vtable,
+                          std::uint32_t list_vtable) {
   FakeGuest guest;
   Pool2 pool(&guest);
   guest.u32(rebased(0x008aff18u), kManager);
   guest.u32(rebased(0x008b13ecu), 0u);
   guest.u32(kManager + 0x86090u, kMenu);
   guest.zero(kMenu, 0x1900u);
-  guest.u32(kMenu, rebased(kVtMenuShop));
+  guest.u32(kMenu, rebased(menu_vtable));
   guest.text(kMenu + 0x0cu, "shop");
   guest.u32(kMenu + 0x15f0u, 0x01u);
   guest.u32(kMenu + 0x1608u, 1u);
   guest.u32(kMenu + 0x160cu, item_address(0));
   guest.u32(kMenu + 0x324u, item_address(0));
   put_item(&guest, &pool, 0,
-           {kVtListBox,
+           {list_vtable,
             "list",
             "",
             0x0bu,
@@ -533,6 +536,10 @@ FakeGuest build_shop(std::uint32_t entries) {
             0x40u);
   put_registry(&guest);
   return guest;
+}
+
+FakeGuest build_shop(std::uint32_t entries) {
+  return build_list_menu(entries, kVtMenuShop, kVtListBox);
 }
 
 void test_shop_list_box() {
@@ -576,6 +583,22 @@ void test_shop_list_box() {
         "a count past the store is a fault naming the count");
 }
 
+void test_codex_list() {
+  FakeGuest guest = build_list_menu(3u, kVtMenuCodex, kVtListCodex);
+  guest.u32(kMenu + 0x18d8u, 1u);
+  x2::menu::RetailMenuModel model(guest, kImage);
+  x2::menu::MenuSnapshot menu;
+  check(model.read(&menu) == x2::menu::ReadStatus::ok, "the codex reads");
+  check(menu.menu_class == "CMenuCodex", "CMenuCodex from its vtable");
+  check(menu.mode && *menu.mode == 1u, "the codex's description mode");
+  const auto *list = find(menu, "list");
+  check(list != nullptr && list->list_box &&
+            list->list_box->entries.size() == 3u &&
+            list->list_box->entries[0] == "Magneto: Level Advance" &&
+            list->list_box->selected == 1,
+        "a ListCodex reads as the list box it extends");
+}
+
 void test_linked_base_is_not_read() {
   const FakeGuest guest = build_options();
   x2::menu::RetailMenuModel model(guest, kLinked);
@@ -594,6 +617,7 @@ int main() {
   test_linked_base_is_not_read();
   test_team_menu();
   test_shop_list_box();
+  test_codex_list();
   std::printf("%d/%d check(s) passed\n", checks - failures, checks);
   return failures == 0 ? 0 : 1;
 }
