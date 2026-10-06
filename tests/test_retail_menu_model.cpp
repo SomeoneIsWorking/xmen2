@@ -84,6 +84,8 @@ constexpr std::uint32_t kVtBar = 0x006a042cu;
 constexpr std::uint32_t kVtBinary = 0x006a04b4u;
 constexpr std::uint32_t kVtTextBox = 0x006a1154u;
 constexpr std::uint32_t kVtMenuOptions = 0x0069ebd4u;
+constexpr std::uint32_t kVtMenuTeam = 0x006a2c94u;
+constexpr std::uint32_t kVtCharSummary = 0x006a0244u;
 
 std::uint32_t rebased(std::uint32_t linked) {
   return linked - kLinked + kImage;
@@ -419,6 +421,67 @@ void test_no_menu_and_faults() {
   check(missing_model.failed_address() == 0x30000000u, "naming the item");
 }
 
+/* A team-shaped menu: the party as four char summaries, the second lit, in
+   the detail mode the class keeps at menu+0x18d8. */
+FakeGuest build_team(std::uint32_t mode) {
+  FakeGuest guest;
+  Pool2 pool(&guest);
+  guest.u32(rebased(0x008aff18u), kManager);
+  guest.u32(rebased(0x008b13ecu), 0u);
+  guest.u32(kManager + 0x86090u, kMenu);
+  guest.zero(kMenu, 0x1900u);
+  guest.u32(kMenu, rebased(kVtMenuTeam));
+  guest.text(kMenu + 0x0cu, "team");
+  guest.u32(kMenu + 0x15f0u, 0x0fu);
+  guest.u32(kMenu + 0x1608u, 4u);
+  guest.u32(kMenu + 0x18d8u, mode);
+  const char *heroes[] = {"Magneto", "Cyclops", "Wolverine", "Storm"};
+  for (unsigned slot = 0; slot < 4u; ++slot) {
+    guest.u32(kMenu + 0x160cu + slot * 4u, item_address(slot));
+    put_item(&guest, &pool, slot,
+             {kVtCharSummary,
+              "char_summary0" + std::to_string(slot + 1u),
+              heroes[slot],
+              static_cast<std::uint8_t>(slot == 1u ? 0x29u : 0x28u),
+              "",
+              "",
+              "",
+              {364, static_cast<std::int16_t>(313 - 80 * slot), 116, 59, 0},
+              0u});
+  }
+  put_registry(&guest);
+  return guest;
+}
+
+void test_team_menu() {
+  const FakeGuest guest = build_team(0u);
+  x2::menu::RetailMenuModel model(guest, kImage);
+  x2::menu::MenuSnapshot menu;
+  check(model.read(&menu) == x2::menu::ReadStatus::ok, "the team menu reads");
+  check(menu.menu_class == "CMenuTeam", "CMenuTeam from its vtable");
+  check(menu.mode && *menu.mode == 0u, "the team's party mode");
+  const auto *cyclops = find(menu, "char_summary02");
+  check(cyclops != nullptr &&
+            cyclops->item_class == x2::menu::ItemClass::char_summary &&
+            cyclops->label == "Cyclops" &&
+            (cyclops->flags & x2::menu::kItemFocusLit) != 0u,
+        "a char summary's hero name and the lit selection");
+  const auto *storm = find(menu, "char_summary04");
+  check(storm != nullptr && (storm->flags & x2::menu::kItemFocusLit) == 0u,
+        "an unselected hero is not lit");
+
+  const FakeGuest details = build_team(2u);
+  x2::menu::RetailMenuModel details_model(details, kImage);
+  check(details_model.read(&menu) == x2::menu::ReadStatus::ok && menu.mode &&
+            *menu.mode == 2u,
+        "a detail tab's mode");
+
+  const FakeGuest options = build_options();
+  x2::menu::RetailMenuModel options_model(options, kImage);
+  check(options_model.read(&menu) == x2::menu::ReadStatus::ok && !menu.mode,
+        "a class without a mode reads none");
+}
+
 void test_linked_base_is_not_read() {
   const FakeGuest guest = build_options();
   x2::menu::RetailMenuModel model(guest, kLinked);
@@ -435,6 +498,7 @@ int main() {
   test_popup();
   test_no_menu_and_faults();
   test_linked_base_is_not_read();
+  test_team_menu();
   std::printf("%d/%d check(s) passed\n", checks - failures, checks);
   return failures == 0 ? 0 : 1;
 }

@@ -53,12 +53,9 @@ struct TouchMenuView {
   bool same_screen(const TouchMenuView &other) const;
 };
 
-/* The menu classes the touch menu replaces. Every other class keeps the retail
-   screen and the menu pad. */
-bool touch_menu_replaces(std::string_view menu_class);
-
 /* The view of a menu the touch menu replaces, or nullopt: another class, a
-   popup over it, or no selectable row. */
+   popup over it, a screen of the class it does not cover, or no selectable
+   row. Each replaced class has its own builder. */
 std::optional<TouchMenuView>
 build_touch_menu_view(const menu::MenuSnapshot &menu,
                       const presentation::RetailScenePlane &plane);

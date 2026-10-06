@@ -9,14 +9,14 @@
 
 namespace x2::control {
 
-/* The snapshot as the JSON GET /menu returns. */
-std::string menu_json(const menu::MenuSnapshot &menu);
+/* The snapshot as the JSON GET /menu returns; all_items adds every item. */
+std::string menu_json(const menu::MenuSnapshot &menu, bool all_items);
 
 /* The touch menu as drawn: its rows and every button's output rectangle. */
 std::string touch_menu_json(const input::TouchMenuState &state);
 
-/* GET /menu: the active retail menu, read on the server thread. */
-void menu_route(x2_socket_t fd);
+/* GET /menu[?items=all]: the active retail menu, read on the server thread. */
+void menu_route(x2_socket_t fd, const char *query);
 
 } // namespace x2::control
 

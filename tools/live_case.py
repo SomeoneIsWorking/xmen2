@@ -1795,6 +1795,118 @@ def case_touch_menu(case: Case) -> None:
                case.alive() and case.http("/status")[0] == 200)
 
 
+def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
+    """From a Continue boot, Enter through any conversation and Escape until
+    the game's own menu is the PDA."""
+    deadline = time.monotonic() + timeout
+    menu = read_menu(case)
+    while time.monotonic() < deadline and menu.get("menu") != "pda":
+        case.http("/key?name=Return&hold=0.2")
+        time.sleep(1.0)
+        case.http("/key?name=Escape&hold=0.2")
+        time.sleep(1.5)
+        menu = read_menu(case)
+    return menu
+
+
+def wait_game_menu(case: Case, done, timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    menu = read_menu(case)
+    while time.monotonic() < deadline and not done(menu):
+        time.sleep(0.3)
+        menu = read_menu(case)
+    return menu
+
+
+def case_touch_team(case: Case) -> None:
+    """The touch menu over CMenuTeam's party screen, opened from the PDA.
+
+    Each tap is judged by the game's own state: which hero summary is lit, the
+    class's mode, and the menu it has open.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    pda = keyboard_into_the_pda(case, 300)
+    case.check("the run reached the PDA", pda.get("menu") == "pda",
+               str(pda.get("menu")))
+    shown = wait_touch_menu(case, "pda", 20)
+    case.check("the touch menu is shown over the PDA",
+               shown.get("visible") is True)
+    team_button = touch_button(shown, "row", "team management")
+    case.check("the PDA offers Team Management", team_button is not None)
+    if team_button is None:
+        return
+    case.shot("pda")
+    tap_touch_button(case, shown, team_button)
+    team = wait_touch_menu(case, "team", 20)
+    (case.dir / "team.json").write_text(json.dumps(team, indent=1) + "\n")
+    heroes = [row["label"] for row in team.get("rows", [])]
+    print("  party: %s" % heroes)
+    case.check("the tap opened the game's team menu on its party",
+               read_menu(case).get("menu") == "team"
+               and read_menu(case).get("mode") == 0
+               and team.get("visible") is True, str(heroes))
+    case.check("the touch menu offers one row per hero",
+               len(heroes) >= 2 and all(heroes))
+    if team.get("visible") is not True or len(heroes) < 2:
+        return
+    controls = live_controls(case)
+    case.check("and the menu pad is not drawn under it",
+               "menu-a" not in controls, "drawn: %s" % sorted(controls))
+    case.shot("team")
+
+    selected = team.get("focused_row", -1)
+    target = 1 if selected != 1 else 0
+    row = next(b for b in team["buttons"]
+               if b["part"] == "row" and b["index"] == target)
+    tap_touch_button(case, team, row)
+    picked = wait_game_menu(
+        case, lambda m: m.get("touch_menu", {}).get("focused_row") == target,
+        10)
+    case.check("a tap on %s selected that hero in the game" % heroes[target],
+               picked.get("touch_menu", {}).get("focused_row") == target,
+               "the lit hero is row %s" %
+               picked.get("touch_menu", {}).get("focused_row"))
+    case.shot("team-selected")
+
+    tap_touch_button(case, team, row)
+    details = wait_game_menu(case, lambda m: m.get("mode", 0) != 0, 10)
+    case.check("a second tap opened that hero's details",
+               details.get("menu") == "team" and details.get("mode", 0) >= 2,
+               "mode %s" % details.get("mode"))
+    controls = live_controls(case)
+    case.check("where the touch menu stands aside for the menu pad",
+               details.get("touch_menu", {}).get("visible") is False
+               and "menu-b" in controls, "drawn: %s" % sorted(controls))
+    case.shot("details")
+    viewport = live_viewport(case)
+    if viewport is None or "menu-b" not in controls:
+        return
+    tap_control(case, controls["menu-b"], viewport)
+    team = wait_game_menu(
+        case, lambda m: m.get("mode") == 0
+        and m.get("touch_menu", {}).get("visible") is True, 10)
+    case.check("the pad's B returned to the party under the touch menu",
+               team.get("mode") == 0
+               and team.get("touch_menu", {}).get("visible") is True,
+               "mode %s" % team.get("mode"))
+    shown = touch_menu(case)
+    accept = touch_button(shown, "footer", "accept")
+    case.check("the party offers the game's Accept footer", accept is not None,
+               str([b["label"] for b in shown.get("buttons", [])
+                    if b["part"] == "footer"]))
+    if accept is None:
+        return
+    tap_touch_button(case, shown, accept)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "team", 10)
+    case.check("Accept left the team menu",
+               left.get("menu") != "team", "now %r" % left.get("menu"))
+    case.shot("after-accept")
+    case.check("and the game is still running", case.alive())
+
+
 CASES = {
     "cutscene-skip": case_cutscene_skip,
     "cutscene-skip-early": case_cutscene_skip_early,
@@ -1806,6 +1918,7 @@ CASES = {
     "touch-menu": case_touch_menu,
     "menu-model": case_menu_model,
     "options-back": case_options_back,
+    "touch-team": case_touch_team,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

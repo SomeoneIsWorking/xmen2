@@ -1,17 +1,13 @@
 #include "touch_menu_view.hpp"
 
+#include "touch_menu_parts.hpp"
+#include "touch_menu_team.hpp"
+
 #include <array>
 #include <cctype>
 
 namespace x2::input {
 namespace {
-
-constexpr std::array<std::string_view, 3> kReplacedClasses = {
-    "CMenuMain", "CMenuOptions", "CMenuPDA"};
-
-constexpr std::string_view kTokenPrefix = "$MENU_";
-constexpr std::string_view kFooterPrefix = "desctext";
-constexpr std::string_view kTitlePrefix = "title";
 
 bool is_space(char c) { return std::isspace(static_cast<unsigned char>(c)); }
 
@@ -47,58 +43,6 @@ std::string close_letter_spacing(std::string_view text) {
   return out;
 }
 
-presentation::ClientPoint centre(const menu::SceneRect &rect,
-                                 const presentation::RetailScenePlane &plane) {
-  return plane.to_client({0.5F * static_cast<float>(rect.left + rect.right),
-                          0.5F * static_cast<float>(rect.top + rect.bottom)});
-}
-
-bool shown(const menu::MenuItem &item) {
-  return item.enabled() && !item.hidden();
-}
-
-std::string title_of(const menu::MenuSnapshot &menu) {
-  const std::string own = "label_" + menu.name;
-  for (const menu::MenuItem &item : menu.items) {
-    if (item.name == own && !item.hidden()) {
-      const std::string text = touch_menu_text(item.label);
-      if (!text.empty()) {
-        return text;
-      }
-    }
-  }
-  for (const menu::MenuItem &item : menu.items) {
-    if (item.name.starts_with(kTitlePrefix) && !item.hidden()) {
-      const std::string text = touch_menu_text(item.label);
-      if (!text.empty()) {
-        return text;
-      }
-    }
-  }
-  return {};
-}
-
-std::optional<TouchMenuFooter>
-footer_of(const menu::MenuItem &item,
-          const presentation::RetailScenePlane &plane) {
-  if (!item.name.starts_with(kFooterPrefix) || !shown(item)) {
-    return std::nullopt;
-  }
-  const std::size_t at = item.label.find(kTokenPrefix);
-  if (at == std::string::npos) {
-    return std::nullopt;
-  }
-  std::size_t end = at;
-  while (end < item.label.size() && !is_space(item.label[end])) {
-    ++end;
-  }
-  TouchMenuFooter footer;
-  footer.token = item.label.substr(at, end - at);
-  footer.label = touch_menu_text(item.label);
-  footer.click = centre(item.rect, plane);
-  return footer;
-}
-
 } // namespace
 
 bool TouchMenuView::same_screen(const TouchMenuView &other) const {
@@ -114,29 +58,17 @@ bool TouchMenuView::same_screen(const TouchMenuView &other) const {
   return true;
 }
 
-bool touch_menu_replaces(std::string_view menu_class) {
-  for (const std::string_view replaced : kReplacedClasses) {
-    if (menu_class == replaced) {
-      return true;
-    }
-  }
-  return false;
-}
+namespace {
 
+/* The main menu, Options and the PDA: their up/down rows as the game orders
+   them. */
 std::optional<TouchMenuView>
-build_touch_menu_view(const menu::MenuSnapshot &menu,
-                      const presentation::RetailScenePlane &plane) {
-  if (menu.popup_up || !touch_menu_replaces(menu.menu_class)) {
-    return std::nullopt;
-  }
-  TouchMenuView view;
-  view.address = menu.address;
-  view.menu = menu.name;
-  view.menu_class = menu.menu_class;
-  view.title = title_of(menu);
+build_row_menu_view(const menu::MenuSnapshot &menu,
+                    const presentation::RetailScenePlane &plane) {
+  TouchMenuView view = start_menu_view(menu);
   for (const int index : menu.rows) {
     const menu::MenuItem &item = menu.items[static_cast<std::size_t>(index)];
-    if (!shown(item)) {
+    if (!menu_item_shown(item)) {
       continue;
     }
     TouchMenuRow row;
@@ -154,7 +86,7 @@ build_touch_menu_view(const menu::MenuSnapshot &menu,
     row.steps = item.has_left_right();
     row.focused = index == menu.focused;
     row.slot = item.slot;
-    row.click = centre(item.rect, plane);
+    row.click = menu_item_centre(item.rect, plane);
     if (row.focused) {
       view.focused_row = static_cast<int>(view.rows.size());
     }
@@ -163,12 +95,39 @@ build_touch_menu_view(const menu::MenuSnapshot &menu,
   if (view.rows.empty()) {
     return std::nullopt;
   }
-  for (const menu::MenuItem &item : menu.items) {
-    if (auto footer = footer_of(item, plane)) {
-      view.footers.push_back(std::move(*footer));
+  append_menu_footers(menu, plane, &view);
+  return view;
+}
+
+using ViewBuilder = std::optional<TouchMenuView> (*)(
+    const menu::MenuSnapshot &, const presentation::RetailScenePlane &);
+
+struct ReplacedClass {
+  std::string_view menu_class;
+  ViewBuilder build;
+};
+
+constexpr std::array<ReplacedClass, 4> kReplacedClasses = {{
+    {"CMenuMain", build_row_menu_view},
+    {"CMenuOptions", build_row_menu_view},
+    {"CMenuPDA", build_row_menu_view},
+    {"CMenuTeam", build_team_view},
+}};
+
+} // namespace
+
+std::optional<TouchMenuView>
+build_touch_menu_view(const menu::MenuSnapshot &menu,
+                      const presentation::RetailScenePlane &plane) {
+  if (menu.popup_up) {
+    return std::nullopt;
+  }
+  for (const ReplacedClass &replaced : kReplacedClasses) {
+    if (replaced.menu_class == menu.menu_class) {
+      return replaced.build(menu, plane);
     }
   }
-  return view;
+  return std::nullopt;
 }
 
 std::string touch_menu_text(std::string_view raw) {

@@ -488,6 +488,38 @@ Three of these are worth naming because they are what a phone player meets
 first: `main` is the title screen and `pda` is the in-game menu. `pause` is an
 Xbox leftover: opened by hand it builds a plain `CMenu` that draws nothing on PC.
 
+## The team menu (`CMenuTeam`)
+
+`CMenuTeam` (vtable `0x6a2c94`) keeps its own screen state at
+`menu+0x18d8`, which `CMenuTeam::onMouse` (`FUN_005e25c0`, vtable `+0x80`)
+switches on:
+
+| mode | screen | what a click does |
+|---|---|---|
+| 0 | the party | on `WM_LBUTTONUP`/`WM_RBUTTONUP`: a click on `char_summary01..04` selects that hero (`FUN_005e22a0` with that pad's direction); a click on the selected hero publishes `MENU_OTHER` (0x18), the details. A click on a floor pad does the same by fixed scene boxes. Then the base `CMenu::onMouse` runs, so the `desctext` footers work as in any menu |
+| 1 | the roster | over `roster_summary01..03` and `roster_portrait01..03`, `WM_LBUTTONDOWN` publishes 0xb on the first entry, 0xc on the third, `MENU_OTHER` on the middle summary and `MENU_ACCEPT` on the middle portrait; the wheel publishes 0xb up and 0xc down |
+| 2 | stats | a click on `body`/`focus`/`strike`/`speed` (or its label) moves to that stat; on the current stat, left-button-down or wheel up adds a point (action 4), right-button-down or wheel down removes one (8) |
+| 3, 6 | skills | `skill_list` rows through the base `onMouse`; the icon strip left of the list assigns (0xd) |
+| 4 | gear | `equipment` and `equipment_inv` list boxes take the click through their own `+0x74` |
+| 5 | ai | the seven `label_ai_*` rows: a click moves to a row, a click on the current row accepts it |
+
+In modes 2..6 a click on `detail_option01..04_text` (stats, skills, gear, ai)
+switches tab through `menu+0x40` with the tab delta.
+
+The party screen's items: `char_summary01..04` (`CMenuItemCharSummary`, the
+hero's name as text, bit 0 of `item+0x54` lit on the selected hero),
+`pad01..04` floor models, the potion and money counters, `desctext4`
+`$MENU_OTHER Details` and `desctext5` `$MENU_OK Accept`. The up/down chain runs
+through the potion icons (`item_health` is the menu's focus), not the heroes,
+so the heroes are found by name. The roster and every detail panel are hidden
+items (`item+0x54` 0x04) while the party is shown. The party screen does not
+scroll.
+
+Measured (Continue into `act2/jungle/jungle1`, PDA, Team Management): mode 0
+with Magneto, Cyclops, Wolverine, Storm; a click on Cyclops lit
+`char_summary02`, a second click set mode 2 and showed `details_panel`; B
+returned to mode 0, and `$MENU_OK Accept` closed the team menu to gameplay.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
@@ -526,8 +558,8 @@ Xbox leftover: opened by hand it builds a plain `CMenu` that draws nothing on PC
 - **The `~NN` text escape.** Labels and footers carry `~` and two digits
   (`~05Back`); the touch menu strips it. What it selects (colour or font) is
   not read.
-- **The PDA through the touch menu** is built by the same rules as main and
-  Options but has not been observed live.
+- **No title item on the PDA or the team menu.** Neither has a `label_<menu>`
+  or `title*` item, so their touch menus show no title.
 - **Navigation of a menu whose links are all 0** (`pause`): the model offers
   only the anchor row.
 - **The anchor fallback** uses slot order where the game's default focus walks
