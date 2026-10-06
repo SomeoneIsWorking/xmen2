@@ -148,10 +148,10 @@ void the_view_carries_the_rows_values_and_footer() {
             view->footers[1].token == "$MENU_OK",
         "each footer names its token and the game's words");
 
-  MenuSnapshot team = options_menu();
-  team.menu_class = "CMenuTeam";
-  check(!x2::input::build_touch_menu_view(team, plane_1280x720()),
-        "a menu class not yet replaced keeps the retail screen");
+  MenuSnapshot loading = options_menu();
+  loading.menu_class = "CMenuLoading";
+  check(!x2::input::build_touch_menu_view(loading, plane_1280x720()),
+        "a menu class the touch menu does not replace keeps the retail screen");
   MenuSnapshot popup = options_menu();
   popup.popup_up = true;
   check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
@@ -160,6 +160,84 @@ void the_view_carries_the_rows_values_and_footer() {
   empty.rows.clear();
   check(!x2::input::build_touch_menu_view(empty, plane_1280x720()),
         "a menu with no selectable row keeps the retail screen");
+}
+
+/* CMenuTeam's party screen as GET /menu read it in the jungle: four hero
+   summaries, Cyclops selected, and the nav chain on the potion icons. */
+MenuSnapshot team_menu(std::uint32_t mode) {
+  MenuSnapshot menu;
+  menu.address = 0x27128964u;
+  menu.name = "team";
+  menu.menu_class = "CMenuTeam";
+  menu.mode = mode;
+  menu.items.push_back(item(58, "item_health", "", 15, -77, 61, -46));
+  const char *heroes[] = {"Magneto", "Cyclops", "Wolverine", "Storm"};
+  for (int i = 0; i < 4; ++i) {
+    const std::string name = "char_summary0" + std::to_string(i + 1);
+    MenuItem hero = item(static_cast<unsigned>(52 + i), "", heroes[i], 364,
+                         313 - 80 * i, 479, 371 - 80 * i);
+    hero.name = name;
+    if (i == 1) {
+      hero.flags |= x2::menu::kItemFocusLit;
+    }
+    menu.items.push_back(hero);
+  }
+  menu.items.push_back(
+      item(38, "desctext4", "~05$MENU_OTHER Details", 268, 21, 347, 35));
+  menu.items.push_back(
+      item(39, "desctext5", "~05$MENU_OK Accept", 401, 21, 480, 35));
+  menu.rows = {0};
+  menu.focused = 0;
+  return menu;
+}
+
+void the_team_party_is_its_heroes() {
+  const RetailScenePlane plane = plane_1280x720();
+  const MenuSnapshot menu = team_menu(0u);
+  const auto view = x2::input::build_touch_menu_view(menu, plane);
+  check(view.has_value(), "the team's party screen is replaced");
+  if (!view) {
+    return;
+  }
+  check(view->rows.size() == 4u && view->rows[0].label == "Magneto" &&
+            view->rows[3].label == "Storm",
+        "one row per hero summary, in party order, not the nav chain");
+  check(view->focused_row == 1 && view->rows[1].focused,
+        "the lit summary is the selected hero");
+  bool clicks = true;
+  bool inside = true;
+  for (std::size_t i = 0; i < view->rows.size(); ++i) {
+    clicks = clicks && view->rows[i].clicks;
+    const auto &rect = menu.items[i + 1u].rect;
+    const auto scene = plane.to_scene(view->rows[i].click);
+    inside = inside && scene.x >= static_cast<float>(rect.left) &&
+             scene.x < static_cast<float>(rect.right) &&
+             scene.z >= static_cast<float>(rect.top) &&
+             scene.z < static_cast<float>(rect.bottom);
+  }
+  check(clicks, "a hero is chosen by the game's own click on its summary");
+  check(inside, "each click lands inside the summary CMenuTeam::onMouse tests");
+  check(view->footers.size() == 2u && view->footers[0].label == "Details" &&
+            view->footers[1].token == "$MENU_OK",
+        "the party's Details and Accept footers");
+  check(!x2::input::build_touch_menu_view(team_menu(2u), plane),
+        "a hero's detail tabs keep the retail screen");
+  check(!x2::input::build_touch_menu_view(team_menu(1u), plane),
+        "the roster keeps the retail screen");
+  MenuSnapshot unread = team_menu(0u);
+  unread.mode.reset();
+  check(!x2::input::build_touch_menu_view(unread, plane),
+        "a team menu whose mode was not read keeps the retail screen");
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  const auto out =
+      tap(touch, find(touch.layout(), TouchMenuPart::row, 3)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
+            out[0].at.x == view->rows[3].click.x &&
+            out[0].at.y == view->rows[3].click.y,
+        "a tap on Storm is a click on Storm's summary");
 }
 
 /* A click delivered at a row's client point lands inside the box
@@ -350,6 +428,7 @@ int main() {
   the_layout_is_finger_sized_and_inside_the_safe_area();
   a_menu_without_footers_gives_their_band_to_the_list();
   a_tap_delivers_the_games_own_input();
+  the_team_party_is_its_heroes();
   a_drag_scrolls_and_does_not_press();
   if (failures) {
     std::printf("touch_menu: %d of %d check(s) failed\n", failures, checks);

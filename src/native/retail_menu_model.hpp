@@ -106,6 +106,9 @@ struct MenuSnapshot {
   int focused = -1;
   /* A CPopupDialog is shown; it takes the pointer before any menu does. */
   bool popup_up = false;
+  /* The class's own screen state, for the classes that keep one. CMenuTeam:
+     0 the party, 1 the roster, 2..6 a hero's detail tabs. */
+  std::optional<std::uint32_t> mode;
 };
 
 enum class ReadStatus : std::uint8_t {

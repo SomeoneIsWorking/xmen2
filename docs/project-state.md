@@ -1004,10 +1004,15 @@ touch-menu`, 15 of 15 on 2026-10-06: the main menu's seven rows are offered
 with no menu pad under them, a tap on no button activates nothing, OPTIONS
 opens the game's Options menu, Effects Volume's step-left lowers the game's
 level 1.0 -> 0.9, a tap on Combat Music turns the game's value On -> Off, and
-the Back footer returns the game to its main menu. Gap: the PDA is unmeasured
-live; team, shop, stash, codex, worldmap, danger room, review, region, automap,
-the online lists, Advanced Options (`sebas`) and `options_controller` still
-show the retail menu with the menu pad.
+the Back footer returns the game to its main menu. The team menu's party
+screen follows: measured by `tools/live_case.py touch-team`, 13 of 13 on
+2026-10-06, the touch menu replaced the PDA, Team Management opened the
+party with its four heroes, a tap selected Cyclops in the game, a second tap
+opened Cyclops's details where the menu pad takes over, the pad's B returned
+to the party, and Accept closed the team menu. Gap: the team roster and detail
+tabs keep the retail screen; shop, stash, codex, worldmap, danger room,
+review, region, automap, the online lists, Advanced Options (`sebas`) and
+`options_controller` still show the retail menu with the menu pad.
 
 The stick steers from the thumb, not from the ring. It measured its axes from
 the ring's geometric centre, so where the thumb happened to land was itself an

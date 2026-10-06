@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <string_view>
 #include <unordered_map>
 
 namespace x2::menu {
@@ -158,6 +159,17 @@ ItemClass classify_item(std::uint32_t vtable, std::uint32_t image_base) {
   }
   return ItemClass::unknown;
 }
+
+/* A class's own screen state, read beside the items. */
+struct MenuModeEntry {
+  std::string_view menu_class;
+  std::uint32_t offset;
+};
+
+/* CMenuTeam::onMouse (0x005e25c0) switches on menu+0x18d8. */
+inline constexpr MenuModeEntry kMenuModes[] = {
+    {"CMenuTeam", 0x18d8u},
+};
 
 const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
   for (const MenuClassEntry &entry : kMenuClasses) {
@@ -650,6 +662,16 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
     return ReadStatus::unreadable;
   }
   out->menu_class = classify_menu(vtable, image_base_);
+  for (const MenuModeEntry &entry : kMenuModes) {
+    if (entry.menu_class != out->menu_class) {
+      continue;
+    }
+    std::uint32_t mode = 0;
+    if (!read_u32(menu + entry.offset, &mode)) {
+      return ReadStatus::unreadable;
+    }
+    out->mode = mode;
+  }
   for (std::size_t i = 0; i < out->desctext.size(); ++i) {
     std::uint32_t handle = 0;
     if (!read_u32(menu + kMenuDesctext + static_cast<std::uint32_t>(i) * 4u,

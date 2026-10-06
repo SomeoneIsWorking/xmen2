@@ -2,6 +2,7 @@
 
 #include "../input/touch_runtime_menu.hpp"
 #include "control.h"
+#include "control_query.h"
 #include "json_string.h"
 
 #include <cstdio>
@@ -109,6 +110,27 @@ void put_text_item(std::string *out, const menu::MenuItem &item) {
   close_object(out);
 }
 
+void put_item(std::string *out, const menu::MenuItem &item) {
+  out->push_back('{');
+  put_int(out, "slot", static_cast<long>(item.slot));
+  put_text(out, "name", item.name);
+  put_text(out, "class", menu::item_class_name(item.item_class));
+  put_text(out, "label", item.label);
+  put_rect(out, item.rect);
+  put_int(out, "flags", item.flags);
+  put_bool(out, "focused", item.focused);
+  put_bool(out, "navigable", item.navigable);
+  put_fill(out, item.fill);
+  put_text(out, "use", item.use_command);
+  put_text(out, "left", item.left_command);
+  put_text(out, "right", item.right_command);
+  put_int(out, "link_up", item.link_up);
+  put_int(out, "link_down", item.link_down);
+  put_int(out, "link_left", item.link_left);
+  put_int(out, "link_right", item.link_right);
+  close_object(out);
+}
+
 void put_float(std::string *out, const char *key, float value) {
   char text[48];
   std::snprintf(text, sizeof text, "\"%s\":%.1f,", key,
@@ -179,7 +201,7 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
   return out;
 }
 
-std::string menu_json(const menu::MenuSnapshot &menu) {
+std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
   std::string out = "{";
   put_bool(&out, "active", true);
   put_text(&out, "menu", menu.name);
@@ -188,6 +210,9 @@ std::string menu_json(const menu::MenuSnapshot &menu) {
   std::snprintf(address, sizeof address, "0x%08x", menu.address);
   put_text(&out, "address", address);
   put_bool(&out, "popup", menu.popup_up);
+  if (menu.mode) {
+    put_int(&out, "mode", static_cast<long>(*menu.mode));
+  }
   put_int(&out, "item_count", static_cast<long>(menu.items.size()));
   int focused_row = -1;
   for (std::size_t i = 0; i < menu.rows.size(); ++i) {
@@ -228,11 +253,27 @@ std::string menu_json(const menu::MenuSnapshot &menu) {
   if (out.back() == ',') {
     out.pop_back();
   }
-  out.append("]}\n");
+  out.push_back(']');
+  if (all_items) {
+    out.append(",\"items\":[");
+    for (const menu::MenuItem &item : menu.items) {
+      put_item(&out, item);
+      out.push_back(',');
+    }
+    if (out.back() == ',') {
+      out.pop_back();
+    }
+    out.push_back(']');
+  }
+  out.append("}\n");
   return out;
 }
 
-void menu_route(x2_socket_t fd) {
+void menu_route(x2_socket_t fd, const char *query) {
+  char items[8] = "";
+  const bool all_items =
+      control_query_arg(query, "items", items, sizeof items) != 0 &&
+      std::string(items) == "all";
   menu::MenuSnapshot menu;
   std::uint32_t failed = 0;
   const menu::ReadStatus status = menu::read_live_menu(&menu, &failed);
@@ -245,7 +286,7 @@ void menu_route(x2_socket_t fd) {
   }
   std::string body;
   if (status == menu::ReadStatus::ok) {
-    body = menu_json(menu);
+    body = menu_json(menu, all_items);
   } else {
     body = menu.popup_up ? "{\"active\":false,\"popup\":true,\"reason\":"
                          : "{\"active\":false,\"popup\":false,\"reason\":";
