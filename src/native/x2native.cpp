@@ -25,6 +25,7 @@
 #include "crt_selftest.h"
 #include "d3d8_com.h"
 #include "d3d8_host.h"
+#include "diagnostics_startup.hpp"
 #include "dinput_device.h"
 #include "env_file.h"
 #include "fault_report.h"
@@ -281,10 +282,8 @@ static int poison_init(void) {
    * wrong function pointer, a RET onto a corrupted stack) produced no line
    * at all, so a crash and a closed window read the same from a log. Each of
    * these prints the same context a SIGSEGV does. `--fault-selftest` proves
-   * every one of them fires.
-   *
-   * SIGABRT is deliberately NOT taken: this port's own aborts already name
-   * themselves on the way out, and exit 134 is what the gates read.
+   * every one of them fires. SIGABRT is recorded by the run log's crash
+   * reporter, which re-raises it so exit 134 is unchanged.
    */
   {
     static const int fatal[] = {SIGILL, SIGFPE, SIGBUS, SIGTRAP};
@@ -1630,6 +1629,7 @@ int main(int argc, char **argv) {
   if (x2native_options_uses_project_env(&options) &&
       x2_load_project_env(argv[0]) < 0)
     return 2;
+  x2::diagnostics::Startup::begin(x2_config_directory());
   if (!sdl_host_setup(options.window))
     return 1;
   /* Runtime CVars (engine selection, JIT knobs): compiled default < the

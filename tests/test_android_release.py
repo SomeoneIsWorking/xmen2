@@ -159,7 +159,8 @@ def main() -> int:
     # follows the code rather than the file it used to live in.
     fault_report = (ROOT / "src/native/fault_report.cpp").read_text(encoding="utf-8")
     assert "buildConfig = true" in gradle
-    assert "#elif !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
+    crash_report = (ROOT / "src/diagnostics/crash_report.cpp").read_text(encoding="utf-8")
+    assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in crash_report
     assert "[HOST STACK] unavailable on Android" in fault_report
     assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
     assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge

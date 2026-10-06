@@ -107,6 +107,7 @@ class Case:
 
         env = dict(os.environ)
         env["X2_SAVE_DIR"] = str(self.profile)
+        env["X2_LOG_DIR"] = str(self.profile / "logs")
         env["SDL_AUDIODRIVER"] = "dummy"
         cmd = [str(binary), "--d3d8", "--control=%d" % self.port]
         # --set is the binary's highest-precedence cvar source, above

@@ -51,9 +51,13 @@ FetchContent_MakeAvailable(lucent)
 # projects are added below.
 add_library(x2_runtime_services STATIC
     src/config/environment.cpp
+    src/diagnostics/crash_report.cpp
+    src/diagnostics/diagnostics_startup.cpp
+    src/diagnostics/run_log.cpp
     src/native/x2_log.cpp)
 set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(x2_runtime_services PUBLIC src/config src/native)
+target_include_directories(x2_runtime_services PUBLIC src/config src/diagnostics
+                           src/native)
 target_link_libraries(x2_runtime_services PUBLIC lucent::lucent)
 link_libraries(x2_runtime_services)
 
@@ -68,6 +72,11 @@ target_link_libraries(x2_runtime_config PUBLIC x2_runtime_services
 add_executable(test_x2_log tests/test_x2_log.cpp)
 target_link_libraries(test_x2_log PRIVATE x2_runtime_services)
 add_test(NAME x2_log COMMAND test_x2_log)
+
+add_executable(test_run_log tests/test_run_log.cpp)
+target_link_libraries(test_run_log PRIVATE x2_runtime_services)
+add_test(NAME run_log
+         COMMAND test_run_log ${CMAKE_CURRENT_BINARY_DIR}/test-run-log)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -2315,3 +2324,11 @@ set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME fault_reporter
          COMMAND x2native --no-window --fault-selftest)
 set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
+
+# Every ctest process logs into the build tree: selftest runs must not rotate
+# the player's run logs out of the user-data directory.
+get_property(x2_all_tests DIRECTORY PROPERTY TESTS)
+foreach(x2_test IN LISTS x2_all_tests)
+  set_property(TEST ${x2_test} APPEND PROPERTY ENVIRONMENT
+               "X2_LOG_DIR=${CMAKE_BINARY_DIR}/test-run-logs")
+endforeach()
