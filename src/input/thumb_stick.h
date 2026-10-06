@@ -1,0 +1,76 @@
+/* The movement stick's own policy: a thumb's travel, as an axis. */
+#ifndef X2_THUMB_STICK_H
+#define X2_THUMB_STICK_H
+
+#include <lucent/touch.h>
+
+namespace x2::input {
+
+/*
+ * WHERE THE THUMB LANDED IS THE CENTRE, NOT WHERE THE RING IS DRAWN.
+ *
+ * A thumb does not arrive on the middle of a circle it cannot see; it
+ * arrives somewhere inside it. Measured from the ring's geometric centre --
+ * which is how this stick read for its whole life -- that offset IS the
+ * player's input: the character walks off the instant the thumb touches
+ * down, before it has moved at all, in whatever direction the thumb happened
+ * to land. The travel is lopsided by the same amount, full deflection being
+ * a short push towards the near edge and a long reach to the far one.
+ *
+ * So the origin is the contact's own landing point, exactly as the camera
+ * swipe beside it already worked, and a ring radius of travel from there is
+ * full deflection.
+ *
+ * THE CENTRE FOLLOWS A THUMB THAT OVERSHOOTS. A thumb pushed past the rim
+ * drags the centre with it, keeping the thumb on the rim. With a fixed
+ * centre, reversing after an overshoot meant travelling all the way back
+ * across it before the character turned, which is what made the stick feel
+ * stiff next to every other mobile game.
+ */
+class ThumbStick {
+public:
+  struct Deflection {
+    float x = 0.0F;
+    float y = 0.0F;
+  };
+
+  /* Travel below this fraction of full is the thumb resting, not steering.
+     A stick with none of it walks the character on the tremor of a hand
+     holding the phone. Beyond it the remaining travel is rescaled to reach
+     full, so the dead zone costs range rather than adding a step. */
+  static constexpr float kDeadZone = 0.08F;
+
+  /* The shortest stick the game walks on. Its movement code ignores a
+     vector shorter than about 0.3 (measured: 0.283 stands still, 0.326
+     walks; docs/RE/input.md), so travel past the dead zone starts here
+     rather than at zero: the whole ring steers, and the first bit of travel
+     is the slowest walk rather than nothing. */
+  static constexpr float kWalkStart = 0.33F;
+
+  /* One ring radius of travel is full deflection. */
+  void set_travel(float travel);
+
+  /* This contact's deflection, retained for the overlay. An ended or
+     canceled phase is neutral and forgets it. */
+  Deflection track(const lucent::touch::Event &event);
+
+  /* What the ring should draw: the live deflection, -1..1 per axis, never
+     outside the unit circle. */
+  Deflection deflection() const { return deflection_; }
+
+  /* Where the ring should be drawn while a thumb holds it. */
+  bool engaged() const { return engaged_; }
+  lucent::touch::Point centre() const { return centre_; }
+
+  void release();
+
+private:
+  float travel_ = 0.0F;
+  bool engaged_ = false;
+  lucent::touch::Point centre_;
+  Deflection deflection_;
+};
+
+} // namespace x2::input
+
+#endif

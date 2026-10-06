@@ -1,0 +1,128 @@
+# Controller mapping: a "defaults" option, and what XBOX DEFAULTS means
+
+Feature 2 of the three (`README.md`) is auto controller mapping via SDL's
+gamecontrollerdb. On top of that, the mapping UI gets a **defaults** option, and
+the default it offers is not invented here:
+
+> **Xbox defaults** = the mapping the game's own XBOX PORT shipped with.
+
+That mapping was recovered from the shipped Xbox release and is preserved in
+the project's claims and focused tests. The release itself and the retired
+experimental implementation are not project source.
+
+## What has to be found, before any of it is written
+
+- **Where the Xbox port stores its default pad mapping.** This was recovered
+  from `default.xbe` by tracing the code that reads it, rather than selecting a
+  plausible-looking blob.
+- **The ACTION set it maps to.** The PC build's `x2_button` enum
+  (`src/display/ig_controller.h`) is the engine's controller button numbering,
+  not the game's actions. The Xbox table maps ITS buttons to game actions, so
+  the two have to be related through the action names, not through button
+  indices that happen to line up.
+- **Whether the Xbox build has more than one** (a menu set and a gameplay set,
+  or per-character sets). "The default mapping" being singular is an assumption
+  until the read says so.
+
+## Rules this inherits
+
+- It is an RE step, so it goes on the frontier and is `⛔ hack` until the table
+  is read from the real build and matches on real data. A hand-typed mapping
+  that "looks like an Xbox pad" is exactly the faked step
+  `docs/../re_frontier.py` exists to prevent.
+- No Xbox asset or table is committed or required by the product.
+
+## Recovered PC binding engine
+
+The PC side is no longer inferred. `FUN_0061b030` names all 42 rows and loads
+their two persistent keyboard/mouse slots. `FUN_006294b0` reads a row; slot 2
+is tried first by the prompt path. `FUN_006297a0(row, slot, kind, code)` is the
+exact setter. Axis names in `FUN_006281f0` establish the signed codes:
+
+```
+LX+ 1  LX- 2  LY+ 3  LY- 4
+Rx+ 7  Rx- 8  Ry+ 9  Ry- 10
+POV X+/X-/Y+/Y-  0x11..0x14
+A/B/X/Y           0x15..0x18
+Back/Start/LS/RS  0x1b..0x1e
+LT/RT on combined Z+/-  5/6
+```
+
+`FUN_00619c40` is the other half: its action switch maps the common console
+action identifiers to PC rows. The alignments are distinctive, not positional
+guessing: POWER 7 -> row 8 `Power`, GUARD 8 -> row 7 `Guard`, ALLY 9 -> row 9,
+NEXT/PREV 11/12 -> `NextHero`/`PreviousHero`, MAP_TOGGLE 15 -> row 16, and
+INC/DEC_AGGR 16/17 -> the correspondingly named PC rows.
+
+## Implemented bindable layout
+
+`src/native/xbox_defaults.c` joins that executable evidence to the authored
+Xbox controller screen. C187 records the recovered core and C227 records the
+health-pack extension. It installs 22 assignments:
+
+- left stick movement and right stick camera;
+- A Punch, B Slam, X Use/Pickup/Boost, Y Jump/Xtreme;
+- LT Call Allies and RT Mutant Powers;
+- RB TargetLock / Use Health Pack;
+- d-pad Up/Down/Right/Left as Next/Previous/Increase/Decrease hero;
+- Back Team Information, Start Pause, and right-stick click Map Toggle.
+
+The d-pad order is executable evidence, not a reading of the diagram:
+`default.xbe` `sub_00162240` registers `DPAD_UP` with action 11 `NEXT`,
+`DPAD_DN` with 12 `PREV`, `DPAD_RT` with 16 `INC_AGGR`, and `DPAD_LF` with 17
+`DEC_AGGR`. The PC action switch maps those IDs to rows 12, 13, 15, and 14;
+the PC physical-name function maps POV Up/Down/Right/Left to codes
+`0x14/0x13/0x11/0x12`.
+
+`src/native/xbox_defaults.c` owns only the 22 evidence-derived tuples.
+`src/input/player_input.c` is the single publisher: it resolves each player's
+persistent device assignment and writes the fixed table to slot 1 of the
+master, working, and menu sets through `input_bindings_write_player`. The pure
+test assigns pads to different players and proves the running sets receive the
+same canonical codes. `tests/test_xbox_defaults.c` separately pins every tuple
+and rejects duplicate action rows.
+
+## RmlUi player assignment
+
+The shipped RmlUi overlay now owns settings. Each player selects None, Auto,
+Keyboard, or one persistent connected pad. A controller page is intentionally
+read-only about actions: it states that the canonical Xbox/PS2 layout is used.
+Keyboard mappings live in four reusable profiles instead. This retires the
+old adapter around the PC executable's `Defaults 1/2/3` buttons; keeping it
+would give the guest editor and RmlUi two competing writers for the same slots.
+
+The binding row has two names with different contracts. Its `storage_key` is
+the exact identifier read from `FUN_0061b030` and must preserve executable ABI
+spellings such as `SreenGrab`; its `display_label` is the shipped English PC
+text from `igct.bnx`. `src/input/binding_rows.c` owns both in one descriptor
+table. RmlUi presents the latter (`Ally` becomes `Energy Pack`, `TargetLock`
+becomes `Health Pack`, and `SreenGrab` becomes `Screenshot`), while the live
+probe reports the former so diagnostics continue to match registry data.
+`tools/binding_rows.py` diffs all 42 keys and labels against those two shipped
+sources, and the production-API unit test pins the semantic discriminators and
+out-of-range behavior.
+
+## Remaining evidence boundary
+
+The fixed preset now preserves the console health control without inventing a
+new action. The retained PC binding object already has `TargetLock` at row 10,
+all three PC default tables bind it, and the shipped PS2 potion tutorial tells
+the player to use `$TARGET_LOCK` to replenish health. The Xbox options package
+labels Black as **Use Health Pack**; modern RB occupies that physical position.
+C227 pins the joined evidence and the live result: row 10 is `pad3:0x1a`, and
+holding RB drives the assigned player's action slot to `+1.000`.
+
+The earlier physical-index theory was wrong. Xbox `sub_00163E40` clears the
+30-float array and writes only four stick axes; it passes the digital mask
+separately. Black and White are digital-mask inputs, not float indices 8 and 9
+(C225). This also exposed two tooling hazards now covered by selftests:
+register-slot searches are class-agnostic, and `--show-sites` must not discard
+an active literal filter. `aftercall` is the class-preserving query when a
+known accessor returns the object of interest.
+
+Energy-pack behavior remains outside the fixed preset until its retained PC
+action is identified with the same level of evidence. Real controller identity
+and assignment also still need a hardware capture; the virtual pad and pure
+tests prove the binding/publication path, but this machine has no physical
+controller attached. That remaining omission is named by the runtime install
+message rather than silently replaced with a plausible control.

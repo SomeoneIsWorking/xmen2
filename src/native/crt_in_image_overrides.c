@@ -1,0 +1,38 @@
+/*
+ * Overrides for MSVC CRT helpers embedded in the retail executable.
+ *
+ * XMen2.exe links _ftol2 at 0x0067217c and calls it for every
+ * float/double -> int conversion the game does -- screen coordinates, timers,
+ * animation and audio sample counts. It is not an import, so ordinary JIT
+ * execution reaches its ~20-instruction body. The in-game block-entry profile
+ * (issue #141) put 0x0067217c..0x006721f0 at ~2.8% of guest wall time in one
+ * leaf.
+ *
+ * _ftol2's observable contract is identical to _ftol: pop ST(0), truncate
+ * toward zero, return the int64 in EDX:EAX, __cdecl (pop only the return
+ * address). The in-body correction exists only to reach that result without
+ * touching the x87 control word, where _ftol set RC=truncate first. So this
+ * shares x87_crt_ftol, the implementation already used for the imported
+ * MSVCR71!_ftol, including its integer indefinite for out-of-range input.
+ *
+ * Every call is a direct CALL from the exe, so it is also a leaf
+ * (override_leaf.h): it never needs the guest body, and an empty ST(0) is the
+ * same terminal fault on either path.
+ */
+#include "crt_in_image_overrides.h"
+
+#include "override_leaf.h"
+#include "x86rt_native.h"
+#include "x87crt.h"
+
+int x2_crt_ftol2_leaf(CPU *C) {
+  x87_crt_ftol(C);
+  return 1;
+}
+
+void x2_crt_ftol2(CPU *C) { (void)x2_crt_ftol2_leaf(C); }
+
+__attribute__((constructor)) static void crt_in_image_overrides_register(void) {
+  x86_register_override("XMen2.exe", 0x0067217cu, x2_crt_ftol2);
+  x86_register_override_leaf("XMen2.exe", 0x0067217cu, x2_crt_ftol2_leaf);
+}

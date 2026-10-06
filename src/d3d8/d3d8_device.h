@@ -1,0 +1,88 @@
+/*
+ * IDirect3DDevice8 -- the object every one of the engine's ten igDx8 classes
+ * ends up talking to (C113, C128), and therefore the whole point of this
+ * layer.
+ */
+#ifndef D3D8_DEVICE_H
+#define D3D8_DEVICE_H
+
+#include <stdint.h>
+
+#include "d3d8_com.h"
+#include "d3d8_state.h"
+#include "d3d8_types.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Install the device's method table. Called once, from Direct3DCreate8, so
+   that a build which never creates a Direct3D never builds a device vtable
+   either. */
+void d3d8_device_install(void);
+
+/*
+ * IDirect3D8::CreateDevice's host half. Returns NULL if the GPU device could
+ * not be opened -- which the caller must turn into a failed HRESULT rather
+ * than a device object that does nothing, because the engine checks.
+ */
+D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
+                               uint32_t focus_window, uint32_t behaviour,
+                               const D3DPRESENT_PARAMETERS *pp);
+
+/* Whether the gamma ramp the engine last set would actually change the
+   picture. The backend cannot programme a ramp, so this is what tells a
+   silent no-op (identity) apart from a visible difference (curved). */
+int d3d8_device_gamma_curved(void);
+
+/* Frames presented, and what the engine asked for that was not there. */
+void d3d8_device_report(void);
+
+/* The most recent diffuse colour accepted by SetLight for this index.
+   Returns 0 when that slot has never been set. Draw-time diagnostics use the
+   same witness to distinguish an engine-provided black light from a colour
+   lost inside the host. */
+int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
+
+/* Bounded debug trace for the render-state value that colours an untextured
+   SELECTARG(TFACTOR) pass. Android's debug setup arms it before game startup.
+ */
+void d3d8_device_trace_texture_factor(int enabled);
+
+/*
+ * The same counters, live, for the heartbeat (src/native/heartbeat.c).
+ *
+ * Returns 0 and leaves the outputs at zero when no device has ever been
+ * created -- "no device" and "a device that has drawn nothing" are different
+ * findings and the caller says which.
+ */
+int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
+                       unsigned long *clears, unsigned long *draws);
+
+/* Which guest function(s) fill the vertex-shader constants -- the bone palette
+   (issue #80). A census of distinct call sites, printed with its denominator:
+   "no call site identified" and "this never ran" are different findings. */
+int d3d8_vsconst_caller_line(char *buf, int n);
+void d3d8_vsconst_caller_report(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+/*
+ * The device's own state mirror.
+ *
+ * There is exactly one device, and the light methods next door record into
+ * this same mirror -- an accessor rather than a second copy of the state.
+ */
+D3D8State *d3d8_device_state(void);
+
+/*
+ * A guest address as a host pointer, or NULL with the offending METHOD named.
+ *
+ * The name matters: a NULL that only says "NULL pointer" cannot be traced
+ * back to the call that passed it.
+ */
+void *d3d8_guest_ptr(uint32_t a, const char *what);
+
+#endif /* D3D8_DEVICE_H */

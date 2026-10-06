@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export X2_UI_RESOURCE_DIR="$HERE/usr/share/xmen2"
+exec "$HERE/usr/bin/x2native" --appimage "$@"

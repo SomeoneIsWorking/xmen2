@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Fail-closed checks for the Android entry point and signing contract."""
+
+import json
+import re
+from pathlib import Path
+import tempfile
+from unittest.mock import Mock, patch
+
+from tools import build_android
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def main() -> int:
+    raw = ROOT / "scratch/raw"
+    raw.mkdir(parents=True, exist_ok=True)
+    shared = Mock()
+    shared.select_java_home.return_value = Path("fixture-jdk")
+    with patch.object(build_android, "shared_android", return_value=shared):
+        assert build_android.java_home() == Path("fixture-jdk")
+    shared.select_java_home.assert_called_once_with(minimum=17, maximum=26)
+    assert build_android.DEFAULT_ANDROID_API == 21
+    assert build_android.native_jobs({}) == 2
+    assert build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": "6"}) == 6
+    assert build_android.native_prefix(Path("build"), 33, "x86_64") == (
+        Path("build/deps/android/android-33/x86_64")
+    )
+    for invalid in ("0", "-1", "many"):
+        try:
+            build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": invalid})
+        except SystemExit as error:
+            assert "positive integer" in str(error)
+        else:
+            raise AssertionError(f"invalid Android native job count accepted: {invalid}")
+
+    with tempfile.TemporaryDirectory(prefix="android-generator-test-", dir=raw) as directory:
+        root = Path(directory) / "build"
+        build = root / "android-x86_64"
+        build.mkdir(parents=True)
+        (build / "CMakeCache.txt").write_text(
+            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n", encoding="utf-8"
+        )
+        stale = build / "stale"
+        stale.write_text("generated", encoding="utf-8")
+        build_android.prepare_native_build_directory(build, root)
+        assert build.is_dir()
+        assert not stale.exists()
+        assert build_android.cached_generator(build) is None
+
+        (build / "CMakeCache.txt").write_text("CMAKE_GENERATOR:INTERNAL=Ninja\n", encoding="utf-8")
+        retained = build / "retained"
+        retained.write_text("generated", encoding="utf-8")
+        build_android.prepare_native_build_directory(build, root)
+        assert retained.is_file()
+
+        outside = Path(directory) / "outside"
+        outside.mkdir()
+        try:
+            build_android.prepare_native_build_directory(outside, root)
+        except SystemExit as error:
+            assert "outside direct build/ child" in str(error)
+        else:
+            raise AssertionError("Android build migration accepted an external path")
+
+    try:
+        build_android.release_signing({})
+    except SystemExit as error:
+        assert "unsigned release APK" in str(error)
+    else:
+        raise AssertionError("missing signing inputs were accepted")
+
+    with tempfile.TemporaryDirectory(prefix="android-release-test-", dir=raw) as directory:
+        key = Path(directory) / "release.jks"
+        key.write_bytes(b"fixture")
+        signing = build_android.release_signing(
+            {
+                "X2_ANDROID_KEYSTORE": str(key),
+                "X2_ANDROID_KEY_ALIAS": "xmen2",
+                "X2_ANDROID_STORE_PASSWORD": "store-fixture",
+                "X2_ANDROID_KEY_PASSWORD": "key-fixture",
+            }
+        )
+        assert signing["X2_ANDROID_KEYSTORE"] == str(key.resolve())
+
+    # Verbose apksigner output has a colon in the signer label as well as
+    # before the digest. The publish gate must compare only the digest.
+    fingerprint = json.loads((ROOT / "android/published-release.json").read_text())["signer_sha256"]
+    signer_output = f"V3.0 Signer: certificate SHA-256 digest: {fingerprint}\n"
+    with (
+        patch.object(build_android, "apksigner_path", return_value=Path("apksigner")),
+        patch.object(build_android.subprocess, "run", return_value=Mock(stdout=signer_output)),
+    ):
+        assert build_android.signer_digest(Path("signed.apk")) == fingerprint
+        assert build_android.require_publishable(ROOT, Path("signed.apk"), 1) == fingerprint
+
+    # The publish gate is what refuses an unsigned release. Gradle configures
+    # without release keys so a debug device build is possible, so this refusal
+    # must hold on its own rather than relying on a configuration-time throw.
+    with tempfile.TemporaryDirectory(prefix="android-publish-test-", dir=raw) as directory:
+        fake_root = Path(directory)
+        outputs = fake_root / "android/app/build/outputs/apk/release"
+        outputs.mkdir(parents=True)
+        (outputs / "app-arm64-v8a-release-unsigned.apk").write_bytes(b"fixture")
+        try:
+            build_android.publish_apk(fake_root, "arm64-v8a")
+        except SystemExit as error:
+            assert "Expected exactly one signed release APK" in str(error)
+        else:
+            raise AssertionError("an unsigned release APK was published")
+
+        debug_outputs = fake_root / "android/app/build/outputs/apk/debug"
+        debug_outputs.mkdir(parents=True)
+        try:
+            build_android.debug_apk(fake_root, "arm64-v8a")
+        except SystemExit as error:
+            assert "Expected exactly one arm64-v8a debug APK" in str(error)
+        else:
+            raise AssertionError("a missing debug APK was accepted")
+        debug = debug_outputs / "app-arm64-v8a-debug.apk"
+        debug.write_bytes(b"fixture")
+        # A debug artifact stays in Gradle's output; it is never a release.
+        assert build_android.debug_apk(fake_root, "arm64-v8a") == debug
+        assert not (fake_root / "build/release").exists()
+
+    activity = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2GameActivity.java"
+    ).read_text(encoding="utf-8")
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+    gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
+    root_gradle = (ROOT / "android/build.gradle").read_text(encoding="utf-8")
+    wrapper = (ROOT / "android/gradle/wrapper/gradle-wrapper.properties").read_text(
+        encoding="utf-8"
+    )
+    setup = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2SetupActivity.java"
+    ).read_text(encoding="utf-8")
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    native_main = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
+    # The setup uses Android's scoped picker: shared android-port owns persisted SAF grants,
+    # bounded OBB staging, cancellation, and promotion after title validation.
+    # No port code may reconstruct a provider filesystem path or
+    # request broad all-files access.
+    assert "AndroidDocumentImport" in setup
+    assert "savePickerState()" in setup
+    assert "restorePickerState(" in setup
+    assert "AndroidImportProgress" in setup
+    assert "discardValidatedDocument" in setup
+    assert "discardRejectedImport" in setup
+    assert setup.count("discardRejectedImport(result)") == 2
+    assert "pickDocument" in setup
+    assert "promoteValidated" in setup
+    assert "nativeValidateInstall" in setup
+    # Diagnostic switches are exposed only by a debug build.
+    assert "BuildConfig.DEBUG" in setup
+    bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
+    # The host-backtrace half of a fault report has its own owner; the check
+    # follows the code rather than the file it used to live in.
+    fault_report = (ROOT / "src/native/fault_report.c").read_text(encoding="utf-8")
+    assert "buildConfig = true" in gradle
+    assert "#elif !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
+    assert "[HOST STACK] unavailable on Android" in fault_report
+    assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
+    assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
+    runtime = (ROOT / "src/native/guest_memory_probe.c").read_text(encoding="utf-8")
+    assert "syscall(SYS_process_vm_readv" in runtime
+    draw_trace = (ROOT / "src/gpu/gpu_draw_trace.c").read_text(encoding="utf-8")
+    assert "funopen(&g_capture" in draw_trace
+    assert "capture_close(g_frame_dump.capture" in draw_trace
+    assert "MANAGE_EXTERNAL_STORAGE" not in manifest
+    assert not (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/InstallLocation.java"
+    ).exists()
+    # Lucent is pinned to an exact revision, never a branch. Its revision
+    # controls native helpers only; Android Java is staged from the pinned
+    # shared framework prefix. The revision itself is free to move; only the
+    # shape of the pin is fixed.
+    pin = re.search(r"FetchContent_Declare\(lucent.*?GIT_TAG\s+(\S+)", cmake, re.S)
+    assert pin, "CMakeLists.txt no longer declares a lucent GIT_TAG"
+    assert re.fullmatch(r"[0-9a-f]{7,40}", pin.group(1)), (
+        f"lucent must be pinned to a revision, not {pin.group(1)!r}"
+    )
+    assert "x2.androidFrameworkJavaDir" in cmake
+    assert "androidFrameworkJavaDir" in gradle
+    # The product target always opens the control channel, and socket() needs
+    # this permission's inet group; without it control_start() exit(2)s before
+    # the game runs, which presented as an unexplained crash on device.
+    assert "android.permission.INTERNET" in manifest
+    sdl_setup = (ROOT / "src/native/sdl_host_setup.c").read_text(encoding="utf-8")
+    assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in sdl_setup
+    assert "if (!sdl_host_setup(options.window))" in native_main
+    assert "debug.boot_map" in activity
+    assert "XMen2GameActivity.BOOT_MAP" in setup
+    assert "act1/deadzone/deadzone1" in (ROOT / "docs/android-release.md").read_text(
+        encoding="utf-8"
+    )
+    for unsafe in (
+        "getExternalStorageDirectory",
+        "/storage",
+        "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION",
+    ):
+        assert unsafe not in setup, f"{unsafe} would bypass the scoped picker"
+
+    # The common Android prefix owns FFmpeg's source/archive mechanics as well
+    # as SDL. X-Men only resolves and consumes that one shared build contract.
+    # A prefix is also API-specific: one Android API build must never replace
+    # another API build's libraries with a different compatibility floor.
+    android_port = ROOT / "vendor/shared/android-port"
+    original_shared_dir = build_android.shared_dir
+    build_android.shared_dir = lambda name, marker: str(android_port)
+    try:
+        assert build_android.android_port_tool() == android_port / "tools/android_port.py"
+        with patch.object(
+            build_android.bootstrap, "validate_checkout", side_effect=SystemExit("wrong revision")
+        ):
+            try:
+                build_android.android_port_tool()
+                raise AssertionError("Android build accepted a mismatched shared framework")
+            except SystemExit as error:
+                assert "wrong revision" in str(error)
+    finally:
+        build_android.shared_dir = original_shared_dir
+    assert "build_android_deps.py" not in cmake
+    assert "X2_ANDROID_PORT_PREFIX" in cmake
+    assert not (ROOT / "tools/build_android_deps.py").exists()
+    assert "extends AndroidActivity" in activity
+    assert "WindowInsetsController" not in activity
+    assert 'setText("Choose ZIP")' in setup
+    assert "reused on future launches and app updates" in setup
+    assert "importStorageRoot" in setup
+    assert "importTotalBytes" in setup
+    debug_install = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2DebugInstall.java"
+    ).read_text(encoding="utf-8")
+    assert "BuildConfig.DEBUG" in debug_install
+    assert "getFilesDir" in debug_install
+    assert "debug.private_install" in debug_install
+    assert "protected String getMainFunction()" in activity
+    assert 'return "main";' in activity
+    assert 'android:icon="@drawable/xmen2_port_icon"' in manifest
+    assert "signingConfig = signingConfigs.release" in gradle
+    assert "enableV3Signing = true" in gradle
+    assert 'version "9.2.1"' in root_gradle
+    assert "gradle-9.4.1-bin.zip" in wrapper
+    assert "distributionSha256Sum=" in wrapper
+    print("android release: toolchain, entry point, icon, and signing passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
