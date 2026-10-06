@@ -1,5 +1,6 @@
 #include "touch_menu_parts.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <string_view>
 
@@ -98,9 +99,34 @@ void append_menu_footers(const menu::MenuSnapshot &menu,
                          const presentation::RetailScenePlane &plane,
                          TouchMenuView *view) {
   for (const menu::MenuItem &item : menu.items) {
-    if (auto footer = footer_of(item, plane)) {
+    auto footer = footer_of(item, plane);
+    if (!footer) {
+      continue;
+    }
+    const bool repeated =
+        std::ranges::any_of(view->footers, [&](const TouchMenuFooter &shown) {
+          return shown.token == footer->token;
+        });
+    if (!repeated) {
       view->footers.push_back(std::move(*footer));
     }
+  }
+}
+
+void append_menu_tabs(const menu::MenuSnapshot &menu,
+                      const presentation::RetailScenePlane &plane,
+                      std::span<const std::string_view> names,
+                      TouchMenuView *view) {
+  for (const std::string_view name : names) {
+    const menu::MenuItem *tab = find_menu_item(menu, name);
+    if (tab == nullptr || !menu_item_shown(*tab)) {
+      continue;
+    }
+    TouchMenuTab out;
+    out.label = touch_menu_text(tab->label);
+    out.lit = (tab->flags & menu::kItemFocusLit) != 0u;
+    out.click = menu_item_centre(tab->rect, plane);
+    view->tabs.push_back(std::move(out));
   }
 }
 

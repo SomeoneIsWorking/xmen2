@@ -1021,11 +1021,20 @@ touch-codex`, 12 of 12 on 2026-10-06: `openmenu codex` from gameplay showed
 its 15 heroes with Back and Details, a tap on Wolverine selected it in the game,
 Details switched the game to the description with Wolverine loaded and the
 touch menu showed its name and lines, a drag scrolled them, Details returned
-to the list on Wolverine, and Back closed the codex. Gap: the team roster and detail tabs keep the retail screen;
+to the list on Wolverine, and Back closed the codex. The world map follows:
+measured by `tools/live_case.py touch-worldmap`, 16 of 16 on 2026-10-07: the
+console's `loadmap` of savage1 and sanctuary1 unlocked one extraction point
+in each of acts 1 and 2 through their own load scripts, `openmenu worldmap`
+showed the act 1 and act 2 tabs with act 1 lit, Sanctuary focused, the region
+and description, and one Back with go; go on Sanctuary, where the party
+stood, kept the world map; a tap on act 2 opened it in the game with Avalon
+focused; a tap on Avalon travelled (the game loaded a map and the world map
+reopened on act 2); and Back closed it. Gap: the team roster and detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
-the codex does not show the hero model the retail screen turns; stash,
-worldmap, danger room,
+the codex does not show the hero model the retail screen turns; the world
+map hides locked acts and points and its region map, and walking between two
+unlocked points of one act is unit-tested only; stash, danger room,
 review, region, automap, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 

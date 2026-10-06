@@ -536,6 +536,113 @@ void the_games_line_breaks_are_kept() {
   check(menu_text_lines("").empty(), "no text is no lines");
 }
 
+/* CMenuWorldMap as GET /menu read it in sanctuary1 with acts 1 and 2
+   unlocked: act 1 open, its first point focused, the second unlocked when
+   `two_points`. */
+MenuSnapshot worldmap_menu(bool two_points, int focused_point) {
+  MenuSnapshot menu;
+  menu.address = 0x27128964u;
+  menu.name = "worldmap";
+  menu.menu_class = "CMenuWorldMap";
+  menu.items.push_back(
+      item(5, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
+  menu.items.push_back(
+      item(6, "desctext2", "~05$MENU_BACK back", 122, 21, 201, 35));
+  menu.items.push_back(
+      item(8, "desctext4", "~05$MENU_ACCEPT go", 308, 21, 387, 35));
+  menu.items.push_back(item(12, "title", "World Map", 29, 351, 158, 365));
+  const char *acts[] = {"act 1", "act 2", "act 3", "act 4", "act 5"};
+  for (unsigned i = 0; i < 5u; ++i) {
+    const std::string name = "option0" + std::to_string(i + 1u) + "_text";
+    MenuItem act = item(26u + i, "", acts[i], 29 + 93 * static_cast<int>(i),
+                        313, 108 + 93 * static_cast<int>(i), 327);
+    act.name = name;
+    act.flags = i < 2u ? x2::menu::kItemEnabled : 0u;
+    if (i == 0u) {
+      act.flags |= x2::menu::kItemFocusLit;
+    }
+    menu.items.push_back(act);
+  }
+  menu.items.push_back(item(31, "map_title", "Genosha", 29, 280, 108, 294));
+  menu.items.push_back(item(32, "extract_description",
+                            "A bunker used by Magneto, this plateau now lies "
+                            "in\nruins",
+                            29, 238, 276, 281));
+  const char *points[] = {"Sanctuary", "Dead Zone", "Barren Cliffs"};
+  for (unsigned i = 0; i < 3u; ++i) {
+    MenuItem point =
+        item(62u + i, "", points[i], 351, 273 - 36 * static_cast<int>(i), 480,
+             287 - 36 * static_cast<int>(i));
+    point.name = "list01_0" + std::to_string(i + 1u);
+    point.flags =
+        i == 0u || (two_points && i == 1u) ? x2::menu::kItemEnabled : 0u;
+    menu.items.push_back(point);
+  }
+  const int first_point = static_cast<int>(menu.items.size()) - 3;
+  menu.rows = {first_point};
+  menu.focused = first_point + focused_point;
+  return menu;
+}
+
+void the_world_map_is_its_acts_and_points() {
+  const RetailScenePlane plane = plane_1280x720();
+  const MenuSnapshot menu = worldmap_menu(true, 0);
+  const auto view = x2::input::build_touch_menu_view(menu, plane);
+  check(view.has_value() && view->title == "World Map",
+        "the world map is replaced, titled");
+  if (!view) {
+    return;
+  }
+  check(view->tabs.size() == 2u && view->tabs[0].label == "act 1" &&
+            view->tabs[0].lit && !view->tabs[1].lit,
+        "the unlocked acts are tabs with the open one lit");
+  const auto scene = plane.to_scene(view->tabs[1].click);
+  check(scene.x >= 122.0F && scene.x < 201.0F && scene.z > 300.0F &&
+            scene.z < 327.0F,
+        "an act is clicked inside the box CMenuWorldMap::onMouse tests");
+  check(view->rows.size() == 2u && view->rows[0].label == "Sanctuary" &&
+            view->rows[1].label == "Dead Zone" && view->focused_row == 0,
+        "the unlocked points are rows with the game's focus");
+  check(!view->rows[0].clicks && view->rows[0].press_on_arrival &&
+            !view->rows[1].press_on_arrival && !view->focus_wraps,
+        "the focused point is pressed with A, another only walked to");
+  check(view->facts.size() == 1u && view->facts[0].value == "Genosha" &&
+            view->detail ==
+                std::vector<std::string>{
+                    "A bunker used by Magneto, this plateau now "
+                    "lies in",
+                    "ruins"},
+        "the region and the focused point's description");
+  check(view->footers.size() == 2u && view->footers[0].label == "Back" &&
+            view->footers[1].label == "go",
+        "one Back footer for the game's two, and go");
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 1)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "a tap on another point walks down to it");
+  out = touch.set_view(
+      x2::input::build_touch_menu_view(worldmap_menu(true, 1), plane), 20u);
+  check(out.empty(), "and only selects it on arrival");
+  out = tap(touch, find(touch.layout(), TouchMenuPart::row, 1)->rect, 30u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "a tap on the focused point is A, which travels");
+  out = tap(touch, find(touch.layout(), TouchMenuPart::tab, 1)->rect, 40u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
+            out[0].at.x == view->tabs[1].click.x,
+        "a tap on an act is a click on it");
+
+  MenuSnapshot locked = worldmap_menu(false, 0);
+  locked.items.back().flags = 0u;
+  locked.items[locked.items.size() - 3u].flags = 0u;
+  check(!x2::input::build_touch_menu_view(locked, plane),
+        "a world map with no unlocked point keeps the retail screen");
+}
+
 /* A click delivered at a row's client point lands inside the box
    CMenuItem::onMouse tests, after FUN_005f9eb0's own mapping. */
 void a_delivered_click_lands_in_the_hit_box() {
@@ -743,6 +850,7 @@ int main() {
   the_shop_is_its_tabs_and_entries();
   the_codex_lists_its_heroes_and_reads_one();
   the_games_line_breaks_are_kept();
+  the_world_map_is_its_acts_and_points();
   a_drag_scrolls_and_does_not_press();
   if (failures) {
     std::printf("touch_menu: %d of %d check(s) failed\n", failures, checks);

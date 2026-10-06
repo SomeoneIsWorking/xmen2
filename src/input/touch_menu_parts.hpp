@@ -3,6 +3,7 @@
 
 #include "touch_menu_view.hpp"
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,10 +30,18 @@ bool menu_item_shown(const menu::MenuItem &item);
 /* The menu's own label_<name> item, else its first title* item. */
 std::string menu_title(const menu::MenuSnapshot &menu);
 
-/* Every shown desctext item whose text carries a $MENU_ token. */
+/* Every shown desctext item whose text carries a $MENU_ token, one per
+   token. */
 void append_menu_footers(const menu::MenuSnapshot &menu,
                          const presentation::RetailScenePlane &plane,
                          TouchMenuView *view);
+
+/* The shown items named in `names` as tabs, lit as the game lights its open
+   one (item+0x54 bit 0), each clicked on its own box. */
+void append_menu_tabs(const menu::MenuSnapshot &menu,
+                      const presentation::RetailScenePlane &plane,
+                      std::span<const std::string_view> names,
+                      TouchMenuView *view);
 
 /* What a tap on a list entry asks of the game. */
 enum class ListTap {
