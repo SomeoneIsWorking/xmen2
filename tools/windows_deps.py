@@ -204,9 +204,9 @@ def cmake_package(archive: Archive, options: tuple[str, ...], toolchain: Path,
         shutil.rmtree(build)
     run(["cmake", "-S", str(source), "-B", str(build), "-G", "Ninja",
          f"-DCMAKE_TOOLCHAIN_FILE={TOOLCHAIN_FILE}", f"-DLLVM_MINGW_ROOT={toolchain}",
-         f"-DCMAKE_FIND_ROOT_PATH={prefix}", f"-DCMAKE_PREFIX_PATH={prefix}",
+         f"-DCMAKE_FIND_ROOT_PATH={prefix.as_posix()}", f"-DCMAKE_PREFIX_PATH={prefix.as_posix()}",
          "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_INSTALL_LIBDIR=lib",
-         f"-DCMAKE_INSTALL_PREFIX={prefix}", *options])
+         f"-DCMAKE_INSTALL_PREFIX={prefix.as_posix()}", *options])
     run(["cmake", "--build", str(build), "--parallel", str(jobs)])
     run(["cmake", "--install", str(build)])
 
