@@ -157,7 +157,7 @@ void x2_movie_report(void) {
 static void x2_movie_load(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t path_address = info ? RD32(info + INFO_PATH) : 0;
-  const char *guest_path = guest_memory_const_pointer(path_address);
+  const char *guest_path = guest_memory_as<const char>(path_address);
   const char *host_path;
   X2FmvAudioSink sink;
   X2FmvPlayer *player;
@@ -328,7 +328,7 @@ static void x2_movie_next_frame(CPU *C) {
       WR32(info + INFO_STATE, 3u);
       changed = -1;
     } else {
-      x2_fmv_probe_padded(guest_memory_const_pointer(data), bytes, pitch);
+      x2_fmv_probe_padded(guest_memory_as<const uint8_t>(data), bytes, pitch);
       g_native_movie.needs_copy = 0;
     }
   }

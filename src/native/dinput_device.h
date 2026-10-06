@@ -13,7 +13,8 @@
 #include <stdint.h>
 
 typedef enum {
-  DINPUT_DEV_KEYBOARD = 1,
+  DINPUT_DEV_NONE,
+  DINPUT_DEV_KEYBOARD,
   DINPUT_DEV_MOUSE,
   DINPUT_DEV_JOYSTICK
 } DInputDeviceKind;
@@ -28,13 +29,13 @@ uint32_t dinput_device_new_pad(const unsigned char guid[16]);
 /*
  * The system-device GUIDs, shared by both DirectInput stacks.
  *
- * dinput_guid_kind returns DINPUT_DEV_* for the system keyboard or mouse and 0
- * for anything else; dinput_guid_of hands back the sixteen bytes so an
- * enumeration can report the same GUID a CreateDevice will accept -- a device
- * enumerated under one GUID and creatable only under another is a device the
- * game can see and never open.
+ * dinput_guid_kind returns DINPUT_DEV_* for the system keyboard or mouse and
+ * DINPUT_DEV_NONE for anything else; dinput_guid_of hands back the sixteen
+ * bytes so an enumeration can report the same GUID a CreateDevice will accept
+ * -- a device enumerated under one GUID and creatable only under another is a
+ * device the game can see and never open.
  */
-int dinput_guid_kind(uint32_t guid);
+DInputDeviceKind dinput_guid_kind(uint32_t guid);
 const unsigned char *dinput_guid_of(int kind);
 
 void dinput_device_report(void);

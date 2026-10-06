@@ -66,7 +66,13 @@
 #define IGGFX_STATUS_OK_PP 0x100cf4d4u
 #define IGGFX_STATUS_FAIL_PP 0x100cf4d0u
 
-static ArkClass g_vk;
+static ArkClass g_vk = {.name = "igVkVisualContext",
+                        .instance_size = IGVK_INSTANCE_SIZE,
+                        .is_abstract = 0,
+                        .base_module = IGVK_GFX,
+                        .base_register_internal_va = IGDX8_REGINTERNAL,
+                        .base_get_class_meta_va = IGDX8_GETCLASSMETA,
+                        .nslots = IGVK_SLOTS};
 
 /* ---- small services the slot modules use ------------------------------ */
 
@@ -136,14 +142,6 @@ void igvk_slot(int slot, void (*fn)(CPU *), const char *name) {
 /* ---- the class -------------------------------------------------------- */
 
 static void vk_get_class_meta(CPU *C) { ark_ret(C, RD32(g_vk.meta_slot), 0); }
-
-static ArkClass g_vk = {.name = "igVkVisualContext",
-                        .instance_size = IGVK_INSTANCE_SIZE,
-                        .is_abstract = 0,
-                        .base_module = IGVK_GFX,
-                        .base_register_internal_va = IGDX8_REGINTERNAL,
-                        .base_get_class_meta_va = IGDX8_GETCLASSMETA,
-                        .nslots = IGVK_SLOTS};
 
 /*
  * The inventory. One line per slot module, in the order they install.

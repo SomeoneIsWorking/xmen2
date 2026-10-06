@@ -81,7 +81,8 @@ static unsigned drop_where(int (*drop)(const struct X2PromptVertexKey *,
 }
 
 static int same_key(const struct X2PromptVertexKey *key, const void *arg) {
-  const struct X2PromptVertexKey *other = arg;
+  const struct X2PromptVertexKey *other =
+      static_cast<const struct X2PromptVertexKey *>(arg);
   return key->vertex_array == other->vertex_array &&
          key->vertex == other->vertex;
 }
@@ -111,7 +112,7 @@ struct Range {
 };
 
 static int in_range(const struct X2PromptVertexKey *key, const void *arg) {
-  const struct Range *range = arg;
+  const struct Range *range = static_cast<const struct Range *>(arg);
   return key->vertex_array == range->vertex_array &&
          key->vertex - range->start < range->vertices;
 }

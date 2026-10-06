@@ -185,7 +185,7 @@ static void reread_resolution(const CPU *source, uint32_t exe,
   call.reg[kX86pEcx] = context;
   x86_guest_call_args(&call, exe + RVA_READ_STRING, 16u);
 
-  actual = guest_memory_const_pointer(exe + RVA_RESOLUTION_OUTPUT);
+  actual = guest_memory_as<const char>(exe + RVA_RESOLUTION_OUTPUT);
   if (!actual || strcmp(actual, expected) != 0)
     refuse("retail Resolution reader did not produce the configured mode",
            expected, actual);

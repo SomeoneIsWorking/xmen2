@@ -1,3 +1,4 @@
+#include "crt_format.h"
 #include "x2_log.h"
 
 /*
@@ -34,10 +35,6 @@
  * small handle and this side keeps the table. Handles start at 1 so that 0
  * stays "failed", which is what the caller tests.
  */
-/* Defined further down (the format walker) and in win_path.cpp (path
-   translation); declared here so stdio can use both. */
-int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
-
 #define MAX_FILES 64
 static FILE *g_files[MAX_FILES];
 

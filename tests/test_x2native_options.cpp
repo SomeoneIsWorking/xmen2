@@ -14,18 +14,34 @@ static int check(int condition, const char *message) {
 
 int main(void) {
   X2NativeOptions o;
-  char *plain[] = {"x2native"};
-  char *headless[] = {"x2native", "--no-window"};
-  char *bringup[] = {"x2native", "--run"};
-  char *appimage[] = {"x2native", "--appimage"};
-  char *diagnostic[] = {"x2native", "--selftest"};
-  char *set_pair[] = {"x2native", "--set", "jit.cache=false", "--no-window"};
-  char *set_joined[] = {"x2native", "--set=jit.profile=1024"};
-  char *env_pair[] = {"x2native", "--env", "X2_FRAME_DUMP=busy:100"};
-  char *env_joined[] = {"x2native", "--env=X2_HEARTBEAT=2"};
-  char *env_unknown[] = {"x2native", "--env", "X2_NOT_A_KNOWN_NAME=1"};
-  char *env_malformed[] = {"x2native", "--env", "X2_FRAME_DUMP"};
-  char *unknown[] = {"x2native", "--nonsense"};
+  /* x2native_options_parse keeps the char **argv of a C main, so the
+     literals are copied into writable buffers rather than pointed at. */
+  char arg_prog[] = "x2native";
+  char arg_no_window[] = "--no-window";
+  char arg_run[] = "--run";
+  char arg_appimage[] = "--appimage";
+  char arg_selftest[] = "--selftest";
+  char arg_set[] = "--set";
+  char arg_set_value[] = "jit.cache=false";
+  char arg_set_joined[] = "--set=jit.profile=1024";
+  char arg_env[] = "--env";
+  char arg_env_value[] = "X2_FRAME_DUMP=busy:100";
+  char arg_env_joined[] = "--env=X2_HEARTBEAT=2";
+  char arg_env_unknown[] = "X2_NOT_A_KNOWN_NAME=1";
+  char arg_env_malformed[] = "X2_FRAME_DUMP";
+  char arg_unknown[] = "--nonsense";
+  char *plain[] = {arg_prog};
+  char *headless[] = {arg_prog, arg_no_window};
+  char *bringup[] = {arg_prog, arg_run};
+  char *appimage[] = {arg_prog, arg_appimage};
+  char *diagnostic[] = {arg_prog, arg_selftest};
+  char *set_pair[] = {arg_prog, arg_set, arg_set_value, arg_no_window};
+  char *set_joined[] = {arg_prog, arg_set_joined};
+  char *env_pair[] = {arg_prog, arg_env, arg_env_value};
+  char *env_joined[] = {arg_prog, arg_env_joined};
+  char *env_unknown[] = {arg_prog, arg_env, arg_env_unknown};
+  char *env_malformed[] = {arg_prog, arg_env, arg_env_malformed};
+  char *unknown[] = {arg_prog, arg_unknown};
   const char *armed;
   int fails = 0;
 

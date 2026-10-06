@@ -124,7 +124,7 @@ typedef struct {
 } PlayerBindingWrite;
 
 static void write_player_set(uint32_t controller, void *context) {
-  PlayerBindingWrite *write = context;
+  PlayerBindingWrite *write = static_cast<PlayerBindingWrite *>(context);
   char why[192];
   uint32_t object = input_bindings_object_at(controller, why, (int)sizeof why);
   if (!object)

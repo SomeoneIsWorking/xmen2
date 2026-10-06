@@ -212,11 +212,12 @@ static uint32_t devinst_for(int kind) {
   static uint32_t buf;
   const unsigned char *guid = dinput_guid_of(kind);
   const char *name = kind == DINPUT_DEV_KEYBOARD ? "Keyboard" : "Mouse";
-  uint32_t devtype = kind == DINPUT_DEV_KEYBOARD
-                         ? (uint32_t)DIDEVTYPE_KEYBOARD |
-                               ((uint32_t)DIDEVTYPEKEYBOARD_PCENH << 8)
-                         : (uint32_t)DIDEVTYPE_MOUSE |
-                               ((uint32_t)DIDEVTYPEMOUSE_TRADITIONAL << 8);
+  uint32_t devtype =
+      kind == DINPUT_DEV_KEYBOARD
+          ? static_cast<uint32_t>(DIDEVTYPE_KEYBOARD) |
+                (static_cast<uint32_t>(DIDEVTYPEKEYBOARD_PCENH) << 8)
+          : static_cast<uint32_t>(DIDEVTYPE_MOUSE) |
+                (static_cast<uint32_t>(DIDEVTYPEMOUSE_TRADITIONAL) << 8);
 
   if (!buf)
     buf = guest_malloc(580u);
@@ -227,8 +228,8 @@ static uint32_t devinst_for(int kind) {
   memcpy(guest_memory_pointer(buf + 4u), guid, 16);  /* guidInstance */
   memcpy(guest_memory_pointer(buf + 20u), guid, 16); /* guidProduct */
   WR32(buf + 36u, devtype);
-  snprintf(guest_memory_pointer(buf + 40u), 260, "%s", name);
-  snprintf(guest_memory_pointer(buf + 300u), 260, "%s", name);
+  snprintf(guest_memory_as<char>(buf + 40u), 260, "%s", name);
+  snprintf(guest_memory_as<char>(buf + 300u), 260, "%s", name);
   return buf;
 }
 
@@ -290,7 +291,7 @@ static void m_EnumDevices(CPU *C) {
  */
 static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
                           int nargs, const char *what) {
-  int kind;
+  DInputDeviceKind kind;
   uint32_t obj;
 
   if (!out) {
@@ -303,7 +304,7 @@ static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
     return;
   }
   if (!(kind = dinput_guid_kind(guid))) {
-    const unsigned char *b = guest_memory_const_pointer(guid);
+    const unsigned char *b = guest_memory_as<const unsigned char>(guid);
     x2_log_error("DINPUT: %s for {%02X%02X%02X%02X-...} -- not the "
                  "system keyboard or mouse, and this host enumerates "
                  "nothing else, so there is no device to open.\n",
@@ -311,7 +312,7 @@ static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
     ret_com(C, DIERR_DEVICENOTREG, nargs);
     return;
   }
-  obj = dinput_device_new((DInputDeviceKind)kind);
+  obj = dinput_device_new(kind);
   if (!obj) {
     ret_com(C, DIERR_OUTOFMEMORY, nargs);
     return;
@@ -388,7 +389,7 @@ static void m_RunControlPanel(CPU *C) {
  * fires, the assumption above is wrong and that is worth knowing loudly.
  */
 static void m_unimplemented(CPU *C) {
-  const char *nm = (const char *)x86_callback_ctx();
+  const char *nm = static_cast<const char *>(x86_callback_ctx());
   x2_log_error("\n*** DINPUT: IDirectInput7::%s was called, and is not "
                "implemented.\n"
                "    EnumDevices reports no devices, so nothing should have a "
@@ -422,8 +423,9 @@ static void build(void) {
   }
   for (k = 0; k < VT_COUNT; k++)
     WR32(g_vtable + (uint32_t)k * 4u,
-         x86_native_callback(impl[k] ? impl[k] : m_unimplemented,
-                             "IDirectInput7", VT_NAME[k], (void *)VT_NAME[k]));
+         x86_native_callback(
+             impl[k] ? impl[k] : m_unimplemented, "IDirectInput7", VT_NAME[k],
+             const_cast<void *>(static_cast<const void *>(VT_NAME[k]))));
   WR32(g_object + 0u, g_vtable);
   WR32(g_object + 4u, 1u); /* refcount */
 }

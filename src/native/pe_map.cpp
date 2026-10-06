@@ -59,7 +59,7 @@ int pe_map(const char *path, PeImage *out) {
     x2_log_error("pe_map: cannot open %s: %s\n", path, strerror(errno));
     return -1;
   }
-  f = (unsigned char *)file_map.address;
+  f = static_cast<unsigned char *>(file_map.address);
   if (file_map.size < 0x40) {
     x2_log_error("pe_map: %s is not a file with a DOS header\n", path);
     x2_file_unmap(&file_map);
@@ -208,7 +208,7 @@ static uint32_t data_dir_at(const unsigned char *p, int which, uint32_t *size) {
  */
 static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
                                 uint32_t delta) {
-  const unsigned char *img = guest_memory_const_pointer(base);
+  const unsigned char *img = guest_memory_as<const unsigned char>(base);
   uint32_t off = 0, n = 0;
   while (off + 8 <= relsz) {
     uint32_t va = RD32_(img, rel + off);
@@ -227,7 +227,7 @@ static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
                      type, where);
         abort();
       }
-      *(volatile uint32_t *)guest_memory_pointer(base + where) += delta;
+      *guest_memory_as<volatile uint32_t>(base + where) += delta;
       n++;
     }
     off += sz;
@@ -236,7 +236,7 @@ static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
 }
 
 static uint32_t data_dir(uint32_t base, int which, uint32_t *size) {
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   uint32_t pe = RD32_(p, 0x3C), opt = pe + 24;
   uint32_t d = opt + 96 + (uint32_t)which * 8;
   if (size)
@@ -247,7 +247,7 @@ static uint32_t data_dir(uint32_t base, int which, uint32_t *size) {
 uint32_t pe_export_rva(uint32_t base, const char *name) {
   uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
   long found;
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   uint32_t names, ords, funcs;
   if (!dir)
     return 0;
@@ -273,7 +273,7 @@ uint32_t pe_export_rva(uint32_t base, const char *name) {
 uint32_t pe_export_containing(uint32_t base, uint32_t rva,
                               const char **name_out) {
   uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   uint32_t names, ords, funcs, best = 0;
   const char *bestnm = NULL;
   if (name_out)
@@ -290,7 +290,7 @@ uint32_t pe_export_containing(uint32_t base, uint32_t rva,
     if (fr > rva || fr < best)
       continue;
     best = fr;
-    bestnm = guest_memory_const_pointer(base + RD32_(p, names + i * 4));
+    bestnm = guest_memory_as<const char>(base + RD32_(p, names + i * 4));
   }
   if (name_out)
     *name_out = bestnm;
@@ -311,7 +311,7 @@ int pe_bind_imports(uint32_t base,
                                         void *ctx),
                     void *ctx, int *out_bound, int *out_poisoned) {
   uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   int bound = 0, poisoned = 0;
   if (!dir) {
     if (out_bound)
@@ -326,7 +326,7 @@ int pe_bind_imports(uint32_t base,
     const char *mod;
     if (!oft && !ft && !nameR)
       break;
-    mod = guest_memory_const_pointer(base + nameR);
+    mod = guest_memory_as<const char>(base + nameR);
     if (!oft)
       oft = ft; /* some linkers omit the INT */
     for (t = 0;; t += 4) {
@@ -336,7 +336,7 @@ int pe_bind_imports(uint32_t base,
       if (thunk & 0x80000000u)
         addr = resolve(mod, NULL, 1, thunk & 0xFFFFu, ctx);
       else
-        addr = resolve(mod, guest_memory_const_pointer(base + thunk + 2), 0, 0,
+        addr = resolve(mod, guest_memory_as<const char>(base + thunk + 2), 0, 0,
                        ctx);
       if (addr)
         bound++;
@@ -345,7 +345,7 @@ int pe_bind_imports(uint32_t base,
       /* The caller's poison value arrives as resolve() returning 0; it
          is filled in by the caller afterwards via out_poisoned bookkeeping
          only if it chose to. Here a 0 is left for the caller to overwrite. */
-      *(volatile uint32_t *)guest_memory_pointer(base + ft + t) = addr;
+      *guest_memory_as<volatile uint32_t>(base + ft + t) = addr;
     }
   }
   if (out_bound)
@@ -356,7 +356,7 @@ int pe_bind_imports(uint32_t base,
 }
 
 uint32_t pe_entry_rva(uint32_t base) {
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   uint32_t pe = RD32_(p, 0x3C);
   return RD32_(p, pe + 24 + 16);
 }
@@ -366,7 +366,7 @@ uint32_t pe_entry_rva(uint32_t base) {
    one it depends on has to be initialised first. */
 int pe_imports_module(uint32_t base, const char *modname) {
   uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   if (!dir)
     return 0;
   for (;; dir += 20) {
@@ -374,7 +374,7 @@ int pe_imports_module(uint32_t base, const char *modname) {
     uint32_t ft = RD32_(p, dir + 16);
     if (!oft && !ft && !nameR)
       break;
-    if (strcasecmp(guest_memory_const_pointer(base + nameR), modname) == 0)
+    if (strcasecmp(guest_memory_as<const char>(base + nameR), modname) == 0)
       return 1;
   }
   return 0;
@@ -384,7 +384,7 @@ int pe_imports_module(uint32_t base, const char *modname) {
    program -- so module initialisation must not "initialise" it by running it.
  */
 int pe_is_dll(uint32_t base) {
-  const unsigned char *p = guest_memory_const_pointer(base);
+  const unsigned char *p = guest_memory_as<const unsigned char>(base);
   uint32_t pe = RD32_(p, 0x3C);
   return (RD16(p, pe + 22) & 0x2000) != 0; /* IMAGE_FILE_DLL */
 }
@@ -395,7 +395,7 @@ int pe_tls_directory(uint32_t base, PeTlsDirectory *out) {
   const unsigned char *d;
   if (!rva || size < 24u)
     return 0;
-  d = guest_memory_const_pointer(base + rva);
+  d = guest_memory_as<const unsigned char>(base + rva);
   out->raw_start = RD32_(d, 0);
   out->raw_end = RD32_(d, 4);
   out->index_address = RD32_(d, 8);

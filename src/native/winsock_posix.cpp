@@ -111,7 +111,7 @@ enum { WIN_AF_INET = 2, WIN_SOCKADDR_IN = 16 };
 
 int winsock_sockaddr_to_host(const uint8_t *guest, int32_t length,
                              void *host_sockaddr_in, uint32_t *error) {
-  struct sockaddr_in *out = host_sockaddr_in;
+  struct sockaddr_in *out = static_cast<struct sockaddr_in *>(host_sockaddr_in);
   if (!guest || length < WIN_SOCKADDR_IN) {
     *error = WSAEFAULT;
     return 0;
@@ -128,7 +128,8 @@ int winsock_sockaddr_to_host(const uint8_t *guest, int32_t length,
 }
 
 void winsock_sockaddr_from_host(const void *host_sockaddr_in, uint8_t *guest) {
-  const struct sockaddr_in *in = host_sockaddr_in;
+  const struct sockaddr_in *in =
+      static_cast<const struct sockaddr_in *>(host_sockaddr_in);
   memset(guest, 0, WIN_SOCKADDR_IN);
   guest[0] = WIN_AF_INET;
   memcpy(guest + 2, &in->sin_port, 2);
@@ -170,7 +171,7 @@ int winsock_sockopt_to_host(int32_t level, int32_t name, int *host_level,
 
 static int table_index(uint32_t handle) {
   return handle < SOCKET_TABLE && (g_sockets[handle] & SOCKET_OPEN)
-             ? (int)handle
+             ? static_cast<int>(handle)
              : -1;
 }
 
@@ -202,8 +203,8 @@ int winsock_socket_open(int32_t family, int32_t type, int32_t protocol,
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof on);
   }
 #endif
-  g_sockets[fd] =
-      (uint8_t)(type == 2 ? SOCKET_OPEN | SOCKET_DATAGRAM : SOCKET_OPEN);
+  g_sockets[fd] = static_cast<uint8_t>(type == 2 ? SOCKET_OPEN | SOCKET_DATAGRAM
+                                                 : SOCKET_OPEN);
   g_bound_address[fd] = 0;
   ++g_open;
   return fd;
@@ -229,8 +230,9 @@ int winsock_set_blocking(uint32_t handle, int blocking, uint32_t *error) {
     *error = winsock_error_from_errno(errno);
     return 0;
   }
-  g_sockets[fd] = (uint8_t)(blocking ? g_sockets[fd] & ~SOCKET_NONBLOCKING
-                                     : g_sockets[fd] | SOCKET_NONBLOCKING);
+  g_sockets[fd] =
+      static_cast<uint8_t>(blocking ? g_sockets[fd] & ~SOCKET_NONBLOCKING
+                                    : g_sockets[fd] | SOCKET_NONBLOCKING);
   return 1;
 }
 
@@ -277,7 +279,7 @@ int winsock_bind(uint32_t handle, const void *host_sockaddr_in,
   if (widen) {
     at.sin_addr.s_addr = htonl(INADDR_ANY);
   }
-  if (bind(fd, (const struct sockaddr *)&at, sizeof at) < 0) {
+  if (bind(fd, reinterpret_cast<const struct sockaddr *>(&at), sizeof at) < 0) {
     *error = winsock_error_from_errno(errno);
     return 0;
   }
@@ -294,7 +296,7 @@ int winsock_getsockname(uint32_t handle, void *host_sockaddr_in,
     *error = WSAENOTSOCK;
     return 0;
   }
-  if (getsockname(fd, (struct sockaddr *)&at, &size) < 0) {
+  if (getsockname(fd, reinterpret_cast<struct sockaddr *>(&at), &size) < 0) {
     *error = winsock_error_from_errno(errno);
     return 0;
   }
@@ -325,7 +327,7 @@ static int gather(const WinsockFdSet *set, short events, struct pollfd *polls,
       ++at;
     }
     if (at == count) {
-      polls[count++] = (struct pollfd){fd, 0, 0};
+      polls[count++] = pollfd{fd, 0, 0};
     }
     polls[at].events |= events;
   }
@@ -340,7 +342,7 @@ static int keep_ready(WinsockFdSet *set, short ready_on,
   }
   for (uint32_t i = 0; i < set->count; ++i) {
     for (int at = 0; at < count; ++at) {
-      if (polls[at].fd == (int)set->handles[i] &&
+      if (polls[at].fd == static_cast<int>(set->handles[i]) &&
           (polls[at].revents & ready_on)) {
         set->handles[kept++] = set->handles[i];
         break;
@@ -348,7 +350,7 @@ static int keep_ready(WinsockFdSet *set, short ready_on,
     }
   }
   set->count = kept;
-  return (int)kept;
+  return static_cast<int>(kept);
 }
 
 int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
@@ -361,8 +363,9 @@ int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
   if (count < 0) {
     return -1;
   }
-  const int timeout_ms = timeout_us < 0 ? -1 : (int)((timeout_us + 999) / 1000);
-  if (poll(polls, (nfds_t)count, timeout_ms) < 0) {
+  const int timeout_ms =
+      timeout_us < 0 ? -1 : static_cast<int>((timeout_us + 999) / 1000);
+  if (poll(polls, static_cast<nfds_t>(count), timeout_ms) < 0) {
     *error = winsock_error_from_errno(errno);
     return -1;
   }

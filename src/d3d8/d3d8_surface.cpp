@@ -99,7 +99,7 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
       free(s);
       return NULL;
     }
-    s->pixels = guest_memory_pointer(s->guest_pixels);
+    s->pixels = guest_memory_as<unsigned char>(s->guest_pixels);
     memset(s->pixels, 0, s->pitch * h);
   }
   g_count[kind]++;
@@ -142,7 +142,7 @@ D3D8Object *d3d8_surface_new_texlevel(D3D8Object *owner, uint32_t level,
   s->owner = owner;
   s->level = level;
   s->guest_pixels = guest_pixels;
-  s->pixels = guest_memory_pointer(guest_pixels);
+  s->pixels = guest_memory_as<unsigned char>(guest_pixels);
   g_count[D3D8_SURF_TEXLEVEL]++;
   o = d3d8_object_new(D3D8_IF_IDirect3DSurface8, s);
   d3d8_object_set_owner(o, owner);
@@ -259,7 +259,7 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
      * than a refusal: the offset is four multiplications, and not doing it
      * is not caution, it is a dropped frame.
      */
-    const uint32_t *r = guest_memory_const_pointer(rect);
+    const uint32_t *r = guest_memory_as<const uint32_t>(rect);
     uint32_t left = r[0], top = r[1], right = r[2], bottom = r[3];
 
     if (right <= left || bottom <= top || right > s->width ||

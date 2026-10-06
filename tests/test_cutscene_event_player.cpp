@@ -1,5 +1,3 @@
-#define _GNU_SOURCE
-
 #include "cutscene_event_player.h"
 #include "guest_memory.h"
 #include "x86rt.h"

@@ -37,7 +37,7 @@ int x2_boot_splash_refuse(uint32_t command) {
   if (!g_splash.pending)
     return 0;
   if (command &&
-      !strcmp(guest_memory_const_pointer(command), "openmenu loading")) {
+      !strcmp(guest_memory_as<const char>(command), "openmenu loading")) {
     g_splash.pending = 0;
     x2_log_error("BOOT SPLASH: refused \"openmenu loading\" after "
                  "the boot-mode dispatch, so the boot splash never "

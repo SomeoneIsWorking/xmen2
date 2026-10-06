@@ -30,14 +30,15 @@ void x2_log_error(const char *format, ...) {
   va_end(args);
 }
 
-long x2_test_sysconf(int name) {
+// These replace libc functions by macro, so they keep libc's C linkage.
+extern "C" long x2_test_sysconf(int name) {
   check(name == _SC_PAGESIZE, "queries the host page size");
   queries++;
   return host_page_size;
 }
 
-void *x2_test_mmap(void *address, size_t length, int protection, int flags,
-                   int fd, off_t offset) {
+extern "C" void *x2_test_mmap(void *address, size_t length, int protection,
+                              int flags, int fd, off_t offset) {
   size_t granule = (size_t)host_page_size;
   mappings++;
   reserved_length = length;
@@ -56,7 +57,7 @@ void *x2_test_mmap(void *address, size_t length, int protection, int flags,
   return (void *)aligned;
 }
 
-int x2_test_mprotect(void *address, size_t length, int protection) {
+extern "C" int x2_test_mprotect(void *address, size_t length, int protection) {
   size_t granule = (size_t)host_page_size;
   protections++;
   if ((uintptr_t)address % granule) {
@@ -84,8 +85,8 @@ static void exercise_pages(void) {
         "maps a multi-page image");
   if (failures)
     return;
-  unsigned char *a = guest_memory_pointer(first);
-  unsigned char *b = guest_memory_pointer(second);
+  unsigned char *a = guest_memory_as<unsigned char>(first);
+  unsigned char *b = guest_memory_as<unsigned char>(second);
   *a = 17;
   *b = 23;
   check(guest_memory_protect(first, 4096, PROT_NONE) == 0,

@@ -54,7 +54,7 @@ void x2_override_10069c70(CPU *C) {
   static const char *const labels[] = {"Exit", "Debug", "Ignore",
                                        "Ignore, don't tell me again"};
   static const int ids[] = {3, 4, 5, 6};
-  const char *text = guest_memory_const_pointer(RD32(C->reg[kX86pEsp] + 4u));
+  const char *text = guest_memory_as<const char>(RD32(C->reg[kX86pEsp] + 4u));
   static int said;
   int answer;
 

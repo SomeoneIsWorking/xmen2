@@ -1,4 +1,6 @@
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "guest_memory.h"
 #include "x86callbacks.h"
 
@@ -24,7 +26,7 @@ int main(void) {
     fprintf(stderr, "could not allocate guest callback corpus\n");
     return 1;
   }
-  mem = guest_memory_pointer(memory);
+  mem = guest_memory_as<uint32_t>(memory);
   memset(&C, 0, sizeof C);
   /* Leave real downward-growing stack space below the synthetic ESP.  The
      shipping adapter pushes one return word before each callback. */

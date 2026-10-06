@@ -251,7 +251,7 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out) {
   if (req->index_buffer) {
     uint32_t base = req->base_vertex;
     if (req->index_is_32bit) {
-      const uint32_t *src = guest_memory_const_pointer(req->index_guest_bytes);
+      const auto *src = guest_memory_as<const uint32_t>(req->index_guest_bytes);
       src += req->first_index;
       for (i = 0; i < tris; i++) {
         idx[i * 3 + 0] = base + src[0];
@@ -259,7 +259,7 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out) {
         idx[i * 3 + 2] = base + src[i + 2];
       }
     } else {
-      const uint16_t *src = guest_memory_const_pointer(req->index_guest_bytes);
+      const auto *src = guest_memory_as<const uint16_t>(req->index_guest_bytes);
       src += req->first_index;
       for (i = 0; i < tris; i++) {
         idx[i * 3 + 0] = base + src[0];
@@ -780,7 +780,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                  g_ft_draw, req->vertex_guest_bytes, stride);
     return;
   }
-  vb = guest_memory_const_pointer(req->vertex_guest_bytes);
+  vb = guest_memory_as<const uint8_t>(req->vertex_guest_bytes);
   capacity = req->vertex_bytes / stride;
   n = d3d8_element_count(req->primitive_type, req->primitive_count);
   /*

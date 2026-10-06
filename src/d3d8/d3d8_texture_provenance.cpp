@@ -3,7 +3,7 @@
 #include <string.h>
 
 static uint64_t fnv1a64(const void *bytes, size_t count) {
-  const uint8_t *p = bytes;
+  const uint8_t *p = static_cast<const uint8_t *>(bytes);
   uint64_t value = UINT64_C(14695981039346656037);
   size_t i;
   for (i = 0; i < count; ++i) {

@@ -30,13 +30,13 @@
 static uint32_t g_manager;
 
 static const unsigned char *slot_guid(int controller_slot) {
-  return guest_memory_const_pointer(g_manager + RETAIL_INSTANCE_OFFSET +
-                                    (uint32_t)controller_slot * 16u);
+  return guest_memory_as<const unsigned char>(
+      g_manager + RETAIL_INSTANCE_OFFSET + (uint32_t)controller_slot * 16u);
 }
 
 static int slot_is_attached(int controller_slot) {
   const unsigned char *attached =
-      guest_memory_const_pointer(g_manager + RETAIL_ATTACHED_OFFSET);
+      guest_memory_as<const unsigned char>(g_manager + RETAIL_ATTACHED_OFFSET);
   return attached[controller_slot] != 0;
 }
 
@@ -85,9 +85,10 @@ size_t dinput8_controller_slots_probe(char *out, size_t size) {
     return wrote > 0 ? (size_t)wrote : 0;
   }
 
-  devices = guest_memory_const_pointer(g_manager + RETAIL_DEVICE_ARRAY_OFFSET);
-  mask = *(const uint32_t *)guest_memory_const_pointer(
-      g_manager + RETAIL_POLLED_MASK_OFFSET);
+  devices =
+      guest_memory_as<const uint32_t>(g_manager + RETAIL_DEVICE_ARRAY_OFFSET);
+  mask =
+      *guest_memory_as<const uint32_t>(g_manager + RETAIL_POLLED_MASK_OFFSET);
 
   wrote = snprintf(out + at, size - at,
                    "  dinput8 poll side (manager 0x%08x, FUN_006285c0's own "

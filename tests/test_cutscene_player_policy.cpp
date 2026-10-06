@@ -114,7 +114,7 @@ static void record(Fixture *fixture, const char *event) {
 }
 
 static int active_sequence(void *context, X2CutsceneSequence *sequence) {
-  Fixture *fixture = context;
+  Fixture *fixture = static_cast<Fixture *>(context);
   (void)fixture;
   *sequence = 0x2002u;
   return 1;
@@ -122,7 +122,7 @@ static int active_sequence(void *context, X2CutsceneSequence *sequence) {
 
 static X2CutsceneControlState control_state(void *context,
                                             X2CutsceneSequence sequence) {
-  Fixture *fixture = context;
+  Fixture *fixture = static_cast<Fixture *>(context);
   if (sequence != 0x2002u)
     return X2_CUTSCENE_CONTROL_UNREADABLE;
   return fixture->controls_released ? X2_CUTSCENE_CONTROL_RELEASED
@@ -131,7 +131,7 @@ static X2CutsceneControlState control_state(void *context,
 
 static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
                             X2CutsceneFiber *fiber) {
-  Fixture *fixture = context;
+  Fixture *fixture = static_cast<Fixture *>(context);
   size_t i;
   if (sequence != 0x2002u)
     return -1;
@@ -185,7 +185,7 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
       "control_release",
       "cleanup_complete",
   };
-  Fixture *fixture = context;
+  Fixture *fixture = static_cast<Fixture *>(context);
   TestFiber *fiber;
   const TestCommand *commands;
   TestCommand command;
@@ -231,7 +231,7 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
 static int
 play_deterministic_conversation(void *context, X2CutsceneSequence sequence,
                                 X2CutsceneConversation conversation) {
-  Fixture *fixture = context;
+  Fixture *fixture = static_cast<Fixture *>(context);
   TestFiber *fiber;
   if (sequence != 0x2002u)
     return 0;

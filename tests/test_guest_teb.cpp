@@ -98,7 +98,7 @@ static uint32_t block_of(uint32_t teb) {
 }
 
 int main(void) {
-  const char template_bytes[TEMPLATE_BYTES] = "tls-template";
+  const char *template_bytes = "tls-template";
   char read_back[TEMPLATE_BYTES];
 
   check(guest_memory_init() == 0, "the guest arena is reserved");

@@ -64,7 +64,7 @@ static void fill(const Slot *s) {
 }
 
 static void check_contents(const Slot *s) {
-  const uint8_t *p = guest_memory_const_pointer(s->address);
+  const uint8_t *p = guest_memory_as<const uint8_t>(s->address);
   for (uint32_t i = 0; i < s->bytes; i++) {
     if (p[i] != s->fill) {
       fail("contents changed under a live allocation", s->address, i);

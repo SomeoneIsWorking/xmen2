@@ -69,7 +69,7 @@ typedef struct {
 } TestBindingWrite;
 
 static void write_test_set(uint32_t controller, void *context) {
-  TestBindingWrite *write = context;
+  TestBindingWrite *write = static_cast<TestBindingWrite *>(context);
   slots[controller][write->row][write->slot] = (Slot){write->kind, write->code};
 }
 

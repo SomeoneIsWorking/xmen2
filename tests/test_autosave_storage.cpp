@@ -88,7 +88,8 @@ int main(void) {
   memset(header, 0xa5, sizeof header);
 
   for (fault = X2_AUTOSAVE_FAULT_AFTER_HEADER;
-       fault <= X2_AUTOSAVE_FAULT_BEFORE_RENAME; fault++) {
+       fault <= X2_AUTOSAVE_FAULT_BEFORE_RENAME;
+       fault = static_cast<X2AutosaveStorageFault>(fault + 1)) {
     CHECK(write_file(leaf, prior, sizeof prior));
     CHECK(!x2_autosave_storage_publish(directory, header, payload,
                                        sizeof payload, fault));

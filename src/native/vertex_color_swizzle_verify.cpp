@@ -71,18 +71,18 @@ void vtx_swizzle_verify_begin(VtxSwizzleVerify *v, uint32_t self,
     return;
 
   touched_span(self, desc, &v->addr, &v->len);
-  v->s60 = (uint8_t)RD8(self + SELF_DIRTY);
-  v->s68 = (uint8_t)RD8(self + SELF_LOCK);
+  v->s60 = static_cast<uint8_t>(RD8(self + SELF_DIRTY));
+  v->s68 = static_cast<uint8_t>(RD8(self + SELF_LOCK));
   v->active = 1;
   if (v->len == 0)
     return;
-  v->before = malloc(v->len);
+  v->before = static_cast<uint8_t *>(malloc(v->len));
   if (!v->before) {
     v->active = 0;
     return;
   }
   for (uint32_t i = 0; i < v->len; i++)
-    v->before[i] = (uint8_t)RD8(v->addr + i);
+    v->before[i] = static_cast<uint8_t>(RD8(v->addr + i));
 }
 
 void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
@@ -95,18 +95,18 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
   /* Save what the native path produced, then put the inputs back. */
   uint8_t *native = NULL;
   if (v->len) {
-    native = malloc(v->len);
+    native = static_cast<uint8_t *>(malloc(v->len));
     if (!native) {
       free(v->before);
       return;
     }
     for (uint32_t i = 0; i < v->len; i++) {
-      native[i] = (uint8_t)RD8(v->addr + i);
+      native[i] = static_cast<uint8_t>(RD8(v->addr + i));
       WR8(v->addr + i, v->before[i]);
     }
   }
-  const uint8_t native_s60 = (uint8_t)RD8(self + SELF_DIRTY);
-  const uint8_t native_s68 = (uint8_t)RD8(self + SELF_LOCK);
+  const uint8_t native_s60 = static_cast<uint8_t>(RD8(self + SELF_DIRTY));
+  const uint8_t native_s68 = static_cast<uint8_t>(RD8(self + SELF_LOCK));
   WR8(self + SELF_DIRTY, v->s60);
   WR8(self + SELF_LOCK, v->s68);
 
@@ -115,10 +115,10 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
   CPU guest = *C;
   x86_guest_body(&guest, "libIGGfx.dll", 0x10046ce0u);
 
-  int bad = (uint8_t)RD8(self + SELF_DIRTY) != native_s60 ||
-            (uint8_t)RD8(self + SELF_LOCK) != native_s68;
+  int bad = static_cast<uint8_t>(RD8(self + SELF_DIRTY)) != native_s60 ||
+            static_cast<uint8_t>(RD8(self + SELF_LOCK)) != native_s68;
   for (uint32_t i = 0; i < v->len && !bad; i++)
-    if ((uint8_t)RD8(v->addr + i) != native[i])
+    if (static_cast<uint8_t>(RD8(v->addr + i)) != native[i])
       bad = 1;
 
   if (bad) {

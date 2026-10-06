@@ -32,8 +32,8 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
   if (!x2_directinput_controller_capture(pad, lo, hi, &sample)) {
     return;
   }
-  x2_directinput_controller_write(
-      &sample, (unsigned char *)guest_memory_pointer(out), size);
+  x2_directinput_controller_write(&sample, guest_memory_as<unsigned char>(out),
+                                  size);
   x2_alchemy_controller_observe(pad, &sample, lo, hi);
 }
 
@@ -66,7 +66,7 @@ static void enum_object(CPU *cpu, uint32_t callback, uint32_t context,
   WR32(buffer + 0x14u, offset);
   WR32(buffer + 0x18u, type);
   WR32(buffer + 0x1cu, 0); /* no DIDOI_FFACTUATOR: force feedback absent */
-  snprintf(guest_memory_pointer(buffer + 0x20u), 260, "%s", name);
+  snprintf(guest_memory_as<char>(buffer + 0x20u), 260, "%s", name);
   call = *cpu;
   call.reg[kX86pEsp] -= 8u;
   WR32(call.reg[kX86pEsp], buffer);

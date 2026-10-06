@@ -284,7 +284,7 @@ def emit_header(out: Path) -> tuple[int, int, int]:
         f"#define X2_PROMPT_CELL_COUNT {len(entries)}u",
         f"#define X2_PROMPT_ATLAS_BYTES {len(atlas)}u",
         "#ifdef X2_PROMPT_GLYPH_ATLAS_DEFINE",
-        "const struct x2_prompt_cell x2_prompt_cells"
+        "extern const struct x2_prompt_cell x2_prompt_cells"
         "[X2_PROMPT_CELL_COUNT] = {",
     ]
     for e in entries:
@@ -302,14 +302,14 @@ def emit_header(out: Path) -> tuple[int, int, int]:
                e["design_w"], e["design_h"], e["advance"],
                e["name"], e["code"]))
     lines.append("};")
-    lines.append("const struct x2_keycap_art "
+    lines.append("extern const struct x2_keycap_art "
                  "x2_keycap_frame[X2_KEYCAP_FRAME_COUNT] = {")
     for e in extras["frame"]:
         lines.append("    { %s, %.4ff, X2_KEYCAP_SHEET_ATLAS }, /* %s */"
                      % (uv(e), e["design_w"], e["name"]))
     lines.append("};")
     lines.append("")
-    lines.append("const uint8_t x2_prompt_atlas[X2_PROMPT_ATLAS_BYTES] = {")
+    lines.append("extern const uint8_t x2_prompt_atlas[X2_PROMPT_ATLAS_BYTES] = {")
     for i in range(0, len(atlas), 20):
         chunk = atlas[i:i + 20]
         lines.append("    " + ",".join(str(b) for b in chunk) + ",")
@@ -403,14 +403,14 @@ def selftest(compiler: str | None) -> int:
                 or len(cells) != len(entries) + len(gaps):
             raise SystemExit("pad glyph atlas selftest: retail-font bytes are "
                              "not exactly the unpublished cells")
-        (work / "define.c").write_text(
+        (work / "define.cpp").write_text(
             "#define X2_PROMPT_GLYPH_ATLAS_DEFINE\n"
             '#include "prompt_glyph_atlas.h"\n',
             encoding="ascii",
         )
-        (work / "extern.c").write_text(
+        (work / "extern.cpp").write_text(
             '#include "prompt_glyph_atlas.h"\n'
-            "int main(void) {\n"
+            "int main() {\n"
             "    volatile uint8_t atlas_byte = x2_prompt_atlas[0];\n"
             "    (void)atlas_byte;\n"
             "    return x2_prompt_cells[0].design_w == "
@@ -418,12 +418,12 @@ def selftest(compiler: str | None) -> int:
             "}\n",
             encoding="ascii",
         )
-        compiler_argv = shlex.split(compiler or os.environ.get("CC", "cc"))
+        compiler_argv = shlex.split(compiler or os.environ.get("CXX", "c++"))
         if not compiler_argv:
-            raise SystemExit("pad glyph atlas selftest: empty C compiler command")
+            raise SystemExit("pad glyph atlas selftest: empty C++ compiler command")
         result = subprocess.run(
-            [*compiler_argv, "-std=c11", "-I", str(work),
-             str(work / "define.c"), str(work / "extern.c"),
+            [*compiler_argv, "-std=c++20", "-I", str(work),
+             str(work / "define.cpp"), str(work / "extern.cpp"),
              "-o", str(work / "header-contract")],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             check=False,
@@ -452,21 +452,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selftest", action="store_true")
     parser.add_argument("--print-inputs", action="store_true")
-    parser.add_argument("--cc", help="C compiler command for --selftest")
+    parser.add_argument("--cxx", help="C++ compiler command for --selftest")
     parser.add_argument("out", nargs="?", type=Path)
     args = parser.parse_args()
 
     choices = int(args.selftest) + int(args.print_inputs) + int(args.out is not None)
     if choices != 1:
         parser.error("choose exactly one output header, --selftest, or --print-inputs")
-    if args.cc and not args.selftest:
-        parser.error("--cc is only valid with --selftest")
+    if args.cxx and not args.selftest:
+        parser.error("--cxx is only valid with --selftest")
     if args.print_inputs:
         for path in shared_source_paths():
             print(path.resolve())
         return 0
     if args.selftest:
-        return selftest(args.cc)
+        return selftest(args.cxx)
     emit_header(args.out)
     return 0
 

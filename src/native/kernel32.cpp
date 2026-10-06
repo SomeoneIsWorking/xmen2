@@ -315,7 +315,6 @@ void imp_KERNEL32_GetStartupInfoA(CPU *C) {
  * decided. The boundary ring goes with it: the exit is a decision made after
  * something else failed, and the ring is what shows the something else.
  */
-void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
 
 void imp_KERNEL32_ExitProcess(CPU *C) {
   uint32_t code = A(0), from = RD32(C->reg[kX86pEsp]);
@@ -1131,17 +1130,17 @@ void imp_KERNEL32_TlsSetValue(CPU *C) {
  * operates on the real word.
  */
 void imp_KERNEL32_InterlockedExchange(CPU *C) {
-  uint32_t *p = guest_memory_pointer(A(0));
+  uint32_t *p = guest_memory_as<uint32_t>(A(0));
   ret_std(C, __atomic_exchange_n(p, A(1), __ATOMIC_SEQ_CST), 2);
 }
 
 void imp_KERNEL32_InterlockedIncrement(CPU *C) {
-  int32_t *p = guest_memory_pointer(A(0));
+  int32_t *p = guest_memory_as<int32_t>(A(0));
   ret_std(C, (uint32_t)__atomic_add_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
 }
 
 void imp_KERNEL32_InterlockedDecrement(CPU *C) {
-  int32_t *p = guest_memory_pointer(A(0));
+  int32_t *p = guest_memory_as<int32_t>(A(0));
   ret_std(C, (uint32_t)__atomic_sub_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
 }
 
@@ -1718,7 +1717,7 @@ void imp_KERNEL32_LoadLibraryA(CPU *C) {
 void imp_KERNEL32_GetProcAddress(CPU *C) {
   /* The handle is an image base, so the export table is right there. */
   uint32_t mod = A(0), namep = A(1), rva;
-  const char *sym = guest_memory_const_pointer(namep);
+  const char *sym = guest_memory_as<const char>(namep);
   const char *sm = sysmod_name(mod);
   if (namep && namep < 0x10000u) {
     x2_log_error("kernel32: GetProcAddress by ORDINAL (#%u) is not "
@@ -1878,7 +1877,7 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
     view = mapped_address;
   }
   {
-    unsigned char *destination = guest_memory_pointer(view);
+    unsigned char *destination = guest_memory_as<unsigned char>(view);
     size_t remaining = len;
     off_t file_offset = (off_t)aligned;
     while (remaining) {
@@ -2177,7 +2176,7 @@ void imp_KERNEL32_MultiByteToWideChar(CPU *C) {
   int32_t srclen = (int32_t)A(3);
   uint32_t dst = A(4);
   int32_t dstlen = (int32_t)A(5);
-  const unsigned char *s = guest_memory_const_pointer(src);
+  const unsigned char *s = guest_memory_as<const unsigned char>(src);
   int n, i;
   /*
    * CP_ACP (0) and CP_OEMCP (1) both resolve to this host's single code page
@@ -2227,7 +2226,7 @@ void imp_KERNEL32_WideCharToMultiByte(CPU *C) {
   int32_t dstlen = (int32_t)A(5);
   uint32_t defchar = A(6), usedflag = A(7);
   int n = 0, i, lost = 0;
-  const uint16_t *w = guest_memory_const_pointer(src);
+  const uint16_t *w = guest_memory_as<const uint16_t>(src);
   char sub = defchar ? *(const char *)guest_memory_const_pointer(defchar) : '?';
 
   if (srclen < 0) {
@@ -2392,12 +2391,12 @@ typedef struct EnvironmentBlockBuilder {
 } EnvironmentBlockBuilder;
 
 static void measure_environment_entry(const char *entry, void *user) {
-  EnvironmentBlockBuilder *builder = user;
+  auto *builder = static_cast<EnvironmentBlockBuilder *>(user);
   builder->total += strlen(entry) + 1u;
 }
 
 static void copy_environment_entry(const char *entry, void *user) {
-  EnvironmentBlockBuilder *builder = user;
+  auto *builder = static_cast<EnvironmentBlockBuilder *>(user);
   if (builder->narrow) {
     const size_t length = strlen(entry) + 1u;
     memcpy(builder->narrow, entry, length);
@@ -2421,7 +2420,7 @@ static uint32_t env_block(void) {
   p = guest_malloc((uint32_t)builder.total);
   if (!p)
     return 0;
-  builder.narrow = guest_memory_pointer(p);
+  builder.narrow = guest_memory_as<char>(p);
   x2_guest_environment_visit(copy_environment_entry, &builder);
   *builder.narrow = 0;
   return p;
@@ -2442,7 +2441,7 @@ void imp_KERNEL32_GetEnvironmentStringsW(CPU *C) {
     x2_guest_environment_visit(measure_environment_entry, &builder);
     p = guest_malloc((uint32_t)builder.total * 2u);
     if (p) {
-      builder.wide = guest_memory_pointer(p);
+      builder.wide = guest_memory_as<uint16_t>(p);
       x2_guest_environment_visit(copy_environment_entry, &builder);
       *builder.wide = 0;
     }
@@ -2720,7 +2719,7 @@ static void locale_info(CPU *C, int wide) {
     return;
   }
   if (wide) {
-    uint16_t *w = guest_memory_pointer(buf);
+    uint16_t *w = guest_memory_as<uint16_t>(buf);
     uint32_t i;
     for (i = 0; i < n; i++)
       w[i] = (uint16_t)(unsigned char)v[i];
@@ -2785,8 +2784,8 @@ static int cmp_bytes(const char *a, int na, const char *b, int nb, int fold) {
 /* CompareStringA(lcid, flags, s1, n1, s2, n2) -> 1 LESS, 2 EQUAL, 3 GREATER,
    0 on error. -1 for a count means NUL-terminated. */
 void imp_KERNEL32_CompareStringA(CPU *C) {
-  const char *a = guest_memory_const_pointer(A(2));
-  const char *b = guest_memory_const_pointer(A(4));
+  const char *a = guest_memory_as<const char>(A(2));
+  const char *b = guest_memory_as<const char>(A(4));
   int na = (int32_t)A(3), nb = (int32_t)A(5), r;
   if (!a || !b) {
     ret_std(C, 0, 6);
@@ -2801,8 +2800,8 @@ void imp_KERNEL32_CompareStringA(CPU *C) {
 }
 
 void imp_KERNEL32_CompareStringW(CPU *C) {
-  const uint16_t *a = guest_memory_const_pointer(A(2));
-  const uint16_t *b = guest_memory_const_pointer(A(4));
+  const uint16_t *a = guest_memory_as<const uint16_t>(A(2));
+  const uint16_t *b = guest_memory_as<const uint16_t>(A(4));
   int na = (int32_t)A(3), nb = (int32_t)A(5), i, n;
   int fold = (A(1) & NORM_IGNORECASE) != 0, r = 0;
   if (!a || !b) {
@@ -2853,8 +2852,8 @@ static void lcmap(CPU *C, int wide) {
     return;
   }
   if (wide) {
-    const uint16_t *s = guest_memory_const_pointer(A(2));
-    uint16_t *d = guest_memory_pointer(dst);
+    const uint16_t *s = guest_memory_as<const uint16_t>(A(2));
+    uint16_t *d = guest_memory_as<uint16_t>(dst);
     if (nsrc < 0) {
       nsrc = 0;
       while (s[nsrc])
@@ -2879,8 +2878,8 @@ static void lcmap(CPU *C, int wide) {
       d[i] = (uint16_t)c;
     }
   } else {
-    const char *s = guest_memory_const_pointer(A(2));
-    char *d = guest_memory_pointer(dst);
+    const char *s = guest_memory_as<const char>(A(2));
+    char *d = guest_memory_as<char>(dst);
     if (nsrc < 0)
       nsrc = (int)strlen(s) + 1;
     if (ncdst == 0) {
@@ -2941,7 +2940,7 @@ static uint16_t ctype1(int c) {
 static void string_type(CPU *C, int wide, int base, int nargs) {
   uint32_t info = A(base), src = A(base + 1), out = A(base + 3);
   int n = (int32_t)A(base + 2), i;
-  uint16_t *d = guest_memory_pointer(out);
+  uint16_t *d = guest_memory_as<uint16_t>(out);
   if (info != CT_CTYPE1) {
     x2_log_error("kernel32: GetStringType info 0x%x is not CT_CTYPE1; "
                  "only the character-class table is implemented, so "
@@ -2956,7 +2955,7 @@ static void string_type(CPU *C, int wide, int base, int nargs) {
     return;
   }
   if (wide) {
-    const uint16_t *s = guest_memory_const_pointer(src);
+    const uint16_t *s = guest_memory_as<const uint16_t>(src);
     if (n < 0) {
       n = 0;
       while (s[n])
@@ -2966,7 +2965,7 @@ static void string_type(CPU *C, int wide, int base, int nargs) {
     for (i = 0; i < n; i++)
       d[i] = ctype1(s[i]);
   } else {
-    const char *s = guest_memory_const_pointer(src);
+    const char *s = guest_memory_as<const char>(src);
     if (n < 0)
       n = (int)strlen(s) + 1;
     for (i = 0; i < n; i++)

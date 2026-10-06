@@ -568,7 +568,7 @@ static void lock_sub(D3D8Object *self, CPU *C, uint32_t face, uint32_t level,
        it and the pitch is unchanged -- the same arithmetic as
        d3d8_surface.cpp's LockRect, and see the comment there for why it is
        arithmetic rather than a refusal. */
-    const uint32_t *q = guest_memory_const_pointer(rect);
+    const uint32_t *q = guest_memory_as<const uint32_t>(rect);
     uint32_t left = q[0], top = q[1], right = q[2], bottom = q[3];
     uint32_t bpp = d3d8_format_bpp(r->format);
 
@@ -696,11 +696,12 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
   d3d8_texture_provenance_uploaded(&r->provenance, sub / r->levels,
                                    sub % r->levels, bytes, byte_count);
   if ((sub % r->levels) == 0)
-    d3d8_texture_luma_note((uint32_t)r->gtex, r->format, lw, lh, bytes,
-                           byte_count);
+    d3d8_texture_luma_note(static_cast<uint32_t>(r->gtex), r->format, lw, lh,
+                           static_cast<const uint8_t *>(bytes), byte_count);
   if ((sub % r->levels) == 0 &&
       (r->format == D3DFMT_A8R8G8B8 || r->format == D3DFMT_X8R8G8B8))
-    x2_fmv_probe_upload(bytes, byte_count, (int)lw, (int)lh,
+    x2_fmv_probe_upload(static_cast<const uint8_t *>(bytes), byte_count,
+                        static_cast<int>(lw), static_cast<int>(lh),
                         row_pitch(r->format, lw));
   r->uploads++;
   r->last_upload_level = sub % r->levels;

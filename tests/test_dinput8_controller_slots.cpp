@@ -47,9 +47,9 @@ int dinput_pad_for_guid(const unsigned char guid[16]) {
 
 static void set_poll(uint32_t manager, int controller_slot, uint32_t device,
                      int polled) {
-  unsigned char *base = guest_memory_pointer(manager);
-  uint32_t *devices = (uint32_t *)(base + DEVICE_ARRAY_OFFSET);
-  uint32_t *mask = (uint32_t *)(base + POLLED_MASK_OFFSET);
+  unsigned char *base = guest_memory_as<unsigned char>(manager);
+  uint32_t *devices = reinterpret_cast<uint32_t *>(base + DEVICE_ARRAY_OFFSET);
+  uint32_t *mask = reinterpret_cast<uint32_t *>(base + POLLED_MASK_OFFSET);
 
   devices[controller_slot] = device;
   if (polled)
@@ -60,8 +60,9 @@ static void set_poll(uint32_t manager, int controller_slot, uint32_t device,
 
 static void set_slot(uint32_t manager, int controller_slot, int attached,
                      const unsigned char guid[16]) {
-  unsigned char *base = guest_memory_pointer(manager);
-  base[ATTACHED_OFFSET + (unsigned)controller_slot] = (unsigned char)attached;
+  unsigned char *base = guest_memory_as<unsigned char>(manager);
+  base[ATTACHED_OFFSET + (unsigned)controller_slot] =
+      static_cast<unsigned char>(attached);
   memcpy(base + INSTANCE_OFFSET + (unsigned)controller_slot * 16u, guid, 16);
 }
 

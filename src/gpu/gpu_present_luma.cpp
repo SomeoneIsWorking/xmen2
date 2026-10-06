@@ -115,7 +115,8 @@ void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
       if (scene_texture && scene_w && scene_h) {
         uint64_t need = (uint64_t)scene_w * (uint64_t)scene_h * 4u;
         if (need <= (uint64_t)UINT32_MAX && need > (uint64_t)scene_capacity) {
-          unsigned char *larger = realloc(scene_buf, (size_t)need);
+          unsigned char *larger =
+              static_cast<unsigned char *>(realloc(scene_buf, (size_t)need));
           if (larger) {
             scene_buf = larger;
             scene_capacity = (uint32_t)need;

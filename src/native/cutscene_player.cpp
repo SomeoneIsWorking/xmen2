@@ -224,7 +224,7 @@ static void retire_released_sequence(void) {
 
 static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
                             X2CutsceneFiber *fiber) {
-  CPU *cpu = context;
+  CPU *cpu = static_cast<CPU *>(context);
   ConversationPlayerState conversation;
   uint32_t selected = 0;
   int available;
@@ -260,6 +260,7 @@ static X2CutsceneFiberStep
 step_owned_fiber(void *context, X2CutsceneSequence sequence,
                  X2CutsceneFiber fiber, X2CutsceneConversation *conversation) {
   BehavedPlayerStep step;
+  CPU *cpu = static_cast<CPU *>(context);
 
   if (!g_player.active || sequence != g_player.sequence)
     return X2_CUTSCENE_FIBER_ERROR;
@@ -270,7 +271,7 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
     (void)guest_memory_try_read32(record, &g_player.last_event_target);
     (void)guest_memory_try_read32(record + 4u, &g_player.last_event_descriptor);
     CutsceneEventPlayerStep event =
-        cutscene_event_player_step_owned_slot(context, &g_player.events, slot);
+        cutscene_event_player_step_owned_slot(cpu, &g_player.events, slot);
     g_player.event_steps++;
     if (event == CUTSCENE_EVENT_PLAYER_STEP_RAN)
       return X2_CUTSCENE_FIBER_ADVANCED;
@@ -279,7 +280,7 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
                : X2_CUTSCENE_FIBER_ERROR;
   }
   if (fiber == CONVERSATION_FIBER) {
-    ConversationPlayerState state = conversation_player_state(context);
+    ConversationPlayerState state = conversation_player_state(cpu);
     *conversation = 1;
     if (state == CONVERSATION_PLAYER_DETERMINISTIC)
       return X2_CUTSCENE_FIBER_DETERMINISTIC_CONVERSATION;
@@ -287,7 +288,7 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
       return X2_CUTSCENE_FIBER_CHOICE;
     return X2_CUTSCENE_FIBER_NO_PROGRESS;
   }
-  step = behaved_player_step_context(context, (uint32_t)fiber);
+  step = behaved_player_step_context(cpu, (uint32_t)fiber);
   g_player.behaved_steps++;
   if (!claim_events())
     return X2_CUTSCENE_FIBER_ERROR;
@@ -306,11 +307,12 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
 
 static int play_conversation(void *context, X2CutsceneSequence sequence,
                              X2CutsceneConversation conversation) {
+  CPU *cpu = static_cast<CPU *>(context);
   int advanced;
 
   if (!conversation || !g_player.active || sequence != g_player.sequence)
     return 0;
-  advanced = cutscene_dialogue_advance(context);
+  advanced = cutscene_dialogue_advance(cpu);
   return advanced && claim_events();
 }
 

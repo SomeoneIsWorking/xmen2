@@ -20,7 +20,7 @@ static int check(int condition, const char *what) {
 
 int main(void) {
   char body[BODY_BYTES + 1];
-  char *received = calloc(RECEIVE_BYTES, 1);
+  char *received = static_cast<char *>(calloc(RECEIVE_BYTES, 1));
   size_t got = 0;
   int pair[2];
   int failures = 0;
@@ -30,7 +30,7 @@ int main(void) {
     return 1;
   }
   for (int i = 0; i < BODY_BYTES; i++)
-    body[i] = (char)('a' + i % 26);
+    body[i] = static_cast<char>('a' + i % 26);
   body[BODY_BYTES] = 0;
   control_reply_text(pair[0], 200, "OK", "%s", body);
   close(pair[0]);
@@ -38,7 +38,7 @@ int main(void) {
     ssize_t k = read(pair[1], received + got, RECEIVE_BYTES - 1 - got);
     if (k <= 0)
       break;
-    got += (size_t)k;
+    got += static_cast<size_t>(k);
   }
   close(pair[1]);
 
@@ -48,7 +48,7 @@ int main(void) {
   failures += check(start != NULL, "the reply has no header terminator");
   if (start) {
     start += 4;
-    failures += check((size_t)(received + got - start) == BODY_BYTES,
+    failures += check(static_cast<size_t>(received + got - start) == BODY_BYTES,
                       "the body is not exactly the formatted text's size");
     failures += check(!memcmp(start, body, BODY_BYTES),
                       "the body differs from the formatted text");

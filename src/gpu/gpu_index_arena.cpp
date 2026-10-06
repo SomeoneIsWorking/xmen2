@@ -142,7 +142,7 @@ GpuIndexArena *gpu_index_arena_create(GpuIndexChunkFn make_chunk, void *user) {
   if (!make_chunk) {
     return NULL;
   }
-  GpuIndexArena *a = calloc(1u, sizeof *a);
+  GpuIndexArena *a = static_cast<GpuIndexArena *>(calloc(1u, sizeof *a));
   if (a) {
     a->make_chunk = make_chunk;
     a->user = user;

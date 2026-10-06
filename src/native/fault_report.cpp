@@ -92,7 +92,7 @@ const char *fault_name(int sig) {
 
 #if !defined(__EMSCRIPTEN__)
 static uintptr_t fault_context_pc(const void *context) {
-  const ucontext_t *uc = context;
+  const ucontext_t *uc = static_cast<const ucontext_t *>(context);
   if (!uc)
     return 0;
 #if defined(__APPLE__) && defined(__aarch64__)

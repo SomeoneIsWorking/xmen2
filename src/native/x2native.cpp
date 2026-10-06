@@ -1033,7 +1033,7 @@ static void case_runtime_module(void) {
   CPU C;
 
   x2_log_info("  run-time module lookup\n");
-  strcpy(guest_memory_pointer(path), "C:\\Windows\\System32\\dinput8.dll");
+  strcpy(guest_memory_as<char>(path), "C:\\Windows\\System32\\dinput8.dll");
 
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x200u;
@@ -1043,7 +1043,7 @@ static void case_runtime_module(void) {
   h = C.reg[kX86pEax];
   check("dinput8.dll loads by full path", h != 0u, 1u);
 
-  strcpy(guest_memory_pointer(sym), "DirectInput8Create");
+  strcpy(guest_memory_as<char>(sym), "DirectInput8Create");
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x200u;
   WR32(C.reg[kX86pEsp], 0);
@@ -1055,7 +1055,7 @@ static void case_runtime_module(void) {
   check("and to the address it was published at", p,
         x86_native_export_addr("DINPUT8.DLL", "DirectInput8Create"));
 
-  strcpy(guest_memory_pointer(sym), "DirectInput8CreateNoSuchThing");
+  strcpy(guest_memory_as<char>(sym), "DirectInput8CreateNoSuchThing");
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x200u;
   WR32(C.reg[kX86pEsp], 0);
@@ -1067,7 +1067,7 @@ static void case_runtime_module(void) {
   /* The title dynamically resolves TryEnterCriticalSection during startup.
    * It is implemented in kernel32.cpp but has no static import slot, so the
    * lookup must use the native runtime-export path used by DInput above. */
-  strcpy(guest_memory_pointer(path), "KERNEL32.DLL");
+  strcpy(guest_memory_as<char>(path), "KERNEL32.DLL");
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x200u;
   WR32(C.reg[kX86pEsp], 0);
@@ -1076,7 +1076,7 @@ static void case_runtime_module(void) {
   h = C.reg[kX86pEax];
   check("KERNEL32.DLL has a native system-module handle", h != 0u, 1u);
 
-  strcpy(guest_memory_pointer(sym), "TryEnterCriticalSection");
+  strcpy(guest_memory_as<char>(sym), "TryEnterCriticalSection");
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x200u;
   WR32(C.reg[kX86pEsp], 0);
@@ -1272,7 +1272,7 @@ static uint32_t rtti_typedesc(const char *name) {
   uint32_t t = guest_malloc(8u + (uint32_t)strlen(name) + 1u);
   WR32(t, 0);
   WR32(t + 4u, 0);
-  strcpy(guest_memory_pointer(t + 8u), name);
+  strcpy(guest_memory_as<char>(t + 8u), name);
   return t;
 }
 
@@ -1457,7 +1457,7 @@ static uint32_t find_count(const char *pattern, uint32_t data) {
   uint32_t h, n = 0;
   uint32_t spec = guest_malloc(512);
 
-  snprintf(guest_memory_pointer(spec), 512, "%s", pattern);
+  snprintf(guest_memory_as<char>(spec), 512, "%s", pattern);
   cpu_reset(&C);
   C.reg[kX86pEsp] = SCRATCH + 0x700u;
   WR32(C.reg[kX86pEsp], 0);
@@ -1496,7 +1496,7 @@ static void case_find_file(void) {
   memset(guest_memory_pointer(data), 0xEE, 320); /* poison first */
 
   hits_exe = find_count("*.exe", data);
-  name = guest_memory_const_pointer(data + 44u);
+  name = guest_memory_as<const char>(data + 44u);
   check("*.exe matched at least one file", hits_exe > 0, 1u);
   check(
       "  and the name is NUL-terminated ASCII",

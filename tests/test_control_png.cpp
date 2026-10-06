@@ -25,7 +25,7 @@
 #define H 37
 
 int main(void) {
-  unsigned char *bgra = malloc((size_t)W * H * 4);
+  unsigned char *bgra = static_cast<unsigned char *>(malloc((size_t)W * H * 4));
   unsigned char *png;
   size_t len = 0;
   unsigned x, y;
@@ -79,7 +79,7 @@ int main(void) {
   fflush(stdout);
 
   /* The independent reader. Its exit code is this test's verdict. */
-  rc = system("python3 " CHECK_PNG " control_png_test.png");
+  rc = system(CHECK_PNG_PYTHON " " CHECK_PNG " control_png_test.png");
   free(png);
   free(bgra);
   return rc == 0 ? 0 : 1;

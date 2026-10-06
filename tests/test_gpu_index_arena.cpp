@@ -26,7 +26,7 @@ typedef struct Chunks {
 } Chunks;
 
 static int make_chunk(void *user, uint32_t chunk, uint32_t bytes) {
-  Chunks *c = user;
+  Chunks *c = static_cast<Chunks *>(user);
   if (c->refuse || chunk != c->made || chunk >= 8u) {
     return 0;
   }
@@ -101,7 +101,7 @@ static void a_large_class_takes_its_own_chunk(void) {
 
   /* Exactly a chunk's size takes its own too, and leaves the shared chunk
      being carved where it was. */
-  c = (Chunks){0};
+  c = Chunks{};
   a = gpu_index_arena_create(make_chunk, &c);
   GpuIndexRegion small;
   gpu_index_arena_alloc(a, 100u, 0u, &small);

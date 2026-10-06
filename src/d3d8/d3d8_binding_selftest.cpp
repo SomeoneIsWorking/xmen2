@@ -66,8 +66,8 @@ static int expect(const BindingCase *c, const char *step, int ok) {
 
 static int binding_case(D3D8Object *device, const BindingCase *c) {
   const D3D8State *state = d3d8_device_state();
-  D3D8Object *a = d3d8_object_new(c->iface, NULL);
-  D3D8Object *b = d3d8_object_new(c->iface, NULL);
+  D3D8Object *a = d3d8_object_new(static_cast<D3D8IfaceId>(c->iface), NULL);
+  D3D8Object *b = d3d8_object_new(static_cast<D3D8IfaceId>(c->iface), NULL);
   const uint32_t ga = d3d8_object_guest(a), gb = d3d8_object_guest(b);
   const uint32_t bogus = guest_malloc(16);
   int fails = 0;

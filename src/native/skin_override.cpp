@@ -102,17 +102,18 @@ static int native_runs(const SkinCall *call, int blend) {
 }
 
 static const float *position_at(const SkinCall *call, uint32_t vertex) {
-  return guest_memory_const_pointer(call->positions + vertex * POSITION_BYTES);
+  return guest_memory_as<const float>(call->positions +
+                                      vertex * POSITION_BYTES);
 }
 
 static SkinResult run_blend(const SkinCall *call) {
-  const float *matrices = guest_memory_const_pointer(call->matrices);
+  const float *matrices = guest_memory_as<const float>(call->matrices);
   for (uint32_t v = 0; v < call->count; v++) {
     const uint32_t first = v * call->bones;
     float out[3];
     skin_blend_vertex(out, position_at(call, v),
-                      guest_memory_const_pointer(call->indices + first),
-                      guest_memory_const_pointer(call->weights + first * 4u),
+                      guest_memory_as<const uint8_t>(call->indices + first),
+                      guest_memory_as<const float>(call->weights + first * 4u),
                       call->bones, matrices);
     guest_memory_write(call->out + v * call->stride, out, OUT_BYTES);
   }
@@ -123,12 +124,11 @@ static SkinResult run_blend(const SkinCall *call) {
 }
 
 static SkinResult run_rigid(const SkinCall *call) {
-  const float *matrices = guest_memory_const_pointer(call->matrices);
+  const float *matrices = guest_memory_as<const float>(call->matrices);
   uint8_t index = 0;
   for (uint32_t v = 0; v < call->count; v++) {
     float out[3];
-    index = *(const uint8_t *)guest_memory_const_pointer(call->indices +
-                                                         v * call->bones);
+    index = *guest_memory_as<const uint8_t>(call->indices + v * call->bones);
     skin_rigid_vertex(out, position_at(call, v), index, matrices);
     guest_memory_write(call->out + v * call->stride, out, OUT_BYTES);
   }
@@ -143,7 +143,7 @@ static SkinResult run_rigid(const SkinCall *call) {
 static void verify_or_abort(const CPU *C, uint32_t ep, const SkinCall *call,
                             SkinResult native) {
   const size_t bytes = (size_t)call->count * OUT_BYTES;
-  float *native_out = malloc(bytes);
+  float *native_out = static_cast<float *>(malloc(bytes));
   if (!native_out) {
     x2_log_error("math.skin_verify: no memory for %u vertices; not "
                  "continuing.\n",
