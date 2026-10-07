@@ -15,10 +15,19 @@ constexpr std::string_view kDropToken = "$MENU_DROP";
 
 bool is_space(char c) { return std::isspace(static_cast<unsigned char>(c)); }
 
+} // namespace
+
+presentation::ClientPoint
+menu_item_centre(const menu::SceneRect &rect,
+                 const presentation::RetailScenePlane &plane) {
+  return plane.to_client({0.5F * static_cast<float>(rect.left + rect.right),
+                          0.5F * static_cast<float>(rect.top + rect.bottom)});
+}
+
 std::optional<TouchMenuFooter>
-footer_of(const menu::MenuItem &item,
-          const presentation::RetailScenePlane &plane) {
-  if (!item.name.starts_with(kFooterPrefix) || !menu_item_shown(item)) {
+menu_footer(const menu::MenuItem &item,
+            const presentation::RetailScenePlane &plane) {
+  if (!menu_item_shown(item)) {
     return std::nullopt;
   }
   const std::size_t at = item.label.find(kTokenPrefix);
@@ -37,15 +46,6 @@ footer_of(const menu::MenuItem &item,
     footer.button = TouchAction::MenuRightShoulder;
   }
   return footer;
-}
-
-} // namespace
-
-presentation::ClientPoint
-menu_item_centre(const menu::SceneRect &rect,
-                 const presentation::RetailScenePlane &plane) {
-  return plane.to_client({0.5F * static_cast<float>(rect.left + rect.right),
-                          0.5F * static_cast<float>(rect.top + rect.bottom)});
 }
 
 std::vector<std::string> menu_text_lines(std::string_view raw) {
@@ -104,7 +104,10 @@ void append_menu_footers(const menu::MenuSnapshot &menu,
                          const presentation::RetailScenePlane &plane,
                          TouchMenuView *view) {
   for (const menu::MenuItem &item : menu.items) {
-    auto footer = footer_of(item, plane);
+    if (!item.name.starts_with(kFooterPrefix)) {
+      continue;
+    }
+    auto footer = menu_footer(item, plane);
     if (!footer) {
       continue;
     }

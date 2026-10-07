@@ -547,9 +547,36 @@ per rank: `0xd9` owned, `0xda` added in this visit, `0xd8` open at the hero's
 level, `0xd7` above it. `points_skills` beside `label_skillpoints` holds the
 points left. A adds a rank to the selected skill and X removes one added in
 this visit; `$MENU_DETAILS Details` (`desctext4`, whose click sets
-`menu+0x1d3c`) and `assign_help` `$MENU_DROP Assign` (not a footer; the
-icon strip left of the list, then fixed boxes publishing 8, 5 or 4) assign
-a skill to a power slot. RT shows the next hero.
+`menu+0x1d3c`), and `assign_help` reads `$MENU_DROP Assign` while the
+selected skill can be assigned and is empty otherwise.
+
+Assigning a skill to a power slot (`FUN_005e5900`, the skills-mode update,
+reading the pressed-action mask from input vfunc `+0x140`):
+
+- With `menu+0x18e8` at -1, RB (action `0xd`) asks `FUN_005dddb0`: the
+  selected `skill_list` entry (`FUN_005dda00`) must have a name and a rank
+  (`FUN_005f00e0` > 0), else the refusal sound. The skill's type (vfunc
+  `+0x1c`) then decides: type 0 goes straight to slot 3, type 2 to slot 2,
+  any other enters assigning (`FUN_005dc940`: `menu+0x18e8` = the entry, the
+  three `assign_icon` slots show `m_team_skill_assigning`).
+- While assigning, A, B and X (actions 4, 5, 8) assign to slots 0, 1, 2
+  (`FUN_005dde40`) and end it; BACK (0x15) cancels. The pad's B carries both
+  5 and 0x15, and 5 is tested first, so B assigns; only a click on the
+  `$MENU_BACK` footer, which publishes 0x15 alone, cancels. The footers read
+  `$MENU_SUBTRACT Assign`, `$MENU_ACCEPT Assign` and `$MENU_OTHER Assign`,
+  but `MENU_OTHER` (0x18, Y) assigns nothing and B is not named.
+- `FUN_005dde40(entry, slot)` writes the skill's power name (the skill
+  object's vfunc `+0x14`, such as `power5`) into the hero's slot `slot` at
+  `record+0xc4 + slot*0x15` (`FUN_004b84b0`, at most 0x13 characters) and,
+  when the power was in another slot, moves that slot's old name there: a
+  swap. `assign_icon01..04` draw slots 0..3 at the bottom, right, left and
+  top of the diamond, the gameplay ring's A, B, X, Y.
+
+RT (input vfunc `+0x1f8`, `FUN_005e3c70` then `FUN_005e22a0`) turns every
+hero tab to the next party hero, wrapping. The previous hero is action `0x17`
+(`Solo`), which the shipped binding table gives only a keyboard key (C) and
+no pad button; LT does nothing here. No click turns hero: `onMouse` modes
+2..6 test only the tabs and the tab's own items.
 
 The gear tab has two list boxes: `equipment`, the three slots (`--- [
 Nothing Equipped ] ---` or the piece's name), and `equipment_inv`, the
@@ -609,6 +636,7 @@ the names are unique. A record holds:
 |---|---|
 | `+0x1c` | level byte |
 | `+0xc0` | stats object (vtable `0x685294`); 0 for the villain records 21..25 |
+| `+0xc4 + i*0x15` | power slot *i* (A, B, X, Y), the power's internal name (`power5`), empty when none (`FUN_004b8420`) |
 | `+0x150` | internal name, 32 bytes (`sabretooth_hero`) |
 | `+0x170` | display name, 32 bytes (`Sabretooth`, `Jean Grey` for `Phoenix`, `Professor X`) |
 | `+0x28e` | unlock id, `short` |
@@ -1125,7 +1153,10 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   only the anchor row.
 - **The anchor fallback** uses slot order where the game's default focus walks
   the name tree.
-- **Assigning a skill to a power slot.** The skills tab's icon strip
-  publishes `0xd` and fixed scene boxes publish 8, 5 or 4, but RB on a skill
-  showed nothing; the flow, and what `menu+0x1d3c` (Details) does, are not
-  traced. LT did not change hero where RT showed the next one.
+- **The skills tab's mouse assignment.** The icon strip left of the list
+  publishes `0xd` and fixed scene boxes publish 8, 5 or 4; only the pad path
+  (RB, then A/B/X) is measured. What `menu+0x1d3c` (Details) does is not
+  traced.
+- **Which skill a power name is.** A slot holds the power's internal name
+  (`power5`); the map from it to the `skill_list` entry is not read, so the
+  touch menu names slots, not the skills in them.

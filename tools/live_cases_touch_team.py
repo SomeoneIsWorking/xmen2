@@ -9,6 +9,7 @@ from live_harness import Case
 from live_menu import (
     dismiss_level_up,
     keyboard_into_gameplay,
+    menu_item,
     menu_labels,
     read_menu,
     reveal_touch_row,
@@ -329,4 +330,92 @@ def case_touch_team_ai(case: Case) -> None:
         lambda a, b: row_value(b, target) not in (None, row_value(a, target)),
         "changed the setting in the game")
     case.shot("ai-changed")
+    leave_details(case)
+
+
+def hero_power_slots(case: Case) -> list[str]:
+    """The power slots of the hero the tabs show, from the party card whose
+    hero has that name."""
+    name = menu_labels(case).get("name")
+    for n in range(1, 5):
+        hero = menu_item(case, "char_summary0%d" % n).get("hero", {})
+        if hero.get("display_name") == name:
+            return hero.get("power_slots", [])
+    return []
+
+
+def footer_labels(shown: dict) -> list[str]:
+    return [b["label"] for b in shown.get("buttons", [])
+            if b["part"] == "footer"]
+
+
+def case_touch_team_assign(case: Case) -> None:
+    """The skills tab: Assign (RB) takes the selected skill, Power 2 (B) puts
+    it in slot 1, Cancel clicks Back; Next hero (RT) turns to the next
+    hero."""
+    if not start_levelled(case):
+        return
+    shown = open_details(case, "skills")
+    ranked = [r["label"].lower() for r in shown.get("rows", [])
+              if ", rank " in str(r.get("value"))
+              and not str(r.get("value")).split("rank ")[1].startswith("0/")]
+    if ranked and focused_label(shown) not in ranked:
+        tap_row(case, ranked[0])
+        shown = wait_game_menu(case, lambda m: focused_label(
+            m.get("touch_menu", {})) == ranked[0], 10).get("touch_menu", {})
+    case.check("the selected skill has a rank, so the game offers Assign",
+               "Assign" in footer_labels(shown), str(footer_labels(shown)))
+    before = hero_power_slots(case)
+    case.check("the hero's four power slots read", len(before) == 4,
+               str(before))
+    if "Assign" not in footer_labels(shown) or len(before) != 4:
+        return
+
+    tap_touch_button(case, shown, touch_button(shown, "footer", "assign"))
+    assigning = wait_game_menu(case, lambda m: "assigning_skill" in m and
+                               "Power 2" in footer_labels(
+                                   m.get("touch_menu", {})), 10)
+    labels = footer_labels(assigning.get("touch_menu", {}))
+    case.check("a tap on Assign (RB) set the game assigning the skill, and "
+               "the footers became the three slots and Cancel",
+               labels == ["Power 1", "Power 2", "Power 3", "Cancel"],
+               "%s %s" % (assigning.get("assigning_skill"), labels))
+    case.shot("skills-assigning")
+    shown = assigning.get("touch_menu", {})
+    tap_touch_button(case, shown, touch_button(shown, "footer", "cancel"))
+    cancelled = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
+    case.check("Cancel (a click on the game's Back) ended it unassigned",
+               "assigning_skill" not in cancelled
+               and hero_power_slots(case) == before,
+               str(hero_power_slots(case)))
+
+    shown = cancelled.get("touch_menu", {})
+    tap_touch_button(case, shown, touch_button(shown, "footer", "assign"))
+    assigning = wait_game_menu(case, lambda m: "Power 2" in footer_labels(
+        m.get("touch_menu", {})), 10)
+    shown = assigning.get("touch_menu", {})
+    tap_touch_button(case, shown, touch_button(shown, "footer", "power 2"))
+    done = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
+    after = hero_power_slots(case)
+    moved = before.index(after[1]) if len(after) == 4 and after[1] in before \
+        else None
+    case.check("a tap on Power 2 (B) put the skill in slot 1, swapping with "
+               "the slot it left",
+               "assigning_skill" not in done and len(after) == 4
+               and after != before and after[1] != ""
+               and (moved is None or after[moved] == before[1]),
+               "%s -> %s" % (before, after))
+    case.shot("skills-assigned")
+
+    shown = touch_menu(case)
+    hero = menu_labels(case).get("name")
+    tap_touch_button(case, shown, touch_button(shown, "footer", "next hero"))
+    turned = wait_game_menu(case, lambda m: menu_labels(case).get(
+        "name") not in (None, hero), 10)
+    case.check("a tap on Next hero (RT) turned the tabs to the next hero",
+               menu_labels(case).get("name") not in (None, hero)
+               and turned.get("mode") == 3,
+               "%s -> %s, mode %s" % (hero, menu_labels(case).get("name"),
+                                      turned.get("mode")))
+    case.shot("next-hero")
     leave_details(case)

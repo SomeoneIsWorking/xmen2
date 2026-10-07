@@ -65,6 +65,7 @@ from live_cases_touch_menu import (
 )
 from live_cases_touch_team import (
     case_touch_team_ai,
+    case_touch_team_assign,
     case_touch_team_gear,
     case_touch_team_skills,
     case_touch_team_stats,
@@ -101,6 +102,7 @@ CASES = {
     "touch-team-skills": case_touch_team_skills,
     "touch-team-gear": case_touch_team_gear,
     "touch-team-ai": case_touch_team_ai,
+    "touch-team-assign": case_touch_team_assign,
     "extract-keyboard-back": case_extract_keyboard_back,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,

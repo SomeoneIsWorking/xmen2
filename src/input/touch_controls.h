@@ -64,6 +64,8 @@ enum class TouchAction : std::uint8_t {
   MenuY,
   MenuLeftShoulder,
   MenuRightShoulder,
+  // RT, which a hero's team tabs read as the next hero; no drawn control.
+  MenuRightTrigger,
 };
 
 // The action's name, for traces and the control channel; never null.

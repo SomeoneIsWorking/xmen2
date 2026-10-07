@@ -3,6 +3,7 @@
 
 #include "guest_image_reader.hpp"
 
+#include <array>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +23,9 @@ struct HeroRecord {
   bool fallen = false;
   /* The unlock bit the card tests (FUN_0048f770 on record+0x28e). */
   bool unlocked = false;
+  /* The powers slots 0..3 (A, B, X, Y) hold, by internal name ("power5"),
+     record+0xc4 + i*0x15 (FUN_004b8420); empty for an empty slot. */
+  std::array<std::string, 4> power_slots;
 };
 
 /* The character table (singleton 0x0071770c) read through the memory seam. */

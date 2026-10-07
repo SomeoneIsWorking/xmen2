@@ -15,6 +15,7 @@
 namespace {
 
 using namespace x2::test::touch_menu;
+using x2::input::TouchMenuFooter;
 using x2::native::HeroRecord;
 
 HeroRecord hero(const char *name, const char *display, int level,
@@ -364,8 +365,54 @@ MenuSnapshot skills_menu() {
   menu.items.push_back(item(127, "points_skills", "37", 461, 49, 476, 63));
   menu.items.push_back(
       item(36, "desctext2", "~05$MENU_ACCEPT Add", 62, 21, 141, 35));
+  menu.items.push_back(
+      item(120, "assign_help", "~05$MENU_DROP Assign", 29, 52, 108, 66));
   push_accept(&menu);
   return menu;
+}
+
+/* The skills tab after RB on Levitation: the game's prompts while it waits
+   for a slot. */
+MenuSnapshot assigning_menu() {
+  MenuSnapshot menu = skills_menu();
+  menu.assigning_skill = 0;
+  for (MenuItem &shown : menu.items) {
+    if (shown.name == "desctext2") {
+      shown.label = "~05$MENU_ACCEPT Assign";
+    }
+  }
+  menu.items.push_back(
+      item(35, "desctext1", "~05$MENU_SUBTRACT Assign", 0, 21, 50, 35));
+  menu.items.push_back(
+      item(37, "desctext3", "~05$MENU_OTHER Assign", 155, 21, 234, 35));
+  return menu;
+}
+
+const TouchMenuFooter *footer_named(const TouchMenuView &view,
+                                    const std::string &label) {
+  for (const TouchMenuFooter &footer : view.footers) {
+    if (footer.label == label) {
+      return &footer;
+    }
+  }
+  return nullptr;
+}
+
+std::vector<TouchMenuDelivery> tap_footer(const TouchMenuView &view,
+                                          const std::string &label) {
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  for (std::size_t i = 0; i < view.footers.size(); ++i) {
+    if (view.footers[i].label != label) {
+      continue;
+    }
+    const TouchMenuButton *button =
+        find(touch.layout(), TouchMenuPart::footer, static_cast<int>(i));
+    return button == nullptr ? std::vector<TouchMenuDelivery>{}
+                             : tap(touch, button->rect, 10u);
+  }
+  return {};
 }
 
 MenuSnapshot gear_menu(bool inventory) {
@@ -441,8 +488,10 @@ void the_stats_tab_walks_to_a_stat_and_adds_on_it() {
   check(has_line(*view, "Energy Resistance 0") &&
             has_line(*view, "Mental Resistance 10"),
         "the description's resistance icons read as their values");
-  check(view->footers.size() == 2u && view->footers[0].label == "Add",
-        "the game's Add and Accept footers");
+  check(view->footers.size() == 3u && view->footers[0].label == "Add" &&
+            view->footers[2].label == "Next hero" &&
+            view->footers[2].button == TouchAction::MenuRightTrigger,
+        "the game's Add and Accept footers, and Next hero on RT");
 
   const auto walk = tap_row(view, 2);
   check(walk.size() == 1u && walk[0].kind == TouchMenuDelivery::Kind::pad &&
@@ -518,6 +567,57 @@ void the_skills_tab_reads_ranks() {
         "text that is not a run of rank glyphs is not a rank");
 }
 
+void the_skills_tab_assigns_a_power_slot() {
+  const RetailScenePlane plane = plane_1280x720();
+  const auto view = x2::input::build_touch_menu_view(skills_menu(), plane);
+  check(view.has_value(), "the skills tab is replaced");
+  if (!view) {
+    return;
+  }
+  const TouchMenuFooter *assign = footer_named(*view, "Assign");
+  check(assign != nullptr && assign->button == TouchAction::MenuRightShoulder,
+        "the game's assign prompt is a footer pressing RB");
+  const auto rb = tap_footer(*view, "Assign");
+  check(rb.size() == 1u && rb[0].kind == TouchMenuDelivery::Kind::pad &&
+            rb[0].button == TouchAction::MenuRightShoulder,
+        "a tap on Assign presses RB");
+  const auto next = tap_footer(*view, "Next hero");
+  check(next.size() == 1u && next[0].button == TouchAction::MenuRightTrigger,
+        "a tap on Next hero presses RT");
+  MenuSnapshot unranked = skills_menu();
+  for (MenuItem &shown : unranked.items) {
+    if (shown.name == "assign_help") {
+      shown.label.clear();
+    }
+  }
+  const auto bare = x2::input::build_touch_menu_view(unranked, plane);
+  check(bare && footer_named(*bare, "Assign") == nullptr,
+        "no Assign while the game shows no assign prompt");
+
+  const auto slots = x2::input::build_touch_menu_view(assigning_menu(), plane);
+  check(slots && slots->footers.size() == 4u &&
+            slots->footers[0].label == "Power 1" &&
+            slots->footers[1].label == "Power 2" &&
+            slots->footers[2].label == "Power 3" &&
+            slots->footers[3].label == "Cancel",
+        "while assigning: the three slots A, B and X assign to, and Cancel");
+  if (!slots || slots->footers.size() != 4u) {
+    return;
+  }
+  check(slots->footers[0].button == TouchAction::MenuA &&
+            slots->footers[1].button == TouchAction::MenuB &&
+            slots->footers[2].button == TouchAction::MenuX,
+        "each slot is its own pad button");
+  const auto cancel = tap_footer(*slots, "Cancel");
+  const auto scene = cancel.size() == 1u ? plane.to_scene(cancel[0].at)
+                                         : x2::presentation::ScenePoint{};
+  check(cancel.size() == 1u &&
+            cancel[0].kind == TouchMenuDelivery::Kind::click &&
+            scene.x >= 401.0F && scene.x < 480.0F,
+        "Cancel clicks the game's Back prompt, which only cancels; B would "
+        "assign");
+}
+
 void the_gear_tab_walks_the_focused_list() {
   const RetailScenePlane plane = plane_1280x720();
   const auto slots = x2::input::build_touch_menu_view(gear_menu(false), plane);
@@ -578,6 +678,7 @@ int main() {
   the_stats_tab_walks_to_a_stat_and_adds_on_it();
   the_ai_tab_walks_its_settings();
   the_skills_tab_reads_ranks();
+  the_skills_tab_assigns_a_power_slot();
   the_gear_tab_walks_the_focused_list();
   return report("touch_menu_team");
 }
