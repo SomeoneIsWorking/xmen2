@@ -41,6 +41,7 @@ from live_cases_menu import (
     case_touch_codex,
     case_touch_menu,
     case_touch_shop,
+    case_touch_stash,
     case_touch_team,
     case_touch_worldmap,
 )
@@ -70,6 +71,7 @@ CASES = {
     "touch-shop": case_touch_shop,
     "touch-codex": case_touch_codex,
     "touch-worldmap": case_touch_worldmap,
+    "touch-stash": case_touch_stash,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

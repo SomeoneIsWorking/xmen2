@@ -1029,12 +1029,21 @@ showed the act 1 and act 2 tabs with act 1 lit, Sanctuary focused, the region
 and description, and one Back with go; go on Sanctuary, where the party
 stood, kept the world map; a tap on act 2 opened it in the game with Avalon
 focused; a tap on Avalon travelled (the game loaded a map and the world map
-reopened on act 2); and Back closed it. Gap: the team roster and detail tabs keep the retail screen;
+reopened on act 2); and Back closed it. The stash follows: measured by
+`tools/live_case.py touch-stash`, 12 of 12 on 2026-10-07: after two
+`temp_addmoney` runs a tap on Fortified Waistband in the shop's buy tab and a
+second tap bought it (gear 0/20 -> 1/20, money 4000 -> 1850); `openmenu stash`
+showed the stash and inventory tabs with inventory lit, the waistband, the
+stash count and its description; a tap on it stored it (stash 1/60) with the
+tabs kept over the empty list; a tap on the stash tab opened it in the game;
+a tap took the waistband back (gear 1/20); and Accept closed the stash. Shop
+and stash entries are walked with the menu pad and accepted with A, because
+the game loses clicks on its list while a gear entry is selected. Gap: the team roster and detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world
 map hides locked acts and points and its region map, and walking between two
-unlocked points of one act is unit-tested only; stash, danger room,
+unlocked points of one act is unit-tested only; danger room,
 review, region, automap, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 

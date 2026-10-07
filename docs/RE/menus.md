@@ -537,8 +537,11 @@ nothing, `FUN_005d30d0`.
 The shop's items: `shop_option01..03` (`buy`, `sell`, `training`), `list` (the
 list box), `item_desc` (text box), `item_cost_value`, `inventory_count`,
 `money_value`, `up_arrow`/`down_arrow`, and `desctext2` `$MENU_ACCEPT Buy`,
-`desctext3` `$MENU_OK Accept`. `openmenu shop` from the console opens it on the
-training tab.
+`desctext3` `$MENU_OK Accept`. Init (`FUN_005d39c0`) opens the first tab
+(buy, or stash for the stash); measured from the console's `openmenu shop`,
+with touch play on and off, the lit tab then stepped one back (to training,
+or to inventory) about 70 ms later, but in two loaded concurrent runs it stayed on
+buy. What publishes that step is not established.
 
 `CMenuItemListBox` (vtable `0x6a062c`) fields:
 
@@ -571,6 +574,16 @@ the top edge, and its entry is `top + row`:
 - a button-up on the entry the same button went down on, when that press did
   not move the selection (`item+0x90` clear), publishes `MENU_ACCEPT` (4) for
   the left button and 8 for the right. So a click on the selected entry buys.
+
+While the shop's or the stash's selected entry is gear, clicks on the list
+are lost: measured in the jungle with `Abnormal Waistband` selected, a click
+on `Energy Pack` two rows up published one axis 1 step and the queued second
+step (`item+0x88`) was dropped, a further click published nothing, and a
+click on the selected gear never bought or stored it; with a pack selected
+the same clicks walked and bought. The tabs, the footers and the keyboard's
+Up/Down and Enter kept working. Why is not established: the list's store
+(`item+0xbc`) stayed the same, and the published axis slot (`DAT_00a09fa8`)
+was not overwritten between frames.
 
 What the shop shows beside its list is written by its selection update
 (`FUN_005d30d0`, run after every `onMouse` the base menu does not take): it
@@ -608,6 +621,28 @@ click on Health Pack selected entry 1 and the game priced it at 100; with
 2000 money from `temp_addmoney`, a click on the selected Health Pack bought one
 (money 2000 -> 1900, `pot_health_value` 3 -> 4); `$MENU_OK Accept` closed the
 shop to gameplay.
+
+## The stash (`CMenuShop` with `menu+0x18e8` bit 0)
+
+`openmenu stash` opens `CMenuShop` with bit 0 of `menu+0x18e8` set by the
+XMLB's `stash="true"` (`FUN_005d39c0`). Its tabs are `stash_option01`
+(`stash`) and `stash_option02` (`inventory`); `menu+0x18d8` is the open tab,
+inventory (1) when it opens, and axis 0 cycles the two (`FUN_005d36a0`).
+`CMenuShop::onMouse` tests the `stash_option` boxes in place of the shop's.
+The list holds gear only: the inventory tab the party's unequipped gear, the
+stash tab what is stored. The selection update (`FUN_005d30d0`) writes the
+gear's description into `item_desc` and, on the inventory tab, the stash
+count (`stash`, `%d/60`) into `inventory_count`, on the stash tab the gear
+count (`gear`, `%d/20`); it writes no cost or money. On `MENU_ACCEPT` the
+update (`FUN_005d3ba0`) moves the selected gear to the other side; its
+per-tab paths through the inventory singleton `0x00480a00` are not read.
+The footers are `desctext2` `$MENU_ACCEPT Store` and `desctext3` `$MENU_OK
+Accept`, which closes it.
+
+Measured (Continue into `act2/jungle/jungle1`): the party opened the stash
+with no gear and stash 0/60. After buying a Fortified Waistband, the
+inventory tab listed it; `MENU_ACCEPT` stored it (stash 1/60, empty list), the
+stash tab listed it, and `MENU_ACCEPT` there took it back (gear 1/20).
 
 ## The codex (`CMenuCodex`) and its list (`CMenuItemListCodex`)
 

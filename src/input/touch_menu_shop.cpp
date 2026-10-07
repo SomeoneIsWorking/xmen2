@@ -11,6 +11,10 @@ namespace {
 constexpr std::uint32_t kStashBit = 0x01u;
 constexpr std::array<std::string_view, 3> kShopTabs = {
     "shop_option01", "shop_option02", "shop_option03"};
+/* CMenuShop::onMouse (0x005d3400) tests these instead when menu+0x18e8 bit 0
+   marks the stash. */
+constexpr std::array<std::string_view, 3> kStashTabs = {
+    "stash_option01", "stash_option02", "stash_option03"};
 constexpr std::string_view kShopList = "list";
 constexpr std::string_view kDescription = "item_desc";
 constexpr std::string_view kCost = "item_cost_value";
@@ -65,16 +69,17 @@ void append_facts(const menu::MenuSnapshot &menu, TouchMenuView *view) {
 std::optional<TouchMenuView>
 build_shop_view(const menu::MenuSnapshot &menu,
                 const presentation::RetailScenePlane &plane) {
-  if (!menu.mode || (*menu.mode & kStashBit) != 0u) {
+  if (!menu.mode) {
     return std::nullopt;
   }
+  const bool stash = (*menu.mode & kStashBit) != 0u;
   const menu::MenuItem *list = find_menu_item(menu, kShopList);
   if (list == nullptr || !list->list_box || !menu_item_shown(*list)) {
     return std::nullopt;
   }
   TouchMenuView view = start_menu_view(menu);
-  append_menu_tabs(menu, plane, kShopTabs, &view);
-  append_list_entries(*list, plane, ListTap::select, &view);
+  append_menu_tabs(menu, plane, stash ? kStashTabs : kShopTabs, &view);
+  append_list_entries(*list, ListTap::select, &view);
   append_facts(menu, &view);
   /* The game prices only the selected entry. */
   const menu::MenuItem *cost = find_menu_item(menu, kCost);

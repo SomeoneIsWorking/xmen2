@@ -31,6 +31,7 @@ from live_menu import (
     wait_menu,
     wait_movie_end,
     wait_row_change,
+    wait_settled_touch_menu,
     wait_touch_menu,
     walk_rows_by_key,
 )
@@ -582,7 +583,7 @@ def case_touch_shop(case: Case) -> None:
                menu.get("active") is False, str(menu.get("menu")))
     case.http("/console?command=runscript%20act1/genosha/genosha1/temp_addmoney")
     case.http("/console?command=openmenu%20shop")
-    shop = wait_touch_menu(case, "shop", 20)
+    shop = wait_settled_touch_menu(case, "shop", 20)
     (case.dir / "shop.json").write_text(json.dumps(shop, indent=1) + "\n")
     tabs = shop.get("tabs", [])
     case.check("the touch menu is shown over the game's shop",
@@ -611,18 +612,20 @@ def case_touch_shop(case: Case) -> None:
     case.shot("shop")
 
     lit = next((t["label"] for t in tabs if t["lit"]), None)
-    target_tab = "buy"
-    case.check("the shop opened on another tab than buy", lit != target_tab,
-               str(lit))
-    tap_touch_button(case, shop, touch_button(shop, "tab", target_tab))
-    switched = wait_game_menu(
-        case, lambda m: any(t["lit"] and t["label"] == target_tab
-                            for t in m.get("touch_menu", {}).get("tabs", [])),
-        10)
-    case.check("a tap on the buy tab opened it in the game",
-               any(t["lit"] and t["label"] == target_tab
-                   for t in switched.get("touch_menu", {}).get("tabs", [])),
-               "was %s" % lit)
+    # The game opens on buy and may step to training; a tab tap is judged on
+    # whichever tab is not lit, and the purchase needs buy.
+    targets = ["sell", "buy"] if lit == "buy" else ["buy"]
+    for target_tab in targets:
+        shown = touch_menu(case)
+        tap_touch_button(case, shown, touch_button(shown, "tab", target_tab))
+        switched = wait_game_menu(
+            case, lambda m, t=target_tab: any(
+                x["lit"] and x["label"] == t
+                for x in m.get("touch_menu", {}).get("tabs", [])), 10)
+        case.check("a tap on the %s tab opened it in the game" % target_tab,
+                   any(t["lit"] and t["label"] == target_tab
+                       for t in switched.get("touch_menu", {}).get("tabs", [])),
+                   "was %s" % lit)
     case.shot("tab")
 
     shop = touch_menu(case)
@@ -893,3 +896,140 @@ def case_touch_worldmap(case: Case) -> None:
     left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
     case.check("Back left the world map",
                left.get("menu") != "worldmap", str(left.get("menu")))
+
+
+def stash_tabs(case: Case) -> dict[str, bool]:
+    """The game's stash tabs, each with whether it is lit."""
+    code, body = case.http("/menu?items=all")
+    if code != 200:
+        return {}
+    return {item["label"]: bool(item["flags"] & 0x01)
+            for item in json.loads(body).get("items", [])
+            if re.fullmatch(r"stash_option0\d", item["name"]) and item["label"]}
+
+
+def case_touch_stash(case: Case) -> None:
+    """The touch menu over CMenuShop as the stash, opened by the console.
+
+    The party starts with no gear, so the case buys one piece in the shop by
+    touch (two temp_addmoney runs pay for it), then stores it and takes it
+    back. Each tap is judged by the game's own state: the lit tab, the list's
+    entries and the stash and gear counts.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    for _ in range(2):
+        case.http("/console?command=runscript%20"
+                  "act1/genosha/genosha1/temp_addmoney")
+    case.http("/console?command=openmenu%20shop")
+    shop = wait_settled_touch_menu(case, "shop", 20)
+    tap_touch_button(case, shop, touch_button(shop, "tab", "buy"))
+    wait_game_menu(case, lambda m: any(
+        t["lit"] and t["label"] == "buy"
+        for t in m.get("touch_menu", {}).get("tabs", [])), 10)
+    shop = touch_menu(case)
+    gear = next((r for r in shop.get("rows", [])
+                 if "Pack" not in r["label"] and r["label"] != "Grab Bag"), None)
+    case.check("the buy tab offers gear", gear is not None,
+               str([r["label"] for r in shop.get("rows", [])]))
+    if gear is None:
+        return
+    name = gear["label"]
+    tap_touch_button(case, shop, touch_button(shop, "row", name.lower()))
+    wait_game_menu(case, lambda m: m.get("touch_menu", {}).get("focused_row")
+                   == shop["rows"].index(gear), 10)
+    before = menu_labels(case)
+    shop = touch_menu(case)
+    tap_touch_button(case, shop, touch_button(shop, "row", name.lower()))
+    deadline = time.monotonic() + 10
+    labels = menu_labels(case)
+    while time.monotonic() < deadline \
+            and labels.get("inventory_count") == before.get("inventory_count"):
+        time.sleep(0.3)
+        labels = menu_labels(case)
+    case.check("a tap on the selected %s bought it" % name,
+               labels.get("inventory_count") == "1/20"
+               and labels.get("money_value") != before.get("money_value"),
+               "gear %s -> %s, money %s -> %s" % (
+                   before.get("inventory_count"), labels.get("inventory_count"),
+                   before.get("money_value"), labels.get("money_value")))
+    shop = touch_menu(case)
+    tap_touch_button(case, shop, touch_button(shop, "footer", "accept"))
+    wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
+
+    case.http("/console?command=openmenu%20stash")
+    stash = wait_settled_touch_menu(case, "stash", 20)
+    if stash_tabs(case).get("stash"):
+        # Opened on the stash tab and not stepped to inventory: open it.
+        tap_touch_button(case, stash, touch_button(stash, "tab", "inventory"))
+        wait_game_menu(case, lambda m: any(
+            t["lit"] and t["label"] == "inventory"
+            for t in m.get("touch_menu", {}).get("tabs", [])), 10)
+        stash = wait_settled_touch_menu(case, "stash", 20)
+    (case.dir / "stash.json").write_text(json.dumps(stash, indent=1) + "\n")
+    case.check("the touch menu is shown over the game's stash",
+               stash.get("visible") is True
+               and read_menu(case).get("class") == "CMenuShop",
+               str(read_menu(case).get("class")))
+    tabs = [(t["label"], t["lit"]) for t in stash.get("tabs", [])]
+    case.check("its tabs are stash and inventory with inventory lit",
+               tabs == [("stash", False), ("inventory", True)], str(tabs))
+    case.check("its rows are the party's gear",
+               [r["label"] for r in stash.get("rows", [])] == [name]
+               == menu_list(case).get("entries"),
+               str([r["label"] for r in stash.get("rows", [])]))
+    case.check("with the stash count and the gear's description",
+               {"label": "stash", "value": "0/60", "warn": False}
+               in stash.get("facts", []) and bool(stash.get("detail")),
+               "facts %s, detail %s" % (stash.get("facts"), stash.get("detail")))
+    if stash.get("visible") is not True or not stash.get("rows"):
+        return
+    case.shot("stash")
+
+    tap_touch_button(case, stash, touch_button(stash, "row", name.lower()))
+    stored = wait_game_menu(
+        case, lambda m: not m.get("touch_menu", {}).get("rows"), 10)
+    labels = menu_labels(case)
+    case.check("a tap on the selected %s stored it" % name,
+               labels.get("inventory_count") == "1/60"
+               and not menu_list(case).get("entries"),
+               "stash %s, inventory %s" % (labels.get("inventory_count"),
+                                           menu_list(case).get("entries")))
+    case.check("and the touch menu keeps the tabs over the empty list",
+               len(stored.get("touch_menu", {}).get("tabs", [])) == 2,
+               str(stored.get("touch_menu", {}).get("tabs")))
+    case.shot("stored")
+
+    stash = touch_menu(case)
+    tap_touch_button(case, stash, touch_button(stash, "tab", "stash"))
+    wait_game_menu(case, lambda m: [r["label"] for r in m.get(
+        "touch_menu", {}).get("rows", [])] == [name], 10)
+    stash = touch_menu(case)
+    case.check("a tap on the stash tab opened it in the game",
+               stash_tabs(case) == {"stash": True, "inventory": False}
+               and [r["label"] for r in stash.get("rows", [])] == [name],
+               "%s, rows %s" % (stash_tabs(case),
+                                [r["label"] for r in stash.get("rows", [])]))
+    case.shot("stash-tab")
+
+    tap_touch_button(case, stash, touch_button(stash, "row", name.lower()))
+    wait_game_menu(case, lambda m: not m.get("touch_menu", {}).get("rows"),
+                   10)
+    labels = menu_labels(case)
+    case.check("a tap on it took it back to the inventory",
+               labels.get("inventory_count") == "1/20",
+               "gear %s" % labels.get("inventory_count"))
+    stash = touch_menu(case)
+    accept = touch_button(stash, "footer", "accept")
+    if accept is None:
+        case.check("the stash offers Accept", False)
+        return
+    tap_touch_button(case, stash, accept)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "stash", 10)
+    case.check("Accept left the stash",
+               left.get("menu") != "stash", str(left.get("menu")))

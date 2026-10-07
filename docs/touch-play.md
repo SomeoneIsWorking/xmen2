@@ -85,7 +85,7 @@ names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
 **The main menu, Options, the PDA, the team menu's party screen, the shop,
-the codex and the world map are replaced by the touch menu.** While touch play is the input and one of those
+the stash, the codex and the world map are replaced by the touch menu.** While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
@@ -111,11 +111,12 @@ with the open one lit, lists its list box's entries, and pins below them the
 game's own cost, money, gear count and limit and the selected entry's
 description. The game prices only the selected entry, so only that row shows
 a cost, in red when the money does not cover it. A tab is a click on the
-game's tab, an entry the game's
-list window shows is a click on its row (a click selects, a click on the
-selected entry buys), and an entry outside that window is reached with the menu
-pad's Up/Down, the game's own list stepping, and only selected. The stash keeps
-the retail screen. The codex (`touch_menu_codex`) lists its heroes; a tap walks
+game's tab. A tap on an entry walks the list's selection to it with the menu
+pad's Up/Down, the game's own list stepping, and only selects it; a tap on the
+selected entry presses A, which buys, sells or trains. Entries are not
+clicked: while a gear entry is selected the game loses clicks on its list. The
+stash is the same class with its stash and inventory tabs: a tap on the
+selected entry stores it or takes it back, and an empty list keeps its tabs. The codex (`touch_menu_codex`) lists its heroes; a tap walks
 the game's selection to an entry with the menu pad and presses A, because the
 codex loads an entry only on `MENU_ACCEPT`. Its Details footer switches the
 game to the description, which the touch menu shows in the list's place, the
@@ -304,7 +305,7 @@ already chose keeps player one.
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's tabs and list entries and the codex's list and description and the world map's acts and points included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's and the stash's tabs and list entries and the codex's list and description and the world map's acts and points included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
