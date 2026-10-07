@@ -21,9 +21,12 @@ EXCLUDED = ("src/gen/",)
 SUFFIXES = {".c", ".h", ".cpp", ".hpp", ".cc", ".mm", ".m"}
 
 
-def tracked_sources() -> list[str]:
-    result = subprocess.run(["git", "ls-files", "--", *FIRST_PARTY], cwd=ROOT,
-                            text=True, capture_output=True, check=True)
+def first_party_sources() -> list[str]:
+    # Untracked files count: a new file is checked before it is added.
+    result = subprocess.run(["git", "ls-files", "--cached", "--others",
+                             "--exclude-standard", "--", *FIRST_PARTY],
+                            cwd=ROOT, text=True, capture_output=True,
+                            check=True)
     return [path for path in result.stdout.splitlines()
             if Path(path).suffix in SUFFIXES
             and not path.startswith(EXCLUDED) and (ROOT / path).is_file()]
@@ -71,7 +74,7 @@ def main() -> int:
         return 2
     if args.selftest:
         return selftest(executable)
-    sources = tracked_sources()
+    sources = first_party_sources()
     if not sources:
         print("check_format: no tracked first-party C/C++ sources were found",
               file=sys.stderr)
