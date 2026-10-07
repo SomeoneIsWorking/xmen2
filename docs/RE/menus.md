@@ -520,6 +520,32 @@ with Magneto, Cyclops, Wolverine, Storm; a click on Cyclops lit
 `char_summary02`, a second click set mode 2 and showed `details_panel`; B
 returned to mode 0, and `$MENU_OK Accept` closed the team menu to gameplay.
 
+The roster (mode 1) is reached in the choose-team team menu (`loadmap <map>
+<n> 1`, `FUN_005f4770`, which sets `DAT_008b134c` bit 4; the danger room's
+course opens the same), whose party screen adds `$MENU_SUBTRACT Remove`,
+`$MENU_ACCEPT Replace` and `$MENU_DETAILS Skin`; Replace on a slot opens the
+roster. `roster_portrait01` is a `CMenuItemListChars` (vtable `0x6a0cec`, a
+list box subclass): its list-box store holds every roster hero by internal
+name (`Pyro_hero`, `ScarletWitch`, `sabretooth_hero`, then the locked
+`Deadpool`, `Ironman`, `Professorx`), and its `+0xac` is the window's top;
+`roster_summary01..03` are the three shown, the middle one (`top + 1`,
+`FUN_005c29e0`) the choice. A summary's text is the internal name; the
+display name comes from the character record (`FUN_0044b8f0` vfunc `+0x40`,
+`+0x170`) at draw time.
+
+A dead party hero is moved to the roster (`DAT_008b134c & 4`). Its summary
+draws `Revive: <cost>` (`FUN_005bdf50`, string 1023, red when the money is
+short) and an empty health bar; the cost is formatted on the stack during the
+draw from `0x004b8830` and is stored nowhere. The footer still reads
+`$MENU_ACCEPT Replace`.
+
+Measured (Continue into `act2/jungle/jungle1`, `temp_addmoney`,
+`runscript killEntity("wolverine")`, `loadmap act2/jungle/jungle1 0 1`): the
+party showed Magneto, Cyclops, an empty slot and Storm; Replace on the empty
+slot opened the roster on Bishop/Colossus/Gambit; eleven Downs brought
+Wolverine to the middle with `Revive: 200`; A revived him (money 2000 ->
+1800, full health) and kept the roster open. Locked heroes were not reached.
+
 ## The shop (`CMenuShop`) and its list box (`CMenuItemListBox`)
 
 `CMenuShop` (vtable `0x69eb4c`) serves both `shop` and `stash`; bit 0 of
