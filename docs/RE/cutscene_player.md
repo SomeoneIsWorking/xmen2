@@ -94,6 +94,14 @@ boundary is therefore control release, not an empty scheduler: 256 of 302
 shipping release scripts have commands after their final release and 86 yield
 again.
 
+The conversation manager's flags (`0x717aac`, `+0x21b24`: 0x1 speaking, 0x2
+visible, 0x8 ending, 0x10 enabled) read 0x10 once a level queues its opening
+conversation, 0x13 while it is shown, 0x18 while it ends and 0x08 after
+(jungle1 from the shipped autosave, 2026-10-07). While it is pending or shown
+a `killEntity` on a party hero does nothing and an XP grant's level-up popup
+waits; during 0x18 both work. `GET /party` reports the pending-or-shown state
+as `conversation`.
+
 The conversation adapter calls the same vtable `+0x18` transition as retail
 input, but only when exactly one response exists. Choices refuse the skip.
 Selecting the final `0020b` response synchronously launches

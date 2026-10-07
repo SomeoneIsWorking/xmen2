@@ -399,7 +399,11 @@ def case_touch_codex(case: Case) -> None:
     case.check("a tap on %s selected it in the game" % target,
                menu_list(case).get("selected") == 3,
                "selected %s" % menu_list(case).get("selected"))
-    time.sleep(1.0)
+    # The walk's A loads the entry (0x005b1780) into the name item.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and not menu_labels(case).get(
+            "name", "").endswith(target):
+        time.sleep(0.3)
 
     codex = touch_menu(case)
     tap_touch_button(case, codex, touch_button(codex, "footer", "details"))
