@@ -2,6 +2,7 @@
 
 #include "../input/touch_runtime_menu.hpp"
 #include "control.h"
+#include "control_command_bridge.h"
 #include "control_query.h"
 #include "json_string.h"
 
@@ -225,6 +226,29 @@ void put_button(std::string *out, const input::TouchMenuState &state,
   close_object(out);
 }
 
+/* GET /menu's guest read, run at the guest input poll. */
+struct MenuRead {
+  bool all_items = false;
+  menu::ReadStatus status = menu::ReadStatus::ok;
+  std::uint32_t failed = 0;
+  std::string body;
+};
+
+void read_menu_body(void *context) {
+  auto *read = static_cast<MenuRead *>(context);
+  menu::MenuSnapshot menu;
+  read->status = menu::read_live_menu(&menu, &read->failed);
+  if (read->status == menu::ReadStatus::ok) {
+    read->body = menu_json(menu, read->all_items);
+  } else if (read->status != menu::ReadStatus::unreadable) {
+    read->body = menu.popup_up
+                     ? "{\"active\":false,\"popup\":true,\"reason\":"
+                     : "{\"active\":false,\"popup\":false,\"reason\":";
+    put_string(&read->body, menu::read_status_name(read->status));
+    read->body.append("}\n");
+  }
+}
+
 } // namespace
 
 std::string touch_menu_json(const input::TouchMenuState &state) {
@@ -375,28 +399,24 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
 
 void menu_route(x2_socket_t fd, const char *query) {
   char items[8] = "";
-  const bool all_items =
+  MenuRead read;
+  read.all_items =
       control_query_arg(query, "items", items, sizeof items) != 0 &&
       std::string(items) == "all";
-  menu::MenuSnapshot menu;
-  std::uint32_t failed = 0;
-  const menu::ReadStatus status = menu::read_live_menu(&menu, &failed);
-  if (status == menu::ReadStatus::unreadable) {
+  if (control_command_guest_read(read_menu_body, &read) < 0) {
+    control_reply_text(fd, 504, "Gateway Timeout",
+                       "the guest did not reach an input poll within 10s, so "
+                       "the menu was not read\n");
+    return;
+  }
+  if (read.status == menu::ReadStatus::unreadable) {
     control_reply_text(fd, 500, "Internal Server Error",
                        "the menu model could not be read: guest address "
                        "0x%08x is unreadable\n",
-                       failed);
+                       read.failed);
     return;
   }
-  std::string body;
-  if (status == menu::ReadStatus::ok) {
-    body = menu_json(menu, all_items);
-  } else {
-    body = menu.popup_up ? "{\"active\":false,\"popup\":true,\"reason\":"
-                         : "{\"active\":false,\"popup\":false,\"reason\":";
-    put_string(&body, menu::read_status_name(status));
-    body.append("}\n");
-  }
+  std::string &body = read.body;
   body.resize(body.size() - 2u);
   body.append(",\"touch_menu\":");
   body.append(touch_menu_json(input::touch_menu_state()));

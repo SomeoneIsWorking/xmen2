@@ -308,7 +308,8 @@ def case_touch_shop(case: Case) -> None:
         == health["index"], 10)
     shop = touch_menu(case)
     row = shop.get("rows", [])[health["index"]]
-    labels = menu_labels(case)
+    # The selection update blanks the price for a frame before writing it.
+    labels = wait_labels(case, lambda now: bool(now.get("item_cost_value")))
     cost = labels.get("item_cost_value", "")
     case.check("a tap on Health Pack selected it in the game",
                row["focused"] and menu_list(case).get("selected")
@@ -322,12 +323,8 @@ def case_touch_shop(case: Case) -> None:
     before_potions = int(labels.get("pot_health_value", "0"))
     price = int(row["value"] or "0")
     tap_touch_button(case, shop, touch_button(shop, "row", "health pack"))
-    deadline = time.monotonic() + 10
-    labels = menu_labels(case)
-    while time.monotonic() < deadline \
-            and labels.get("money_value") == str(before_money):
-        time.sleep(0.3)
-        labels = menu_labels(case)
+    labels = wait_labels(
+        case, lambda now: now.get("money_value") != str(before_money))
     case.check("a tap on the selected Health Pack bought one",
                labels.get("money_value") == str(before_money - price)
                and labels.get("pot_health_value") == str(before_potions + 1),
@@ -435,8 +432,9 @@ def case_touch_codex(case: Case) -> None:
     case.shot("scrolled")
 
     tap_touch_button(case, scrolled, touch_button(scrolled, "footer", "details"))
-    game = wait_game_menu(case, lambda m: m.get("mode") == 0, 10)
-    listed = wait_touch_menu(case, "codex", 5)
+    game = wait_game_menu(case, lambda m: m.get("mode") == 0
+                          and m.get("touch_menu", {}).get("rows"), 10)
+    listed = game.get("touch_menu", {})
     case.check("Details again returned to the list on the same entry",
                game.get("mode") == 0 and listed.get("focused_row") == 3,
                "mode %s, focus %s" % (game.get("mode"), listed.get("focused_row")))
@@ -566,6 +564,23 @@ def case_touch_worldmap(case: Case) -> None:
                left.get("menu") != "worldmap", str(left.get("menu")))
 
 
+def wait_labels(case: Case, done, timeout: float = 10) -> dict[str, str]:
+    """Every item's text once `done` holds of it, or the last read."""
+    deadline = time.monotonic() + timeout
+    labels = menu_labels(case)
+    while time.monotonic() < deadline and not done(labels):
+        time.sleep(0.3)
+        labels = menu_labels(case)
+    return labels
+
+
+def shows_new_count(labels: dict[str, str], before: dict[str, str]) -> bool:
+    """The shop's gear count is written (\"n/m\") and is not the old one."""
+    count = labels.get("inventory_count", "")
+    return re.fullmatch(r"\d+/\d+", count) is not None \
+        and count != before.get("inventory_count")
+
+
 def option_tabs(case: Case, pattern: str) -> dict[str, bool]:
     """The game's tabs whose names match `pattern`, each with whether it is
     lit; tabs without text are left out."""
@@ -615,12 +630,8 @@ def case_touch_stash(case: Case) -> None:
     before = menu_labels(case)
     shop = touch_menu(case)
     tap_touch_button(case, shop, touch_button(shop, "row", name.lower()))
-    deadline = time.monotonic() + 10
-    labels = menu_labels(case)
-    while time.monotonic() < deadline \
-            and labels.get("inventory_count") == before.get("inventory_count"):
-        time.sleep(0.3)
-        labels = menu_labels(case)
+    # The shop blanks its count for one frame before writing the new one.
+    labels = wait_labels(case, lambda now: shows_new_count(now, before))
     case.check("a tap on the selected %s bought it" % name,
                labels.get("inventory_count") == "1/20"
                and labels.get("money_value") != before.get("money_value"),
@@ -660,10 +671,11 @@ def case_touch_stash(case: Case) -> None:
         return
     case.shot("stash")
 
+    before = menu_labels(case)
     tap_touch_button(case, stash, touch_button(stash, "row", name.lower()))
     stored = wait_game_menu(
         case, lambda m: not m.get("touch_menu", {}).get("rows"), 10)
-    labels = menu_labels(case)
+    labels = wait_labels(case, lambda now: shows_new_count(now, before))
     case.check("a tap on the selected %s stored it" % name,
                labels.get("inventory_count") == "1/60"
                and not menu_list(case).get("entries"),
@@ -687,10 +699,11 @@ def case_touch_stash(case: Case) -> None:
                                 [r["label"] for r in stash.get("rows", [])]))
     case.shot("stash-tab")
 
+    before = menu_labels(case)
     tap_touch_button(case, stash, touch_button(stash, "row", name.lower()))
     wait_game_menu(case, lambda m: not m.get("touch_menu", {}).get("rows"),
                    10)
-    labels = menu_labels(case)
+    labels = wait_labels(case, lambda now: shows_new_count(now, before))
     case.check("a tap on it took it back to the inventory",
                labels.get("inventory_count") == "1/20",
                "gear %s" % labels.get("inventory_count"))
@@ -759,7 +772,11 @@ def case_touch_review(case: Case) -> None:
             m.get("touch_menu", {}), "credits").get("focused"),
             10).get("touch_menu", {})
     tap_touch_button(case, review, touch_button(review, "row", "credits"))
-    credits = wait_game_menu(case, lambda m: m.get("menu") == "credits", 10)
+    # The touch menu follows the model at its own refresh, a frame or more
+    # after the game changes menu.
+    credits = wait_game_menu(case, lambda m: m.get("menu") == "credits"
+                             and m.get("touch_menu", {}).get("visible") is False,
+                             10)
     case.check("a tap on the selected Credits played them",
                credits.get("class") == "CMenuCredits"
                and credits.get("touch_menu", {}).get("visible") is False,
