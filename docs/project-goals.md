@@ -284,7 +284,34 @@ operates through evidenced native overrides and affine transforms on the
 runtime scene hierarchy, not pixel blitting or hardcoded reflection hacks.
 
 **Non-goals.** Redesigning the authored visual art; removing the retail HUD on
-desktop; replacing retail menus with mobile menus.
+desktop. Touch menus are G008.
 
 **Contributing state items.** S004, S008, S018.
+
+## G008 — Touch menus that look like the game's own
+
+**Outcome.** Every menu a touch player meets reads as if the studio had shipped
+a mobile port: the game's own panels, hinges, fonts, colours, focus art and
+animation, laid out for fingers, instead of a generic port panel over the game.
+
+**Why it matters.** The current touch menus are a plain RmlUi panel in the
+port's own style. They work, but they look like a tool, not like X-Men Legends
+II.
+
+**Success conditions.**
+
+- Each touch menu draws with the game's own art from the player's install
+  (menu models, textures and fonts), and a side-by-side screenshot reads as the
+  same game.
+- Layout is finger-sized and respects safe areas on phone and tablet aspect
+  ratios.
+- Behaviour stays the game's: every tap drives the retail menu as the current
+  touch menus do, so nothing about a choice's effect changes.
+
+**Constraints.** No game assets are modified or redistributed; art is read from
+the player's install at run time.
+
+**Non-goals.** New menu features the game does not have.
+
+**Contributing state items.** None yet; not started.
 
