@@ -90,8 +90,9 @@ screens is the active menu with no popup up, the retail menu is covered by an op
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
 enabled row with its value or bar, step buttons on rows with left/right, and
-one button per footer prompt. Tab labels too wide for their tab shrink
-together by one factor (`touch_tab_fit`) to fit inside its padding. It scrolls by drag, keeps to the safe area, scales
+one button per footer prompt. Tab labels too wide for their tab, and footer
+labels too wide for theirs, each shrink together by one factor per row
+(`touch_label_fit`) to fit on one line inside the padding. It scrolls by drag, keeps to the safe area, scales
 with the shorter screen edge, and re-reads the model every 33 ms. A tap runs
 only the game's own input paths, never a guest call or write:
 
@@ -357,7 +358,7 @@ already chose keeps player one.
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
-| `ctest -R touch_tab_fit` | Tab labels too wide for their tab shrink by one shared factor to fit inside its padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
+| `ctest -R touch_label_fit` | Tab labels too wide for their tab, and the skills tab's six footers at 1280x720, shrink by one shared factor per row to fit on one line inside their padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
 | `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read, the Drop and Assign footers pressed as RB, the three power slots as A, B and X while assigning with Cancel clicked, and Next hero as RT, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,

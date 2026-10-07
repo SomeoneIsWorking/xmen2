@@ -123,6 +123,7 @@ body {
 .tm-footer .tm-label {
     flex: 0 1 auto;
     text-align: center;
+    white-space: nowrap;
 }
 
 .tm-tab {
@@ -137,6 +138,7 @@ body {
 .tm-tab .tm-label {
     flex: 0 1 auto;
     text-align: center;
+    white-space: nowrap;
 }
 
 .tm-tab.lit {

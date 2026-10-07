@@ -1,4 +1,4 @@
-#include "touch_tab_fit.hpp"
+#include "touch_label_fit.hpp"
 
 #include <RmlUi/Core.h>
 
@@ -7,18 +7,19 @@
 
 namespace x2::ui {
 
-void fit_tab_labels(Rml::ElementDocument *document,
-                    const std::vector<std::string> &labels) {
-  Rml::ElementList tabs;
-  document->GetElementsByClassName(tabs, "tm-tab");
-  if (tabs.empty()) {
+void fit_button_labels(Rml::ElementDocument *document,
+                       const std::string &button_class,
+                       const std::vector<std::string> &labels) {
+  Rml::ElementList buttons;
+  document->GetElementsByClassName(buttons, button_class);
+  if (buttons.empty()) {
     return;
   }
   document->UpdateDocument();
   std::vector<Rml::Element *> fitted;
   float fit = 1.0F;
-  for (std::size_t i = 0; i < tabs.size() && i < labels.size(); ++i) {
-    Rml::Element *label = tabs[i]->GetFirstChild();
+  for (std::size_t i = 0; i < buttons.size() && i < labels.size(); ++i) {
+    Rml::Element *label = buttons[i]->GetFirstChild();
     if (label == nullptr) {
       continue;
     }
@@ -28,7 +29,7 @@ void fit_tab_labels(Rml::ElementDocument *document,
     });
     const auto width =
         static_cast<float>(Rml::ElementUtilities::GetStringWidth(label, text));
-    const float room = tabs[i]->GetBox().GetSize(Rml::BoxArea::Content).x;
+    const float room = buttons[i]->GetBox().GetSize(Rml::BoxArea::Content).x;
     if (width > room && width > 0.0F) {
       fit = std::min(fit, room / width);
     }
