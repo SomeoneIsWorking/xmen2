@@ -1066,14 +1066,26 @@ Back and Select; a tap on the selected Freshman opened its courses with
 Overview lit; a tap on Status opened it in the game; Back returned to the
 grades; and a tap on the selected course opened the team menu. The danger
 room's online steps (2..9) are unexercised. The team roster follows: measured
-by `tools/live_case.py touch-roster`, 11 of 11 on 2026-10-07, after
-`temp_addmoney`, killing Wolverine and `loadmap act2/jungle/jungle1 0 1` the
+by `tools/live_case.py touch-roster`, 13 of 13 on 2026-10-07, after
+`temp_addmoney` three times, `awardXPToPlayable(2000000)` (level 40), killing
+Wolverine and `loadmap act2/jungle/jungle1 0 1` the
 party read Magneto, Cyclops, Empty slot, Storm; Replace on the empty slot
 opened the roster as 14 named heroes (Jean Grey, Pyro, Sabretooth; no
-Deadpool, Ironman or Professor X) with Wolverine "Fallen, level 1"; a tap on
-Wolverine revived him in the game (money 2000 to 1800), and a tap on
-Sabretooth put him in the empty slot. Gap: the roster shows no revive cost,
-and the detail tabs keep the retail screen;
+Deadpool, Ironman or Professor X) with Wolverine "Fallen, level 40, revive
+3200"; a tap on Wolverine revived him in the game for exactly that (money 6000
+to 2800), and a tap on Sabretooth put him in the empty slot. A hero's detail
+tabs follow, each measured on 2026-10-07 after `awardXPToPlayable(2000000)`
+and `openmenu team` (Magneto, level 40): `touch-team-stats` 14 of 14, a tap
+on strike moved the game's focus there without spending and a second tap
+took it 26 to 27 and the points 156 to 155; `touch-team-skills` 13 of 13,
+Magnetic Shell "Beam, rank 0/18" to "rank 1/18" and the points 39 to 38;
+`touch-team-gear` 20 of 20, two waistbands bought through the touch shop, a
+tap on the empty slot opened both, the second tap on Waistband Nature equipped
+it (gear 2/20 to 1/20), Unequip took it off, Drop (RB) dropped one and Accept
+returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes.
+Gap: assigning a skill to a power slot, the skills tab's Details view and
+switching hero keep the menu pad only, and the skills tab shows no skill
+description;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world

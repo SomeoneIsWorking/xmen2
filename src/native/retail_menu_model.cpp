@@ -398,23 +398,22 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
       return false;
     }
     std::string entry;
-    std::string value;
-    bool in_value = false;
+    std::vector<std::string> columns;
     for (std::size_t at = 0; at < sizeof text && text[at] != '\0'; ++at) {
       const char c = text[at];
       if (c == '\t') {
-        if (in_value) {
-          value.push_back(' ');
-        }
-        in_value = true;
-      } else if (in_value) {
-        value.push_back(c);
+        columns.emplace_back();
+      } else if (!columns.empty()) {
+        columns.back().push_back(c);
       } else if (at < kListEntryBytes) {
         entry.push_back(c);
       }
     }
+    for (std::string &column : columns) {
+      column = native::latin1_to_utf8(column);
+    }
     out->entries.push_back(native::latin1_to_utf8(entry));
-    out->values.push_back(native::latin1_to_utf8(value));
+    out->columns.push_back(std::move(columns));
   }
   return true;
 }
@@ -463,7 +462,8 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
   *getter = field_u32(header, kItemGamevarGetter);
   /* CMenuItemListCodex overrides only the list box's parse (+0x44) and
      destructor, so its entries, window and onMouse are the list box's.
-     CMenuItemListChars keeps the store; its +0xac is the first card. */
+     CMenuItemListChars keeps the store; its +0xac is the first card.
+     CMenuItemSkills overrides only parse and draw. */
   if (out->item_class == ItemClass::char_summary) {
     std::uint8_t mask = 0;
     if (!reader_.bytes(address + kSummaryMask, &mask, 1u)) {
@@ -473,7 +473,8 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
   }
   if (out->item_class == ItemClass::list_box ||
       out->item_class == ItemClass::list_codex ||
-      out->item_class == ItemClass::list_chars) {
+      out->item_class == ItemClass::list_chars ||
+      out->item_class == ItemClass::skills) {
     out->list_box.emplace();
     if (!read_list_box(address, header, &*out->list_box)) {
       return false;

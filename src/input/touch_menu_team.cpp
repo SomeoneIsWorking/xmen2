@@ -1,6 +1,8 @@
 #include "touch_menu_team.hpp"
 
+#include "../native/extraction_revive_policy.hpp"
 #include "touch_menu_parts.hpp"
+#include "touch_menu_team_details.hpp"
 
 #include <array>
 #include <string_view>
@@ -17,8 +19,11 @@ constexpr std::string_view kRosterList = "roster_portrait01";
 constexpr std::string_view kRosterMiddleCard = "roster_summary02";
 
 std::string hero_level(const native::HeroRecord &hero) {
-  return (hero.fallen ? "Fallen, level " : "Level ") +
-         std::to_string(hero.level);
+  if (hero.fallen) {
+    return "Fallen, level " + std::to_string(hero.level) + ", revive " +
+           std::to_string(extraction::revive_cost(hero.level));
+  }
+  return "Level " + std::to_string(hero.level);
 }
 
 std::optional<TouchMenuView>
@@ -113,7 +118,7 @@ build_team_view(const menu::MenuSnapshot &menu,
   if (*menu.mode == kRosterMode) {
     return build_roster_view(menu, plane);
   }
-  return std::nullopt;
+  return build_team_details_view(menu, plane);
 }
 
 } // namespace x2::input

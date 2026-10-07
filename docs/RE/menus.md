@@ -508,13 +508,63 @@ switches on:
 |---|---|---|
 | 0 | the party | on `WM_LBUTTONUP`/`WM_RBUTTONUP`: a click on `char_summary01..04` selects that hero (`FUN_005e22a0` with that pad's direction); a click on the selected hero publishes `MENU_OTHER` (0x18), the details. A click on a floor pad does the same by fixed scene boxes. Then the base `CMenu::onMouse` runs, so the `desctext` footers work as in any menu |
 | 1 | the roster | over `roster_summary01..03` and `roster_portrait01..03`, `WM_LBUTTONDOWN` publishes 0xb on the first entry, 0xc on the third, `MENU_OTHER` on the middle summary and `MENU_ACCEPT` on the middle portrait; the wheel publishes 0xb up and 0xc down |
-| 2 | stats | a click on `body`/`focus`/`strike`/`speed` (or its label) moves to that stat; on the current stat, left-button-down or wheel up adds a point (action 4), right-button-down or wheel down removes one (8) |
+| 2 | stats | a click on `body`/`focus`/`strike`/`speed` (or its label) moves to that stat; on the current stat, left-button-down or wheel up adds a point (action 4), right-button-down or wheel down removes one (8). The move and the add come from one click (below) |
 | 3, 6 | skills | `skill_list` rows through the base `onMouse`; the icon strip left of the list assigns (0xd) |
 | 4 | gear | `equipment` and `equipment_inv` list boxes take the click through their own `+0x74` |
 | 5 | ai | the seven `label_ai_*` rows: a click moves to a row, a click on the current row accepts it |
 
 In modes 2..6 a click on `detail_option01..04_text` (stats, skills, gear, ai)
 switches tab through `menu+0x40` with the tab delta.
+
+The stats and ai rows take any mouse message as a move: a click on another
+row moves the focus there (`menu+0x40` with the row delta) and the same
+click's button message then acts on the row it moved to, so one click on
+another stat adds a point to it and one click on another ai setting changes
+it. The pad walks both with Up/Down, wrapping, and A acts on the current row
+(stats: A adds, X subtracts; ai: A is `$MENU_ACCEPT Change`). The current
+stat is the menu's focus (`menu+0x324`) and its label is lit; the current ai
+setting's label and value are lit. A label's hit box runs past its own box
+(stats `+0x95`, ai `+199`) over the value.
+
+The stats tab's other items: `points_stats` beside `label_statpoints`
+("remaining points"), `level`, the `xp` bar, `health`/`energy`/`damage`/
+`attack`/`defense` beside `label_hp`..`label_def`, and `resist_energy`,
+`resist_mental`, `resist_radiation`, `resist_elemental` beside the icon
+labels `label_re`..`label_rl`. `stat_desc` describes the current stat and
+ends with a legend naming each resistance by its icon token
+(`Energy Resistance ($RES_ENERGY)`).
+
+The skills tab's `skill_list` is a `CMenuItemSkills` (vtable `0x6a0f14`), a
+list box that overrides only parse and draw. `FUN_005c5bc0` fills it with
+one `"%s\t~42%s~~\t%s"` record per skill (`0x6a102c`): name, type, and either
+the rank glyphs or `Req: Level N, <skill>`. `FUN_005f01e0` writes the glyphs:
+`0xdb` filler that pads a non-passive skill to twenty places, then one glyph
+per rank: `0xd9` owned, `0xda` added in this visit, `0xd8` open at the hero's
+level, `0xd7` above it. `points_skills` beside `label_skillpoints` holds the
+points left. A adds a rank to the selected skill and X removes one added in
+this visit; `$MENU_DETAILS Details` (`desctext4`, whose click sets
+`menu+0x1d3c`) and `assign_help` `$MENU_DROP Assign` (not a footer; the
+icon strip left of the list, then fixed boxes publishing 8, 5 or 4) assign
+a skill to a power slot. RT shows the next hero.
+
+The gear tab has two list boxes: `equipment`, the three slots (`--- [
+Nothing Equipped ] ---` or the piece's name), and `equipment_inv`, the
+pieces that fit the selected slot; the one with the focus has `focused` set.
+A on a slot moves the focus to the pieces; A on a piece equips it (its level
+allowing) and returns to the slots; B on the pieces returns to the slots.
+`$MENU_SUBTRACT Unequip` takes the selected slot's piece off.
+`$MENU_DROP Drop` is action `0xd`, which `CMenuItemText::onMouse` does not
+publish; the pad binds it to RB (`FUN_00619c40`, binding row 10), which drops
+the selected piece. `equipment_desc` describes it, and `inventory_count` (with
+`inventory_count_title` "gear") counts the carried pieces.
+
+Measured (`openmenu team` after `awardXPToPlayable(2000000)`, Magneto at
+level 40, 2026-10-07): a click on another stat moved to it and added a
+point; Down from speed wrapped to body; a click on another ai setting moved
+and changed it; on the gear slots RB dropped the equipped Fortified
+Waistband; the skill records' glyphs matched `FUN_005f01e0` (Levitation one
+`0xd9`, thirteen `0xd8`, six `0xd7`; Metal Minion fifteen `0xdb`, five
+`0xd8`).
 
 The party screen's items: `char_summary01..04` (`CMenuItemCharSummary`, the
 hero's name as text, bit 0 of `item+0x54` lit on the selected hero),
@@ -1064,3 +1114,7 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   only the anchor row.
 - **The anchor fallback** uses slot order where the game's default focus walks
   the name tree.
+- **Assigning a skill to a power slot.** The skills tab's icon strip
+  publishes `0xd` and fixed scene boxes publish 8, 5 or 4, but RB on a skill
+  showed nothing; the flow, and what `menu+0x1d3c` (Details) does, are not
+  traced. LT did not change hero where RT showed the next one.
