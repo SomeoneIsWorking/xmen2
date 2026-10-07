@@ -78,6 +78,12 @@ struct TouchMenuView {
   int focused_row = -1;
   /* The game's Up/Down wraps from the last row to the first. */
   bool focus_wraps = true;
+  /* When set, the game's Up/Down turns a wrapping cycle of this many
+     positions and the rows show some of them, each at its `entry`; a walk
+     steps by position, not by row. */
+  int cycle = 0;
+  /* The cycle position the game has focused, shown as a row or not. */
+  int cycle_focus = -1;
 
   /* The same retail screen: menu object, name and row set. */
   bool same_screen(const TouchMenuView &other) const;

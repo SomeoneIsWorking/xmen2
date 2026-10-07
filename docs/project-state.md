@@ -1059,7 +1059,15 @@ measured by `tools/live_case.py touch-danger-room`, 8 of 8 on 2026-10-07:
 Back and Select; a tap on the selected Freshman opened its courses with
 Overview lit; a tap on Status opened it in the game; Back returned to the
 grades; and a tap on the selected course opened the team menu. The danger
-room's online steps (2..9) are unexercised. Gap: the team roster and detail tabs keep the retail screen;
+room's online steps (2..9) are unexercised. The team roster follows: measured
+by `tools/live_case.py touch-roster`, 11 of 11 on 2026-10-07, after
+`temp_addmoney`, killing Wolverine and `loadmap act2/jungle/jungle1 0 1` the
+party read Magneto, Cyclops, Empty slot, Storm; Replace on the empty slot
+opened the roster as 14 named heroes (Jean Grey, Pyro, Sabretooth; no
+Deadpool, Ironman or Professor X) with Wolverine "Fallen, level 1"; a tap on
+Wolverine revived him in the game (money 2000 to 1800), and a tap on
+Sabretooth put him in the empty slot. Gap: the roster shows no revive cost,
+and the detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world

@@ -53,17 +53,6 @@ inline constexpr std::uint32_t kTextBoxPrimary = 0xb0u;
 inline constexpr std::uint32_t kTextBoxFallback = 0xacu;
 inline constexpr std::size_t kTextBoxBytes = 4096u;
 
-/* handle_str<2> pool, FUN_00602200: a heap object held here. */
-inline constexpr std::uint32_t kPool2PointerRva = 0x0060a81cu;
-inline constexpr std::uint32_t kPool2Slots = 0x400u;
-inline constexpr std::uint32_t kPool2Strings = 0x1008u;
-inline constexpr std::uint32_t kPool2Capacity = 0x1c00u;
-/* handle_str<0> pool, FUN_00602140: a static object. */
-inline constexpr std::uint32_t kPool0Rva = 0x0060a820u;
-inline constexpr std::uint32_t kPool0Slots = 0x2000u;
-inline constexpr std::uint32_t kPool0Strings = 0x8008u;
-inline constexpr std::uint32_t kPool0Capacity = 0x14400u;
-inline constexpr std::uint32_t kHandleIndexMask = 0x00ffffffu;
 /* CMenuItemText dynamic_text buffers, FUN_005c6720: 20 x 32 bytes. */
 inline constexpr std::uint32_t kDynamicTextRva = 0x004adab8u;
 inline constexpr std::uint32_t kDynamicTextLiveRva = 0x004add9cu;
@@ -103,6 +92,10 @@ inline constexpr std::uint32_t kListRecordStride = 0x70u;
 inline constexpr std::size_t kListEntryBytes = 0x3fu;
 /* The record's text ends where its entry handle starts, at +0x58. */
 inline constexpr std::size_t kListRecordTextBytes = 0x58u;
+
+/* CMenuItemCharSummary's draw (FUN_005bdf50) masks a locked name when bit 0
+   is set. */
+inline constexpr std::uint32_t kSummaryMask = 0xbcu;
 
 /* CMenuItem::nextInDirection's visited list. */
 inline constexpr int kStepVisits = 32;
@@ -234,23 +227,6 @@ int field_i16(const std::uint8_t *header, std::uint32_t offset) {
   return value;
 }
 
-/* The game's strings are single bytes drawn through its own font; each byte is
-   carried as the code point of the same value. */
-std::string latin1_to_utf8(const std::string &bytes) {
-  std::string out;
-  out.reserve(bytes.size());
-  for (const char c : bytes) {
-    const auto byte = static_cast<unsigned char>(c);
-    if (byte < 0x80u) {
-      out.push_back(c);
-    } else {
-      out.push_back(static_cast<char>(0xc0u | (byte >> 6)));
-      out.push_back(static_cast<char>(0x80u | (byte & 0x3fu)));
-    }
-  }
-  return out;
-}
-
 /* The last word of a command, which for setincrement/setdecrement is the
    game variable it changes. */
 std::string command_target(const std::string &command) {
@@ -321,107 +297,24 @@ const char *read_status_name(ReadStatus status) {
 
 RetailMenuModel::RetailMenuModel(const native::GuestMemoryView &memory,
                                  std::uint32_t image_base)
-    : memory_(memory), image_base_(image_base) {}
-
-bool RetailMenuModel::read_bytes(std::uint32_t address, void *out,
-                                 std::size_t bytes) {
-  if (memory_.read(address, out, bytes)) {
-    return true;
-  }
-  failed_ = address;
-  return false;
-}
-
-bool RetailMenuModel::read_u32(std::uint32_t address, std::uint32_t *out) {
-  return read_bytes(address, out, sizeof *out);
-}
-
-/* A NUL-terminated string found within `capacity` bytes, read in chunks so the
-   end of a mapping past the terminator is never touched. */
-bool RetailMenuModel::read_c_string(std::uint32_t address, std::size_t capacity,
-                                    std::string *out) {
-  out->clear();
-  constexpr std::size_t kChunk = 16u;
-  char chunk[kChunk];
-  std::size_t scanned = 0;
-  while (scanned < capacity) {
-    const auto at = static_cast<std::uint32_t>(address + scanned);
-    std::size_t got = std::min(kChunk, capacity - scanned);
-    if (!memory_.read(at, chunk, got)) {
-      got = 1u;
-      if (!read_bytes(at, chunk, got)) {
-        return false;
-      }
-    }
-    for (std::size_t i = 0; i < got; ++i) {
-      if (chunk[i] == '\0') {
-        return true;
-      }
-      out->push_back(chunk[i]);
-    }
-    scanned += got;
-  }
-  failed_ = address;
-  return false;
-}
-
-/* handle_str<2>: pool + 0x1008 + pool[1 + (handle & 0xffffff)], the lookup
-   every CMenuItem accessor inlines; the high byte is not checked by the game
-   either. */
-bool RetailMenuModel::pool_string(std::uint32_t handle, std::string *out) {
-  out->clear();
-  if (handle == 0u) {
-    return true;
-  }
-  std::uint32_t pool = 0;
-  if (!read_u32(image_base_ + kPool2PointerRva, &pool)) {
-    return false;
-  }
-  const std::uint32_t index = handle & kHandleIndexMask;
-  std::uint32_t offset = 0;
-  if (pool == 0u || index >= kPool2Slots ||
-      !read_u32(pool + 4u + index * 4u, &offset) || offset >= kPool2Capacity) {
-    failed_ = pool + 4u + index * 4u;
-    return false;
-  }
-  std::string bytes;
-  if (!read_c_string(pool + kPool2Strings + offset, kPool2Capacity - offset,
-                     &bytes)) {
-    return false;
-  }
-  *out = latin1_to_utf8(bytes);
-  return true;
-}
+    : reader_(memory, image_base) {}
 
 bool RetailMenuModel::registry_getter(const std::string &name,
                                       std::uint32_t *getter) {
   *getter = 0u;
-  const std::uint32_t registry = image_base_ + kRegistryRva;
-  const std::uint32_t pool = image_base_ + kPool0Rva;
+  const std::uint32_t registry = reader_.image(kRegistryRva);
   for (std::uint32_t node = 0; node < kRegistryNodes; ++node) {
     std::uint32_t key = 0;
-    if (!read_u32(registry + kRegistryNodeKeys + node * kRegistryNodeStride,
-                  &key)) {
+    if (!reader_.u32(registry + kRegistryNodeKeys + node * kRegistryNodeStride,
+                     &key)) {
       return false;
-    }
-    const std::uint32_t index = key & kHandleIndexMask;
-    if (key == 0u || index >= kPool0Slots) {
-      continue;
-    }
-    std::uint32_t offset = 0;
-    if (!read_u32(pool + 4u + index * 4u, &offset)) {
-      return false;
-    }
-    if (offset >= kPool0Capacity) {
-      continue;
     }
     std::string key_name;
-    if (!read_c_string(pool + kPool0Strings + offset, kPool0Capacity - offset,
-                       &key_name)) {
+    if (!reader_.pool0_string(key, &key_name)) {
       return false;
     }
     if (key_name == name) {
-      return read_u32(registry + kRegistryGetters + node * 8u, getter);
+      return reader_.u32(registry + kRegistryGetters + node * 8u, getter);
     }
   }
   return true;
@@ -436,10 +329,10 @@ bool RetailMenuModel::read_label(const std::uint8_t *header,
     if (text == 0u) {
       text = field_u32(header, kTextBoxFallback);
     }
-    if (text != 0u && !read_c_string(text, kTextBoxBytes, &bytes)) {
+    if (text != 0u && !reader_.c_string(text, kTextBoxBytes, &bytes)) {
       return false;
     }
-    *out = latin1_to_utf8(bytes);
+    *out = native::latin1_to_utf8(bytes);
     return true;
   }
   if (!uses_text_get_text(item_class)) {
@@ -447,24 +340,23 @@ bool RetailMenuModel::read_label(const std::uint8_t *header,
   }
   const std::uint32_t dynamic = field_u32(header, kTextDynamicSlot);
   if (dynamic == 0u) {
-    return pool_string(field_u32(header, kTextHandle), out);
+    return reader_.pool2_string(field_u32(header, kTextHandle), out);
   }
   if (dynamic >= kDynamicTextSlots) {
-    failed_ = image_base_ + kDynamicTextLiveRva;
-    return false;
+    return reader_.fail(reader_.image(kDynamicTextLiveRva));
   }
   std::uint32_t live = 0;
-  if (!read_u32(image_base_ + kDynamicTextLiveRva, &live)) {
+  if (!reader_.u32(reader_.image(kDynamicTextLiveRva), &live)) {
     return false;
   }
   /* A released dynamic slot reads as "", as getText returns it. */
   if ((live & (1u << dynamic)) != 0u &&
-      !read_c_string(image_base_ + kDynamicTextRva +
-                         dynamic * kDynamicTextBytes,
-                     kDynamicTextBytes, &bytes)) {
+      !reader_.c_string(
+          reader_.image(kDynamicTextRva + dynamic * kDynamicTextBytes),
+          kDynamicTextBytes, &bytes)) {
     return false;
   }
-  *out = latin1_to_utf8(bytes);
+  *out = native::latin1_to_utf8(bytes);
   return true;
 }
 
@@ -472,7 +364,7 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
                                     const std::uint8_t *header,
                                     ListBoxState *out) {
   std::uint8_t box[kListBoxBytes];
-  if (!read_bytes(address, box, sizeof box)) {
+  if (!reader_.bytes(address, box, sizeof box)) {
     return false;
   }
   out->selected = field_i16(box, kListSelected);
@@ -488,21 +380,21 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
     return true;
   }
   std::uint32_t count = 0;
-  if (!read_u32(store + kListStoreCount, &count)) {
+  if (!reader_.u32(store + kListStoreCount, &count)) {
     return false;
   }
   if (count > kListStoreIds) {
-    failed_ = store + kListStoreCount;
-    return false;
+    return reader_.fail(store + kListStoreCount);
   }
   std::uint8_t ids[kListStoreIds];
-  if (count > 0u && !read_bytes(store, ids, count)) {
+  if (count > 0u && !reader_.bytes(store, ids, count)) {
     return false;
   }
   for (std::uint32_t i = 0; i < count; ++i) {
     char text[kListRecordTextBytes];
-    if (!read_bytes(image_base_ + kListRecordsRva + ids[i] * kListRecordStride,
-                    text, sizeof text)) {
+    if (!reader_.bytes(
+            reader_.image(kListRecordsRva + ids[i] * kListRecordStride), text,
+            sizeof text)) {
       return false;
     }
     std::string entry;
@@ -521,8 +413,8 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
         entry.push_back(c);
       }
     }
-    out->entries.push_back(latin1_to_utf8(entry));
-    out->values.push_back(latin1_to_utf8(value));
+    out->entries.push_back(native::latin1_to_utf8(entry));
+    out->values.push_back(native::latin1_to_utf8(value));
   }
   return true;
 }
@@ -532,17 +424,19 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
                                 std::array<std::uint32_t, 4> *links,
                                 std::uint32_t *getter) {
   std::uint8_t header[kItemHeaderBytes];
-  if (!read_bytes(address, header, sizeof header)) {
+  if (!reader_.bytes(address, header, sizeof header)) {
     return false;
   }
   out->address = address;
   out->slot = slot;
-  out->item_class = classify_item(field_u32(header, 0u), image_base_);
+  out->item_class = classify_item(field_u32(header, 0u), reader_.image_base());
   out->flags = header[kItemFlags];
-  if (!pool_string(field_u32(header, kItemName), &out->name) ||
-      !pool_string(field_u32(header, kItemUse), &out->use_command) ||
-      !pool_string(field_u32(header, kItemLeftCommand), &out->left_command) ||
-      !pool_string(field_u32(header, kItemRightCommand), &out->right_command) ||
+  if (!reader_.pool2_string(field_u32(header, kItemName), &out->name) ||
+      !reader_.pool2_string(field_u32(header, kItemUse), &out->use_command) ||
+      !reader_.pool2_string(field_u32(header, kItemLeftCommand),
+                            &out->left_command) ||
+      !reader_.pool2_string(field_u32(header, kItemRightCommand),
+                            &out->right_command) ||
       !read_label(header, out->item_class, &out->label)) {
     return false;
   }
@@ -568,9 +462,18 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
   }
   *getter = field_u32(header, kItemGamevarGetter);
   /* CMenuItemListCodex overrides only the list box's parse (+0x44) and
-     destructor, so its entries, window and onMouse are the list box's. */
+     destructor, so its entries, window and onMouse are the list box's.
+     CMenuItemListChars keeps the store; its +0xac is the first card. */
+  if (out->item_class == ItemClass::char_summary) {
+    std::uint8_t mask = 0;
+    if (!reader_.bytes(address + kSummaryMask, &mask, 1u)) {
+      return false;
+    }
+    out->masks_locked = (mask & 1u) != 0u;
+  }
   if (out->item_class == ItemClass::list_box ||
-      out->item_class == ItemClass::list_codex) {
+      out->item_class == ItemClass::list_codex ||
+      out->item_class == ItemClass::list_chars) {
     out->list_box.emplace();
     if (!read_list_box(address, header, &*out->list_box)) {
       return false;
@@ -690,17 +593,50 @@ bool RetailMenuModel::pair_values(MenuSnapshot *menu,
   return true;
 }
 
+/* The hero cards' names, levels and states, from the character table. */
+bool RetailMenuModel::attach_heroes(MenuSnapshot *menu) {
+  const bool cards = std::any_of(
+      menu->items.begin(), menu->items.end(), [](const MenuItem &item) {
+        return item.item_class == ItemClass::char_summary ||
+               item.item_class == ItemClass::list_chars;
+      });
+  if (!cards) {
+    return true;
+  }
+  std::vector<native::HeroRecord> table;
+  if (!native::RetailHeroTable(reader_).read(&table)) {
+    return false;
+  }
+  for (MenuItem &item : menu->items) {
+    if (item.item_class == ItemClass::char_summary) {
+      const native::HeroRecord *hero = native::find_hero(table, item.label);
+      if (hero != nullptr) {
+        item.hero = *hero;
+      }
+    }
+    if (item.item_class == ItemClass::list_chars && item.list_box) {
+      for (const std::string &entry : item.list_box->entries) {
+        const native::HeroRecord *hero = native::find_hero(table, entry);
+        item.heroes.push_back(hero != nullptr
+                                  ? std::optional<native::HeroRecord>(*hero)
+                                  : std::nullopt);
+      }
+    }
+  }
+  return true;
+}
+
 bool RetailMenuModel::read_popup(bool *up) {
   *up = false;
   std::uint32_t popup = 0;
-  if (!read_u32(image_base_ + kPopupRva, &popup)) {
+  if (!reader_.u32(reader_.image(kPopupRva), &popup)) {
     return false;
   }
   if (popup == 0u) {
     return true;
   }
   std::uint32_t current = 0;
-  if (!read_u32(popup + kPopupCurrent, &current)) {
+  if (!reader_.u32(popup + kPopupCurrent, &current)) {
     return false;
   }
   const auto index = static_cast<std::int32_t>(current);
@@ -708,7 +644,7 @@ bool RetailMenuModel::read_popup(bool *up) {
                                  ? static_cast<std::uint32_t>(index)
                                  : 0u;
   std::uint8_t shown = 0;
-  if (!read_bytes(popup + slot * kPopupStride + kPopupShown, &shown, 1u)) {
+  if (!reader_.bytes(popup + slot * kPopupStride + kPopupShown, &shown, 1u)) {
     return false;
   }
   *up = (shown & 1u) != 0u;
@@ -717,19 +653,19 @@ bool RetailMenuModel::read_popup(bool *up) {
 
 ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   *out = MenuSnapshot{};
-  failed_ = 0u;
+  reader_.reset_failure();
   if (!read_popup(&out->popup_up)) {
     return ReadStatus::unreadable;
   }
   std::uint32_t manager = 0;
-  if (!read_u32(image_base_ + kManagerRva, &manager)) {
+  if (!reader_.u32(reader_.image(kManagerRva), &manager)) {
     return ReadStatus::unreadable;
   }
   if (manager == 0u) {
     return ReadStatus::no_manager;
   }
   std::uint32_t menu = 0;
-  if (!read_u32(manager + kActiveMenu, &menu)) {
+  if (!reader_.u32(manager + kActiveMenu, &menu)) {
     return ReadStatus::unreadable;
   }
   if (menu == 0u) {
@@ -740,33 +676,33 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   std::uint32_t count = 0;
   std::uint32_t focus = 0;
   std::uint32_t live[6] = {};
-  if (!read_u32(menu, &vtable) ||
-      !read_c_string(menu + kMenuName, kMenuNameBytes, &out->name) ||
-      !read_u32(menu + kMenuItemCount, &count) ||
-      !read_u32(menu + kMenuFocus, &focus) ||
-      !read_bytes(menu + kMenuLiveBits, live, sizeof live)) {
+  if (!reader_.u32(menu, &vtable) ||
+      !reader_.c_string(menu + kMenuName, kMenuNameBytes, &out->name) ||
+      !reader_.u32(menu + kMenuItemCount, &count) ||
+      !reader_.u32(menu + kMenuFocus, &focus) ||
+      !reader_.bytes(menu + kMenuLiveBits, live, sizeof live)) {
     return ReadStatus::unreadable;
   }
   if (count > kMenuSlots) {
-    failed_ = menu + kMenuItemCount;
+    reader_.fail(menu + kMenuItemCount);
     return ReadStatus::unreadable;
   }
-  out->menu_class = classify_menu(vtable, image_base_);
+  out->menu_class = classify_menu(vtable, reader_.image_base());
   for (const MenuModeEntry &entry : kMenuModes) {
     if (entry.menu_class != out->menu_class) {
       continue;
     }
     std::uint32_t mode = 0;
-    if (!read_u32(menu + entry.offset, &mode)) {
+    if (!reader_.u32(menu + entry.offset, &mode)) {
       return ReadStatus::unreadable;
     }
     out->mode = mode;
   }
   for (std::size_t i = 0; i < out->desctext.size(); ++i) {
     std::uint32_t handle = 0;
-    if (!read_u32(menu + kMenuDesctext + static_cast<std::uint32_t>(i) * 4u,
-                  &handle) ||
-        !pool_string(handle, &out->desctext[i])) {
+    if (!reader_.u32(menu + kMenuDesctext + static_cast<std::uint32_t>(i) * 4u,
+                     &handle) ||
+        !reader_.pool2_string(handle, &out->desctext[i])) {
       return ReadStatus::unreadable;
     }
   }
@@ -778,7 +714,7 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
       continue;
     }
     std::uint32_t address = 0;
-    if (!read_u32(menu + kMenuItemArray + slot * 4u, &address)) {
+    if (!reader_.u32(menu + kMenuItemArray + slot * 4u, &address)) {
       return ReadStatus::unreadable;
     }
     if (address == 0u) {
@@ -812,6 +748,9 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   }
   order_rows(out);
   if (!pair_values(out, getters)) {
+    return ReadStatus::unreadable;
+  }
+  if (!attach_heroes(out)) {
     return ReadStatus::unreadable;
   }
   return ReadStatus::ok;

@@ -371,10 +371,33 @@ target_include_directories(test_touch_menu PRIVATE src/input src/native
 target_link_libraries(test_touch_menu PRIVATE lucent::lucent)
 add_test(NAME touch_menu COMMAND test_touch_menu)
 
+# CMenuTeam's party and roster views and the input a tap on each owes.
+add_executable(test_touch_menu_team tests/test_touch_menu_team.cpp
+               src/input/touch_menu.cpp
+               src/input/touch_menu_layout.cpp
+               src/input/touch_menu_view.cpp
+               src/input/touch_menu_parts.cpp
+               src/input/touch_menu_team.cpp
+               src/input/touch_menu_shop.cpp
+               src/input/touch_menu_codex.cpp
+               src/input/touch_menu_worldmap.cpp
+               src/input/touch_menu_review.cpp
+               src/input/touch_menu_region.cpp
+               src/input/touch_menu_danger_room.cpp
+               src/presentation/retail_scene_plane.cpp
+               src/presentation/hud_layout.cpp
+               src/presentation/touch_layout.cpp
+               src/config/hud_settings.cpp)
+target_include_directories(test_touch_menu_team PRIVATE src/input src/native
+                                                src/presentation src/config)
+target_link_libraries(test_touch_menu_team PRIVATE lucent::lucent)
+add_test(NAME touch_menu_team COMMAND test_touch_menu_team)
+
 # The retail menu model read from a fake guest image: classes, labels, flags,
 # navigation order and value pairing through the shipping reader.
 add_executable(test_retail_menu_model tests/test_retail_menu_model.cpp
-               src/native/retail_menu_model.cpp)
+               src/native/retail_menu_model.cpp src/native/guest_image_reader.cpp
+               src/native/retail_hero_table.cpp)
 target_include_directories(test_retail_menu_model PRIVATE src/native)
 add_test(NAME retail_menu_model COMMAND test_retail_menu_model)
 
@@ -2083,6 +2106,8 @@ set(X2_NATIVE_SOURCES
     src/native/text_put.cpp
     src/native/touch_menu_source.cpp
     src/native/guest_memory_view.cpp
+    src/native/guest_image_reader.cpp
+    src/native/retail_hero_table.cpp
     src/native/retail_menu_model.cpp
     src/native/retail_menu_live.cpp
     src/input/touch_controls.cpp

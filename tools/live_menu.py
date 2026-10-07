@@ -236,6 +236,27 @@ def drag_touch(case: Case, shown: dict, x: float, y_from: float,
     case.http("/touch?x=%g&y=%g&phase=up" % (x / width, y_to / height))
 
 
+def reveal_touch_row(case: Case, label: str) -> tuple[dict, dict | None]:
+    """Drag the touch menu's list until the row `label` sits in its middle;
+    the shown menu and that row's button, or None when it has no such row."""
+    shown = touch_menu(case)
+    for _ in range(12):
+        button = touch_button(shown, "row", label)
+        if button is None:
+            return shown, None
+        height = shown["viewport_height"]
+        centre = button["top"] + button["height"] * 0.5
+        if 0.2 * height <= centre <= 0.7 * height:
+            return shown, button
+        shift = max(-0.4 * height, min(0.4 * height, centre - 0.45 * height))
+        start = 0.5 * height
+        drag_touch(case, shown, button["left"] + button["width"] * 0.5,
+                   start, start - shift)
+        time.sleep(0.5)
+        shown = touch_menu(case)
+    return shown, touch_button(shown, "row", label)
+
+
 def wait_game_menu(case: Case, done, timeout: float) -> dict:
     deadline = time.monotonic() + timeout
     menu = read_menu(case)
@@ -245,9 +266,8 @@ def wait_game_menu(case: Case, done, timeout: float) -> dict:
     return menu
 
 
-def menu_list(case: Case, name: str = "list") -> dict:
-    """The list box of the menu's `name` item, as GET /menu?items=all reads
-    it (`list` for the shop and the codex, `text_list` for the region)."""
+def menu_item(case: Case, name: str) -> dict:
+    """The menu's item named `name` as GET /menu?items=all reads it."""
     code, body = case.http("/menu?items=all")
     if code != 200:
         return {}
@@ -256,9 +276,15 @@ def menu_list(case: Case, name: str = "list") -> dict:
     except ValueError:
         return {}
     for item in menu.get("items", []):
-        if item.get("name") == name and "list_box" in item:
-            return item["list_box"]
+        if item.get("name") == name:
+            return item
     return {}
+
+
+def menu_list(case: Case, name: str = "list") -> dict:
+    """The list box of the menu's `name` item, as GET /menu?items=all reads
+    it (`list` for the shop and the codex, `text_list` for the region)."""
+    return menu_item(case, name).get("list_box", {})
 
 
 def menu_labels(case: Case) -> dict[str, str]:

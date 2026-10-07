@@ -137,6 +137,16 @@ void put_list_box(std::string *out, const menu::ListBoxState &list) {
   out->append("},");
 }
 
+void put_hero(std::string *out, const native::HeroRecord &hero) {
+  out->push_back('{');
+  put_text(out, "name", hero.name);
+  put_text(out, "display_name", hero.display_name);
+  put_int(out, "level", hero.level);
+  put_bool(out, "fallen", hero.fallen);
+  put_bool(out, "unlocked", hero.unlocked);
+  close_object(out);
+}
+
 void put_item(std::string *out, const menu::MenuItem &item) {
   out->push_back('{');
   put_int(out, "slot", static_cast<long>(item.slot));
@@ -157,6 +167,28 @@ void put_item(std::string *out, const menu::MenuItem &item) {
   put_int(out, "link_right", item.link_right);
   if (item.list_box) {
     put_list_box(out, *item.list_box);
+  }
+  if (item.item_class == menu::ItemClass::char_summary) {
+    put_bool(out, "masks_locked", item.masks_locked);
+  }
+  if (item.hero) {
+    put_key(out, "hero");
+    put_hero(out, *item.hero);
+    out->push_back(',');
+  }
+  if (!item.heroes.empty()) {
+    put_key(out, "heroes");
+    out->push_back('[');
+    for (const std::optional<native::HeroRecord> &hero : item.heroes) {
+      if (hero) {
+        put_hero(out, *hero);
+      } else {
+        out->append("null");
+      }
+      out->push_back(',');
+    }
+    out->back() = ']';
+    out->push_back(',');
   }
   close_object(out);
 }

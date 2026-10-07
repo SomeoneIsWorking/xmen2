@@ -50,6 +50,7 @@ from live_cases_pad import (
 )
 from live_cases_touch_menu import (
     case_touch_danger_room,
+    case_touch_roster,
     case_touch_codex,
     case_touch_menu,
     case_touch_region,
@@ -81,6 +82,7 @@ CASES = {
     "touch-review": case_touch_review,
     "touch-region": case_touch_region,
     "touch-danger-room": case_touch_danger_room,
+    "touch-roster": case_touch_roster,
     "extract-keyboard-back": case_extract_keyboard_back,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
