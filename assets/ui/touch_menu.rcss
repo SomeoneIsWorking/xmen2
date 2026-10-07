@@ -148,6 +148,12 @@ body {
     color: #FFFFFF;
 }
 
+.tm-footer.lit {
+    border: 0.1em #C2A42D;
+    background-color: rgba(194, 164, 45, 22%);
+    color: #FFFFFF;
+}
+
 #tm-detail {
     position: absolute;
     padding: 0.5em 0.8em;

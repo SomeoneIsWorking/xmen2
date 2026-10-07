@@ -689,12 +689,19 @@ void the_skills_tab_details_hold_lt() {
             down[0].button == TouchAction::MenuLeftTrigger,
         "a tap on Details puts LT down and leaves it there");
   touch.set_view(shown, 20u);
+  const auto held = touch.state();
+  check(
+      held.held_footer >= 0 &&
+          held.view.footers[static_cast<std::size_t>(held.held_footer)].label ==
+              "Details",
+      "while LT is down the Details footer is drawn lit");
   button = footer_rect("Details");
   const auto up =
       button ? tap(touch, button->rect, 30u) : std::vector<TouchMenuDelivery>{};
   check(up.size() == 1u && up[0].kind == TouchMenuDelivery::Kind::release &&
             up[0].button == TouchAction::MenuLeftTrigger,
         "a second tap lets LT go, back to the list");
+  check(touch.state().held_footer == -1, "and Details is no longer lit");
 
   button = footer_rect("Details");
   if (button != nullptr) {

@@ -32,6 +32,9 @@ struct TouchMenuState {
   TouchMenuLayout layout;
   /* The button a finger is on, as an index into layout.buttons, or -1. */
   int pressed = -1;
+  /* The held footer whose button is down, as an index into view.footers, or
+     -1. */
+  int held_footer = -1;
 };
 
 /*
