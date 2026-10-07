@@ -857,6 +857,37 @@ own Start are untouched. Measured by `tools/live_case.py extract-keyboard-back`
 and the party walks again) and `options-back` (Escape still opens Advanced
 Options).
 
+## The automap (`CMenuAutoMap`)
+
+`CMenuAutoMap` (vtable `0x69e4c4`) is not a list: it turns the game's view
+into the level map and pans and turns it. Its items are the frame, the
+footers `desctext1` `$MENU_BACK Back`, `desctext2` `$MOVE_UP$MOVE_DOWN
+Scroll`, `desctext3` `$CAMERA_LEFT$CAMERA_RIGHT Rotate` (written by the parse
+hook `FUN_005b00a0`) and the hidden `desctext5` `PAUSED`; there are no rows.
+
+Init (`FUN_005afae0`) saves the view mode (`FUN_0059ee20` vfunc `+0x9c`) at
+`menu+0x18d8`, switches it to the map (vfunc `+0xa0` with 3) and reads the
+map's bounds into `menu+0x18dc..0x18e8` and its position and turn into
+`menu+0x18ec..0x18f4` and `menu+0x18f8`; close (`FUN_005afb80`) restores the
+mode. The update (`FUN_005afbd0`) reads the move axes and camera axis 2
+(input manager vfunc `+0x128`), adds the move to the position rotated by the
+turn, clamps it to the bounds, subtracts the camera axis from the turn and
+hands both to the view (vfunc `+0xb0`).
+
+Its `onMouse` (`FUN_005afe30`) takes two messages the window loop
+(`FUN_00401d70`) sends while a mouse button has been held 0.2 s
+(`FUN_0061a600`): `0x210` (left held) pans toward the pointer by its offset
+from the screen centre, `0x211` (right held) turns by its horizontal offset.
+Everything else goes to the base `CMenu::onMouse`, where only the footers
+take a click.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu automap` from
+gameplay, touch play): bounds 1920..7920 by 240..6720, turn -pi/2. A finger
+held on the map for 1.5 s is the retail pointer and panned the map
+(3827,2264 -> 7167,3462); the menu pad's d-pad held 1 s scrolled to the bound
+on each side; LB and RB did not turn it; B closed it. Nothing a touch player
+has turns the map.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
