@@ -48,19 +48,27 @@ menu_footer(const menu::MenuItem &item,
   return footer;
 }
 
-std::vector<std::string> menu_text_lines(std::string_view raw) {
-  std::vector<std::string> lines;
+std::vector<std::string_view> menu_raw_lines(std::string_view raw) {
+  std::vector<std::string_view> lines;
   std::size_t start = 0;
   while (start <= raw.size()) {
     std::size_t end = raw.find('\n', start);
     if (end == std::string_view::npos) {
       end = raw.size();
     }
-    std::string line = touch_menu_text(raw.substr(start, end - start));
+    lines.push_back(raw.substr(start, end - start));
+    start = end + 1u;
+  }
+  return lines;
+}
+
+std::vector<std::string> menu_text_lines(std::string_view raw) {
+  std::vector<std::string> lines;
+  for (const std::string_view piece : menu_raw_lines(raw)) {
+    std::string line = touch_menu_text(piece);
     if (!line.empty()) {
       lines.push_back(std::move(line));
     }
-    start = end + 1u;
   }
   return lines;
 }

@@ -20,6 +20,13 @@ TouchMenuDelivery pad(TouchAction button) {
   return delivery;
 }
 
+TouchMenuDelivery pad_edge(TouchMenuDelivery::Kind kind, TouchAction button) {
+  TouchMenuDelivery delivery;
+  delivery.kind = kind;
+  delivery.button = button;
+  return delivery;
+}
+
 TouchMenuDelivery click(presentation::ClientPoint at) {
   TouchMenuDelivery delivery;
   delivery.kind = TouchMenuDelivery::Kind::click;
@@ -50,6 +57,10 @@ TouchMenu::set_view(std::optional<TouchMenuView> view, std::uint64_t now_ms) {
   if (!same || view->detail != view_->detail) {
     detail_scroll_ = 0.0F;
   }
+  std::vector<TouchMenuDelivery> owed;
+  if (!view || view->address != held_address_) {
+    release_held(&owed);
+  }
   view_ = std::move(view);
   relayout();
   if (view_ && view_->focused_row >= 0 &&
@@ -58,7 +69,9 @@ TouchMenu::set_view(std::optional<TouchMenuView> view, std::uint64_t now_ms) {
     scroll_ = touch_menu_scroll_to(layout_, view_->focused_row);
     relayout();
   }
-  std::vector<TouchMenuDelivery> owed = advance_walk(now_ms);
+  for (TouchMenuDelivery &delivery : advance_walk(now_ms)) {
+    owed.push_back(delivery);
+  }
   publish();
   return owed;
 }
@@ -143,24 +156,46 @@ std::vector<TouchMenuDelivery> TouchMenu::contact(std::int64_t id,
   return out;
 }
 
+void TouchMenu::release_held(std::vector<TouchMenuDelivery> *out) {
+  if (held_) {
+    out->push_back(pad_edge(TouchMenuDelivery::Kind::release, *held_));
+    held_.reset();
+  }
+}
+
 std::vector<TouchMenuDelivery>
 TouchMenu::activate(const TouchMenuButton &button, std::uint64_t now_ms) {
   const auto index = static_cast<std::size_t>(button.index);
+  std::vector<TouchMenuDelivery> out;
   if (button.part == TouchMenuPart::footer) {
     const TouchMenuFooter &footer = view_->footers[index];
-    if (footer.button) {
-      return {pad(*footer.button)};
+    const bool letting_go = footer.held && held_ == footer.button;
+    release_held(&out);
+    if (letting_go) {
+      return out;
     }
-    return {click(footer.click)};
+    if (footer.held && footer.button) {
+      held_ = footer.button;
+      held_address_ = view_->address;
+      out.push_back(pad_edge(TouchMenuDelivery::Kind::press, *footer.button));
+    } else if (footer.button) {
+      out.push_back(pad(*footer.button));
+    } else {
+      out.push_back(click(footer.click));
+    }
+    return out;
   }
+  release_held(&out);
   if (button.part == TouchMenuPart::tab) {
     walk_.reset();
-    return {click(view_->tabs[index].click)};
+    out.push_back(click(view_->tabs[index].click));
+    return out;
   }
   const TouchMenuRow &row = view_->rows[index];
   if (button.part == TouchMenuPart::row && row.clicks) {
     walk_.reset();
-    return {click(row.click)};
+    out.push_back(click(row.click));
+    return out;
   }
   Walk walk;
   walk.address = view_->address;
@@ -175,7 +210,10 @@ TouchMenu::activate(const TouchMenuButton &button, std::uint64_t now_ms) {
   }
   walk.started_ms = now_ms;
   walk_ = walk;
-  return advance_walk(now_ms);
+  for (TouchMenuDelivery &delivery : advance_walk(now_ms)) {
+    out.push_back(delivery);
+  }
+  return out;
 }
 
 std::vector<TouchMenuDelivery> TouchMenu::advance_walk(std::uint64_t now_ms) {
@@ -225,10 +263,13 @@ std::vector<TouchMenuDelivery> TouchMenu::advance_walk(std::uint64_t now_ms) {
   return {pad(down ? TouchAction::MenuDown : TouchAction::MenuUp)};
 }
 
-void TouchMenu::cancel() {
+std::vector<TouchMenuDelivery> TouchMenu::cancel() {
+  std::vector<TouchMenuDelivery> out;
+  release_held(&out);
   finger_.reset();
   walk_.reset();
   publish();
+  return out;
 }
 
 void TouchMenu::publish() {

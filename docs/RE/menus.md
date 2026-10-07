@@ -546,9 +546,21 @@ the rank glyphs or `Req: Level N, <skill>`. `FUN_005f01e0` writes the glyphs:
 per rank: `0xd9` owned, `0xda` added in this visit, `0xd8` open at the hero's
 level, `0xd7` above it. `points_skills` beside `label_skillpoints` holds the
 points left. A adds a rank to the selected skill and X removes one added in
-this visit; `$MENU_DETAILS Details` (`desctext4`, whose click sets
-`menu+0x1d3c`), and `assign_help` reads `$MENU_DROP Assign` while the
+this visit, and `assign_help` reads `$MENU_DROP Assign` while the
 selected skill can be assigned and is empty otherwise.
+
+`$MENU_DETAILS Details` (`desctext4`) is a hold, not a toggle. The team
+update (`FUN_005e66c0`) reads the held-action mask (input vfunc `+0x148`):
+mode 3 goes to 6 while action 9 (`Ally`, LT) is held and back to 3 when it
+is let go (`FUN_005e1f90`). Mode 6 hides `skill_list` and shows the selected
+skill's `skill_title`, `skill_ranks` (the rank glyphs) and `skill_desc`; the
+game fills `skill_desc` only there, so mode 3 shows no description. The
+description draws icons by token: `$DMG_<type>` a damage type, `$RES_<type>`
+a resistance, `$EP`, `$HP` and `$DR` the stat icons. The mouse holds it
+too: every `onMouse` message clears `menu+0x1d3c` and sets it again while
+the pointer is over `desctext4`, and the update publishes action 9 each
+frame the flag is set and `FUN_0061a600` holds (not decompiled; read as the
+button being down).
 
 Assigning a skill to a power slot (`FUN_005e5900`, the skills-mode update,
 reading the pressed-action mask from input vfunc `+0x140`):
@@ -1155,8 +1167,7 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   the name tree.
 - **The skills tab's mouse assignment.** The icon strip left of the list
   publishes `0xd` and fixed scene boxes publish 8, 5 or 4; only the pad path
-  (RB, then A/B/X) is measured. What `menu+0x1d3c` (Details) does is not
-  traced.
+  (RB, then A/B/X) is measured.
 - **Which skill a power name is.** A slot holds the power's internal name
   (`power5`); the map from it to the `skill_list` entry is not read, so the
   touch menu names slots, not the skills in them.

@@ -15,9 +15,10 @@
 namespace x2::input {
 
 /* What the touch menu hands the game: the retail GUI's own mouse click at a
-   client point, or one tap of a menu pad button. */
+   client point, one tap of a menu pad button, or a menu pad button put down
+   or let go of. */
 struct TouchMenuDelivery {
-  enum class Kind : std::uint8_t { click, pad };
+  enum class Kind : std::uint8_t { click, pad, press, release };
   Kind kind = Kind::click;
   presentation::ClientPoint at;
   TouchAction button = TouchAction::MenuA;
@@ -59,8 +60,9 @@ public:
                                          lucent::touch::Point at,
                                          lucent::touch::Phase phase,
                                          std::uint64_t now_ms);
-  /* Forget the finger and any focus walk. */
-  void cancel();
+  /* Forget the finger and any focus walk; returns the release a held
+     button owes. */
+  std::vector<TouchMenuDelivery> cancel();
 
   const TouchMenuLayout &layout() const { return layout_; }
   TouchMenuState state() const;
@@ -89,6 +91,8 @@ private:
   std::vector<TouchMenuDelivery> activate(const TouchMenuButton &button,
                                           std::uint64_t now_ms);
   std::vector<TouchMenuDelivery> advance_walk(std::uint64_t now_ms);
+  /* Lets go of the held button, if any, into `out`. */
+  void release_held(std::vector<TouchMenuDelivery> *out);
   void relayout();
   void publish();
 
@@ -101,6 +105,9 @@ private:
   int followed_focus_ = -1;
   std::optional<Finger> finger_;
   std::optional<Walk> walk_;
+  /* A held footer's button and the menu it was put down on. */
+  std::optional<TouchAction> held_;
+  std::uint32_t held_address_ = 0;
 
   mutable std::mutex published_lock_;
   TouchMenuState published_;
