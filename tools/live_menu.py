@@ -144,6 +144,23 @@ def wait_touch_menu(case: Case, name: str, timeout: float) -> dict:
     return touch_menu(case)
 
 
+def wait_settled_touch_menu(case: Case, name: str, timeout: float) -> dict:
+    """The touch menu over `name` once its tabs and rows have held still for
+    a second: a shop or stash opens on its first tab and the game may step
+    it on a later frame."""
+    shown = wait_touch_menu(case, name, timeout)
+    deadline = time.monotonic() + timeout
+    still_since = time.monotonic()
+    while time.monotonic() < deadline and time.monotonic() - still_since < 1.0:
+        time.sleep(0.2)
+        now = touch_menu(case)
+        if (now.get("tabs"), now.get("rows")) != (shown.get("tabs"),
+                                                  shown.get("rows")):
+            still_since = time.monotonic()
+        shown = now
+    return shown
+
+
 def touch_button(shown: dict, part: str, label: str) -> dict | None:
     for button in shown.get("buttons", []):
         if button["part"] == part and button["label"].lower() == label:

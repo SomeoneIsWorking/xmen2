@@ -130,31 +130,18 @@ void append_menu_tabs(const menu::MenuSnapshot &menu,
   }
 }
 
-void append_list_entries(const menu::MenuItem &list,
-                         const presentation::RetailScenePlane &plane,
-                         ListTap tap, TouchMenuView *view) {
+void append_list_entries(const menu::MenuItem &list, ListTap tap,
+                         TouchMenuView *view) {
   const menu::ListBoxState &box = *list.list_box;
   view->focus_wraps = false;
-  const float centre_x =
-      0.5F * static_cast<float>(box.hit.left + box.hit.right);
   for (std::size_t i = 0; i < box.entries.size(); ++i) {
     const int entry = static_cast<int>(i);
-    const int window_row = entry - box.top;
     TouchMenuRow row;
     row.label = touch_menu_text(box.entries[i]);
-    row.clicks = tap == ListTap::select && box.row_height > 0 &&
-                 window_row >= 0 && window_row < box.visible_rows;
-    row.press_on_arrival = tap == ListTap::accept;
     row.focused = entry == box.selected;
+    row.press_on_arrival = tap == ListTap::accept || row.focused;
     row.slot = list.slot;
     row.entry = entry;
-    if (row.clicks) {
-      /* The list counts rows down from its box's top edge. */
-      const float y = static_cast<float>(box.hit.bottom) -
-                      static_cast<float>(window_row * box.row_height) -
-                      0.5F * static_cast<float>(box.row_height);
-      row.click = plane.to_client({centre_x, y});
-    }
     if (row.focused) {
       view->focused_row = static_cast<int>(view->rows.size());
     }

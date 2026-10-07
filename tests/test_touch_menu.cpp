@@ -331,19 +331,13 @@ void the_shop_is_its_tabs_and_entries() {
                   scene.z < static_cast<float>(rect.bottom) - 3.0F;
   }
   check(tabs_inside, "a tab is clicked inside the box CMenuShop tests");
-  bool rows_land = true;
-  for (int entry = 4; entry < 27; ++entry) {
-    const auto &row = view->rows[static_cast<std::size_t>(entry)];
-    const auto scene = plane.to_scene(row.click);
-    /* CMenuItemListBox::onMouse (0x005c0e10): (top edge - y) / row height. */
-    const int window_row = (329 - static_cast<int>(std::floor(scene.z))) / 8;
-    rows_land = rows_land && row.clicks && !row.press_on_arrival &&
-                window_row == entry - 4 && scene.x >= 215.0F &&
-                scene.x < 482.0F;
+  bool walked = true;
+  for (std::size_t entry = 0; entry < view->rows.size(); ++entry) {
+    const auto &row = view->rows[entry];
+    walked = walked && !row.clicks && row.entry == static_cast<int>(entry) &&
+             row.press_on_arrival == (entry == 6u);
   }
-  check(rows_land, "each entry in the window is clicked on its own row");
-  check(!view->rows[3].clicks && !view->rows[27].clicks,
-        "an entry outside the window has no row to click");
+  check(walked, "every entry is walked to; only the selected one presses A");
   check(view->rows[6].value == "20000" && view->rows[5].value.empty(),
         "the selected entry shows the cost the game priced it at");
   check(view->facts.size() == 4u && view->facts[0].label == "cost" &&
@@ -361,10 +355,33 @@ void the_shop_is_its_tabs_and_entries() {
   check(view->footers.size() == 2u && view->footers[0].label == "Buy",
         "the shop's Buy and Accept footers");
 
-  MenuSnapshot stash = shop_menu(3, 0, 0);
+  MenuSnapshot stash = shop_menu(1, 0, 0);
   stash.mode = 1u;
-  check(!x2::input::build_touch_menu_view(stash, plane),
-        "the stash keeps the retail screen");
+  MenuItem stored = item(15, "stash_option01", "stash", 252, 354, 311, 368);
+  MenuItem carried =
+      item(16, "stash_option02", "inventory", 386, 354, 445, 368);
+  carried.flags |= x2::menu::kItemFocusLit;
+  stash.items.push_back(stored);
+  stash.items.push_back(carried);
+  const auto stash_view = x2::input::build_touch_menu_view(stash, plane);
+  check(stash_view.has_value() && stash_view->tabs.size() == 2u &&
+            stash_view->tabs[0].label == "stash" &&
+            stash_view->tabs[1].label == "inventory" &&
+            stash_view->tabs[1].lit && stash_view->rows.size() == 1u,
+        "the stash is its own stash and inventory tabs and the list");
+  if (stash_view) {
+    const auto at = plane.to_scene(stash_view->tabs[0].click);
+    check(at.x >= 252.0F && at.x < 311.0F,
+          "a stash tab is clicked where CMenuShop::onMouse tests the stash");
+  }
+  MenuSnapshot empty = shop_menu(0, 0, -1);
+  empty.mode = 1u;
+  empty.items.push_back(stored);
+  empty.items.push_back(carried);
+  const auto empty_view = x2::input::build_touch_menu_view(empty, plane);
+  check(empty_view.has_value() && empty_view->rows.empty() &&
+            empty_view->tabs.size() == 2u,
+        "an empty stash list keeps its tabs to switch with");
   MenuSnapshot unread = shop_menu(3, 0, 0);
   unread.mode.reset();
   check(!x2::input::build_touch_menu_view(unread, plane),
@@ -391,9 +408,9 @@ void the_shop_is_its_tabs_and_entries() {
         "a tap on a tab is a click on the tab");
   const X2Rect entry_row = find(touch.layout(), TouchMenuPart::row, 6)->rect;
   out = tap(touch, entry_row, 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
-            out[0].at.y == visible.rows[6].click.y,
-        "a tap on a shown entry is a click on its row");
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "a tap on the selected entry presses A, which buys it");
 
   /* Entry 28 is below the window: walk the selection down to it, then stop. */
   const float x = 0.5F * (entry_row.left + entry_row.right);

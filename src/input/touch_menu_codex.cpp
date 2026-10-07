@@ -22,7 +22,7 @@ build_list(const menu::MenuSnapshot &menu,
   }
   TouchMenuView view = start_menu_view(menu);
   /* The codex loads an entry only on MENU_ACCEPT (0x005b1780). */
-  append_list_entries(*list, plane, ListTap::accept, &view);
+  append_list_entries(*list, ListTap::accept, &view);
   if (view.rows.empty()) {
     return std::nullopt;
   }
