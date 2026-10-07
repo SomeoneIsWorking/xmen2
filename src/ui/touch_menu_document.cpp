@@ -122,8 +122,10 @@ std::string markup(const input::TouchMenuState &state, Scale scale) {
     if (button.part == input::TouchMenuPart::footer) {
       const input::TouchMenuFooter &action =
           state.view.footers[static_cast<std::size_t>(button.index)];
-      footer << "<div class='tm-button tm-footer" << (pressed ? " pressed" : "")
-             << "' style='" << box(button.rect, 0.0F, 0.0F, scale)
+      const bool held = state.held_footer == button.index;
+      footer << "<div class='tm-button tm-footer" << (held ? " lit" : "")
+             << (pressed ? " pressed" : "") << "' style='"
+             << box(button.rect, 0.0F, 0.0F, scale)
              << "'><span class='tm-label'>" << escape_rml(action.label)
              << "</span></div>";
       continue;

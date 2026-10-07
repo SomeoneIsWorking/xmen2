@@ -283,6 +283,12 @@ void TouchMenu::publish() {
   state.pressed = finger_ && finger_->button && !finger_->dragging
                       ? static_cast<int>(*finger_->button)
                       : -1;
+  for (std::size_t i = 0; held_ && i < state.view.footers.size(); ++i) {
+    const TouchMenuFooter &footer = state.view.footers[i];
+    if (footer.held && footer.button == held_) {
+      state.held_footer = static_cast<int>(i);
+    }
+  }
   const std::lock_guard<std::mutex> lock(published_lock_);
   published_ = std::move(state);
 }

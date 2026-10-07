@@ -128,8 +128,8 @@ description; ai lists the seven settings and the current one's description.
 On the skills tab Details puts LT down, which the game reads, held, as its
 Details view: the touch menu then shows the selected skill's name, rank and
 description, icon tokens read as words ("mental damage"). The game shows them
-only while LT is held, so a tap holds it and the next tap on Details, or on
-any other button, lets go; LT is also let go when the menu closes or touch is
+only while LT is held, so a tap holds it, drawing Details lit as the open
+tab is, and the next tap on Details, or on any other button, lets go; LT is also let go when the menu closes or touch is
 cancelled. Next hero, on every tab, presses RT; the game has no pad input for the
 previous hero (only the keyboard's C), so the touch menu offers none.
 On every tab a tap walks the game's focus to the row with the menu pad and a
