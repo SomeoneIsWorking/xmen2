@@ -727,6 +727,35 @@ int main() {
     send_finger(SDL_EVENT_FINGER_UP, 22, a_x, a_y, width, height);
   }
 
+  /* The control channel's d-pad press ends with its hold, as its buttons do. */
+  {
+    constexpr unsigned kPovDown = 18000u;
+    constexpr unsigned kPovCentred = 0xFFFFFFFFu;
+    char reason[256];
+    check(dinput_pad_virtual_set("down", 1.0, 0.01, reason, sizeof reason) ==
+                  1 &&
+              dinput_pad_pov(slot) == kPovDown,
+          "a timed d-pad press reaches the pad", reason);
+    const double past = guest_clock_now_s() + 0.02;
+    while (guest_clock_now_s() < past) {
+    }
+    dinput_pad_virtual_tick(0);
+    check(dinput_pad_pov(slot) == kPovCentred,
+          "and centres once its hold has run out",
+          "pov " + std::to_string(dinput_pad_pov(slot)));
+
+    /* The touch menu's pad tap: held until released, let go once read. */
+    check(dinput_pad_virtual_set("up", 1.0, -1.0, reason, sizeof reason) == 1,
+          "a d-pad press held until release", reason);
+    check(dinput_pad_virtual_release("up") == 1, "is released", "up");
+    const unsigned held = dinput_pad_pov(slot);
+    dinput_pad_virtual_tick(0);
+    check(held == 0u && dinput_pad_pov(slot) == kPovCentred,
+          "reaches the game's read and centres after it",
+          "pov " + std::to_string(held) + " then " +
+              std::to_string(dinput_pad_pov(slot)));
+  }
+
   /* Runs it for real: a report that throws or prints nothing is not an
      instrument, and nothing else in the suite calls it. */
   x2_touch_runtime_report("");

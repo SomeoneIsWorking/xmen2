@@ -311,7 +311,8 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                SDL_GetError());
       return 0;
     }
-    virtual_hat_pressed();
+    /* The same hold rule as a button: negative waits for a release. */
+    virtual_hat_pressed(hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30));
     SDL_UpdateJoysticks();
     SDL_UpdateGamepads();
     snprintf(why, (size_t)whyn, "virtual d-pad direction %s is down", what);

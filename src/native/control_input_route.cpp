@@ -95,6 +95,7 @@ void control_route_pad(x2_socket_t fd, const char *query) {
         "  /pad?axis=leftx&value=-1[&hold=0.5]\n"
         "Buttons: a b x y back start leftstick rightstick "
         "leftshoulder rightshoulder\n"
+        "D-pad: up down left right, held like a button\n"
         "Axes: leftx lefty rightx righty lefttrigger righttrigger, "
         "value -1..1\n");
     return;

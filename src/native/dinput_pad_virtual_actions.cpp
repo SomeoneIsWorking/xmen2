@@ -34,10 +34,10 @@ static unsigned long g_vhat_reads_at_set;
 static int g_vhat_release_pending;
 static double g_vhat_until;
 
-void virtual_hat_pressed(void) {
+void virtual_hat_pressed(double until) {
   g_vhat_reads_at_set = dinput_pad_pov_read_count();
   g_vhat_release_pending = 0;
-  g_vhat_until = 0.0;
+  g_vhat_until = until;
 }
 
 static int center_hat(void) {
@@ -211,9 +211,11 @@ void virtual_expire(void) {
         changed = 1;
       }
   }
-  if (g_vhat_release_pending &&
-      (dinput_pad_pov_read_count() != g_vhat_reads_at_set ||
-       now >= g_vhat_until)) {
+  /* A deferred release lands on the d-pad's read; a timed press, or that
+     release's ceiling, at its deadline. */
+  if ((g_vhat_release_pending &&
+       dinput_pad_pov_read_count() != g_vhat_reads_at_set) ||
+      (g_vhat_until != 0.0 && now >= g_vhat_until)) {
     g_vhat_release_pending = 0;
     g_vhat_until = 0.0;
     SDL_SetJoystickVirtualHat(g_virt_js, 0, SDL_HAT_CENTERED);
