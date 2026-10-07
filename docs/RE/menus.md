@@ -730,6 +730,15 @@ owning the seven; the rest are text items it fills), the `map` model and the
 footers `desctext1` `$MENU_BACK Back`, `desctext2` `$MENU_BACK back` and
 `desctext4` `$MENU_ACCEPT go`.
 
+The two Backs are the game's own: `worldmap.xmlb` sets only `desctext2`
+(`WM_HELPTEXT1`, `back`) and `desctext4` (`WM_HELPTEXT2`, `go`), and init
+(`FUN_005e8c40`) then writes string `0x3f6` (`$MENU_BACK Back`) into footer
+slot 0 and blanks slots 1..3 through `FUN_005bc6b0` on `menu+0x2f4`. The blanking
+changes the menu's footer table but not the text items the XMLB had already
+filled, so `desctext2` and `desctext4` stay drawn beside the new `desctext1`
+(read live after the pad's Xtract: table `['$MENU_BACK Back','','','','']`,
+items `Back`, `back`, `go`).
+
 `menu+0x18d8` is the open act (1..5) and `menu+0x18dc` the point list. Init
 (`FUN_005e8c40`) opens the party's current act (`FUN_0046dce0` vfunc `+0x274`)
 through `FUN_005e8a70`, which enables each act tab whose act has an unlocked
