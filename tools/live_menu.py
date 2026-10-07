@@ -245,9 +245,9 @@ def wait_game_menu(case: Case, done, timeout: float) -> dict:
     return menu
 
 
-def menu_list(case: Case) -> dict:
-    """The list box of the menu's `list` item, as GET /menu?items=all reads
-    it (the shop's and the codex's)."""
+def menu_list(case: Case, name: str = "list") -> dict:
+    """The list box of the menu's `name` item, as GET /menu?items=all reads
+    it (`list` for the shop and the codex, `text_list` for the region)."""
     code, body = case.http("/menu?items=all")
     if code != 200:
         return {}
@@ -256,7 +256,7 @@ def menu_list(case: Case) -> dict:
     except ValueError:
         return {}
     for item in menu.get("items", []):
-        if item.get("name") == "list" and "list_box" in item:
+        if item.get("name") == name and "list_box" in item:
             return item["list_box"]
     return {}
 

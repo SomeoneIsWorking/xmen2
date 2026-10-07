@@ -359,8 +359,8 @@ add_executable(test_touch_menu tests/test_touch_menu.cpp
                src/input/touch_menu_shop.cpp
                src/input/touch_menu_codex.cpp
                src/input/touch_menu_worldmap.cpp
-    src/input/touch_menu_review.cpp
                src/input/touch_menu_review.cpp
+               src/input/touch_menu_region.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
                src/presentation/touch_layout.cpp
@@ -410,8 +410,8 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_menu_shop.cpp
                src/input/touch_menu_codex.cpp
                src/input/touch_menu_worldmap.cpp
-    src/input/touch_menu_review.cpp
                src/input/touch_menu_review.cpp
+               src/input/touch_menu_region.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
                src/input/touch_visuals.cpp
@@ -1839,6 +1839,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
     src/ui/touch_menu_document.cpp
+    src/ui/touch_tab_fit.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
     src/ui/display_settings_document.cpp
@@ -1860,6 +1861,17 @@ target_compile_definitions(x2_rmlui_ui PRIVATE
 set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
                                         PRIVATE lucent::lucent alchemy)
+
+# The tab label fit on a real RmlUi layout with the shipped stylesheet.
+add_executable(test_touch_tab_fit tests/test_touch_tab_fit.cpp
+               src/ui/touch_tab_fit.cpp)
+target_include_directories(test_touch_tab_fit PRIVATE src/ui)
+target_link_libraries(test_touch_tab_fit PRIVATE rmlui_core)
+target_compile_definitions(test_touch_tab_fit PRIVATE
+    X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
+    X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
+    X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui")
+add_test(NAME touch_tab_fit COMMAND test_touch_tab_fit)
 
 include(cmake/Shaders.cmake)
 
@@ -2081,6 +2093,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_codex.cpp
     src/input/touch_menu_worldmap.cpp
     src/input/touch_menu_review.cpp
+    src/input/touch_menu_region.cpp
     src/input/touch_inject.cpp
     src/input/touch_census.cpp
     src/input/touch_pad.cpp

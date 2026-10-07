@@ -1043,14 +1043,20 @@ follows: measured by `tools/live_case.py touch-review`, 8 of 8 on 2026-10-07:
 `openmenu review` showed the five tabs with stats lit and the stats entries
 with their counts (Comic Books 0 of 3); a tap on cinematics opened it in the
 game; a tap on the selected Credits played the credits; Esc returned to the
-review under the touch menu; and Back closed it. Gap: the team roster and detail tabs keep the retail screen;
+review under the touch menu; and Back closed it. The region list follows:
+measured by `tools/live_case.py touch-region`, 7 of 7 on 2026-10-07:
+`openmenu region` showed Region Menu over the game's empty list with Back,
+Refresh and Select; a tap on Select opened the campaign lobby; and Back left
+a reopened region. Tab labels too wide for their tab now shrink to fit. Gap: the team roster and detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world
 map hides locked acts and points and its region map, and walking between two
 unlocked points of one act is unit-tested only; what a
 review entry opens keeps the retail screen and only Credits was driven
-(screens and movies are untested by touch); danger room, region, automap, the online lists, Advanced Options (`sebas`) and
+(screens and movies are untested by touch); the region list was only seen
+empty (no online service), so a tap on a region row is unit-tested only
+and Refresh's effect is unobserved; danger room, automap, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 
 The stick steers from the thumb, not from the ring. It measured its axes from

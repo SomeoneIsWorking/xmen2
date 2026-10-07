@@ -791,6 +791,33 @@ the promo unlocked; A on `Credits` opened the credits, and Esc returned to the
 review. Screens held `Ultimate Bishop` and `Garokk` unlocked; comics and
 concepts were all locked.
 
+## The region list (`CMenuRegion`)
+
+`CMenuRegion` (vtable `0x69f594`) is the online flow's region picker; the
+console's `openmenu region` opens it (no `openmenu region` string is in the
+executable or another menu's XMLB, so how retail play reaches it is not
+established). Its items: `text_title` `Region Menu`, `data_name`, the list
+`text_list` (`CMenuItemListBox`, 25 rows of 8) and the footers `desctext1`
+`$MENU_BACK Back`, `desctext3` `$MENU_SUBTRACT Refresh` and `desctext5`
+`$MENU_ACCEPT Select`.
+
+Its parse hook (`FUN_005d01c0`) keeps the list at `menu+0x1960` and fills it
+(`FUN_005d00b0`): one record `<name>\t<count>` per region the network layer
+(`FUN_00606f40`) holds, each with its region handle. With no online service
+that list is empty. The update (`FUN_005d02d0`) reads the input bits (input
+manager vfunc `+0x140`): on `MENU_ACCEPT` (vfunc `+0x160`) it stores the
+selected entry's handle (`FUN_005bfc70`, `FUN_006158f0`), plays the accept
+sound and runs `openmenu campaign_lobby` through the console, whether or not
+the list has entries; on bit 8 (Refresh) it clears the list and asks the
+network layer again (`FUN_006158e0`). Its `onMouse` (`FUN_005caa80`) is the
+online menus' shared one: it tests the lobby's text items, none of which the
+region has, and otherwise runs the base `CMenu::onMouse`.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu region` from
+gameplay): the list was empty; Enter opened `campaign_lobby`
+(`CMenuCampaignLobby`, Host Game / Join Game); Back on a region opened over
+the lobby returned to the lobby.
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene
