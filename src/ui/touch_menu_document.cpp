@@ -77,8 +77,8 @@ void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
   for (std::size_t i = 0; i < state.view.detail.size(); ++i) {
     const float line_top =
         layout.detail_text_top + static_cast<float>(i) * height;
-    if (line_top < layout.detail.top ||
-        line_top + height > layout.detail.bottom) {
+    if (line_top < layout.detail_text.top ||
+        line_top + height > layout.detail_text.bottom) {
       continue;
     }
     const X2Rect line{layout.detail.left, line_top, layout.detail.right,

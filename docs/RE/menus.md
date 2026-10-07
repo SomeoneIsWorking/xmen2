@@ -888,6 +888,37 @@ held on the map for 1.5 s is the retail pointer and panned the map
 on each side; LB and RB did not turn it; B closed it. Nothing a touch player
 has turns the map.
 
+## The danger room (`CMenuDangerRoom`)
+
+`CMenuDangerRoom` (vtable `0x69e964`) picks a training course in steps; the
+console's `openmenu danger_room` opens it and so does the main menu's danger
+room. `menu+0x18d8` is the step: 0 the grades, 1 a grade's courses, 2..9 the
+lobby and versus steps of an online session. Its items: the tabs
+`option_text1..3` (no text on the grades; `Overview` and `Status` on the
+courses), the `list` (`CMenuItemListBox`, 34 rows of 8: `Freshman` ..
+`Legend`, then the grade's courses with `NOT AVAILABLE` for locked ones), the
+text box `desc` (the step's description: the objectives and awards on
+Overview, the completion and recommended level on Status) and the footers
+`desctext1` `$MENU_BACK Back` and `desctext2` `$MENU_ACCEPT Select`.
+
+The update (`FUN_005b6240`) spends the queued tab steps `menu+0x18cc` (axis
+0, timer `menu+0x18d4`) and, on the accept and back bits, runs the step's
+handler (`FUN_005b2ce0` or `FUN_005b2b50`, chosen by `0x005b25c0(step)`;
+neither is decompiled here). Back (`FUN_005b6f00`) on step 1 returns to the
+grades (`FUN_005b2600(0)`); on step 0 it leaves through `FUN_005b5df0`, not
+followed. Its `onMouse` (`FUN_005b5a90`)
+works as the review's: on `WM_LBUTTONUP`/`WM_RBUTTONUP` over a shown
+`option_text` tab other than the lit one it publishes one axis 0 step toward
+it and queues the rest; otherwise the base `CMenu::onMouse` (the list, the
+footers) and, on the online steps, records the clicked entry.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu danger_room` from
+gameplay): it opened on the six grades with `TRAINING MODE`,
+`Grade: [PLEASE CHOOSE]`. Enter on Freshman listed `Setting 101 - Hidden
+Goods` and eight `NOT AVAILABLE` with Overview lit (14 lines: grade, course,
+objectives and three awards); Right lit Status (`Status: Incomplete`,
+`Recommended Level: 1`); Enter on the course opened `team` (`CMenuTeam`).
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene

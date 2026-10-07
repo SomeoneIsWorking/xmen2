@@ -43,10 +43,16 @@ struct TouchMenuLayout {
      When reading (a view with no rows) it is the list's own place. */
   X2Rect detail{};
   bool reading = false;
-  /* Where the first detail line's top is, scroll applied when reading, and
-     each line's height; lines outside `detail` are not drawn. */
+  /* Where the first detail line's top is, its scroll applied, and each
+     line's height; lines outside `detail_text` are not drawn. */
   float detail_text_top = 0.0F;
   float detail_line_height = 0.0F;
+  /* The part of `detail` its lines may occupy: below the facts. */
+  X2Rect detail_text{};
+  /* Beside a list the detail lines scroll on their own; read text scrolls
+     with `scroll`. */
+  float detail_scroll = 0.0F;
+  float detail_max_scroll = 0.0F;
   X2Rect footer{};
   std::vector<TouchMenuButton> buttons;
   float scroll = 0.0F;
@@ -58,10 +64,11 @@ struct TouchMenuLayout {
 };
 
 /* Lays the view out inside the viewport's safe area. `scroll` is clamped to
-   what the rows need. */
+   what the rows need, `detail_scroll` to what the detail lines beside them
+   need. */
 TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
                                   const X2LayoutViewport &viewport,
-                                  float scroll);
+                                  float scroll, float detail_scroll);
 
 /* The scroll that brings row `row` fully into the list, from `scroll`. */
 float touch_menu_scroll_to(const TouchMenuLayout &layout, int row);

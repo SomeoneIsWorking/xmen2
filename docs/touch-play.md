@@ -85,7 +85,7 @@ names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
 **The main menu, Options, the PDA, the team menu's party screen, the shop,
-the stash, the codex, the world map, the review and the region list are replaced by the touch menu.** While touch play is the input and one of those
+the stash, the codex, the world map, the review, the region list and the danger room are replaced by the touch menu.** While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
@@ -143,7 +143,16 @@ keeps the retail screen. The region list (`touch_menu_region`) is titled by the 
 `text_title`, lists the regions with their counts and offers Back, Refresh and
 Select; a tap walks the selection to a region and a tap on the selected one
 presses A. Select opens the campaign lobby, which keeps the retail screen.
-With no online service the list is empty.
+With no online service the list is empty. The danger room
+(`touch_menu_danger_room`) lists the step's entries (the grades, then a
+grade's courses) and pins below them the game's description of the selected
+entry; once a grade is chosen its Overview and Status tabs are a tab bar. A
+tap walks the selection and a tap on the selected entry presses A: a grade
+opens its courses, a course opens the team menu. Back steps back as the game
+does. Detail text longer than its band beside a list (a course's objectives
+and awards) scrolls by a drag on the band, on its own; the list keeps its
+scroll, and another entry's text starts at its top. Tabs without text are not
+offered.
 
 Mouse, keyboard and controller play never see it. The settings overlay hides
 it, and the touch menu hides the menu pad while it is up. Other menu classes
@@ -318,7 +327,7 @@ already chose keeps player one.
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
 | `ctest -R touch_tab_fit` | Tab labels too wide for their tab shrink by one shared factor to fit inside its padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts and the region list included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
