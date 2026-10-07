@@ -1090,8 +1090,10 @@ returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes;
 `power5 power2 power1 power9` unchanged, Power 2 swapped them to `power2
 power5 power1 power9`, and Next hero turned the tabs from Magneto to Cyclops.
 Gap: the previous hero has no pad input, so touch offers only Next hero; the
-power slots are named, not the skills in them; the skills tab's Details view
-keeps the menu pad only, and the skills tab shows no skill description;
+power slots are named, not the skills in them; `touch-team-skill-details` 13
+of 13 (2026-10-07): a tap on Details held LT and the game showed its Details
+view (mode 6) with Levitation's description, which the touch menu read, and
+a second tap returned to the list;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world

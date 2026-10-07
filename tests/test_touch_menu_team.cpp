@@ -367,7 +367,33 @@ MenuSnapshot skills_menu() {
       item(36, "desctext2", "~05$MENU_ACCEPT Add", 62, 21, 141, 35));
   menu.items.push_back(
       item(120, "assign_help", "~05$MENU_DROP Assign", 29, 52, 108, 66));
+  menu.items.push_back(
+      item(38, "desctext4", "~05$MENU_DETAILS Details", 268, 21, 347, 35));
   push_accept(&menu);
+  return menu;
+}
+
+/* The skills tab while LT is held: the list hidden and the selected skill's
+   name, ranks and description shown. */
+MenuSnapshot skill_details_menu() {
+  MenuSnapshot menu = skills_menu();
+  menu.mode = 6u;
+  for (MenuItem &shown : menu.items) {
+    if (shown.name == "skill_list") {
+      shown.flags |= x2::menu::kItemHidden;
+    }
+  }
+  menu.items.push_back(
+      item(121, "skill_title", "Levitation", 233, 300, 400, 314));
+  menu.items.push_back(
+      item(122, "skill_ranks",
+           (kOwned + glyphs(kOpen, 13) + glyphs(kLocked, 6)).c_str(), 233, 285,
+           400, 299));
+  menu.items.push_back(
+      item(123, "skill_desc",
+           "Lift and throw objects.\n\n~02Current Rank\n~~~1011~~-~1015~~ "
+           "$DMG_MENTAL at lift\n+10 $RES_ENERGY, 12 $EP/s",
+           233, 120, 480, 280));
   return menu;
 }
 
@@ -618,6 +644,86 @@ void the_skills_tab_assigns_a_power_slot() {
         "assign");
 }
 
+void the_skills_tab_details_hold_lt() {
+  const RetailScenePlane plane = plane_1280x720();
+  const auto list = x2::input::build_touch_menu_view(skills_menu(), plane);
+  check(list && list->detail.empty(),
+        "the skill list shows no description; the game fills it only in "
+        "Details");
+  const TouchMenuFooter *details =
+      list ? footer_named(*list, "Details") : nullptr;
+  check(details != nullptr && details->button == TouchAction::MenuLeftTrigger &&
+            details->held,
+        "Details is the pad's LT, held");
+  const auto shown =
+      x2::input::build_touch_menu_view(skill_details_menu(), plane);
+  check(shown && shown->rows.empty(), "the Details view has no rows");
+  const std::vector<std::string> expected = {"Levitation",
+                                             "rank 1/20",
+                                             "Lift and throw objects.",
+                                             "Current Rank",
+                                             "11-15 mental damage at lift",
+                                             "+10 energy resistance, 12 EP/s"};
+  check(shown && shown->detail == expected,
+        "the skill's name, rank and description, icon tokens read as words");
+  if (!list || !shown) {
+    return;
+  }
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(list, 0u);
+  const auto footer_rect = [&](const std::string &label) {
+    const TouchMenuView view = touch.state().view;
+    for (std::size_t i = 0; i < view.footers.size(); ++i) {
+      if (view.footers[i].label == label) {
+        return find(touch.layout(), TouchMenuPart::footer, static_cast<int>(i));
+      }
+    }
+    return static_cast<const TouchMenuButton *>(nullptr);
+  };
+  const TouchMenuButton *button = footer_rect("Details");
+  const auto down =
+      button ? tap(touch, button->rect, 10u) : std::vector<TouchMenuDelivery>{};
+  check(down.size() == 1u && down[0].kind == TouchMenuDelivery::Kind::press &&
+            down[0].button == TouchAction::MenuLeftTrigger,
+        "a tap on Details puts LT down and leaves it there");
+  touch.set_view(shown, 20u);
+  button = footer_rect("Details");
+  const auto up =
+      button ? tap(touch, button->rect, 30u) : std::vector<TouchMenuDelivery>{};
+  check(up.size() == 1u && up[0].kind == TouchMenuDelivery::Kind::release &&
+            up[0].button == TouchAction::MenuLeftTrigger,
+        "a second tap lets LT go, back to the list");
+
+  button = footer_rect("Details");
+  if (button != nullptr) {
+    tap(touch, button->rect, 40u);
+  }
+  button = footer_rect("Add");
+  const auto add =
+      button ? tap(touch, button->rect, 50u) : std::vector<TouchMenuDelivery>{};
+  check(add.size() == 2u && add[0].kind == TouchMenuDelivery::Kind::release &&
+            add[1].kind == TouchMenuDelivery::Kind::click,
+        "a tap on another footer lets LT go first");
+  button = footer_rect("Details");
+  if (button != nullptr) {
+    tap(touch, button->rect, 60u);
+  }
+  const auto gone = touch.set_view(std::nullopt, 70u);
+  check(gone.size() == 1u && gone[0].kind == TouchMenuDelivery::Kind::release,
+        "LT is let go when the menu goes away");
+  touch.set_view(list, 80u);
+  button = footer_rect("Details");
+  if (button != nullptr) {
+    tap(touch, button->rect, 90u);
+  }
+  const auto cancelled = touch.cancel();
+  check(cancelled.size() == 1u &&
+            cancelled[0].kind == TouchMenuDelivery::Kind::release,
+        "and when touch is cancelled");
+}
+
 void the_gear_tab_walks_the_focused_list() {
   const RetailScenePlane plane = plane_1280x720();
   const auto slots = x2::input::build_touch_menu_view(gear_menu(false), plane);
@@ -679,6 +785,7 @@ int main() {
   the_ai_tab_walks_its_settings();
   the_skills_tab_reads_ranks();
   the_skills_tab_assigns_a_power_slot();
+  the_skills_tab_details_hold_lt();
   the_gear_tab_walks_the_focused_list();
   return report("touch_menu_team");
 }

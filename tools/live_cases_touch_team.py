@@ -419,3 +419,42 @@ def case_touch_team_assign(case: Case) -> None:
                                       turned.get("mode")))
     case.shot("next-hero")
     leave_details(case)
+
+
+def case_touch_team_skill_details(case: Case) -> None:
+    """The skills tab's Details: a tap holds LT, which the game reads as its
+    Details view of the selected skill; a second tap lets go."""
+    if not start_levelled(case):
+        return
+    shown = open_details(case, "skills")
+    skill = focused_label(shown)
+    tap_touch_button(case, shown, touch_button(shown, "footer", "details"))
+    details = wait_game_menu(case, lambda m: m.get("mode") == 6 and m.get(
+        "touch_menu", {}).get("detail"), 10)
+    lines = details.get("touch_menu", {}).get("detail", [])
+    (case.dir / "details.json").write_text(json.dumps(details, indent=1) + "\n")
+    labels = menu_labels(case)
+    case.check("a tap on Details opened the game's Details view (mode 6)",
+               details.get("mode") == 6, "mode %s" % details.get("mode"))
+    case.check("the touch menu reads the selected skill's name, rank and "
+               "description",
+               len(lines) > 3 and lines[0].lower() == skill
+               and lines[1].startswith("rank ")
+               and labels.get("skill_title", "").lower() == skill
+               and "$" not in " ".join(lines),
+               str(lines[:4]))
+    case.shot("skill-details")
+    time.sleep(1.0)
+    case.check("the game stays in Details while LT is held",
+               read_menu(case).get("mode") == 6,
+               "mode %s" % read_menu(case).get("mode"))
+    shown = details.get("touch_menu", {})
+    tap_touch_button(case, shown, touch_button(shown, "footer", "details"))
+    back = wait_game_menu(case, lambda m: m.get("mode") == 3 and m.get(
+        "touch_menu", {}).get("rows"), 10)
+    case.check("a second tap let LT go, back to the skill list",
+               back.get("mode") == 3
+               and focused_label(back.get("touch_menu", {})) == skill,
+               "mode %s" % back.get("mode"))
+    case.shot("skill-list")
+    leave_details(case)

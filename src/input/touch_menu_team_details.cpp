@@ -85,6 +85,19 @@ constexpr std::string_view kCancelLabel = "Cancel";
 constexpr std::string_view kAssignHelp = "assign_help";
 /* FUN_005e3c70 reads RT on every hero tab as the next hero in the party. */
 constexpr std::string_view kNextHeroLabel = "Next hero";
+/* The team update shows the selected skill's Details (mode 6) while action 9
+   (LT) is held and returns to the list (mode 3) when it is let go. */
+constexpr std::string_view kDetailsToken = "$MENU_DETAILS";
+/* Icon tokens in a skill's description: "$DMG_MENTAL" draws the mental
+   damage icon, "$RES_ENERGY" the energy resistance one. */
+struct IconToken {
+  std::string_view prefix;
+  std::string_view word;
+};
+constexpr std::array<IconToken, 2> kIconTokens = {{
+    {"$DMG_", " damage"},
+    {"$RES_", " resistance"},
+}};
 
 /* The stat description's resistance legend: "($RES_ENERGY)" draws the icon
    that label_re draws beside resist_energy. */
@@ -169,22 +182,75 @@ void build_stats(const menu::MenuSnapshot &menu, TouchMenuView *view) {
   if (description == nullptr || !menu_item_shown(*description)) {
     return;
   }
-  const std::string_view raw = description->label;
-  for (std::size_t start = 0; start <= raw.size();) {
-    std::size_t end = raw.find('\n', start);
-    if (end == std::string_view::npos) {
-      end = raw.size();
-    }
-    std::string line =
-        stat_description_line(menu, raw.substr(start, end - start));
+  for (const std::string_view piece : menu_raw_lines(description->label)) {
+    std::string line = stat_description_line(menu, piece);
     if (!line.empty()) {
       view->detail.push_back(std::move(line));
     }
-    start = end + 1u;
+  }
+}
+
+/* A skill description line with each damage or resistance icon token read
+   as its type ("mental damage"). */
+std::string skill_description_line(std::string_view raw) {
+  std::string out;
+  std::size_t at = 0;
+  while (at < raw.size()) {
+    const IconToken *found = nullptr;
+    std::size_t token = std::string_view::npos;
+    for (const IconToken &icon : kIconTokens) {
+      const std::size_t where = raw.find(icon.prefix, at);
+      if (where < token) {
+        token = where;
+        found = &icon;
+      }
+    }
+    if (found == nullptr) {
+      out += raw.substr(at);
+      break;
+    }
+    out += raw.substr(at, token - at);
+    std::size_t end = token + found->prefix.size();
+    while (end < raw.size() &&
+           (std::isalpha(static_cast<unsigned char>(raw[end])) != 0 ||
+            raw[end] == '_')) {
+      out.push_back(static_cast<char>(
+          std::tolower(static_cast<unsigned char>(raw[end]))));
+      ++end;
+    }
+    out += found->word;
+    at = end;
+  }
+  return touch_menu_text(out);
+}
+
+/* The Details view: the selected skill's name, rank and description, which
+   the game fills only while it shows them. */
+void build_skill_details(const menu::MenuSnapshot &menu, TouchMenuView *view) {
+  const menu::MenuItem *description = find_menu_item(menu, "skill_desc");
+  if (description == nullptr || !menu_item_shown(*description)) {
+    return;
+  }
+  const std::string name = shown_text(menu, "skill_title");
+  if (!name.empty()) {
+    view->detail.push_back(name);
+  }
+  const menu::MenuItem *ranks = find_menu_item(menu, "skill_ranks");
+  if (ranks != nullptr && menu_item_shown(*ranks)) {
+    if (const auto rank = skill_rank_text(ranks->label)) {
+      view->detail.push_back(*rank);
+    }
+  }
+  for (const std::string_view piece : menu_raw_lines(description->label)) {
+    std::string line = skill_description_line(piece);
+    if (!line.empty()) {
+      view->detail.push_back(std::move(line));
+    }
   }
 }
 
 void build_skills(const menu::MenuSnapshot &menu, TouchMenuView *view) {
+  build_skill_details(menu, view);
   const menu::MenuItem *list = find_menu_item(menu, "skill_list");
   if (list == nullptr || !list->list_box || !menu_item_shown(*list)) {
     return;
@@ -280,6 +346,14 @@ void append_team_footers(const menu::MenuSnapshot &menu,
   if (skills && menu.assigning_skill) {
     append_assigning_footers(view);
     return;
+  }
+  if (skills) {
+    for (TouchMenuFooter &footer : view->footers) {
+      if (footer.token == kDetailsToken) {
+        footer.button = TouchAction::MenuLeftTrigger;
+        footer.held = true;
+      }
+    }
   }
   const menu::MenuItem *assign = find_menu_item(menu, kAssignHelp);
   if (skills && assign != nullptr) {

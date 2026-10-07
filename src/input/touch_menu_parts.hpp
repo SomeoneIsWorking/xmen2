@@ -16,6 +16,9 @@ presentation::ClientPoint
 menu_item_centre(const menu::SceneRect &rect,
                  const presentation::RetailScenePlane &plane);
 
+/* Retail text split at the game's own line breaks, unread. */
+std::vector<std::string_view> menu_raw_lines(std::string_view raw);
+
 /* Retail text split at the game's own line breaks, each line as
    touch_menu_text reads it; empty lines are dropped. */
 std::vector<std::string> menu_text_lines(std::string_view raw);

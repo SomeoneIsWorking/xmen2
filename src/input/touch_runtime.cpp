@@ -210,6 +210,14 @@ void TouchRuntime::deliver(std::span<const TouchMenuDelivery> deliveries) {
     press.phase = lucent::touch::Phase::began;
     ActionEvent release = press;
     release.phase = lucent::touch::Phase::ended;
+    if (delivery.kind == TouchMenuDelivery::Kind::press) {
+      publish(std::array<ActionEvent, 1>{press});
+      continue;
+    }
+    if (delivery.kind == TouchMenuDelivery::Kind::release) {
+      publish(std::array<ActionEvent, 1>{release});
+      continue;
+    }
     const std::array<ActionEvent, 2> tap{press, release};
     x2_touch_census()->touch_menu_pad_taps++;
     publish(tap);
@@ -265,6 +273,7 @@ void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.cancel());
   contacts_.clear();
   release_menu();
+  deliver(touch_menu_.cancel());
   publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
@@ -560,7 +569,7 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   release_menu();
   active_zones_.clear();
   skip_.release();
-  touch_menu_.cancel();
+  deliver(touch_menu_.cancel());
 }
 
 void TouchRuntime::set_hud_placement(const X2HudPlacement *placement) {

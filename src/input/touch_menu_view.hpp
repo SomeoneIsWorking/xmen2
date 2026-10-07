@@ -46,6 +46,9 @@ struct TouchMenuFooter {
   /* A token the text item's onMouse does not publish, pressed on the menu pad
      instead of clicked. */
   std::optional<TouchAction> button;
+  /* The game reads `button` while it is held: a tap holds it down until the
+     next tap on this footer or on any other button. */
+  bool held = false;
 };
 
 /* A tab of a class with tabs: a click on its own item opens it. */
