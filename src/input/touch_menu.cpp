@@ -147,7 +147,11 @@ std::vector<TouchMenuDelivery>
 TouchMenu::activate(const TouchMenuButton &button, std::uint64_t now_ms) {
   const auto index = static_cast<std::size_t>(button.index);
   if (button.part == TouchMenuPart::footer) {
-    return {click(view_->footers[index].click)};
+    const TouchMenuFooter &footer = view_->footers[index];
+    if (footer.button) {
+      return {pad(*footer.button)};
+    }
+    return {click(footer.click)};
   }
   if (button.part == TouchMenuPart::tab) {
     walk_.reset();

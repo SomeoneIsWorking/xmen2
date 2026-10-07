@@ -237,19 +237,22 @@ def drag_touch(case: Case, shown: dict, x: float, y_from: float,
 
 
 def reveal_touch_row(case: Case, label: str) -> tuple[dict, dict | None]:
-    """Drag the touch menu's list until the row `label` sits in its middle;
+    """Drag the touch menu's list until the row `label` sits whole inside it;
     the shown menu and that row's button, or None when it has no such row."""
     shown = touch_menu(case)
     for _ in range(12):
         button = touch_button(shown, "row", label)
         if button is None:
             return shown, None
-        height = shown["viewport_height"]
-        centre = button["top"] + button["height"] * 0.5
-        if 0.2 * height <= centre <= 0.7 * height:
+        top = shown["list"]["top"]
+        bottom = shown["list"]["bottom"]
+        if top <= button["top"] and button["top"] + button["height"] <= bottom:
             return shown, button
-        shift = max(-0.4 * height, min(0.4 * height, centre - 0.45 * height))
-        start = 0.5 * height
+        middle = 0.5 * (top + bottom)
+        reach = 0.4 * (bottom - top)
+        centre = button["top"] + button["height"] * 0.5
+        shift = max(-reach, min(reach, centre - middle))
+        start = middle
         drag_touch(case, shown, button["left"] + button["width"] * 0.5,
                    start, start - shift)
         time.sleep(0.5)
@@ -264,6 +267,21 @@ def wait_game_menu(case: Case, done, timeout: float) -> dict:
         time.sleep(0.3)
         menu = read_menu(case)
     return menu
+
+
+def dismiss_level_up(case: Case) -> None:
+    """The level-up popup the XP raises asks how to spend the points; A keeps
+    them for the player."""
+    popup = wait_game_menu(case, lambda m: m.get("popup") is True, 10)
+    case.check("the XP raised the game's level-up popup",
+               popup.get("popup") is True)
+    # A press in the popup's first frames is lost (measured: one at its first
+    # sighting did nothing, one a second later closed it).
+    time.sleep(1.0)
+    case.http("/pad?button=a&hold=0.1")
+    closed = wait_game_menu(case, lambda m: m.get("popup") is not True, 10)
+    case.check("and A left the points for the player",
+               closed.get("popup") is not True)
 
 
 def menu_item(case: Case, name: str) -> dict:

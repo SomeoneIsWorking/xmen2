@@ -9,7 +9,7 @@ namespace x2::input {
    hero summary: a click on a hero selects it and a click on the selected hero
    opens its details (CMenuTeam::onMouse, 0x005e25c0). The roster is one row
    per hero the cards name, walked with the menu pad and chosen or revived
-   with A. Other modes keep the retail screen. */
+   with A. Modes 2..6 are the hero's detail tabs (touch_menu_team_details). */
 std::optional<TouchMenuView>
 build_team_view(const menu::MenuSnapshot &menu,
                 const presentation::RetailScenePlane &plane);

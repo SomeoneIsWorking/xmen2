@@ -133,7 +133,11 @@ void put_list_box(std::string *out, const menu::ListBoxState &list) {
   put_int(out, "row_height", list.row_height);
   put_strings(out, "entries", list.entries);
   out->push_back(',');
-  put_strings(out, "values", list.values);
+  std::vector<std::string> values;
+  for (std::size_t i = 0; i < list.entries.size(); ++i) {
+    values.push_back(list.value(i));
+  }
+  put_strings(out, "values", values);
   out->append("},");
 }
 
@@ -236,6 +240,12 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
   put_float(&out, "viewport_width", state.viewport.width);
   put_float(&out, "viewport_height", state.viewport.height);
   put_float(&out, "scroll", state.layout.scroll);
+  put_key(&out, "list");
+  out.push_back('{');
+  put_float(&out, "top", state.layout.list.top);
+  put_float(&out, "bottom", state.layout.list.bottom);
+  close_object(&out);
+  out.push_back(',');
   put_key(&out, "rows");
   out.push_back('[');
   for (const input::TouchMenuRow &row : state.view.rows) {

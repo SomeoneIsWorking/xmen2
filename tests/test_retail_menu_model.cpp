@@ -95,6 +95,7 @@ constexpr std::uint32_t kVtMenuShop = 0x0069eb4cu;
 constexpr std::uint32_t kVtListBox = 0x006a062cu;
 constexpr std::uint32_t kVtMenuCodex = 0x0069e6d4u;
 constexpr std::uint32_t kVtListCodex = 0x006a0724u;
+constexpr std::uint32_t kVtSkills = 0x006a0f14u;
 constexpr std::uint32_t kListStore = 0x25000000u;
 
 std::uint32_t rebased(std::uint32_t linked) {
@@ -688,9 +689,10 @@ void test_shop_list_box() {
             box.entries[0] == "Magneto: Level Advance" &&
             box.entries[1] == "Med Kit",
         "an entry's text, cut at its first tab");
-  check(box.values.size() == 3u && box.values[0].empty() &&
-            box.values[1] == "3 of 9",
-        "an entry's further columns, tabs as spaces");
+  check(box.columns.size() == 3u && box.columns[0].empty() &&
+            box.columns[1] == std::vector<std::string>{"3", "of 9"} &&
+            box.value(1) == "3 of 9" && box.value(0).empty(),
+        "an entry's further columns split at its tabs, and as one line");
   check(box.entries.size() == 3u && box.entries[2].size() == 63u,
         "an entry's text is at most what the getter copies");
   check(box.selected == 1 && box.top == 1, "the selection and window top");
@@ -730,6 +732,26 @@ void test_codex_list() {
         "a ListCodex reads as the list box it extends");
 }
 
+void test_skill_list() {
+  FakeGuest guest = build_list_menu(3u, kVtMenuTeam, kVtSkills);
+  guest.u32(kMenu + 0x18d8u, 3u);
+  const std::uint32_t records = rebased(0x008a83f4u);
+  guest.text(records + 27u * 0x70u,
+             "Polarized Shield\t~42Boost~~\t\xd9\xd8\xd7");
+  x2::menu::RetailMenuModel model(guest, kImage);
+  x2::menu::MenuSnapshot menu;
+  check(model.read(&menu) == x2::menu::ReadStatus::ok, "the skills tab reads");
+  const auto *list = find(menu, "list");
+  check(list != nullptr && list->item_class == x2::menu::ItemClass::skills &&
+            list->list_box && list->list_box->columns.size() == 3u &&
+            list->list_box->entries[1] == "Polarized Shield" &&
+            list->list_box->columns[1] ==
+                std::vector<std::string>{"~42Boost~~",
+                                         "\xc3\x99\xc3\x98\xc3\x97"},
+        "a CMenuItemSkills reads as the list box it extends, rank glyphs "
+        "and all");
+}
+
 void test_linked_base_is_not_read() {
   const FakeGuest guest = build_options();
   x2::menu::RetailMenuModel model(guest, kLinked);
@@ -749,6 +771,7 @@ int main() {
   test_team_menu();
   test_shop_list_box();
   test_codex_list();
+  test_skill_list();
   std::printf("%d/%d check(s) passed\n", checks - failures, checks);
   return failures == 0 ? 0 : 1;
 }

@@ -6,14 +6,11 @@ import json
 import re
 import time
 
-from live_game import (
-    live_controls,
-    live_viewport,
-    tap_control,
-)
+from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     MAIN_MENU_LABELS,
+    dismiss_level_up,
     drag_touch,
     keyboard_into_gameplay,
     keyboard_into_the_pda,
@@ -203,23 +200,22 @@ def case_touch_team(case: Case) -> None:
     case.check("a second tap opened that hero's details",
                details.get("menu") == "team" and details.get("mode", 0) >= 2,
                "mode %s" % details.get("mode"))
-    deadline = time.monotonic() + 5
-    controls = live_controls(case)
-    while time.monotonic() < deadline and "menu-b" not in controls:
-        time.sleep(0.2)
-        controls = live_controls(case)
-    case.check("where the touch menu stands aside for the menu pad",
-               touch_menu(case).get("visible") is False
-               and "menu-b" in controls, "drawn: %s" % sorted(controls))
+    details_view = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
+        "tabs"), 10).get("touch_menu", {})
+    case.check("under the touch menu, on the game's detail tabs",
+               details_view.get("visible") is True
+               and [t["label"] for t in details_view.get("tabs", [])]
+               == ["stats", "skills", "gear", "ai"],
+               str(details_view.get("tabs")))
     case.shot("details")
-    viewport = live_viewport(case)
-    if viewport is None or "menu-b" not in controls:
+    back = touch_button(details_view, "footer", "accept")
+    if back is None:
         return
-    tap_control(case, controls["menu-b"], viewport)
+    tap_touch_button(case, details_view, back)
     team = wait_game_menu(
         case, lambda m: m.get("mode") == 0
         and m.get("touch_menu", {}).get("visible") is True, 10)
-    case.check("the pad's B returned to the party under the touch menu",
+    case.check("the details' Accept (the game's Back) returned to the party",
                team.get("mode") == 0
                and team.get("touch_menu", {}).get("visible") is True,
                "mode %s" % team.get("mode"))
@@ -947,8 +943,9 @@ def money(case: Case) -> int:
 def case_touch_roster(case: Case) -> None:
     """The touch menu over CMenuTeam's roster, in the flow that has one.
 
-    `loadmap <map> 0 1` opens the team menu with Replace; Wolverine is killed
-    first so the roster holds a fallen hero. A tap on him walks the carousel
+    `loadmap <map> 0 1` opens the team menu with Replace; the heroes are
+    levelled past the cost floor and Wolverine is killed first so the roster
+    holds a fallen hero. A tap on him walks the carousel
     with the menu pad and A revives him for the game's price; a tap on
     Sabretooth then puts him in the empty party slot.
     """
@@ -960,7 +957,13 @@ def case_touch_roster(case: Case) -> None:
     case.check("the run reached gameplay through the PDA",
                menu.get("active") is False, str(menu.get("menu")))
     for command in ("runscript act1/genosha/genosha1/temp_addmoney",
-                    'runscript killEntity("wolverine")',
+                    "runscript act1/genosha/genosha1/temp_addmoney",
+                    "runscript act1/genosha/genosha1/temp_addmoney",
+                    "runscript awardXPToPlayable(2000000)"):
+        case.http("/console?command=" + command.replace(" ", "%20"))
+        time.sleep(1)
+    dismiss_level_up(case)
+    for command in ('runscript killEntity("wolverine")',
                     "loadmap act2/jungle/jungle1 0 1"):
         case.http("/console?command=" + command.replace(" ", "%20"))
         time.sleep(1)
@@ -992,7 +995,7 @@ def case_touch_roster(case: Case) -> None:
                names == roster_names(case) and "Sabretooth" in names
                and "Jean Grey" in names and "Professor X" not in names,
                str(names))
-    case.check("and fallen Wolverine says so beside his level",
+    case.check("and fallen Wolverine says so beside his level and cost",
                str(values.get("Wolverine", "")).startswith("Fallen, level"),
                str(values.get("Wolverine")))
     if "Wolverine" not in names or "Sabretooth" not in names:
@@ -1004,6 +1007,7 @@ def case_touch_roster(case: Case) -> None:
     case.check("Wolverine's row scrolls into reach", wolverine is not None)
     if wolverine is None:
         return
+    case.shot("fallen")
     tap_touch_button(case, roster, wolverine)
     wait_game_menu(case, lambda m: not roster_hero(case, "wolverine").get(
         "fallen", True), 20)
@@ -1012,8 +1016,12 @@ def case_touch_roster(case: Case) -> None:
     case.check("a tap on Wolverine revived him in the game",
                roster_hero(case, "wolverine").get("fallen") is False,
                str(roster_hero(case, "wolverine")))
-    case.check("and the game took its price", after < before,
-               "%d -> %d" % (before, after))
+    shown_cost = re.search(r"revive (\d+)$",
+                           str(values.get("Wolverine", "")))
+    case.check("and the game took the revive cost the row showed",
+               shown_cost is not None
+               and before - after == int(shown_cost.group(1)),
+               "%d -> %d, row %r" % (before, after, values.get("Wolverine")))
     case.shot("revived")
 
     roster, sabretooth = reveal_touch_row(case, "sabretooth")

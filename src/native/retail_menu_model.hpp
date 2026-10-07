@@ -64,8 +64,8 @@ struct ListBoxState {
      text up to its first tab. */
   std::vector<std::string> entries;
   /* Each entry's further columns: the record's text after its first tab,
-     tabs as single spaces; empty for a one-column entry. */
-  std::vector<std::string> values;
+     split at the tabs; none for a one-column entry. */
+  std::vector<std::vector<std::string>> columns;
   /* First entry in the window, item+0xd8. */
   int top = 0;
   /* item+0xac; -1 when none. */
@@ -74,6 +74,20 @@ struct ListBoxState {
   int visible_rows = 0;
   /* item+0xe0, in scene units. */
   int row_height = 0;
+  /* An entry's further columns as one line, single spaces between. */
+  std::string value(std::size_t entry) const {
+    std::string out;
+    if (entry >= columns.size()) {
+      return out;
+    }
+    for (const std::string &column : columns[entry]) {
+      if (!out.empty()) {
+        out.push_back(' ');
+      }
+      out += column;
+    }
+    return out;
+  }
   /* The box the list's own onMouse (0x005c0e10) tests, without the base
      class's half-depth lift. Row k spans `row_height` down from
      bottom - k * row_height. */
@@ -100,8 +114,8 @@ struct MenuItem {
   bool navigable = false;
   /* CMenuItemBar's drawn level, item+0x40. */
   std::optional<float> fill;
-  /* A list box's entries; set for ItemClass::list_box, list_codex and
-     list_chars. */
+  /* A list box's entries; set for ItemClass::list_box, list_codex,
+     list_chars and skills. */
   std::optional<ListBoxState> list_box;
   /* A hero card's record, found by its label (CMenuItemCharSummary). */
   std::optional<native::HeroRecord> hero;

@@ -63,7 +63,12 @@ from live_cases_touch_menu import (
     case_touch_team,
     case_touch_worldmap,
 )
-
+from live_cases_touch_team import (
+    case_touch_team_ai,
+    case_touch_team_gear,
+    case_touch_team_skills,
+    case_touch_team_stats,
+)
 from live_cases_extraction import (
     case_extract_keyboard_back,
     case_extraction_free,
@@ -92,6 +97,10 @@ CASES = {
     "touch-region": case_touch_region,
     "touch-danger-room": case_touch_danger_room,
     "touch-roster": case_touch_roster,
+    "touch-team-stats": case_touch_team_stats,
+    "touch-team-skills": case_touch_team_skills,
+    "touch-team-gear": case_touch_team_gear,
+    "touch-team-ai": case_touch_team_ai,
     "extract-keyboard-back": case_extract_keyboard_back,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,

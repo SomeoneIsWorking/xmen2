@@ -3,6 +3,7 @@
 
 #include "../native/retail_menu_model.hpp"
 #include "../presentation/retail_scene_plane.hpp"
+#include "touch_controls.h"
 
 #include <cstdint>
 #include <optional>
@@ -42,6 +43,9 @@ struct TouchMenuFooter {
   std::string token;
   std::string label;
   presentation::ClientPoint click;
+  /* A token the text item's onMouse does not publish, pressed on the menu pad
+     instead of clicked. */
+  std::optional<TouchAction> button;
 };
 
 /* A tab of a class with tabs: a click on its own item opens it. */

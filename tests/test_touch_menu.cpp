@@ -431,7 +431,7 @@ MenuSnapshot review_menu(int selected) {
   MenuItem list = item(36, "list", "", 29, 112, 480, 331);
   x2::menu::ListBoxState box;
   box.entries = {"~02Act 1~~", "  Comic Books", "  Concept Art"};
-  box.values = {"", "0 of 3", "0 of 9"};
+  box.columns = {{}, {"0 of 3"}, {"0 of 9"}};
   box.selected = selected;
   box.visible_rows = 27;
   box.row_height = 8;
@@ -514,7 +514,7 @@ MenuSnapshot region_menu(const std::vector<std::string> &regions,
   x2::menu::ListBoxState box;
   for (const std::string &region : regions) {
     box.entries.push_back(region);
-    box.values.push_back(std::to_string(region.size()));
+    box.columns.push_back({std::to_string(region.size())});
   }
   box.selected = selected;
   box.visible_rows = 25;
@@ -587,7 +587,7 @@ MenuSnapshot danger_room_menu(bool courses) {
   } else {
     box.entries = {"Freshman", "Sophomore", "Junior"};
   }
-  box.values.assign(box.entries.size(), "");
+  box.columns.assign(box.entries.size(), {});
   box.selected = 0;
   box.visible_rows = 34;
   box.row_height = 8;

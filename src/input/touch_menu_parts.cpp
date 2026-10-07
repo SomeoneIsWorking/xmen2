@@ -10,6 +10,8 @@ namespace {
 constexpr std::string_view kTokenPrefix = "$MENU_";
 constexpr std::string_view kFooterPrefix = "desctext";
 constexpr std::string_view kTitlePrefix = "title";
+/* Action 0xd, which the menu pad binds to RB. */
+constexpr std::string_view kDropToken = "$MENU_DROP";
 
 bool is_space(char c) { return std::isspace(static_cast<unsigned char>(c)); }
 
@@ -31,6 +33,9 @@ footer_of(const menu::MenuItem &item,
   footer.token = item.label.substr(at, end - at);
   footer.label = touch_menu_text(item.label);
   footer.click = menu_item_centre(item.rect, plane);
+  if (footer.token == kDropToken) {
+    footer.button = TouchAction::MenuRightShoulder;
+  }
   return footer;
 }
 
@@ -141,9 +146,7 @@ void append_list_entries(const menu::MenuItem &list, ListTap tap,
     const int entry = static_cast<int>(i);
     TouchMenuRow row;
     row.label = touch_menu_text(box.entries[i]);
-    if (i < box.values.size()) {
-      row.value = touch_menu_text(box.values[i]);
-    }
+    row.value = touch_menu_text(box.value(i));
     row.focused = entry == box.selected;
     row.press_on_arrival = tap == ListTap::accept || row.focused;
     row.slot = list.slot;
