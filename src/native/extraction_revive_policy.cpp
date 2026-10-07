@@ -29,9 +29,10 @@ std::string offer_text(const RevivePlan &plan) {
   if (plan.outcome == RevivePlan::Outcome::NothingFallen) {
     return {};
   }
-  std::string text = "Revive " + std::to_string(plan.fallen) +
-                     (plan.fallen == 1 ? " fallen hero: " : " fallen heroes: ") +
-                     std::to_string(plan.total);
+  std::string text =
+      "Revive " + std::to_string(plan.fallen) +
+      (plan.fallen == 1 ? " fallen hero: " : " fallen heroes: ") +
+      std::to_string(plan.total);
   if (plan.outcome == RevivePlan::Outcome::Insufficient) {
     text += " (not enough money, you have " + std::to_string(plan.money) + ")";
   }

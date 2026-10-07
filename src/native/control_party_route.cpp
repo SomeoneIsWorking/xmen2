@@ -48,14 +48,14 @@ void party_route(x2_socket_t fd) {
   const std::uint32_t base = x86_module_base("XMen2.exe") - kImageBase;
   std::uint32_t money_object = 0;
   std::uint32_t money = 0;
-  const bool have_money =
-      memory.read_u32(base + kMoneyObject, &money_object) && money_object &&
-      memory.read_u32(money_object + kMoney, &money);
+  const bool have_money = memory.read_u32(base + kMoneyObject, &money_object) &&
+                          money_object &&
+                          memory.read_u32(money_object + kMoney, &money);
   std::uint32_t count = 0;
   memory.read_u32(base + kPartyCache + kPartyCount, &count);
   std::string body = "{\"money\":";
-  body += have_money ? std::to_string(static_cast<std::int32_t>(money))
-                     : "null";
+  body +=
+      have_money ? std::to_string(static_cast<std::int32_t>(money)) : "null";
   body += ",\"heroes\":[";
   bool first = true;
   for (std::uint32_t i = 0; i < count && i < 5u; ++i) {
@@ -85,8 +85,8 @@ void party_route(x2_socket_t fd) {
                   static_cast<double>(entity->at.y));
     body += first ? "{" : ",{";
     first = false;
-    body += "\"definition\":" + json_text(entity->definition) + "," + numbers +
-            "}";
+    body +=
+        "\"definition\":" + json_text(entity->definition) + "," + numbers + "}";
   }
   const input::RevivePromptView offer = input::revive_prompt().view();
   body += "],\"pads\":[";
