@@ -2,6 +2,7 @@
 
 #include "touch_menu_parts.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <string_view>
@@ -62,6 +63,28 @@ constexpr char kRankOpen = '\x98';
 constexpr char kRankOwned = '\x99';
 constexpr char kRankAdded = '\x9a';
 constexpr char kRankFiller = '\x9b';
+
+/* FUN_005e5900 assigns the skill at menu+0x18e8 on A, B or X (actions 4, 5,
+   8) to power slots 0..2, which touch play offers as its first three power
+   buttons. The game's own prompts name SUBTRACT, ACCEPT and OTHER instead. */
+struct AssignSlot {
+  std::string_view label;
+  TouchAction button;
+};
+constexpr std::array<AssignSlot, 3> kAssignSlots = {{
+    {"Power 1", TouchAction::MenuA},
+    {"Power 2", TouchAction::MenuB},
+    {"Power 3", TouchAction::MenuX},
+}};
+/* A click publishes only action 0x15, which cancels the assignment; B would
+   assign to slot 1. */
+constexpr std::string_view kBackToken = "$MENU_BACK";
+constexpr std::string_view kCancelLabel = "Cancel";
+/* "$MENU_DROP Assign" while the selected skill has a rank, empty otherwise;
+   RB assigns it. */
+constexpr std::string_view kAssignHelp = "assign_help";
+/* FUN_005e3c70 reads RT on every hero tab as the next hero in the party. */
+constexpr std::string_view kNextHeroLabel = "Next hero";
 
 /* The stat description's resistance legend: "($RES_ENERGY)" draws the icon
    that label_re draws beside resist_energy. */
@@ -224,6 +247,50 @@ void build_ai(const menu::MenuSnapshot &menu, TouchMenuView *view) {
   }
 }
 
+TouchMenuFooter pad_footer(std::string_view label, TouchAction button) {
+  TouchMenuFooter footer;
+  footer.label = label;
+  footer.button = button;
+  return footer;
+}
+
+bool skills_tab(std::uint32_t mode) {
+  return mode == kSkillsMode || mode == kSkillsAssignMode;
+}
+
+void append_assigning_footers(TouchMenuView *view) {
+  std::erase_if(view->footers, [](const TouchMenuFooter &footer) {
+    return footer.token != kBackToken;
+  });
+  for (TouchMenuFooter &footer : view->footers) {
+    footer.label = kCancelLabel;
+  }
+  std::vector<TouchMenuFooter> slots;
+  for (const AssignSlot &slot : kAssignSlots) {
+    slots.push_back(pad_footer(slot.label, slot.button));
+  }
+  view->footers.insert(view->footers.begin(), slots.begin(), slots.end());
+}
+
+void append_team_footers(const menu::MenuSnapshot &menu,
+                         const presentation::RetailScenePlane &plane,
+                         TouchMenuView *view) {
+  append_menu_footers(menu, plane, view);
+  const bool skills = skills_tab(*menu.mode);
+  if (skills && menu.assigning_skill) {
+    append_assigning_footers(view);
+    return;
+  }
+  const menu::MenuItem *assign = find_menu_item(menu, kAssignHelp);
+  if (skills && assign != nullptr) {
+    if (auto footer = menu_footer(*assign, plane)) {
+      view->footers.push_back(std::move(*footer));
+    }
+  }
+  view->footers.push_back(
+      pad_footer(kNextHeroLabel, TouchAction::MenuRightTrigger));
+}
+
 } // namespace
 
 std::optional<std::string> skill_rank_text(std::string_view column) {
@@ -283,7 +350,7 @@ build_team_details_view(const menu::MenuSnapshot &menu,
   if (view.tabs.empty()) {
     return std::nullopt;
   }
-  append_menu_footers(menu, plane, &view);
+  append_team_footers(menu, plane, &view);
   return view;
 }
 

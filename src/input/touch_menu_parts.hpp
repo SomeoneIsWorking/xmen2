@@ -30,6 +30,12 @@ bool menu_item_shown(const menu::MenuItem &item);
 /* The menu's own label_<name> item, else its first title* item. */
 std::string menu_title(const menu::MenuSnapshot &menu);
 
+/* A shown text item whose text carries a $MENU_ token as a footer: clicked,
+   or pressed on the menu pad for a token its click does not publish. */
+std::optional<TouchMenuFooter>
+menu_footer(const menu::MenuItem &item,
+            const presentation::RetailScenePlane &plane);
+
 /* Every shown desctext item whose text carries a $MENU_ token, one per
    token. */
 void append_menu_footers(const menu::MenuSnapshot &menu,

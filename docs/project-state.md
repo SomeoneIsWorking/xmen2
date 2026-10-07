@@ -1084,10 +1084,14 @@ Magnetic Shell "Beam, rank 0/18" to "rank 1/18" and the points 39 to 38;
 `touch-team-gear` 20 of 20, two waistbands bought through the touch shop, a
 tap on the empty slot opened both, the second tap on Waistband Nature equipped
 it (gear 2/20 to 1/20), Unequip took it off, Drop (RB) dropped one and Accept
-returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes.
-Gap: assigning a skill to a power slot, the skills tab's Details view and
-switching hero keep the menu pad only, and the skills tab shows no skill
-description;
+returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes;
+`touch-team-assign` 13 of 13 (2026-10-07): a tap on Assign set
+`menu+0x18e8` and offered Power 1..3 and Cancel, Cancel left Magneto's slots
+`power5 power2 power1 power9` unchanged, Power 2 swapped them to `power2
+power5 power1 power9`, and Next hero turned the tabs from Magneto to Cyclops.
+Gap: the previous hero has no pad input, so touch offers only Next hero; the
+power slots are named, not the skills in them; the skills tab's Details view
+keeps the menu pad only, and the skills tab shows no skill description;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world

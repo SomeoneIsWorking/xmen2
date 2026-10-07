@@ -149,6 +149,9 @@ void put_hero(std::string *out, const native::HeroRecord &hero) {
   put_int(out, "level", hero.level);
   put_bool(out, "fallen", hero.fallen);
   put_bool(out, "unlocked", hero.unlocked);
+  put_strings(out, "power_slots",
+              {hero.power_slots.begin(), hero.power_slots.end()});
+  out->push_back(',');
   close_object(out);
 }
 
@@ -340,6 +343,9 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
   put_bool(&out, "popup", menu.popup_up);
   if (menu.mode) {
     put_int(&out, "mode", static_cast<long>(*menu.mode));
+  }
+  if (menu.assigning_skill) {
+    put_int(&out, "assigning_skill", static_cast<long>(*menu.assigning_skill));
   }
   put_int(&out, "item_count", static_cast<long>(menu.items.size()));
   int focused_row = -1;

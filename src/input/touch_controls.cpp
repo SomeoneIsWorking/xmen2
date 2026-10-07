@@ -156,6 +156,8 @@ const char *touch_action_name(TouchAction action) {
     return "menu-left-shoulder";
   case TouchAction::MenuRightShoulder:
     return "menu-right-shoulder";
+  case TouchAction::MenuRightTrigger:
+    return "menu-right-trigger";
   }
   return "unknown-action";
 }

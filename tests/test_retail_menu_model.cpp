@@ -506,6 +506,7 @@ FakeGuest build_team(std::uint32_t mode) {
   guest.u32(kMenu + 0x15f0u, 0x1fu);
   guest.u32(kMenu + 0x1608u, 5u);
   guest.u32(kMenu + 0x18d8u, mode);
+  guest.u32(kMenu + 0x18e8u, 0xffffffffu);
   const char *heroes[] = {"Magneto", "Cyclops", "Phoenix", "Storm"};
   for (unsigned slot = 0; slot < 4u; ++slot) {
     guest.u32(kMenu + 0x160cu + slot * 4u, item_address(slot));
@@ -556,6 +557,10 @@ FakeGuest build_team(std::uint32_t mode) {
               {"sabretooth_hero", "Sabretooth", 3, 70, true, 1},
               {"Deadpool", "DeadPool", 1, 40, false, 1}},
              "SABRETOOTH_HERO");
+  const std::uint32_t phoenix = kHeroTable + 4u + 3u * 0x4f8u + 0xc4u;
+  guest.text(phoenix, "power5");
+  guest.text(phoenix + 0x15u, "power2");
+  guest.text(phoenix + 3u * 0x15u, "power9");
   return guest;
 }
 
@@ -580,6 +585,12 @@ void test_team_menu() {
             phoenix->hero->display_name == "Jean Grey" &&
             phoenix->hero->level == 2 && !phoenix->hero->fallen,
         "a summary's hero by the name the card draws, record+0x170");
+  check(phoenix != nullptr && phoenix->hero &&
+            phoenix->hero->power_slots[0] == "power5" &&
+            phoenix->hero->power_slots[1] == "power2" &&
+            phoenix->hero->power_slots[2].empty() &&
+            phoenix->hero->power_slots[3] == "power9",
+        "the powers a hero's four slots hold, record+0xc4 + i*0x15");
   check(phoenix != nullptr && !phoenix->masks_locked && storm != nullptr &&
             storm->masks_locked,
         "a summary masks locked names when its +0xbc bit 0 is set");
@@ -609,10 +620,18 @@ void test_team_menu() {
   check(details_model.read(&menu) == x2::menu::ReadStatus::ok && menu.mode &&
             *menu.mode == 2u,
         "a detail tab's mode");
+  check(!menu.assigning_skill, "no skill being assigned at -1");
+  FakeGuest assigning = build_team(3u);
+  assigning.u32(kMenu + 0x18e8u, 2u);
+  x2::menu::RetailMenuModel assigning_model(assigning, kImage);
+  check(assigning_model.read(&menu) == x2::menu::ReadStatus::ok &&
+            menu.assigning_skill == 2,
+        "the skill entry being assigned to a power slot, menu+0x18e8");
 
   const FakeGuest options = build_options();
   x2::menu::RetailMenuModel options_model(options, kImage);
-  check(options_model.read(&menu) == x2::menu::ReadStatus::ok && !menu.mode,
+  check(options_model.read(&menu) == x2::menu::ReadStatus::ok && !menu.mode &&
+            !menu.assigning_skill,
         "a class without a mode reads none");
 }
 

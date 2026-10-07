@@ -117,9 +117,15 @@ stats/skills/gear/ai tabs, a tap on a tab clicking the game's own: stats lists
 the four stats with the points left, the derived stats and the current
 stat's description with its resistance icons read as values; skills lists
 each skill's type and "rank owned/ranks" read from the game's rank glyphs, or
-what a locked skill needs; gear lists whichever of the slots or the fitting
+what a locked skill needs, with Assign (the game's `assign_help`, pressed as
+RB) while the selected skill has a rank: the footers then become Power 1,
+Power 2 and Power 3, the menu pad's A, B and X, which put the skill in that
+power button's slot, and Cancel, a click on the game's Back (the pad's B
+would assign); gear lists whichever of the slots or the fitting
 pieces has the game's focus, with the gear count and the selected piece's
 description; ai lists the seven settings and the current one's description.
+Next hero, on every tab, presses RT; the game has no pad input for the
+previous hero (only the keyboard's C), so the touch menu offers none.
 On every tab a tap walks the game's focus to the row with the menu pad and a
 tap on the current row presses A (add a point or a rank, open a slot's
 pieces, equip, change a setting): the game's own click on another stat or
@@ -352,7 +358,7 @@ already chose keeps player one.
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
 | `ctest -R touch_tab_fit` | Tab labels too wide for their tab shrink by one shared factor to fit inside its padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read and the Drop footer pressed as RB, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read, the Drop and Assign footers pressed as RB, the three power slots as A, B and X while assigning with Cancel clicked, and Next hero as RT, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.

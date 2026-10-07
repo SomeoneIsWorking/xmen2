@@ -14,6 +14,10 @@ inline constexpr std::uint32_t kRecordName = 0x150u;
 inline constexpr std::uint32_t kRecordDisplayName = 0x170u;
 inline constexpr std::size_t kRecordNameBytes = 0x20u;
 inline constexpr std::uint32_t kRecordUnlockId = 0x28eu;
+inline constexpr std::uint32_t kRecordPowerSlots = 0xc4u;
+inline constexpr std::uint32_t kPowerSlotStride = 0x15u;
+/* FUN_004b84b0 copies at most 0x13 characters and terminates. */
+inline constexpr std::size_t kPowerSlotBytes = 0x14u;
 /* The dead test FUN_0044a690: flag bit 0 set and health at or below 0. */
 inline constexpr std::uint32_t kStatsHealth = 0x28u;
 inline constexpr std::uint32_t kStatsFlags = 0x34u;
@@ -105,6 +109,13 @@ bool RetailHeroTable::read_record(std::uint32_t record, HeroRecord *out) {
       !reader_.bytes(record + kRecordUnlockId, &unlock_id, sizeof unlock_id) ||
       !read_unlocked(unlock_id, &out->unlocked)) {
     return false;
+  }
+  for (std::size_t i = 0; i < out->power_slots.size(); ++i) {
+    if (!reader_.c_string(record + kRecordPowerSlots +
+                              static_cast<std::uint32_t>(i) * kPowerSlotStride,
+                          kPowerSlotBytes, &out->power_slots[i])) {
+      return false;
+    }
   }
   out->display_name = latin1_to_utf8(display);
   out->level = level;

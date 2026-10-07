@@ -157,6 +157,9 @@ struct MenuSnapshot {
      0 the party, 1 the roster, 2..6 a hero's detail tabs. CMenuShop: bit 0
      set for the stash. CMenuCodex: 1 while the description is shown. */
   std::optional<std::uint32_t> mode;
+  /* CMenuTeam's skill list entry being assigned to a power slot
+     (menu+0x18e8); nullopt when none. */
+  std::optional<int> assigning_skill;
 };
 
 enum class ReadStatus : std::uint8_t {

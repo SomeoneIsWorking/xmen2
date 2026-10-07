@@ -25,7 +25,7 @@ struct ActionButtons {
   std::size_t count;
 };
 
-constexpr std::array<ActionButtons, 27> kActionButtons = {{
+constexpr std::array<ActionButtons, 28> kActionButtons = {{
     {TouchAction::LightAttack, {"a"}, 1},
     {TouchAction::HeavyAttack, {"b"}, 1},
     {TouchAction::Jump, {"y"}, 1},
@@ -53,6 +53,7 @@ constexpr std::array<ActionButtons, 27> kActionButtons = {{
     {TouchAction::MenuY, {"y"}, 1},
     {TouchAction::MenuLeftShoulder, {"leftshoulder"}, 1},
     {TouchAction::MenuRightShoulder, {"rightshoulder"}, 1},
+    {TouchAction::MenuRightTrigger, {"righttrigger"}, 1},
 }};
 
 } // namespace

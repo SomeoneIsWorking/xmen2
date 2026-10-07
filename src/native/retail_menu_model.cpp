@@ -186,6 +186,10 @@ inline constexpr MenuModeEntry kMenuModes[] = {
     {"CMenuShop", 0x18e8u},
 };
 
+/* FUN_005dc940 sets it to the assigned entry and back to -1. */
+inline constexpr std::uint32_t kTeamAssigningSkill = 0x18e8u;
+inline constexpr std::string_view kTeamClass = "CMenuTeam";
+
 const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
   for (const MenuClassEntry &entry : kMenuClasses) {
     if (entry.vtable - kLinkedBase + image_base == vtable) {
@@ -702,6 +706,15 @@ ReadStatus RetailMenuModel::read_menu(std::uint32_t menu, MenuSnapshot *out) {
       return ReadStatus::unreadable;
     }
     out->mode = mode;
+  }
+  if (out->menu_class == kTeamClass) {
+    std::uint32_t skill = 0;
+    if (!reader_.u32(menu + kTeamAssigningSkill, &skill)) {
+      return ReadStatus::unreadable;
+    }
+    if (static_cast<std::int32_t>(skill) >= 0) {
+      out->assigning_skill = static_cast<int>(skill);
+    }
   }
   for (std::size_t i = 0; i < out->desctext.size(); ++i) {
     std::uint32_t handle = 0;
