@@ -2,6 +2,7 @@
 
 #include "../input/revive_prompt.hpp"
 #include "control.h"
+#include "control_command_bridge.h"
 #include "extraction_revive.hpp"
 #include "guest_memory_view.hpp"
 #include "json_string.h"
@@ -40,9 +41,10 @@ std::string json_text(const std::string &value) {
   return buffer.data();
 }
 
-} // namespace
-
-void party_route(x2_socket_t fd) {
+/* GET /party's body, built at the guest input poll, where the guest is
+   between updates and the revive offer is polled. */
+void read_party(void *context) {
+  std::string &body = *static_cast<std::string *>(context);
   const native::LiveGuestMemory memory;
   const native::EntityTables tables = native::live_entity_tables();
   const std::uint32_t base = x86_module_base("XMen2.exe") - kImageBase;
@@ -53,7 +55,7 @@ void party_route(x2_socket_t fd) {
                           memory.read_u32(money_object + kMoney, &money);
   std::uint32_t count = 0;
   memory.read_u32(base + kPartyCache + kPartyCount, &count);
-  std::string body = "{\"money\":";
+  body = "{\"money\":";
   body +=
       have_money ? std::to_string(static_cast<std::int32_t>(money)) : "null";
   body += ",\"heroes\":[";
@@ -103,6 +105,18 @@ void party_route(x2_socket_t fd) {
   body += offer.offered ? "true" : "false";
   body += ",\"offer\":" + json_text(offer.text);
   body += ",\"notice\":" + json_text(offer.notice) + "}\n";
+}
+
+} // namespace
+
+void party_route(x2_socket_t fd) {
+  std::string body;
+  if (control_command_guest_read(read_party, &body) < 0) {
+    control_reply_text(fd, 504, "Gateway Timeout",
+                       "the guest did not reach an input poll within 10s, so "
+                       "the party was not read\n");
+    return;
+  }
   control_reply_json(fd, 200, "OK", body.c_str(), body.size());
 }
 
