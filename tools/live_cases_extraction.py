@@ -14,7 +14,7 @@ import urllib.parse
 
 from live_harness import Case
 from live_game import png_mean_diff, wait_controls_unlocked
-from live_menu import keyboard_into_gameplay, read_menu, wait_game_menu
+from live_menu import keyboard_into_gameplay, menu_item, read_menu, wait_game_menu
 
 PAD_MAP = "act1/genosha/genosha1"
 ADD_MONEY = "act1/genosha/genosha1/temp_addmoney"
@@ -350,8 +350,8 @@ def reach_world_map_by_pad(case: Case) -> dict:
 
 
 def case_extract_keyboard_back(case: Case) -> None:
-    """Escape leaves the world map an extraction point opened, and the party
-    answers the keyboard again."""
+    """The world map an extraction point opened shows one Back and go, Escape
+    leaves it, and the party answers the keyboard again."""
     case.prepare_profile(["boot.mode=continue"])
     case.seed_save("autosave.save")
     case.launch({"X2_FILES": "1"})
@@ -363,6 +363,18 @@ def case_extract_keyboard_back(case: Case) -> None:
     if shown.get("menu") != "worldmap":
         return
     time.sleep(1.0)
+    primary = menu_item(case, "desctext1")
+    secondary = menu_item(case, "desctext2")
+    goes = menu_item(case, "desctext4")
+    case.check("the first Back prompt is shown",
+               "$MENU_BACK" in primary.get("label", "")
+               and not primary.get("flags", 4) & 4, str(primary))
+    case.check("the second Back prompt is hidden",
+               "$MENU_BACK" in secondary.get("label", "")
+               and bool(secondary.get("flags", 0) & 4), str(secondary))
+    case.check("go is shown",
+               "$MENU_ACCEPT" in goes.get("label", "")
+               and not goes.get("flags", 4) & 4, str(goes))
     case.http("/key?name=Escape&hold=0.2")
     left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
     case.check("Escape left the world map", left.get("menu") != "worldmap",

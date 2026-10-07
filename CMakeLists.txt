@@ -405,6 +405,11 @@ add_executable(test_retail_menu_model tests/test_retail_menu_model.cpp
 target_include_directories(test_retail_menu_model PRIVATE src/native)
 add_test(NAME retail_menu_model COMMAND test_retail_menu_model)
 
+add_executable(test_world_map_footer tests/test_world_map_footer.cpp
+               src/native/world_map_footer.cpp)
+target_include_directories(test_world_map_footer PRIVATE src/native)
+add_test(NAME world_map_footer COMMAND test_world_map_footer)
+
 add_executable(test_extraction_revive tests/test_extraction_revive.cpp
                src/native/extraction_revive_policy.cpp
                src/native/retail_entities.cpp src/input/revive_prompt.cpp)
@@ -2123,6 +2128,8 @@ set(X2_NATIVE_SOURCES
     src/native/stick_axis_override.cpp
     src/native/menu_start_policy.cpp
     src/native/menu_start_override.cpp
+    src/native/world_map_footer.cpp
+    src/native/world_map_footer_override.cpp
     src/native/input_probe.cpp
     src/native/text_put.cpp
     src/native/touch_menu_source.cpp
