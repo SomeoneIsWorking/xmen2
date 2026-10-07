@@ -1,7 +1,8 @@
 #ifndef X2_RETAIL_MENU_MODEL_HPP
 #define X2_RETAIL_MENU_MODEL_HPP
 
-#include "guest_memory_view.hpp"
+#include "guest_image_reader.hpp"
+#include "retail_hero_table.hpp"
 
 #include <array>
 #include <cstdint>
@@ -99,8 +100,16 @@ struct MenuItem {
   bool navigable = false;
   /* CMenuItemBar's drawn level, item+0x40. */
   std::optional<float> fill;
-  /* A list box's entries; set for ItemClass::list_box and list_codex. */
+  /* A list box's entries; set for ItemClass::list_box, list_codex and
+     list_chars. */
   std::optional<ListBoxState> list_box;
+  /* A hero card's record, found by its label (CMenuItemCharSummary). */
+  std::optional<native::HeroRecord> hero;
+  /* CMenuItemCharSummary+0xbc bit 0: the card masks a locked hero's name. */
+  bool masks_locked = false;
+  /* A CMenuItemListChars' records, one per entry; nullopt for an entry the
+     character table lacks. */
+  std::vector<std::optional<native::HeroRecord>> heroes;
   /* The item showing the game variable this row's command changes. */
   int value_item = -1;
   int link_left = -1;
@@ -154,15 +163,10 @@ public:
   ReadStatus read(MenuSnapshot *out);
 
   /* The guest address the last unreadable read failed at. */
-  std::uint32_t failed_address() const { return failed_; }
+  std::uint32_t failed_address() const { return reader_.failed_address(); }
 
 private:
-  bool read_u32(std::uint32_t address, std::uint32_t *out);
   bool read_popup(bool *up);
-  bool read_bytes(std::uint32_t address, void *out, std::size_t bytes);
-  bool read_c_string(std::uint32_t address, std::size_t capacity,
-                     std::string *out);
-  bool pool_string(std::uint32_t handle, std::string *out);
   bool registry_getter(const std::string &name, std::uint32_t *getter);
   bool read_item(std::uint32_t address, unsigned slot, MenuItem *out,
                  std::array<std::uint32_t, 4> *links, std::uint32_t *getter);
@@ -174,10 +178,9 @@ private:
   void order_rows(MenuSnapshot *menu) const;
   bool pair_values(MenuSnapshot *menu,
                    const std::vector<std::uint32_t> &getters);
+  bool attach_heroes(MenuSnapshot *menu);
 
-  const native::GuestMemoryView &memory_;
-  std::uint32_t image_base_;
-  std::uint32_t failed_ = 0;
+  native::GuestImageReader reader_;
 };
 
 /* The running game's menu, through LiveGuestMemory. */

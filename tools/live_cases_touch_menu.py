@@ -18,9 +18,11 @@ from live_menu import (
     keyboard_into_gameplay,
     keyboard_into_the_pda,
     keyboard_past_the_intro,
+    menu_item,
     menu_labels,
     menu_list,
     read_menu,
+    reveal_touch_row,
     tap_touch_button,
     touch_button,
     touch_menu,
@@ -921,3 +923,108 @@ def case_touch_danger_room(case: Case) -> None:
                team.get("class") == "CMenuTeam",
                "%s %s" % (team.get("menu"), team.get("class")))
     case.shot("team")
+
+
+def roster_names(case: Case) -> list[str]:
+    """The heroes the roster's cards would name, as the model reads them."""
+    heroes = menu_item(case, "roster_portrait01").get("heroes", [])
+    masks = menu_item(case, "roster_summary02").get("masks_locked", True)
+    return [h["display_name"] for h in heroes
+            if h and (h["unlocked"] or not masks)]
+
+
+def roster_hero(case: Case, internal: str) -> dict:
+    for hero in menu_item(case, "roster_portrait01").get("heroes", []):
+        if hero and hero["name"].lower() == internal:
+            return hero
+    return {}
+
+
+def money(case: Case) -> int:
+    return int(menu_item(case, "money_value").get("label", "0") or 0)
+
+
+def case_touch_roster(case: Case) -> None:
+    """The touch menu over CMenuTeam's roster, in the flow that has one.
+
+    `loadmap <map> 0 1` opens the team menu with Replace; Wolverine is killed
+    first so the roster holds a fallen hero. A tap on him walks the carousel
+    with the menu pad and A revives him for the game's price; a tap on
+    Sabretooth then puts him in the empty party slot.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    for command in ("runscript act1/genosha/genosha1/temp_addmoney",
+                    'runscript killEntity("wolverine")',
+                    "loadmap act2/jungle/jungle1 0 1"):
+        case.http("/console?command=" + command.replace(" ", "%20"))
+        time.sleep(1)
+    party = wait_settled_touch_menu(case, "team", 120)
+    rows = [r["label"] for r in party.get("rows", [])]
+    case.check("the team menu opened on its party under the touch menu",
+               read_menu(case).get("mode") == 0
+               and party.get("visible") is True, str(rows))
+    case.check("the empty party slot is named as one", "Empty slot" in rows,
+               str(rows))
+    if "Empty slot" not in rows:
+        return
+    case.shot("party")
+    empty = rows.index("Empty slot")
+    if party.get("focused_row") != empty:
+        tap_touch_button(case, party, touch_button(party, "row", "empty slot"))
+        party = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
+            "focused_row") == empty, 10).get("touch_menu", {})
+    tap_touch_button(case, party, touch_button(party, "footer", "replace"))
+    roster = wait_game_menu(case, lambda m: m.get("mode") == 1 and m.get(
+        "touch_menu", {}).get("visible") is True, 10).get("touch_menu", {})
+    (case.dir / "roster.json").write_text(json.dumps(roster, indent=1) + "\n")
+    names = [r["label"] for r in roster.get("rows", [])]
+    values = {r["label"]: r.get("value") for r in roster.get("rows", [])}
+    case.check("Replace opened the game's roster under the touch menu",
+               read_menu(case).get("mode") == 1
+               and roster.get("visible") is True, str(names))
+    case.check("its rows are the heroes the cards name, locked ones left out",
+               names == roster_names(case) and "Sabretooth" in names
+               and "Jean Grey" in names and "Professor X" not in names,
+               str(names))
+    case.check("and fallen Wolverine says so beside his level",
+               str(values.get("Wolverine", "")).startswith("Fallen, level"),
+               str(values.get("Wolverine")))
+    if "Wolverine" not in names or "Sabretooth" not in names:
+        return
+    case.shot("roster")
+
+    before = money(case)
+    roster, wolverine = reveal_touch_row(case, "wolverine")
+    case.check("Wolverine's row scrolls into reach", wolverine is not None)
+    if wolverine is None:
+        return
+    tap_touch_button(case, roster, wolverine)
+    wait_game_menu(case, lambda m: not roster_hero(case, "wolverine").get(
+        "fallen", True), 20)
+    after = money(case)
+    print("  money %d -> %d" % (before, after))
+    case.check("a tap on Wolverine revived him in the game",
+               roster_hero(case, "wolverine").get("fallen") is False,
+               str(roster_hero(case, "wolverine")))
+    case.check("and the game took its price", after < before,
+               "%d -> %d" % (before, after))
+    case.shot("revived")
+
+    roster, sabretooth = reveal_touch_row(case, "sabretooth")
+    if sabretooth is None:
+        return
+    tap_touch_button(case, roster, sabretooth)
+    party = wait_game_menu(case, lambda m: m.get("mode") == 0 and m.get(
+        "touch_menu", {}).get("visible") is True, 20).get("touch_menu", {})
+    rows = [r["label"] for r in party.get("rows", [])]
+    case.check("a tap on Sabretooth put him in the empty slot",
+               read_menu(case).get("mode") == 0 and len(rows) > empty
+               and rows[empty] == "Sabretooth", str(rows))
+    case.shot("replaced")
+    case.check("and the game is still running", case.alive())

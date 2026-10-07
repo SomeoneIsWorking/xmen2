@@ -67,6 +67,11 @@ private:
   std::map<std::uint32_t, std::uint8_t> bytes_;
 };
 
+bool read_back(const FakeGuest &guest, std::uint32_t address,
+               std::uint32_t *out) {
+  return guest.read(address, out, sizeof *out);
+}
+
 /* The image is mapped away from its linked base, so every static must be
    rebased rather than read at its linked address. */
 constexpr std::uint32_t kImage = 0x01000000u;
@@ -426,8 +431,68 @@ void test_no_menu_and_faults() {
   check(missing_model.failed_address() == 0x30000000u, "naming the item");
 }
 
+constexpr std::uint32_t kVtListChars = 0x006a0cecu;
+constexpr std::uint32_t kHeroTable = 0x26000000u;
+constexpr std::uint32_t kHeroStats = 0x27000000u;
+
+struct HeroSpec {
+  const char *name;
+  const char *display;
+  std::uint8_t level;
+  std::int16_t unlock_id;
+  bool unlocked;
+  /* 0 none, 1 alive, 2 dead. */
+  int stats;
+};
+
+/* The character table: record n at table + 4 + n * 0x4f8, the unlock bits
+   at 0x0072c530 + 0x1c0, and a mission (index 2) whose bonus of 2 levels
+   names its hero in handle_str<0> as `bonus_hero`. */
+void put_heroes(FakeGuest *guest, const std::vector<HeroSpec> &heroes,
+                const char *bonus_hero) {
+  guest->u32(rebased(0x0071770cu), kHeroTable);
+  guest->zero(kHeroTable, 4u + 31u * 0x4f8u);
+  const std::uint32_t unlocks = rebased(0x0072c530u) + 0x1c0u;
+  guest->zero(unlocks, 0x28u);
+  for (std::size_t n = 0; n < heroes.size(); ++n) {
+    const HeroSpec &spec = heroes[n];
+    const std::uint32_t record =
+        kHeroTable + 4u + static_cast<std::uint32_t>(n) * 0x4f8u;
+    guest->text(record + 0x150u, spec.name);
+    guest->text(record + 0x170u, spec.display);
+    guest->put(record + 0x1cu, &spec.level, 1u);
+    guest->i16(record + 0x28eu, spec.unlock_id);
+    if (spec.unlocked) {
+      std::uint32_t word = 0;
+      const std::uint32_t at =
+          unlocks + static_cast<std::uint32_t>(spec.unlock_id >> 5) * 4u;
+      read_back(*guest, at, &word);
+      guest->u32(at, word | (1u << (spec.unlock_id & 31)));
+    }
+    if (spec.stats != 0) {
+      const std::uint32_t stats =
+          kHeroStats + static_cast<std::uint32_t>(n) * 0x40u;
+      guest->zero(stats, 0x40u);
+      guest->f32(stats + 0x28u, spec.stats == 2 ? -1.0e6F : 78.0F);
+      const std::uint8_t flags = 1u;
+      guest->put(stats + 0x34u, &flags, 1u);
+      guest->u32(record + 0xc0u, stats);
+    }
+  }
+  const std::uint8_t mission = bonus_hero != nullptr ? 2u : 0xffu;
+  guest->put(rebased(0x00782728u), &mission, 1u);
+  if (bonus_hero != nullptr) {
+    const std::uint32_t pool0 = rebased(0x00a0a820u);
+    guest->u32(pool0 + 4u + 0x5b4u * 4u, 0x10u);
+    guest->text(pool0 + 0x8008u + 0x10u, bonus_hero);
+    guest->u32(rebased(0x00784e48u) + 2u * 0x78u, 0x5b4u);
+    guest->u32(rebased(0x00784e50u) + 2u * 0x78u, 2u);
+  }
+}
+
 /* A team-shaped menu: the party as four char summaries, the second lit, in
-   the detail mode the class keeps at menu+0x18d8. */
+   the detail mode the class keeps at menu+0x18d8, and the roster carousel
+   over three heroes, Wolverine fallen and Deadpool locked. */
 FakeGuest build_team(std::uint32_t mode) {
   FakeGuest guest;
   Pool2 pool(&guest);
@@ -437,10 +502,10 @@ FakeGuest build_team(std::uint32_t mode) {
   guest.zero(kMenu, 0x1900u);
   guest.u32(kMenu, rebased(kVtMenuTeam));
   guest.text(kMenu + 0x0cu, "team");
-  guest.u32(kMenu + 0x15f0u, 0x0fu);
-  guest.u32(kMenu + 0x1608u, 4u);
+  guest.u32(kMenu + 0x15f0u, 0x1fu);
+  guest.u32(kMenu + 0x1608u, 5u);
   guest.u32(kMenu + 0x18d8u, mode);
-  const char *heroes[] = {"Magneto", "Cyclops", "Wolverine", "Storm"};
+  const char *heroes[] = {"Magneto", "Cyclops", "Phoenix", "Storm"};
   for (unsigned slot = 0; slot < 4u; ++slot) {
     guest.u32(kMenu + 0x160cu + slot * 4u, item_address(slot));
     put_item(&guest, &pool, slot,
@@ -454,7 +519,42 @@ FakeGuest build_team(std::uint32_t mode) {
               {364, static_cast<std::int16_t>(313 - 80 * slot), 116, 59, 0},
               0u});
   }
+  const std::uint8_t masks = 1u;
+  guest.put(item_address(3) + 0xbcu, &masks, 1u);
+  guest.u32(kMenu + 0x160cu + 4u * 4u, item_address(4));
+  put_item(&guest, &pool, 4,
+           {kVtListChars,
+            "roster_portrait01",
+            "",
+            0x01u,
+            "",
+            "",
+            "",
+            {41, 658, 58, 60, 0},
+            0u});
+  guest.i16(item_address(4) + 0xacu, 2);
+  guest.u32(item_address(4) + 0xbcu, kListStore);
+  guest.zero(kListStore, 0x88u);
+  guest.u32(kListStore + 0x84u, 3u);
+  const std::uint8_t ids[3] = {40u, 41u, 42u};
+  guest.put(kListStore, ids, sizeof ids);
+  const std::uint32_t records = rebased(0x008a83f4u);
+  const char *roster[] = {"Wolverine", "sabretooth_hero", "Deadpool"};
+  for (std::uint32_t i = 0; i < 3u; ++i) {
+    guest.zero(records + ids[i] * 0x70u, 0x70u);
+    guest.text(records + ids[i] * 0x70u, roster[i]);
+  }
   put_registry(&guest);
+  put_heroes(&guest,
+             {{"default", "defaultman", 1, 0, true, 0},
+              {"Magneto", "Magneto", 3, 9, true, 1},
+              {"Cyclops", "Cyclops", 4, 3, true, 1},
+              {"Phoenix", "Jean Grey", 2, 11, true, 1},
+              {"Storm", "Storm", 5, 15, true, 1},
+              {"Wolverine", "Wolverine", 7, 18, true, 2},
+              {"sabretooth_hero", "Sabretooth", 3, 70, true, 1},
+              {"Deadpool", "DeadPool", 1, 40, false, 1}},
+             "SABRETOOTH_HERO");
   return guest;
 }
 
@@ -474,6 +574,34 @@ void test_team_menu() {
   const auto *storm = find(menu, "char_summary04");
   check(storm != nullptr && (storm->flags & x2::menu::kItemFocusLit) == 0u,
         "an unselected hero is not lit");
+  const auto *phoenix = find(menu, "char_summary03");
+  check(phoenix != nullptr && phoenix->hero &&
+            phoenix->hero->display_name == "Jean Grey" &&
+            phoenix->hero->level == 2 && !phoenix->hero->fallen,
+        "a summary's hero by the name the card draws, record+0x170");
+  check(phoenix != nullptr && !phoenix->masks_locked && storm != nullptr &&
+            storm->masks_locked,
+        "a summary masks locked names when its +0xbc bit 0 is set");
+  const auto *roster = find(menu, "roster_portrait01");
+  check(roster != nullptr && roster->list_box &&
+            roster->list_box->selected == 2 &&
+            roster->list_box->entries.size() == 3u &&
+            roster->heroes.size() == 3u,
+        "the roster carousel reads as a list box with a record per entry");
+  if (roster != nullptr && roster->heroes.size() == 3u && roster->heroes[0] &&
+      roster->heroes[1] && roster->heroes[2]) {
+    check(roster->heroes[0]->fallen && roster->heroes[0]->level == 7 &&
+              roster->heroes[0]->unlocked,
+          "a hero whose stats are flagged and at no health is fallen");
+    check(roster->heroes[1]->display_name == "Sabretooth" &&
+              roster->heroes[1]->level == 5,
+          "the active mission's hero gets its level bonus, names compared "
+          "without case");
+    check(!roster->heroes[2]->unlocked && !roster->heroes[2]->fallen,
+          "a hero whose unlock bit is clear is locked");
+  } else {
+    check(false, "every roster entry has a character record");
+  }
 
   const FakeGuest details = build_team(2u);
   x2::menu::RetailMenuModel details_model(details, kImage);

@@ -184,12 +184,16 @@ std::vector<TouchMenuDelivery> TouchMenu::advance_walk(std::uint64_t now_ms) {
     walk_.reset();
     return {};
   }
-  const int target = row_of(*view_, walk.slot, walk.entry);
-  if (target < 0) {
+  const int target_row = row_of(*view_, walk.slot, walk.entry);
+  if (target_row < 0) {
     walk_.reset();
     return {};
   }
-  const int focused = view_->focused_row;
+  const bool on_cycle = view_->cycle > 0;
+  const int target =
+      on_cycle ? view_->rows[static_cast<std::size_t>(target_row)].entry
+               : target_row;
+  const int focused = on_cycle ? view_->cycle_focus : view_->focused_row;
   if (focused == target) {
     const std::optional<TouchAction> final_button = walk.final_button;
     walk_.reset();
@@ -203,8 +207,9 @@ std::vector<TouchMenuDelivery> TouchMenu::advance_walk(std::uint64_t now_ms) {
     return {};
   }
   bool down = focused < target;
-  if (view_->focus_wraps) {
-    const int count = static_cast<int>(view_->rows.size());
+  if (on_cycle || view_->focus_wraps) {
+    const int count =
+        on_cycle ? view_->cycle : static_cast<int>(view_->rows.size());
     const int down_steps = focused < 0 ? 0 : (target - focused + count) % count;
     const int up_steps =
         focused < 0 ? count : (focused - target + count) % count;

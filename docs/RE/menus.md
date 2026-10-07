@@ -450,6 +450,16 @@ getter is the row's value. This pairing is the model's rule, not a retail one.
 popup covered the PDA, clear after dismissing it. Load Game is this popup, not
 a `CMenu`.
 
+### Hero cards
+
+A menu with a `CMenuItemCharSummary` or `CMenuItemListChars` also gets the
+character table (`x2::native::RetailHeroTable`, `src/native/retail_hero_table.cpp`;
+layout under the team menu below). Each summary carries the record its label
+names and its `+0xbc` mask bit; the roster's `CMenuItemListChars` reads as a
+list box with a record per entry. The checked reads and both handle_str pools
+are `x2::native::GuestImageReader` (`src/native/guest_image_reader.cpp`), which
+the menu model and the hero table share.
+
 ### Measured
 
 - `main`, fresh profile: 7 rows, `new game` … `play online` plus `Quit`
@@ -529,9 +539,40 @@ list box subclass): its list-box store holds every roster hero by internal
 name (`Pyro_hero`, `ScarletWitch`, `sabretooth_hero`, then the locked
 `Deadpool`, `Ironman`, `Professorx`), and its `+0xac` is the window's top;
 `roster_summary01..03` are the three shown, the middle one (`top + 1`,
-`FUN_005c29e0`) the choice. A summary's text is the internal name; the
-display name comes from the character record (`FUN_0044b8f0` vfunc `+0x40`,
-`+0x170`) at draw time.
+`FUN_005c29e0`, wrapping to 0) the choice. The pad's Down moves `+0xac` one
+entry on and Up one back, wrapping, through the locked heroes too. A
+summary's text is the internal name; the display name comes from the
+character record at draw time.
+
+The character table is the singleton `FUN_0044b8f0` keeps at `0x0071770c`
+(vtable `0x68544c`): 31 records of `0x4f8` bytes at `table + 4`. The lookup
+by name (vfunc `+0x40`, `FUN_004498d0`) hashes the lowercased name
+(`FUN_0044acc0`) and falls back to record 0 (`default`); the model scans the
+records comparing names without case, which finds the same record because
+the names are unique. A record holds:
+
+| Offset | Field |
+|---|---|
+| `+0x1c` | level byte |
+| `+0xc0` | stats object (vtable `0x685294`); 0 for the villain records 21..25 |
+| `+0x150` | internal name, 32 bytes (`sabretooth_hero`) |
+| `+0x170` | display name, 32 bytes (`Sabretooth`, `Jean Grey` for `Phoenix`, `Professor X`) |
+| `+0x28e` | unlock id, `short` |
+
+The card draw (`FUN_005bdf50`) names the hero `+0x170` when the unlock object
+(`FUN_0048fed0`, the static `0x0072c530`) reports the id unlocked (vfunc
+`+0x38`, `FUN_0048f770`: bit `id` of `+0x1c0`, ids below `0x129`) or when bit 0
+of the summary's `+0xbc` is clear; otherwise it draws `????`. The roster's
+summaries set that bit; the locked ones in the shipped save are Deadpool,
+Ironman and Professor X. The level it draws (`%2d`) is `FUN_004b87c0`:
+`+0x1c`, plus the active mission's bonus when the byte at `0x00782728` is a
+mission index (not `0xfd..0xff`) and that mission's hero, the handle_str<0> at
+`0x00784e48 + index * 0x78` (`FUN_004cb560`), names this record; the bonus is
+the `short` at `0x00784e50 + index * 0x78` (`FUN_004cb590`). Outside a
+mission the byte is `0xff`. A hero is dead when the stats object's vfunc
+`+0x28` (`FUN_0044a690`) holds: bit 0 of `+0x34` set and the float health at
+`+0x28` at or below 0; revive (`+0x1c`, `FUN_0044a670`) clears both. The Revive
+line is drawn only when `DAT_008b134c` has bit 2 and not bit 4.
 
 A dead party hero is moved to the roster (`DAT_008b134c & 4`). Its summary
 draws `Revive: <cost>` (`FUN_005bdf50`, string 1023, red when the money is
@@ -545,6 +586,11 @@ party showed Magneto, Cyclops, an empty slot and Storm; Replace on the empty
 slot opened the roster on Bishop/Colossus/Gambit; eleven Downs brought
 Wolverine to the middle with `Revive: 200`; A revived him (money 2000 ->
 1800, full health) and kept the roster open. Locked heroes were not reached.
+
+Measured the same way through the model (`GET /menu?items=all`, 2026-10-07):
+the roster's 17 entries resolved to display names, Wolverine dead (health
+`-1e6`, `+0x34` bit 0 set) and Cyclops alive (78.0), every level 1, the mission
+byte `0xff`, and Deadpool, Ironman and Professor X locked.
 
 ## The shop (`CMenuShop`) and its list box (`CMenuItemListBox`)
 

@@ -104,9 +104,15 @@ only the game's own input paths, never a guest call or write:
 
 Each replaced class has its own builder (`touch_menu_view` dispatches): the
 main menu, Options and the PDA list their up/down rows; the team menu lists the
-four hero summaries, where a tap selects a hero and a tap on the selected hero
-opens its details through the game's own click (`touch_menu_team`). The team
-roster and a hero's detail tabs keep the retail screen and the menu pad. The
+four hero summaries by the names the cards draw, with their levels and the
+empty slot as "Empty slot", where a tap selects a hero and a tap on the
+selected hero opens its details through the game's own click
+(`touch_menu_team`). The roster lists the heroes its cards name, locked ones
+left out, each with its level and "Fallen" when dead; a tap walks the
+carousel to the hero with the menu pad, counting the hidden locked entries,
+and presses A, which chooses the hero or revives a fallen one for the game's
+price. The roster does not show the revive cost yet. A hero's detail tabs keep
+the retail screen and the menu pad. The
 shop (`touch_menu_shop`) pins the game's buy/sell/training tabs as a tab bar
 with the open one lit, lists its list box's entries, and pins below them the
 game's own cost, money, gear count and limit and the selected entry's
@@ -327,7 +333,7 @@ already chose keeps player one.
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
 | `ctest -R touch_tab_fit` | Tab labels too wide for their tab shrink by one shared factor to fit inside its padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's heroes and its party mode, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state and a walk over the carousel's locked entries, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts, the region list and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, and a list walk that only selects or ends with A) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
