@@ -56,6 +56,7 @@ from live_cases_pad import (
     case_stick_travel,
     case_touch_pad,
 )
+from live_cases_extract import case_extract_keyboard_back
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
 CASES = {
@@ -76,6 +77,7 @@ CASES = {
     "touch-stash": case_touch_stash,
     "touch-review": case_touch_review,
     "touch-region": case_touch_region,
+    "extract-keyboard-back": case_extract_keyboard_back,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

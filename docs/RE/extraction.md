@@ -29,6 +29,15 @@ health or the dead state. `CExtractionPointSystem` (vtable 0x00686dac) only
 stores per-point unlocked bits (serialised by 0x00468380/0x004683e0).
 `loadextraction %s recall|extract` (console, `0x0046e160`) is the travel half.
 
+The handler's control lock is the party manager's flag byte `+0x728` bit
+`0x20` (setter vtable `+0x7c` = `0x00469680`, getter `+0x80`), set by
+`0x004a6b50` and `0x004a6d80`. It is not what holds the world map: with the map
+up through the pad the byte reads `0x07` (bit `0x20` clear), the menu and edge
+masks read as with a console-opened map, and after Back the party walks again.
+The release is `FUN_005eb930` (menu stack empties; clears the bit through
+`+0x7c(0)`). Back on the map failed for a menu-input reason, not a lock: see
+[menus](menus.md), "Escape in a menu with a focused item".
+
 ## Revival in retail costs money
 
 A fallen hero stays down; nothing at the pad revives it (observed live on
@@ -68,6 +77,11 @@ Other callers: `resurrect(a)` script command (`0x004a3b70`, 0.5), the
 
 ## Not established
 
+- When the lock bit clears relative to `openmenu('worldmap')`: only the steady
+  state (clear while the map is up) was read, not the order of `0x004a6b50`'s
+  set and `0x005eb930`'s clear.
+- Whether retail PC shows the Escape defect on the world map; the guest code
+  and bindings are the same, but no stock run was driven.
 - The dead flag's exact field: the stats object's vslot `+0x28` predicate
   (`actor[0xc0]`), not decompiled.
 - How the world-map choice leads into the roster team menu after an extraction.
