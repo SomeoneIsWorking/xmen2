@@ -27,6 +27,20 @@ constexpr std::uint32_t kHealth = 0x27cu;
 constexpr std::uint32_t kMaxHealth = 0x284u;
 constexpr std::uint32_t kEnergy = 0x288u;
 constexpr std::uint32_t kMaxEnergy = 0x314u;
+/* The conversation singleton and its flags (src/native/conversation.cpp).
+   Observed: 0x10 once one is pending, 0x13 while shown, 0x18 while it ends
+   with the party already free, 0x08 after. */
+constexpr std::uint32_t kConversation = 0x00717aacu;
+constexpr std::uint32_t kConversationFlags = 0x21b24u;
+constexpr std::uint8_t kConversationVisible = 0x02u;
+constexpr std::uint8_t kConversationEnding = 0x08u;
+constexpr std::uint8_t kConversationEnabled = 0x10u;
+
+bool conversation_holds(std::uint8_t flags) {
+  const bool pending = (flags & kConversationEnabled) != 0u &&
+                       (flags & kConversationEnding) == 0u;
+  return (flags & kConversationVisible) != 0u || pending;
+}
 
 struct Reading {
   float health = 0.0F;
@@ -104,7 +118,17 @@ void read_party(void *context) {
   body += "],\"offered\":";
   body += offer.offered ? "true" : "false";
   body += ",\"offer\":" + json_text(offer.text);
-  body += ",\"notice\":" + json_text(offer.notice) + "}\n";
+  body += ",\"notice\":" + json_text(offer.notice);
+  std::uint32_t conversation = 0;
+  std::uint8_t flags = 0;
+  const bool held =
+      memory.read_u32(base + kConversation, &conversation) &&
+      conversation != 0u &&
+      memory.read(conversation + kConversationFlags, &flags, 1u) &&
+      conversation_holds(flags);
+  body += ",\"conversation\":";
+  body += held ? "true" : "false";
+  body += "}\n";
 }
 
 } // namespace

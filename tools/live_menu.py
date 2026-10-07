@@ -209,8 +209,17 @@ def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
     return menu
 
 
+def conversation_held(case: Case) -> bool:
+    """The game's conversation is enabled or shown, as GET /party reads it;
+    while it is, the party takes no damage and level-ups wait."""
+    code, body = case.http("/party")
+    return code != 200 or json.loads(body).get("conversation") is not False
+
+
 def keyboard_into_gameplay(case: Case, timeout: float) -> dict:
-    """From a Continue boot, into the PDA and Escape out of it to gameplay."""
+    """From a Continue boot, into the PDA, Escape out of it to gameplay and
+    Return through the level's opening conversation, which can start after
+    the PDA closes."""
     menu = keyboard_into_the_pda(case, timeout)
     if menu.get("menu") != "pda":
         return menu
@@ -218,7 +227,13 @@ def keyboard_into_gameplay(case: Case, timeout: float) -> dict:
     while time.monotonic() < deadline and menu.get("active") is not False:
         case.http("/key?name=Escape&hold=0.2")
         menu = wait_game_menu(case, lambda m: m.get("active") is False, 3)
-    return menu
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and conversation_held(case):
+        case.http("/key?name=Return&hold=0.2")
+        time.sleep(1.0)
+    held = conversation_held(case)
+    case.check("no conversation holds the party", not held)
+    return read_menu(case) if not held else {"active": None}
 
 
 def drag_touch(case: Case, shown: dict, x: float, y_from: float,
@@ -287,10 +302,9 @@ def dismiss_level_up(case: Case) -> None:
             and guest_seconds(case) - start < 10.0:
         time.sleep(0.3)
         popup = read_menu(case)
+    case.check("the XP grant raised the level-up popup",
+               popup.get("popup") is True)
     if popup.get("popup") is not True:
-        # Some grants under concurrent load raised none; what
-        # decides is not traced.
-        print("  no level-up popup within 10 guest seconds")
         return
     # A press in the popup's first frames is lost (measured: one at its first
     # sighting did nothing, one a second later closed it).
