@@ -558,7 +558,8 @@ buy. What publishes that step is not established.
 An entry's text is a record in one table every list box shares:
 `0x8a83f4 + id * 0x70` (256 records). The entry getter (vfunc `+0xe4`,
 `0x005c23c0`) copies at most 0x3f bytes of it and cuts at the first tab; the
-rest of the line is further columns (`columns` attribute, at most 4).
+rest of the line is further columns (`columns` attribute, at most 4), which
+the model reads up to the record's handle at `+0x58` as the entry's value.
 
 The list's `onMouse` (vfunc `+0x74`, `0x005c0e10`) tests the raw box too (no
 half-depth lift: for `list` the base box is 48 units higher than what it
@@ -749,6 +750,46 @@ with `Sanctuary` focused and acts 1 and 2 enabled. A click on `act 2` opened
 it with `Avalon` focused; go on the point the party stood on kept the world
 map; A on `Avalon` closed it, loaded savage1 and put the party at its
 extraction point, and the world map then reopened on act 2.
+
+## The review (`CMenuReviewPaths`)
+
+`CMenuReviewPaths` (vtable `0x69ee7c`) is the PDA's review screen; the
+console's `openmenu review` opens it. Its items: `title` `Review`, the tabs
+`option01_text..option05_text` (`screens`, `cinematics`, `comics`,
+`concepts`, `stats`), their `option0N_focus` art, the `list`
+(`CMenuItemListBox`, 27 rows of 8) and the footers `desctext2`
+`$DPAD_UP scroll` (hidden), `desctext3` `$MENU_ACCEPT Select` (shown on every
+tab but stats) and `desctext4` `$MENU_BACK back`.
+
+Init (`FUN_005d1c60`) takes the open tab `DAT_008afef0` from the manager
+(vfunc `+400`), enables and lights the tabs and fills the list: stats through
+`FUN_005d0c20`, the others through `FUN_005d1220`. A stats record holds
+`  <name>\t<n> of <m>` under `~02Act N~~` headers; the list draws the text
+after the tab as a second column, so the model reads it as the entry's value
+(the record's text runs to `+0x58`, where its handle starts). The other tabs
+list one entry per unlockable, `[Locked Screen]` and the like when locked.
+
+The update (`FUN_005d18a0`) spends the queued tab steps `menu+0x18cc`, one per
+tick of the timer at `menu+0x18d4`; events 9..12 switch the tab
+(`FUN_005d0890`, `FUN_005d1780`). On `MENU_ACCEPT`, when the list has entries
+and the list's vfunc `+0x88` allows the selected one, it plays the accept
+sound (input manager vfunc `+0xe8` with 6), stores the selection in
+`DAT_008afef4[tab]` and shows the entry through `FUN_004ae7e0` vfunc
+`+0x40`/`+0x54`; `Credits` opens the `credits` menu (`CMenuCredits`).
+Otherwise it refuses (`+0xe8` with 7).
+
+Its `onMouse` (`FUN_005d04d0`) on `WM_LBUTTONUP`/`WM_RBUTTONUP` over a shown
+tab other than the lit one (raw box, `top = [0x72] - [0x76] - 1`) publishes
+one axis 0 step toward it and queues the rest at `menu+0x18cc`; otherwise it
+runs the base `CMenu::onMouse`, where the list box and the footers take the
+click.
+
+Measured (Continue into `act2/jungle/jungle1`, `openmenu review` from
+gameplay): it opened on stats with 42 entries (`Comic Books` `0 of 3`, ...).
+A click on `cinematics` opened it with `Credits` selected and the logos and
+the promo unlocked; A on `Credits` opened the credits, and Esc returned to the
+review. Screens held `Ultimate Bishop` and `Garokk` unlocked; comics and
+concepts were all locked.
 
 ## What is NOT established
 
