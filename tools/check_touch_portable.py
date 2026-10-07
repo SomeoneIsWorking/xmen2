@@ -95,8 +95,8 @@ OWNERS = (
     "src/ui/skip_document.hpp",
     "src/ui/touch_menu_document.cpp",
     "src/ui/touch_menu_document.hpp",
-    "src/ui/touch_tab_fit.cpp",
-    "src/ui/touch_tab_fit.hpp",
+    "src/ui/touch_label_fit.cpp",
+    "src/ui/touch_label_fit.hpp",
     "src/ui/igb_textures.cpp",
     "src/ui/igb_textures.hpp",
 )

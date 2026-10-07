@@ -1,8 +1,8 @@
 #include "touch_menu_document.hpp"
 
 #include "rml_text.hpp"
+#include "touch_label_fit.hpp"
 #include "touch_runtime_menu.hpp"
-#include "touch_tab_fit.hpp"
 #include "ui_resources.h"
 
 #include <RmlUi/Core.h>
@@ -223,13 +223,17 @@ void TouchMenuDocument::update() {
   if (next != drawn_) {
     root_->SetInnerRML(next);
     std::vector<std::string> tabs;
+    std::vector<std::string> footers;
     for (const input::TouchMenuButton &button : state.layout.buttons) {
+      const auto index = static_cast<std::size_t>(button.index);
       if (button.part == input::TouchMenuPart::tab) {
-        tabs.push_back(
-            state.view.tabs[static_cast<std::size_t>(button.index)].label);
+        tabs.push_back(state.view.tabs[index].label);
+      } else if (button.part == input::TouchMenuPart::footer) {
+        footers.push_back(state.view.footers[index].label);
       }
     }
-    fit_tab_labels(document_, tabs);
+    fit_button_labels(document_, "tm-tab", tabs);
+    fit_button_labels(document_, "tm-footer", footers);
     drawn_ = std::move(next);
   }
 }
