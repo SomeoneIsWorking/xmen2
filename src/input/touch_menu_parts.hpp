@@ -53,8 +53,8 @@ enum class ListTap {
   accept,
 };
 
-/* One row per entry of a list box (CMenuItemListBox or ListCodex). The
-   list's Up/Down does not wrap. */
+/* One row per entry of a list box (CMenuItemListBox or ListCodex), its
+   further columns as the row's value. The list's Up/Down does not wrap. */
 void append_list_entries(const menu::MenuItem &list, ListTap tap,
                          TouchMenuView *view);
 

@@ -62,6 +62,9 @@ struct ListBoxState {
   /* What the box's entry getter (0x005c23c0) returns: the entry record's
      text up to its first tab. */
   std::vector<std::string> entries;
+  /* Each entry's further columns: the record's text after its first tab,
+     tabs as single spaces; empty for a one-column entry. */
+  std::vector<std::string> values;
   /* First entry in the window, item+0xd8. */
   int top = 0;
   /* item+0xac; -1 when none. */

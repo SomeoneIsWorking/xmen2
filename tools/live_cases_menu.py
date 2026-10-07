@@ -1033,3 +1033,88 @@ def case_touch_stash(case: Case) -> None:
     left = wait_game_menu(case, lambda m: m.get("menu") != "stash", 10)
     case.check("Accept left the stash",
                left.get("menu") != "stash", str(left.get("menu")))
+
+
+def review_tabs(case: Case) -> dict[str, bool]:
+    """The game's review tabs, each with whether it is lit."""
+    code, body = case.http("/menu?items=all")
+    if code != 200:
+        return {}
+    return {item["label"]: bool(item["flags"] & 0x01)
+            for item in json.loads(body).get("items", [])
+            if re.fullmatch(r"option0\d_text", item["name"])}
+
+
+def case_touch_review(case: Case) -> None:
+    """The touch menu over CMenuReviewPaths, opened by the console.
+
+    It opens on the stats tab. A tap on the cinematics tab opens it in the
+    game, and two taps on Credits select it and press A, which plays the
+    credits; Esc returns to the review and Back leaves it.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=openmenu%20review")
+    review = wait_settled_touch_menu(case, "review", 20)
+    (case.dir / "review.json").write_text(json.dumps(review, indent=1) + "\n")
+    case.check("the touch menu is shown over the game's review",
+               review.get("visible") is True
+               and read_menu(case).get("class") == "CMenuReviewPaths",
+               str(read_menu(case).get("class")))
+    tabs = [(t["label"], t["lit"]) for t in review.get("tabs", [])]
+    case.check("its tabs are the game's five with stats lit",
+               tabs == [("screens", False), ("cinematics", False),
+                        ("comics", False), ("concepts", False),
+                        ("stats", True)], str(tabs))
+    rows = review.get("rows", [])
+    game = menu_list(case)
+    case.check("its rows are the stats entries with their counts",
+               len(rows) == len(game.get("entries", [])) > 0
+               and [r["value"] for r in rows] == game.get("values")
+               and {"label": "Comic Books", "value": "0 of 3"}.items()
+               <= rows[1].items(),
+               str([(r["label"], r["value"]) for r in rows[:3]]))
+    if review.get("visible") is not True or not rows:
+        return
+    case.shot("stats")
+
+    tap_touch_button(case, review, touch_button(review, "tab", "cinematics"))
+    review = wait_game_menu(case, lambda m: touch_row(
+        m.get("touch_menu", {}), "credits") != {}, 10).get("touch_menu", {})
+    case.check("a tap on the cinematics tab opened it in the game",
+               review_tabs(case).get("cinematics") is True
+               and touch_row(review, "credits") != {},
+               "%s, rows %s" % (review_tabs(case),
+                                [r["label"] for r in review.get("rows", [])]))
+    case.shot("cinematics")
+
+    if not touch_row(review, "credits").get("focused"):
+        tap_touch_button(case, review, touch_button(review, "row", "credits"))
+        review = wait_game_menu(case, lambda m: touch_row(
+            m.get("touch_menu", {}), "credits").get("focused"),
+            10).get("touch_menu", {})
+    tap_touch_button(case, review, touch_button(review, "row", "credits"))
+    credits = wait_game_menu(case, lambda m: m.get("menu") == "credits", 10)
+    case.check("a tap on the selected Credits played them",
+               credits.get("class") == "CMenuCredits"
+               and credits.get("touch_menu", {}).get("visible") is False,
+               "%s %s" % (credits.get("menu"), credits.get("class")))
+    case.shot("credits")
+
+    case.http("/key?name=Escape&hold=0.2")
+    review = wait_touch_menu(case, "review", 10)
+    case.check("Esc returned to the review under the touch menu",
+               review.get("visible") is True, str(read_menu(case).get("menu")))
+    back = touch_button(review, "footer", "back")
+    if back is None:
+        case.check("the review offers Back", False)
+        return
+    tap_touch_button(case, review, back)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "review", 10)
+    case.check("Back left the review",
+               left.get("menu") != "review", str(left.get("menu")))

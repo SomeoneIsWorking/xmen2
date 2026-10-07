@@ -110,6 +110,20 @@ void put_text_item(std::string *out, const menu::MenuItem &item) {
   close_object(out);
 }
 
+void put_strings(std::string *out, const char *key,
+                 const std::vector<std::string> &strings) {
+  put_key(out, key);
+  out->push_back('[');
+  for (const std::string &text : strings) {
+    put_string(out, text);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->push_back(']');
+}
+
 void put_list_box(std::string *out, const menu::ListBoxState &list) {
   put_key(out, "list_box");
   out->push_back('{');
@@ -117,16 +131,10 @@ void put_list_box(std::string *out, const menu::ListBoxState &list) {
   put_int(out, "selected", list.selected);
   put_int(out, "visible_rows", list.visible_rows);
   put_int(out, "row_height", list.row_height);
-  put_key(out, "entries");
-  out->push_back('[');
-  for (const std::string &entry : list.entries) {
-    put_string(out, entry);
-    out->push_back(',');
-  }
-  if (out->back() == ',') {
-    out->pop_back();
-  }
-  out->append("]},");
+  put_strings(out, "entries", list.entries);
+  out->push_back(',');
+  put_strings(out, "values", list.values);
+  out->append("},");
 }
 
 void put_item(std::string *out, const menu::MenuItem &item) {
@@ -240,16 +248,8 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
     out.pop_back();
   }
   out.append("],");
-  put_key(&out, "detail");
-  out.push_back('[');
-  for (const std::string &line : state.view.detail) {
-    put_string(&out, line);
-    out.push_back(',');
-  }
-  if (out.back() == ',') {
-    out.pop_back();
-  }
-  out.append("],");
+  put_strings(&out, "detail", state.view.detail);
+  out.push_back(',');
   put_key(&out, "buttons");
   out.push_back('[');
   for (const input::TouchMenuButton &button : state.layout.buttons) {

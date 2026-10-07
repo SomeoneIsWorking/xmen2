@@ -545,6 +545,94 @@ void the_codex_lists_its_heroes_and_reads_one() {
         "a codex mode not read keeps the retail screen");
 }
 
+/* The review on its stats tab as GET /menu read it from openmenu review. */
+MenuSnapshot review_menu(int selected) {
+  MenuSnapshot menu;
+  menu.address = 0x27129414u;
+  menu.name = "review";
+  menu.menu_class = "CMenuReviewPaths";
+  menu.items.push_back(item(14, "title", "Review", 31, 351, 160, 365));
+  MenuItem scroll = item(5, "desctext2", "~05$DPAD_UP scroll", 82, 21, 161, 35);
+  scroll.flags |= x2::menu::kItemHidden;
+  menu.items.push_back(scroll);
+  menu.items.push_back(
+      item(7, "desctext4", "~05$MENU_BACK back", 215, 21, 294, 35));
+  const char *tabs[] = {"screens", "cinematics", "comics", "concepts", "stats"};
+  for (int i = 0; i < 5; ++i) {
+    const std::string name = "option0" + std::to_string(i + 1) + "_text";
+    MenuItem tab = item(static_cast<unsigned>(31 + i), "", tabs[i], 33 + 91 * i,
+                        314, 112 + 91 * i, 328);
+    tab.name = name;
+    if (i == 4) {
+      tab.flags |= x2::menu::kItemFocusLit;
+    }
+    menu.items.push_back(tab);
+  }
+  MenuItem list = item(36, "list", "", 29, 112, 480, 331);
+  x2::menu::ListBoxState box;
+  box.entries = {"~02Act 1~~", "  Comic Books", "  Concept Art"};
+  box.values = {"", "0 of 3", "0 of 9"};
+  box.selected = selected;
+  box.visible_rows = 27;
+  box.row_height = 8;
+  box.hit = {29, 112, 480, 331};
+  list.list_box = box;
+  menu.items.push_back(list);
+  return menu;
+}
+
+void the_review_is_its_tabs_and_entries() {
+  const RetailScenePlane plane = plane_1280x720();
+  const MenuSnapshot menu = review_menu(0);
+  const auto view = x2::input::build_touch_menu_view(menu, plane);
+  check(view.has_value() && view->title == "Review", "the review is replaced");
+  if (!view) {
+    return;
+  }
+  check(view->tabs.size() == 5u && view->tabs[0].label == "screens" &&
+            view->tabs[4].label == "stats" && view->tabs[4].lit &&
+            !view->tabs[0].lit,
+        "its five tabs with the open one lit");
+  bool tabs_inside = true;
+  for (std::size_t i = 0; i < 5u; ++i) {
+    const auto &rect =
+        find_item(menu, "option0" + std::to_string(i + 1) + "_text")->rect;
+    const auto scene = plane.to_scene(view->tabs[i].click);
+    tabs_inside = tabs_inside && scene.x >= static_cast<float>(rect.left) &&
+                  scene.x < static_cast<float>(rect.right) &&
+                  scene.z >= static_cast<float>(rect.top) + 3.0F &&
+                  scene.z < static_cast<float>(rect.bottom) - 3.0F;
+  }
+  check(tabs_inside,
+        "a tab is clicked inside the box CMenuReviewPaths::onMouse tests");
+  check(view->rows.size() == 3u && view->rows[0].label == "Act 1" &&
+            view->rows[0].value.empty() &&
+            view->rows[1].label == "Comic Books" &&
+            view->rows[1].value == "0 of 3",
+        "a stats entry shows its count from the record's second column");
+  bool walked = true;
+  for (std::size_t entry = 0; entry < view->rows.size(); ++entry) {
+    const auto &row = view->rows[entry];
+    walked = walked && !row.clicks && row.entry == static_cast<int>(entry) &&
+             row.press_on_arrival == (entry == 0u);
+  }
+  check(walked, "every entry is walked to; only the selected one presses A");
+  check(view->footers.size() == 1u && view->footers[0].label == "back",
+        "only the shown Back footer");
+
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "a tap on the selected entry presses A, which shows it");
+  out = tap(touch, find(touch.layout(), TouchMenuPart::row, 2)->rect, 20u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "a tap on another walks the selection to it");
+}
+
 void the_games_line_breaks_are_kept() {
   using x2::input::menu_text_lines;
   check(menu_text_lines("~03One\n\n  two ~~\n") ==
@@ -866,6 +954,7 @@ int main() {
   the_team_party_is_its_heroes();
   the_shop_is_its_tabs_and_entries();
   the_codex_lists_its_heroes_and_reads_one();
+  the_review_is_its_tabs_and_entries();
   the_games_line_breaks_are_kept();
   the_world_map_is_its_acts_and_points();
   a_drag_scrolls_and_does_not_press();

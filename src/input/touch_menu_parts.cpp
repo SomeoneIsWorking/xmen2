@@ -138,6 +138,9 @@ void append_list_entries(const menu::MenuItem &list, ListTap tap,
     const int entry = static_cast<int>(i);
     TouchMenuRow row;
     row.label = touch_menu_text(box.entries[i]);
+    if (i < box.values.size()) {
+      row.value = touch_menu_text(box.values[i]);
+    }
     row.focused = entry == box.selected;
     row.press_on_arrival = tap == ListTap::accept || row.focused;
     row.slot = list.slot;

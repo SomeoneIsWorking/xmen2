@@ -528,7 +528,7 @@ FakeGuest build_list_menu(std::uint32_t entries, std::uint32_t menu_vtable,
   guest.zero(records + 26u * 0x70u, 0x70u);
   guest.text(records + 26u * 0x70u, "Magneto: Level Advance");
   guest.zero(records + 27u * 0x70u, 0x70u);
-  guest.text(records + 27u * 0x70u, "Med Kit\t3");
+  guest.text(records + 27u * 0x70u, "Med Kit\t3\tof 9");
   guest.zero(records + 0xffu * 0x70u, 0x70u);
   guest.put(records + 0xffu * 0x70u,
             "An entry name long enough that the getter cuts it at 63 bytes "
@@ -560,6 +560,9 @@ void test_shop_list_box() {
             box.entries[0] == "Magneto: Level Advance" &&
             box.entries[1] == "Med Kit",
         "an entry's text, cut at its first tab");
+  check(box.values.size() == 3u && box.values[0].empty() &&
+            box.values[1] == "3 of 9",
+        "an entry's further columns, tabs as spaces");
   check(box.entries.size() == 3u && box.entries[2].size() == 63u,
         "an entry's text is at most what the getter copies");
   check(box.selected == 1 && box.top == 1, "the selection and window top");

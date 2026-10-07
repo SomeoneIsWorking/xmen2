@@ -101,6 +101,8 @@ inline constexpr std::uint32_t kListRecordsRva = 0x004a83f4u;
 inline constexpr std::uint32_t kListRecordStride = 0x70u;
 /* The entry getter copies at most 0x3f bytes. */
 inline constexpr std::size_t kListEntryBytes = 0x3fu;
+/* The record's text ends where its entry handle starts, at +0x58. */
+inline constexpr std::size_t kListRecordTextBytes = 0x58u;
 
 /* CMenuItem::nextInDirection's visited list. */
 inline constexpr int kStepVisits = 32;
@@ -498,19 +500,29 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
     return false;
   }
   for (std::uint32_t i = 0; i < count; ++i) {
-    char text[kListEntryBytes];
+    char text[kListRecordTextBytes];
     if (!read_bytes(image_base_ + kListRecordsRva + ids[i] * kListRecordStride,
                     text, sizeof text)) {
       return false;
     }
-    std::string bytes;
-    for (const char c : text) {
-      if (c == '\0' || c == '\t') {
-        break;
+    std::string entry;
+    std::string value;
+    bool in_value = false;
+    for (std::size_t at = 0; at < sizeof text && text[at] != '\0'; ++at) {
+      const char c = text[at];
+      if (c == '\t') {
+        if (in_value) {
+          value.push_back(' ');
+        }
+        in_value = true;
+      } else if (in_value) {
+        value.push_back(c);
+      } else if (at < kListEntryBytes) {
+        entry.push_back(c);
       }
-      bytes.push_back(c);
     }
-    out->entries.push_back(latin1_to_utf8(bytes));
+    out->entries.push_back(latin1_to_utf8(entry));
+    out->values.push_back(latin1_to_utf8(value));
   }
   return true;
 }
