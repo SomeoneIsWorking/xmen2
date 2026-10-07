@@ -672,6 +672,10 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   if (menu == 0u) {
     return ReadStatus::no_menu;
   }
+  return read_menu(menu, out);
+}
+
+ReadStatus RetailMenuModel::read_menu(std::uint32_t menu, MenuSnapshot *out) {
   out->address = menu;
   std::uint32_t vtable = 0;
   std::uint32_t count = 0;

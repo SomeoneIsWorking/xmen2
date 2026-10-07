@@ -840,7 +840,11 @@ slot 0 and blanks slots 1..3 through `FUN_005bc6b0` on `menu+0x2f4`. The blankin
 changes the menu's footer table but not the text items the XMLB had already
 filled, so `desctext2` and `desctext4` stay drawn beside the new `desctext1`
 (read live after the pad's Xtract: table `['$MENU_BACK Back','','','','']`,
-items `Back`, `back`, `go`).
+items `Back`, `back`, `go`). The port hides `desctext2` after init
+(`world_map_footer_override.cpp`, rule in `world_map_footer.cpp`) by setting its
+hidden bit `item+0x54 & 4`, a deliberate difference from retail; the game has
+no setter for that bit (`FUN_005ade70` only toggles the enabled bit), so only
+`CMenuItem::parse` writes it.
 
 `menu+0x18d8` is the open act (1..5) and `menu+0x18dc` the point list. Init
 (`FUN_005e8c40`) opens the party's current act (`FUN_0046dce0` vfunc `+0x274`)

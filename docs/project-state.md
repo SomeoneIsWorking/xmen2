@@ -471,7 +471,9 @@ a focused row of the world map and the codex; a native fallback to Back when
 the menu's Start does nothing (`menu_start_override.cpp`) is a deliberate delta
 from retail. `tools/live_case.py extract-keyboard-back` uses an extraction pad
 through the real Use and Xtract choice, presses Escape on the world map and
-walks the party afterwards, 7 of 7 on 2026-10-07.
+walks the party afterwards, 10 of 10 on 2026-10-07. The world map's footer
+shows one Back and go: retail draws a second Back (`desctext2`), which the
+port hides (`world_map_footer_override.cpp`), also a deliberate delta.
 
 Gap: every controller observation on this machine uses the synthetic pad. Real
 hardware still must verify hotplug, stable identity, reconnect, assignment, and

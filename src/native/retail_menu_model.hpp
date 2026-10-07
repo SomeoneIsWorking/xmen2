@@ -175,6 +175,9 @@ public:
                   std::uint32_t image_base);
 
   ReadStatus read(MenuSnapshot *out);
+  /* The same read for the CMenu at `menu`, active or not; popup_up is left
+     unset. */
+  ReadStatus read_menu(std::uint32_t menu, MenuSnapshot *out);
 
   /* The guest address the last unreadable read failed at. */
   std::uint32_t failed_address() const { return reader_.failed_address(); }
