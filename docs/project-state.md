@@ -6,6 +6,7 @@ The baseline is the unmodified 2005 Windows PC release of *X-Men Legends II* run
 through Wine, with its original Direct3D 8 renderer, PC control defaults, prompts, settings, loading,
 and save flow. The port's intended differences are Wine-free native execution and a modern native-PC
 presentation, controller, settings, packaging, and diagnostics experience without changing the game.
+One deliberate gameplay delta is opt-in: `gameplay.extraction_revive` (S024), off by default.
 
 This is the authoritative inventory of what the port demonstrably does now and
 what remains partial, blocked, or absent. Epic intent belongs in
@@ -49,6 +50,7 @@ before a release artifact.
 | S022 | Native Windows host package and CI release | partial | S001, S002 | G005 |
 | S023 | Seamless LAN multiplayer without GameSpy's servers | partial | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
+| S024 | Optional free or paid party revive at extraction points | partial | S002, S008, S016 | G004 |
 
 ## State details and evidence
 
@@ -520,6 +522,10 @@ a same-profile warm capture at 3840x2160.
 Gap: fullscreen transitions and real-controller identity/hotplug require
 hardware/user validation, and controller UI navigation still uses focus
 traversal rather than spatial navigation.
+
+The General tab's Gameplay pane holds one row, Extraction point revive (`gameplay.extraction_revive`:
+Off, Free full restore, Paid revive), saved through the same transactional store and rolled back
+on a failed save; see S024.
 
 ### S009 — direct initialized development boot: partial
 
@@ -2152,3 +2158,24 @@ Gap:
 Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
 the order of the remaining work. Until a package exists, the Windows comparison
 baseline is the retail executable.
+
+### S024 — optional extraction-point revive: partial
+
+Setting `gameplay.extraction_revive` (Settings, General, Gameplay): `off` keeps retail (a fallen
+hero stays down), `free` restores the party once when any hero comes within 480 of an extraction pad (again only
+after every hero has left), `paid` offers to revive the fallen near a pad for the retail cost. Grounding and addresses are in
+[`RE/extraction.md`](RE/extraction.md).
+
+Observed on genosha1 with the real binary (`tools/live_case.py extraction-off`, `extraction-free`,
+`extraction-paid`, judged from `GET /party`): with `off` a fallen hero stays down and nothing is
+offered; with `free` a party teleported into the radius with a hero fallen is restored once with
+no command, nothing happens while it stays or after it leaves, and it is restored again on
+re-entry; with `paid` the prompt shows the summed cost, a request with no money refuses visibly
+and takes nothing, and F3, the controller's LB and a touch tap each deduct exactly the offered
+total (200 per level-1 hero) and revive. Unit tests: `test_settings` (round trip, unknown value
+refused), `test_extraction_revive` (cost floor and summation, refusal on short money, prompt
+requests from key, pad and finger, entity table).
+
+Gap: the energy refill from below maximum was not observed (health was); the shown cost was not
+compared with a guest call of `0x004b8830`; what the get-up timer's `0x005252e0` `+0x1c8` check
+asks (it decides whether a revive keeps its fraction) is not decoded.

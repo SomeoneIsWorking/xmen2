@@ -6,6 +6,7 @@
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
 #include "display_settings_document.hpp"
+#include "gameplay_settings_document.hpp"
 #include "hud_settings_document.hpp"
 #include "keyboard_bindings_document.hpp"
 #include "rml_text.hpp"
@@ -92,7 +93,8 @@ void rebuild() {
            "<div class='help'>Normal plays the retail introduction. Menu "
            "skips the introduction and opens the retail main menu. "
            "Continue loads the newest save; if none exists it opens the "
-           "main menu instead.</div><spacer></spacer></pane>";
+           "main menu instead.</div><spacer></spacer></pane>"
+        << gameplay_settings_document_rml(*settings);
   } else if (active_tab == 1) {
     rml << display_settings_document_rml(*settings);
   } else {
@@ -142,6 +144,7 @@ void rebuild() {
   if (active_tab == 0) {
     wire("boot-mode", "click");
     wire("boot-mode", "keydown");
+    gameplay_settings_document_wire(*document, listener);
   } else if (active_tab == 1) {
     display_settings_document_wire(*document, listener);
   } else {
@@ -217,6 +220,16 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
                          settings->shadow_resolution);
     rebuild();
     set_status(saved ? "Saved" : why);
+  } else if (id.rfind("gameplay-", 0) == 0) {
+    X2Settings *settings = x2_settings_store();
+    X2Settings before = *settings;
+    if (!gameplay_settings_document_change(*settings, id))
+      return;
+    std::string status = save_settings();
+    if (status != "Saved")
+      *settings = before;
+    rebuild();
+    set_status(status);
   } else if (id.rfind("hud-", 0) == 0) {
     X2Settings *settings = x2_settings_store();
     X2HudSettings before = settings->hud;

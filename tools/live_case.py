@@ -11,6 +11,9 @@ scratch/run/live.json.
     tools/live_case.py boot-continue          # Boot=Continue reaches the saved map
     tools/live_case.py pad-late               # pad attached after start works
     tools/live_case.py pad-persisted          # stored controller0 id adopted
+    tools/live_case.py extraction-off         # a pad does nothing for the party
+    tools/live_case.py extraction-free        # a pad revives and refills the party
+    tools/live_case.py extraction-paid        # near a pad, a request pays the total
     tools/live_case.py menu-model             # GET /menu matches the drawn menus
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -60,7 +63,13 @@ from live_cases_touch_menu import (
     case_touch_team,
     case_touch_worldmap,
 )
-from live_cases_extract import case_extract_keyboard_back
+
+from live_cases_extraction import (
+    case_extract_keyboard_back,
+    case_extraction_free,
+    case_extraction_off,
+    case_extraction_paid,
+)
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
 CASES = {
@@ -93,6 +102,9 @@ CASES = {
     "selector-dialog-800": case_selector_dialog,
     "selector-dialog-720": case_selector_dialog,
     "selector-dialog-4k": case_selector_dialog,
+    "extraction-free": case_extraction_free,
+    "extraction-off": case_extraction_off,
+    "extraction-paid": case_extraction_paid,
 }
 
 try:

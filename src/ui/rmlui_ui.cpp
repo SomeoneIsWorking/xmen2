@@ -16,6 +16,7 @@
 
 #include "aspect_fit.h"
 #include "environment.h"
+#include "extraction_revive_document.hpp"
 #include "igb_textures.hpp"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
@@ -32,6 +33,7 @@ std::unique_ptr<SystemInterface_SDL> system_interface;
 std::unique_ptr<x2::ui::IgbTextureRenderInterface> render_interface;
 Rml::Context *context;
 x2::ui::SkipDocument skip_document;
+x2::ui::ExtractionReviveDocument revive_document;
 x2::ui::TouchMenuDocument touch_menu_document;
 SDL_Window *host_window;
 bool initialized;
@@ -99,6 +101,7 @@ bool gamepad_navigation(const SDL_Event &event) {
 }
 
 void discard_partial_initialization() {
+  revive_document.shutdown();
   skip_document.shutdown();
   touch_menu_document.shutdown();
   x2::ui::touch_document_shutdown();
@@ -168,6 +171,10 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   if (!skip_document.load(context)) {
     discard_partial_initialization();
     return initialize_failed("loading the skip button document");
+  }
+  if (!revive_document.load(context)) {
+    discard_partial_initialization();
+    return initialize_failed("loading the revive prompt document");
   }
   if (!touch_menu_document.load(context)) {
     discard_partial_initialization();
@@ -250,11 +257,15 @@ void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
       x2_touch_runtime_has_visuals() && !settings_visible;
   /* Its own gate: a cinematic hides the gameplay overlay. */
   const bool skip_visible = x2::ui::SkipDocument::wanted() && !settings_visible;
+  /* The paid revive offer: gameplay only, under the modal port settings. */
+  const bool revive_visible =
+      x2::ui::ExtractionReviveDocument::wanted() && !settings_visible;
   /* The touch menu: touch play over a retail menu it replaces, under the
      modal port settings. */
   const bool menu_visible =
       x2::ui::TouchMenuDocument::wanted() && !settings_visible;
-  if ((!settings_visible && !touch_visible && !skip_visible && !menu_visible) ||
+  if ((!settings_visible && !touch_visible && !skip_visible && !menu_visible &&
+       !revive_visible) ||
       !device || !command_buffer || !swapchain || !window)
     return;
   if (!initialize(device, window, width, height))
@@ -274,6 +285,7 @@ void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   x2::ui::settings_document_update();
   x2::ui::touch_document_update();
   skip_document.update();
+  revive_document.update();
   touch_menu_document.update();
   context->Update();
   context->Render();
@@ -284,6 +296,7 @@ void x2_ui_gpu_shutdown(void) {
   if (!initialized)
     return;
   touch_menu_document.shutdown();
+  revive_document.shutdown();
   skip_document.shutdown();
   x2::ui::touch_document_shutdown();
   x2::ui::settings_document_shutdown();

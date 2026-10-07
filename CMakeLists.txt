@@ -401,6 +401,16 @@ add_executable(test_retail_menu_model tests/test_retail_menu_model.cpp
 target_include_directories(test_retail_menu_model PRIVATE src/native)
 add_test(NAME retail_menu_model COMMAND test_retail_menu_model)
 
+add_executable(test_extraction_revive tests/test_extraction_revive.cpp
+               src/native/extraction_revive_policy.cpp
+               src/native/retail_entities.cpp src/input/revive_prompt.cpp)
+target_include_directories(test_extraction_revive PRIVATE
+                           src/native src/input)
+target_link_libraries(test_extraction_revive PRIVATE ${X2_SDL})
+add_test(NAME extraction_revive COMMAND test_extraction_revive)
+set_tests_properties(extraction_revive PROPERTIES SKIP_RETURN_CODE 77
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+
 add_executable(test_thumb_stick tests/test_thumb_stick.cpp
                src/input/thumb_stick.cpp)
 target_link_libraries(test_thumb_stick PRIVATE lucent::lucent)
@@ -421,6 +431,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                # through x2_touch_inject exactly as the control channel and the
                # host pump are, rather than through a hand-built SDL event.
                src/input/touch_inject.cpp
+               src/input/revive_prompt.cpp
                src/input/touch_skip_button.cpp
                src/input/cutscene_skip.cpp
                src/input/touch_pad_publisher.cpp
@@ -1875,10 +1886,12 @@ add_library(x2_rmlui_ui STATIC
     src/ui/settings_document.cpp
     src/ui/display_settings_document.cpp
     src/ui/hud_settings_document.cpp
+    src/ui/gameplay_settings_document.cpp
     src/ui/keyboard_bindings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
     src/ui/skip_document.cpp
+    src/ui/extraction_revive_document.cpp
     src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.cpp)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
@@ -2019,6 +2032,8 @@ set(X2_NATIVE_SOURCES
     src/save/save_trace.cpp
     src/save/load_game_menu_policy.cpp
     src/native/autosave_runtime.cpp
+    src/native/extraction_revive.cpp
+    src/native/extraction_revive_policy.cpp
     src/native/boot_player_selection.cpp
     src/native/continue_runtime.cpp
     src/native/exact_save_load.cpp
@@ -2115,6 +2130,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_runtime.cpp
     src/input/touch_skip_button.cpp
     src/input/cutscene_skip.cpp
+    src/input/revive_prompt.cpp
     src/input/touch_pad_publisher.cpp
     src/input/touch_menu_controls.cpp
     src/input/touch_pointer.cpp
@@ -2160,6 +2176,9 @@ set(X2_NATIVE_SOURCES
     src/native/control_http.cpp
     src/native/control_save_route.cpp
     src/native/control_menu_route.cpp
+    src/native/control_party_route.cpp
+    src/native/retail_entities.cpp
+    src/native/retail_entities_live.cpp
     src/native/control_console.cpp
     src/native/retail_front_end.cpp
     src/native/campaign_snapshot.cpp
