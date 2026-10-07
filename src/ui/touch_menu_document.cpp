@@ -2,6 +2,7 @@
 
 #include "rml_text.hpp"
 #include "touch_runtime_menu.hpp"
+#include "touch_tab_fit.hpp"
 #include "ui_resources.h"
 
 #include <RmlUi/Core.h>
@@ -9,6 +10,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <sstream>
+#include <vector>
 
 namespace x2::ui {
 namespace {
@@ -220,6 +222,14 @@ void TouchMenuDocument::update() {
   std::string next = markup(state, scale);
   if (next != drawn_) {
     root_->SetInnerRML(next);
+    std::vector<std::string> tabs;
+    for (const input::TouchMenuButton &button : state.layout.buttons) {
+      if (button.part == input::TouchMenuPart::tab) {
+        tabs.push_back(
+            state.view.tabs[static_cast<std::size_t>(button.index)].label);
+      }
+    }
+    fit_tab_labels(document_, tabs);
     drawn_ = std::move(next);
   }
 }

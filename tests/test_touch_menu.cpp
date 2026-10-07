@@ -633,6 +633,73 @@ void the_review_is_its_tabs_and_entries() {
         "a tap on another walks the selection to it");
 }
 
+/* The online region list as GET /menu read it from openmenu region. */
+MenuSnapshot region_menu(const std::vector<std::string> &regions,
+                         int selected) {
+  MenuSnapshot menu;
+  menu.address = 0x27128974u;
+  menu.name = "region";
+  menu.menu_class = "CMenuRegion";
+  menu.items.push_back(
+      item(5, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
+  menu.items.push_back(item(6, "desctext2", "~05 ", 122, 21, 201, 35));
+  menu.items.push_back(
+      item(7, "desctext3", "~05$MENU_SUBTRACT Refresh", 215, 21, 294, 35));
+  menu.items.push_back(
+      item(9, "desctext5", "~05$MENU_ACCEPT Select", 381, 21, 460, 35));
+  menu.items.push_back(item(13, "data_name", "", 29, 290, 480, 306));
+  menu.items.push_back(
+      item(19, "text_title", "Region Menu", 31, 351, 160, 365));
+  MenuItem list = item(27, "text_list", "", 29, 94, 480, 299);
+  x2::menu::ListBoxState box;
+  for (const std::string &region : regions) {
+    box.entries.push_back(region);
+    box.values.push_back(std::to_string(region.size()));
+  }
+  box.selected = selected;
+  box.visible_rows = 25;
+  box.row_height = 8;
+  box.hit = {29, 94, 480, 299};
+  list.list_box = box;
+  menu.items.push_back(list);
+  return menu;
+}
+
+void the_region_is_its_list_and_footers() {
+  const RetailScenePlane plane = plane_1280x720();
+  const auto empty =
+      x2::input::build_touch_menu_view(region_menu({}, 0), plane);
+  check(empty.has_value() && empty->title == "Region Menu" &&
+            empty->rows.empty(),
+        "an empty region list is replaced, titled by its text_title");
+  if (!empty) {
+    return;
+  }
+  check(empty->footers.size() == 3u && empty->footers[0].label == "Back" &&
+            empty->footers[1].token == "$MENU_SUBTRACT" &&
+            empty->footers[2].token == "$MENU_ACCEPT",
+        "the region's Back, Refresh and Select footers");
+  const auto view = x2::input::build_touch_menu_view(
+      region_menu({"Americas", "Europe"}, 0), plane);
+  check(view.has_value() && view->rows.size() == 2u &&
+            view->rows[1].label == "Europe" && view->rows[1].value == "6",
+        "a region row carries its count");
+  if (!view) {
+    return;
+  }
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 1)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "a tap on another region walks the selection to it");
+  out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 20u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "a tap on the selected region presses A");
+}
+
 void the_games_line_breaks_are_kept() {
   using x2::input::menu_text_lines;
   check(menu_text_lines("~03One\n\n  two ~~\n") ==
@@ -955,6 +1022,7 @@ int main() {
   the_shop_is_its_tabs_and_entries();
   the_codex_lists_its_heroes_and_reads_one();
   the_review_is_its_tabs_and_entries();
+  the_region_is_its_list_and_footers();
   the_games_line_breaks_are_kept();
   the_world_map_is_its_acts_and_points();
   a_drag_scrolls_and_does_not_press();
