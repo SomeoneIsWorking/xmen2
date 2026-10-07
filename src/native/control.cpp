@@ -58,7 +58,8 @@ enum {
   CMD_SAVE,
   CMD_ASSIGNMENT,
   CMD_TOUCH,
-  CMD_PERFORMANCE_RESET
+  CMD_PERFORMANCE_RESET,
+  CMD_GUEST_READ
 };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -73,6 +74,8 @@ static double g_cmd_x, g_cmd_y; /* normalized contact position */
 static int g_cmd_phase;
 static int g_cmd_ok;
 static char g_cmd_why[192];
+static void (*g_cmd_work)(void *); /* CMD_GUEST_READ's reader */
+static void *g_cmd_context;
 static char *g_probe; /* input snapshot, server-thread owned */
 static size_t g_probe_len;
 static X2ControlScreenshot g_screenshot;
@@ -184,6 +187,9 @@ void control_pump(CPU *cpu, double now) {
                  "fewer events or increase the production bound",
                  PROBE_BYTES);
     }
+  } else if (cmd == CMD_GUEST_READ) {
+    g_cmd_work(g_cmd_context);
+    g_cmd_ok = 1;
   } else if (cmd == CMD_PERFORMANCE_RESET) {
     gpu_frame_timing_reset();
     g_cmd_ok = 1;
@@ -243,6 +249,12 @@ static int submit(int cmd, double timeout_s) {
   g_cmd = CMD_NONE;
   pthread_mutex_unlock(&g_lock);
   return rc;
+}
+
+int control_command_guest_read(void (*read)(void *), void *context) {
+  g_cmd_work = read;
+  g_cmd_context = context;
+  return submit(CMD_GUEST_READ, 10.0) ? 1 : -1;
 }
 
 int control_command_save(const char **report, size_t *report_size, char *reason,

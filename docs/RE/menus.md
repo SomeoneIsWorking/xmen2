@@ -365,7 +365,11 @@ state, as its buttons already were; a release in the same frame was never seen.
 
 `x2::menu::RetailMenuModel` (`src/native/retail_menu_model.cpp`) reads the
 active menu into a plain snapshot through checked reads only, and `GET /menu`
-serves it. Everything below was read from the code named and checked live on
+serves it. Both readers run on the guest's own thread between guest updates:
+the touch menu at the host event pump, `GET /menu` at the input poll
+(`control_command_guest_read`). Read from the control server's thread, the
+model saw half-applied purchases (the money taken, the gear count not yet
+written). Everything below was read from the code named and checked live on
 `main`, `options` and `pda`.
 
 ### Manager, menu and item array
@@ -721,7 +725,10 @@ an item's own price through its definition, `(level / 10 + 1)^2 * 2000` for a
 level advance (the factor capped at 5), and powers for the skill entries. The
 game prices no entry it has not selected, so a reader has the selected
 entry's price and nothing else. `inventory_count` is the gear count and limit
-(`%d/%d`), and `money_value` holds the party's money.
+(`%d/%d`), and `money_value` holds the party's money. The blank and the
+rewrite land in different frames: read at the input poll, `inventory_count`
+was `""` for exactly one frame after each tap on the shop list (measured
+2026-10-07, frames 896 and 1089 blank, the next frame `1/20` and `2/20`).
 
 Text escapes in these items: `~NN` selects a style (`~06` is the
 cannot-afford red, `~02` the limit line, `~05` the footers), `~~` ends one, and

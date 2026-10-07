@@ -8,6 +8,9 @@
 int control_command_save(const char **report, size_t *report_size, char *reason,
                          size_t reason_capacity);
 int control_command_performance_reset(char *reason, size_t reason_capacity);
+/* Run `read(context)` at the guest input poll, between guest updates, so a
+   route never sees guest state half-written; 1 when it ran, -1 on timeout. */
+int control_command_guest_read(void (*read)(void *), void *context);
 
 /* Drive the game's input. Each of these runs on the thread that owns guest
    input, for the same reason: the guest is single-threaded under a
