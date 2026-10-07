@@ -6,6 +6,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "../input/revive_prompt.hpp"
 #include "../input/touch_runtime.h"
 #include "d3d8_drawcall.h"
 #include "rmlui_ui.h"
@@ -216,6 +217,9 @@ static void pump_sdl(void) {
       }
       x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
       apply_cursor_policy();
+      continue;
+    }
+    if (x2::input::revive_prompt_event(event)) {
       continue;
     }
     int touch_handled = x2_touch_runtime_event(&event);

@@ -32,6 +32,17 @@ typedef enum {
 
 const char *x2_touch_controls_label(unsigned mode);
 
+/* What reaching an extraction point does for a fallen or hurt party. */
+typedef enum {
+  X2_EXTRACTION_REVIVE_OFF = 0,
+  X2_EXTRACTION_REVIVE_FREE,
+  X2_EXTRACTION_REVIVE_PAID
+} X2ExtractionRevive;
+
+const char *x2_extraction_revive_name(X2ExtractionRevive mode);
+const char *x2_extraction_revive_label(X2ExtractionRevive mode);
+int x2_extraction_revive_parse(const char *text, X2ExtractionRevive *mode);
+
 /* A row with keyboard_set clear follows the game's own binding. */
 typedef struct {
   uint16_t keyboard[X2_SETTINGS_ROWS];
@@ -59,6 +70,10 @@ typedef struct {
      path -- a layout nobody can look at without a phone gets shipped wrong.
      Persisted numerically, so an existing file's 0/1 keeps its meaning. */
   uint8_t touch_controls;
+  /* gameplay.extraction_revive: off is the retail rule (a fallen hero stays
+     down), free restores the party at the pad, paid offers the retail
+     revive cost near it. */
+  X2ExtractionRevive extraction_revive;
   X2HudSettings hud;
   /* Device-assignment grid: each row has one owner or is unassigned. P1 may
      own one row of each kind for hotswap. P2-P4 own one device total. */

@@ -178,6 +178,12 @@ then. A tap after the offer has ended is refused rather than held, so it
 cannot skip the next cinematic. `/controls` lists it as `skip button` while
 it is drawn.
 
+The paid extraction revive (`gameplay.extraction_revive=paid`) draws one pill near the top
+centre while a hero is down beside a pad (`src/ui/extraction_revive_document.cpp`). A finger that
+lands on it is the prompt's (`x2::input::RevivePrompt`, ahead of the touch controls in the host
+pump and in `x2_touch_inject`), and its motion and lift never reach the stick or buttons. F3 and
+the controller's LB take the same offer.
+
 Retail draws one cursor and has one button, so one contact owns it at a time:
 `x2::input::PointerOwner` is that rule, shared by the portrait tap and the
 menu tap rather than copied into each. A button pressed by a finger is always

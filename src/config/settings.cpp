@@ -45,6 +45,40 @@ const char *x2_touch_controls_label(unsigned mode) {
   }
 }
 
+const char *x2_extraction_revive_name(X2ExtractionRevive mode) {
+  switch (mode) {
+  case X2_EXTRACTION_REVIVE_FREE:
+    return "free";
+  case X2_EXTRACTION_REVIVE_PAID:
+    return "paid";
+  default:
+    return "off";
+  }
+}
+
+const char *x2_extraction_revive_label(X2ExtractionRevive mode) {
+  switch (mode) {
+  case X2_EXTRACTION_REVIVE_FREE:
+    return "Free full restore";
+  case X2_EXTRACTION_REVIVE_PAID:
+    return "Paid revive";
+  default:
+    return "Off";
+  }
+}
+
+int x2_extraction_revive_parse(const char *text, X2ExtractionRevive *mode) {
+  for (int i = X2_EXTRACTION_REVIVE_OFF; i <= X2_EXTRACTION_REVIVE_PAID; i++) {
+    const auto candidate = static_cast<X2ExtractionRevive>(i);
+    if (strcmp(text, x2_extraction_revive_name(candidate)) == 0) {
+      if (mode)
+        *mode = candidate;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void x2_keyboard_profile_restore_row(X2KeyboardProfile *profile, unsigned row) {
   if (!profile || row >= X2_SETTINGS_ROWS)
     return;
@@ -68,6 +102,7 @@ void x2_settings_defaults(X2Settings *settings) {
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = X2_BOOT_NORMAL;
   settings->touch_controls = X2_TOUCH_CONTROLS_AUTO;
+  settings->extraction_revive = X2_EXTRACTION_REVIVE_OFF;
   x2_hud_settings_defaults(&settings->hud);
   for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
     settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
@@ -212,6 +247,8 @@ static int parse_line(ParseState *state, char *line) {
   }
   if (strcmp(key, "boot.mode") == 0)
     return x2_boot_mode_parse(value, &settings->boot_mode);
+  if (strcmp(key, "gameplay.extraction_revive") == 0)
+    return x2_extraction_revive_parse(value, &settings->extraction_revive);
   if (strcmp(key, "input.touch_controls") == 0) {
     unsigned mode;
     if (!number(value, X2_TOUCH_CONTROLS_OFF, X2_TOUCH_CONTROLS_ALWAYS, &mode))
@@ -274,7 +311,8 @@ static int settings_valid(const X2Settings *settings) {
   if (!x2_hud_settings_valid(&settings->hud))
     return 0;
   if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE ||
-      settings->touch_controls > X2_TOUCH_CONTROLS_ALWAYS)
+      settings->touch_controls > X2_TOUCH_CONTROLS_ALWAYS ||
+      (unsigned)settings->extraction_revive > X2_EXTRACTION_REVIVE_PAID)
     return 0;
   if (settings->dynamic_shadows > 1 || (settings->shadow_resolution != 512 &&
                                         settings->shadow_resolution != 1024 &&
@@ -447,6 +485,8 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
     return 0;
   }
   fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
+  fprintf(file, "gameplay.extraction_revive=%s\n",
+          x2_extraction_revive_name(settings->extraction_revive));
   fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);
   fprintf(file, "input.assignment_version=2\n");
   for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {

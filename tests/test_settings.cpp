@@ -139,6 +139,47 @@ static void check_keyboard_profile_restore(const char *path) {
   CHECK(memcmp(&settings, &loaded, sizeof settings) == 0);
 }
 
+static void check_extraction_revive(const char *path) {
+  X2Settings saved, loaded, untouched;
+  char why[256];
+  FILE *file;
+  x2_settings_defaults(&saved);
+  CHECK(saved.extraction_revive == X2_EXTRACTION_REVIVE_OFF);
+  for (int mode = X2_EXTRACTION_REVIVE_OFF; mode <= X2_EXTRACTION_REVIVE_PAID;
+       mode++) {
+    saved.extraction_revive = (X2ExtractionRevive)mode;
+    CHECK(x2_settings_save(&saved, path, why, sizeof why));
+    CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+    CHECK(loaded.extraction_revive == (X2ExtractionRevive)mode);
+    X2ExtractionRevive parsed;
+    CHECK(x2_extraction_revive_parse(
+        x2_extraction_revive_name((X2ExtractionRevive)mode), &parsed));
+    CHECK(parsed == (X2ExtractionRevive)mode);
+  }
+  file = fopen(path, "r");
+  assert(file);
+  char text[4096] = {0};
+  size_t used = fread(text, 1, sizeof text - 1, file);
+  fclose(file);
+  CHECK(used > 0 && strstr(text, "gameplay.extraction_revive=paid\n"));
+  /* A file written before the setting existed keeps the retail rule. */
+  file = fopen(path, "w");
+  assert(file);
+  fprintf(file, "video.width=1280\nvideo.height=720\nvideo.mode=windowed\n");
+  fclose(file);
+  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(loaded.extraction_revive == X2_EXTRACTION_REVIVE_OFF);
+  /* An unknown value refuses and leaves the settings alone. */
+  untouched = loaded;
+  file = fopen(path, "w");
+  assert(file);
+  fprintf(file, "gameplay.extraction_revive=sometimes\n");
+  fclose(file);
+  CHECK(!x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(memcmp(&loaded, &untouched, sizeof loaded) == 0);
+  CHECK(strstr(why, ":1") != NULL);
+}
+
 int main(void) {
   const char *path = X2_TEST_SETTINGS_PATH;
   X2Settings saved, loaded, untouched;
@@ -266,6 +307,7 @@ int main(void) {
   CHECK(memcmp(&loaded, &untouched, sizeof loaded) == 0);
   CHECK(strstr(why, ":1") != NULL);
   check_hud_configuration(path);
+  check_extraction_revive(path);
   check_controller_change_keeps_other_controller();
   check_displaced_device_takes_vacated_seat();
   check_keyboard_profile_restore(path);
