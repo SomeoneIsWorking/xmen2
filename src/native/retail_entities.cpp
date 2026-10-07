@@ -31,8 +31,8 @@ std::optional<EntityView> read_entity(const GuestMemoryView &memory,
 
 } // namespace
 
-std::string pool_text(const GuestMemoryView &memory,
-                      const EntityTables &tables, std::uint32_t handle) {
+std::string pool_text(const GuestMemoryView &memory, const EntityTables &tables,
+                      std::uint32_t handle) {
   std::uint32_t offset = 0;
   if (!handle ||
       !memory.read_u32(

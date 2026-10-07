@@ -86,7 +86,8 @@ void ExtractionReviveDocument::update() {
     return;
   }
   /* A fresh answer wins the line; the offer stays as the hint. */
-  label_->SetInnerRML(escape_rml(view.notice.empty() ? view.text : view.notice));
+  label_->SetInnerRML(
+      escape_rml(view.notice.empty() ? view.text : view.notice));
   hint_->SetInnerRML(view.offered ? "F3 / LB / tap" : "");
   button_->SetClass("short", view.offered && !view.affordable);
 }

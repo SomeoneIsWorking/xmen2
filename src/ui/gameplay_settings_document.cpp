@@ -20,7 +20,8 @@ std::string gameplay_settings_document_rml(const X2Settings &settings) {
       << "</value></select-button>"
       << "<div class='help'>Off keeps the original rule: a fallen hero stays "
          "down. Free revives every fallen hero and refills health and energy "
-         "when the party reaches an extraction point. Paid offers to revive the "
+         "when the party reaches an extraction point. Paid offers to revive "
+         "the "
          "fallen near an extraction point for the original revive cost: press "
          "F3, the controller's left shoulder (LB), or tap the prompt.</div>"
       << "<spacer></spacer></pane>";
