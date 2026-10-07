@@ -38,14 +38,6 @@ from live_cases_menu import (
     case_menu_touch,
     case_options_back,
     case_selector_dialog,
-    case_touch_codex,
-    case_touch_menu,
-    case_touch_region,
-    case_touch_review,
-    case_touch_shop,
-    case_touch_stash,
-    case_touch_team,
-    case_touch_worldmap,
 )
 from live_cases_pad import (
     case_deadzone_render,
@@ -55,6 +47,16 @@ from live_cases_pad import (
     case_pad_persisted,
     case_stick_travel,
     case_touch_pad,
+)
+from live_cases_touch_menu import (
+    case_touch_codex,
+    case_touch_menu,
+    case_touch_region,
+    case_touch_review,
+    case_touch_shop,
+    case_touch_stash,
+    case_touch_team,
+    case_touch_worldmap,
 )
 from live_cases_extract import case_extract_keyboard_back
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse

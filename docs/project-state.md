@@ -1062,7 +1062,9 @@ unlocked points of one act is unit-tested only; what a
 review entry opens keeps the retail screen and only Credits was driven
 (screens and movies are untested by touch); the region list was only seen
 empty (no online service), so a tap on a region row is unit-tested only
-and Refresh's effect is unobserved; danger room, automap, the online lists, Advanced Options (`sebas`) and
+and Refresh's effect is unobserved; the automap keeps the retail map and the
+menu pad (a held finger and the d-pad pan it, B closes it) and nothing a
+touch player has turns it; danger room, the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 
 The stick steers from the thumb, not from the ring. It measured its axes from
