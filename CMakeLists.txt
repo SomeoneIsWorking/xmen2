@@ -919,6 +919,12 @@ add_executable(test_cutscene_player_policy
 target_include_directories(test_cutscene_player_policy PRIVATE src/native)
 add_test(NAME cutscene_player_policy COMMAND test_cutscene_player_policy)
 
+add_executable(test_menu_start_policy
+               tests/test_menu_start_policy.cpp
+               src/native/menu_start_policy.cpp)
+target_include_directories(test_menu_start_policy PRIVATE src/native)
+add_test(NAME menu_start_policy COMMAND test_menu_start_policy)
+
 add_executable(test_cutscene_dialogue
                tests/test_cutscene_dialogue.cpp
                src/native/cutscene_dialogue.cpp
@@ -2069,6 +2075,8 @@ set(X2_NATIVE_SOURCES
     src/native/cutscene_control_clock.cpp
     src/native/cutscene_player.cpp
     src/native/stick_axis_override.cpp
+    src/native/menu_start_policy.cpp
+    src/native/menu_start_override.cpp
     src/native/input_probe.cpp
     src/native/text_put.cpp
     src/native/touch_menu_source.cpp

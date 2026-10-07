@@ -818,6 +818,45 @@ gameplay): the list was empty; Enter opened `campaign_lobby`
 (`CMenuCampaignLobby`, Host Game / Join Game); Back on a region opened over
 the lobby returned to the lobby.
 
+### Escape in a menu with a focused item
+
+The retail keyboard binds Escape to two rows: Pause (row 17, in slot 0 of the
+master table and every bank copy) and, in the menu banks, HighAttack as the
+alternate Back (slot 2). One Escape press therefore sets action bits 19, 20 and
+21 (and 5): Pause's two actions, `$MENU_BACK`, and accept's HighAttack.
+
+Menu input reaches a menu through `FUN_005aaeb0` (the head of its update). With
+no focused item it runs Back (menu vtable `+0x24`, `FUN_005ad7c0`: the item
+flagged `menu_cancel`, else the close handler at `+0x2c`) and then, separately,
+Start (`+0x20`). With a focused item it returns after the item's update
+(`FUN_005bbfe0`, item vtable `+0x28`), which tests bit 20 first and only
+without it looks at bit 21:
+
+```
+if (!(pressed >> 20 & 1)) { if (pressed >> 21 & 1) menu->+0x24(); }  // Back
+else                                                  menu->+0x20();  // Start
+```
+
+Start is `FUN_005ad730` for every menu that does not override slot `+0x20`: it
+activates the item flagged `menu_ok` and does nothing when none exists. The
+PDA (`FUN_005cc630`) and the main-menu Options override it (Escape closes the
+PDA and opens Advanced Options); the shop closed under Escape in a measured run
+without the mechanism being read. The world map and the codex do not override
+it: measured with a console-opened menu, Escape left both open before the
+override and closes both after it, because a focused row ran an empty Start and
+the Back was never reached. A
+pad's B (bit 21 alone) and a click on the footer (`FUN_005e7f10` publishing the
+prompt) never had the problem.
+
+`src/native/menu_start_override.cpp` overrides `FUN_005ad730`: when the base
+Start did nothing, the dispatch is the focused item's (return address
+`0x005bc08a`), and the same press carried bit 21, it runs the menu's Back. That
+is a deliberate difference from retail; the unfocused path and menus with their
+own Start are untouched. Measured by `tools/live_case.py extract-keyboard-back`
+(world map opened through the real pad and the Xtract choice; Escape closes it
+and the party walks again) and `options-back` (Escape still opens Advanced
+Options).
+
 ## What is NOT established
 
 - **No per-item text measurement.** The hit box comes from the item's scene

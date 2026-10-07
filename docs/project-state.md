@@ -464,6 +464,12 @@ backbuffer and giving focused retail content one game-drawn cursor. Pure tests
 pin the message, mapping, button, coalescing, and cursor-visibility contracts.
 The visible `mouse-click` case also drives a physical window click through
 X11/SDL and the retained WndProc, opening the difficulty dialog.
+Escape is Pause and Back at once on the retail keyboard, which left it dead on
+a focused row of the world map and the codex; a native fallback to Back when
+the menu's Start does nothing (`menu_start_override.cpp`) is a deliberate delta
+from retail. `tools/live_case.py extract-keyboard-back` uses an extraction pad
+through the real Use and Xtract choice, presses Escape on the world map and
+walks the party afterwards, 7 of 7 on 2026-10-07.
 
 Gap: every controller observation on this machine uses the synthetic pad. Real
 hardware still must verify hotplug, stable identity, reconnect, assignment, and
