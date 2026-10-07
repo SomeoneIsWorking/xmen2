@@ -36,8 +36,8 @@ void append_menu_footers(const menu::MenuSnapshot &menu,
                          const presentation::RetailScenePlane &plane,
                          TouchMenuView *view);
 
-/* The shown items named in `names` as tabs, lit as the game lights its open
-   one (item+0x54 bit 0), each clicked on its own box. */
+/* The shown items named in `names` that have text as tabs, lit as the game
+   lights its open one (item+0x54 bit 0), each clicked on its own box. */
 void append_menu_tabs(const menu::MenuSnapshot &menu,
                       const presentation::RetailScenePlane &plane,
                       std::span<const std::string_view> names,

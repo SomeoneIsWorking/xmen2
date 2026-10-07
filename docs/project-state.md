@@ -1053,7 +1053,13 @@ review under the touch menu; and Back closed it. The region list follows:
 measured by `tools/live_case.py touch-region`, 7 of 7 on 2026-10-07:
 `openmenu region` showed Region Menu over the game's empty list with Back,
 Refresh and Select; a tap on Select opened the campaign lobby; and Back left
-a reopened region. Tab labels too wide for their tab now shrink to fit. Gap: the team roster and detail tabs keep the retail screen;
+a reopened region. Tab labels too wide for their tab now shrink to fit. The danger room follows:
+measured by `tools/live_case.py touch-danger-room`, 8 of 8 on 2026-10-07:
+`openmenu danger_room` showed the six grades and the game's description with
+Back and Select; a tap on the selected Freshman opened its courses with
+Overview lit; a tap on Status opened it in the game; Back returned to the
+grades; and a tap on the selected course opened the team menu. The danger
+room's online steps (2..9) are unexercised. Gap: the team roster and detail tabs keep the retail screen;
 the game prices only the selected shop entry, so other entries show no cost,
 and walking to an entry outside the game's list window is unit-tested only;
 the codex does not show the hero model the retail screen turns; the world
@@ -1064,7 +1070,7 @@ review entry opens keeps the retail screen and only Credits was driven
 empty (no online service), so a tap on a region row is unit-tested only
 and Refresh's effect is unobserved; the automap keeps the retail map and the
 menu pad (a held finger and the d-pad pan it, B closes it) and nothing a
-touch player has turns it; danger room, the online lists, Advanced Options (`sebas`) and
+touch player has turns it; the online lists, Advanced Options (`sebas`) and
 `options_controller` still show the retail menu with the menu pad.
 
 The stick steers from the thumb, not from the ring. It measured its axes from

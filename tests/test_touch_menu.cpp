@@ -700,6 +700,114 @@ void the_region_is_its_list_and_footers() {
         "a tap on the selected region presses A");
 }
 
+/* The danger room as GET /menu read it: grades first, then a grade's courses
+   with its Overview and Status tabs. */
+MenuSnapshot danger_room_menu(bool courses) {
+  MenuSnapshot menu;
+  menu.address = 0x27128a34u;
+  menu.name = "danger_room";
+  menu.menu_class = "CMenuDangerRoom";
+  menu.items.push_back(
+      item(5, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
+  menu.items.push_back(
+      item(6, "desctext2", "~05$MENU_ACCEPT Select", 162, 21, 241, 35));
+  MenuItem overview =
+      item(21, "option_text1", courses ? "Overview" : "", 31, 354, 90, 368);
+  if (courses) {
+    overview.flags |= x2::menu::kItemFocusLit;
+  }
+  menu.items.push_back(overview);
+  menu.items.push_back(
+      item(22, "option_text2", courses ? "Status" : "", 103, 354, 162, 368));
+  menu.items.push_back(item(23, "option_text3", "", 175, 354, 234, 368));
+  MenuItem list = item(24, "list", "", 25, 114, 244, 387);
+  x2::menu::ListBoxState box;
+  if (courses) {
+    box.entries = {"Setting 101 - Hidden Goods", "NOT AVAILABLE"};
+  } else {
+    box.entries = {"Freshman", "Sophomore", "Junior"};
+  }
+  box.values.assign(box.entries.size(), "");
+  box.selected = 0;
+  box.visible_rows = 34;
+  box.row_height = 8;
+  box.hit = {25, 114, 244, 387};
+  list.list_box = box;
+  menu.items.push_back(list);
+  menu.items.push_back(item(25, "desc",
+                            courses ? "~03Status:~~ Incomplete\n"
+                                      "~03Recommended Level:~~ 1"
+                                    : "~03TRAINING MODE~~\n~03Grade:~~ "
+                                      "~70[PLEASE CHOOSE]~~",
+                            266, 114, 484, 387));
+  return menu;
+}
+
+void the_danger_room_is_its_steps() {
+  const RetailScenePlane plane = plane_1280x720();
+  const auto grades =
+      x2::input::build_touch_menu_view(danger_room_menu(false), plane);
+  check(grades.has_value() && grades->tabs.empty() &&
+            grades->rows.size() == 3u && grades->rows[0].label == "Freshman",
+        "the grades are its rows; tabs without text are not tabs");
+  if (!grades) {
+    return;
+  }
+  check(grades->detail ==
+            std::vector<std::string>{"TRAINING MODE", "Grade: [PLEASE CHOOSE]"},
+        "the game's description, in its own lines");
+  check(grades->footers.size() == 2u && grades->footers[1].label == "Select",
+        "the danger room's Back and Select footers");
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(grades, 0u);
+  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 10u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuA,
+        "a tap on the selected grade presses A, which opens its courses");
+
+  const MenuSnapshot menu = danger_room_menu(true);
+  const auto courses = x2::input::build_touch_menu_view(menu, plane);
+  check(courses.has_value() && courses->tabs.size() == 2u &&
+            courses->tabs[0].label == "Overview" && courses->tabs[0].lit &&
+            courses->rows.size() == 2u,
+        "a grade's courses with its Overview and Status tabs");
+  if (!courses) {
+    return;
+  }
+  const auto &rect = find_item(menu, "option_text2")->rect;
+  const auto scene = plane.to_scene(courses->tabs[1].click);
+  check(scene.x >= static_cast<float>(rect.left) &&
+            scene.x < static_cast<float>(rect.right) &&
+            scene.z >= static_cast<float>(rect.top) + 3.0F &&
+            scene.z < static_cast<float>(rect.bottom) - 3.0F,
+        "a tab is clicked inside the box CMenuDangerRoom::onMouse tests");
+
+  TouchMenuView overview = *courses;
+  for (int i = 0; i < 14; ++i) {
+    overview.detail.push_back("award " + std::to_string(i));
+  }
+  TouchMenu reader;
+  reader.set_viewport(viewport_1280x720());
+  reader.set_view(overview, 0u);
+  const TouchMenuLayout &before = reader.layout();
+  check(before.detail_max_scroll > 0.0F && before.detail_scroll == 0.0F,
+        "an objective longer than the detail band scrolls on its own");
+  const float text_top = before.detail_text_top;
+  const float list_scroll = before.scroll;
+  const float x = 0.5F * (before.detail.left + before.detail.right);
+  const float y = before.detail.bottom - 10.0F;
+  reader.contact(3, {x, y}, lucent::touch::Phase::began, 10u);
+  reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::moved, 10u);
+  out = reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::ended, 10u);
+  check(out.empty() && reader.layout().detail_text_top == text_top - 60.0F &&
+            reader.layout().scroll == list_scroll,
+        "a drag on it scrolls its lines, not the list, and presses nothing");
+  reader.set_view(courses, 20u);
+  check(reader.layout().detail_scroll == 0.0F,
+        "another entry's text starts at its top");
+}
+
 void the_games_line_breaks_are_kept() {
   using x2::input::menu_text_lines;
   check(menu_text_lines("~03One\n\n  two ~~\n") ==
@@ -863,7 +971,7 @@ void the_layout_is_finger_sized_and_inside_the_safe_area() {
   viewport.safe_left = 40.0F;
   viewport.safe_bottom = 30.0F;
   const TouchMenuLayout layout =
-      x2::input::layout_touch_menu(view, viewport, 0.0F);
+      x2::input::layout_touch_menu(view, viewport, 0.0F, 0.0F);
   bool sized = true;
   bool inside = true;
   for (const TouchMenuButton &button : layout.buttons) {
@@ -889,7 +997,7 @@ void the_layout_is_finger_sized_and_inside_the_safe_area() {
                             0.5F * (last->rect.top + last->rect.bottom)),
         "a row scrolled out of the list is not hit");
   const TouchMenuLayout end =
-      x2::input::layout_touch_menu(view, viewport, 1.0e6F);
+      x2::input::layout_touch_menu(view, viewport, 1.0e6F, 0.0F);
   check(end.scroll == end.max_scroll, "scroll clamps to the last row");
   const TouchMenuButton *footer = find(layout, TouchMenuPart::footer, 0);
   check(footer && layout.hit(0.5F * (footer->rect.left + footer->rect.right),
@@ -902,10 +1010,10 @@ void a_menu_without_a_title_has_no_header_band() {
   auto view =
       *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
   const TouchMenuLayout titled =
-      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   view.title.clear();
   const TouchMenuLayout untitled =
-      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   check(untitled.title.bottom == untitled.title.top &&
             untitled.list.top == untitled.title.top &&
             untitled.list.top < titled.list.top,
@@ -916,10 +1024,10 @@ void a_menu_without_footers_gives_their_band_to_the_list() {
   auto view =
       *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
   const TouchMenuLayout with =
-      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   view.footers.clear();
   const TouchMenuLayout without =
-      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F);
+      x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   check(without.list.bottom > with.footer.top &&
             !find(without, TouchMenuPart::footer, 0),
         "a menu without footers lists rows down to the bottom margin");
@@ -1023,6 +1131,7 @@ int main() {
   the_codex_lists_its_heroes_and_reads_one();
   the_review_is_its_tabs_and_entries();
   the_region_is_its_list_and_footers();
+  the_danger_room_is_its_steps();
   the_games_line_breaks_are_kept();
   the_world_map_is_its_acts_and_points();
   a_drag_scrolls_and_does_not_press();

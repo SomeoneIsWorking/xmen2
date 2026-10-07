@@ -47,6 +47,9 @@ TouchMenu::set_view(std::optional<TouchMenuView> view, std::uint64_t now_ms) {
     followed_focus_ = -1;
     finger_.reset();
   }
+  if (!same || view->detail != view_->detail) {
+    detail_scroll_ = 0.0F;
+  }
   view_ = std::move(view);
   relayout();
   if (view_ && view_->focused_row >= 0 &&
@@ -73,8 +76,9 @@ void TouchMenu::relayout() {
     layout_ = TouchMenuLayout{};
     return;
   }
-  layout_ = layout_touch_menu(*view_, viewport_, scroll_);
+  layout_ = layout_touch_menu(*view_, viewport_, scroll_, detail_scroll_);
   scroll_ = layout_.scroll;
+  detail_scroll_ = layout_.detail_scroll;
 }
 
 std::vector<TouchMenuDelivery> TouchMenu::contact(std::int64_t id,
@@ -88,7 +92,16 @@ std::vector<TouchMenuDelivery> TouchMenu::contact(std::int64_t id,
   }
   if (phase == lucent::touch::Phase::began) {
     if (!finger_) {
-      finger_ = Finger{id, at, scroll_, layout_.hit(at.x, at.y), false};
+      const bool on_detail =
+          layout_.detail_max_scroll > 0.0F && at.x >= layout_.detail.left &&
+          at.x < layout_.detail.right && at.y >= layout_.detail.top &&
+          at.y < layout_.detail.bottom;
+      finger_ = Finger{id,
+                       at,
+                       on_detail ? detail_scroll_ : scroll_,
+                       layout_.hit(at.x, at.y),
+                       false,
+                       on_detail};
       publish();
     }
     return out;
@@ -102,11 +115,17 @@ std::vector<TouchMenuDelivery> TouchMenu::contact(std::int64_t id,
                        finger.origin.x < layout_.list.right &&
                        finger.origin.y >= layout_.list.top &&
                        finger.origin.y < layout_.list.bottom;
-  if (!finger.dragging && on_list && std::fabs(at.y - finger.origin.y) > drag) {
+  if (!finger.dragging && (on_list || finger.on_detail) &&
+      std::fabs(at.y - finger.origin.y) > drag) {
     finger.dragging = true;
   }
   if (finger.dragging) {
-    scroll_ = finger.scroll_origin - (at.y - finger.origin.y);
+    const float moved = finger.scroll_origin - (at.y - finger.origin.y);
+    if (finger.on_detail) {
+      detail_scroll_ = moved;
+    } else {
+      scroll_ = moved;
+    }
     relayout();
   }
   if (phase == lucent::touch::Phase::moved) {

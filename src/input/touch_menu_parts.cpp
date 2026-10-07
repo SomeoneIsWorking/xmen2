@@ -124,6 +124,9 @@ void append_menu_tabs(const menu::MenuSnapshot &menu,
     }
     TouchMenuTab out;
     out.label = touch_menu_text(tab->label);
+    if (out.label.empty()) {
+      continue;
+    }
     out.lit = (tab->flags & menu::kItemFocusLit) != 0u;
     out.click = menu_item_centre(tab->rect, plane);
     view->tabs.push_back(std::move(out));

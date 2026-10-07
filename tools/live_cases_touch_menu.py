@@ -568,14 +568,15 @@ def case_touch_worldmap(case: Case) -> None:
                left.get("menu") != "worldmap", str(left.get("menu")))
 
 
-def stash_tabs(case: Case) -> dict[str, bool]:
-    """The game's stash tabs, each with whether it is lit."""
+def option_tabs(case: Case, pattern: str) -> dict[str, bool]:
+    """The game's tabs whose names match `pattern`, each with whether it is
+    lit; tabs without text are left out."""
     code, body = case.http("/menu?items=all")
     if code != 200:
         return {}
     return {item["label"]: bool(item["flags"] & 0x01)
             for item in json.loads(body).get("items", [])
-            if re.fullmatch(r"stash_option0\d", item["name"]) and item["label"]}
+            if re.fullmatch(pattern, item["name"]) and item["label"]}
 
 
 def case_touch_stash(case: Case) -> None:
@@ -634,7 +635,7 @@ def case_touch_stash(case: Case) -> None:
 
     case.http("/console?command=openmenu%20stash")
     stash = wait_settled_touch_menu(case, "stash", 20)
-    if stash_tabs(case).get("stash"):
+    if option_tabs(case, r"stash_option0\d").get("stash"):
         # Opened on the stash tab and not stepped to inventory: open it.
         tap_touch_button(case, stash, touch_button(stash, "tab", "inventory"))
         wait_game_menu(case, lambda m: any(
@@ -681,9 +682,10 @@ def case_touch_stash(case: Case) -> None:
         "touch_menu", {}).get("rows", [])] == [name], 10)
     stash = touch_menu(case)
     case.check("a tap on the stash tab opened it in the game",
-               stash_tabs(case) == {"stash": True, "inventory": False}
+               option_tabs(case, r"stash_option0\d")
+               == {"stash": True, "inventory": False}
                and [r["label"] for r in stash.get("rows", [])] == [name],
-               "%s, rows %s" % (stash_tabs(case),
+               "%s, rows %s" % (option_tabs(case, r"stash_option0\d"),
                                 [r["label"] for r in stash.get("rows", [])]))
     case.shot("stash-tab")
 
@@ -703,16 +705,6 @@ def case_touch_stash(case: Case) -> None:
     left = wait_game_menu(case, lambda m: m.get("menu") != "stash", 10)
     case.check("Accept left the stash",
                left.get("menu") != "stash", str(left.get("menu")))
-
-
-def review_tabs(case: Case) -> dict[str, bool]:
-    """The game's review tabs, each with whether it is lit."""
-    code, body = case.http("/menu?items=all")
-    if code != 200:
-        return {}
-    return {item["label"]: bool(item["flags"] & 0x01)
-            for item in json.loads(body).get("items", [])
-            if re.fullmatch(r"option0\d_text", item["name"])}
 
 
 def case_touch_review(case: Case) -> None:
@@ -757,9 +749,9 @@ def case_touch_review(case: Case) -> None:
     review = wait_game_menu(case, lambda m: touch_row(
         m.get("touch_menu", {}), "credits") != {}, 10).get("touch_menu", {})
     case.check("a tap on the cinematics tab opened it in the game",
-               review_tabs(case).get("cinematics") is True
+               option_tabs(case, r"option0\d_text").get("cinematics") is True
                and touch_row(review, "credits") != {},
-               "%s, rows %s" % (review_tabs(case),
+               "%s, rows %s" % (option_tabs(case, r"option0\d_text"),
                                 [r["label"] for r in review.get("rows", [])]))
     case.shot("cinematics")
 
@@ -844,3 +836,88 @@ def case_touch_region(case: Case) -> None:
     left = wait_game_menu(case, lambda m: m.get("menu") != "region", 10)
     case.check("Back left the region",
                left.get("menu") != "region", str(left.get("menu")))
+
+
+def touch_rows(case: Case) -> list[str]:
+    return [r["label"] for r in touch_menu(case).get("rows", [])]
+
+
+def case_touch_danger_room(case: Case) -> None:
+    """The touch menu over CMenuDangerRoom, opened by the console.
+
+    A tap on the selected grade opens its courses, a tap on the Status tab
+    opens it in the game, Back returns to the grades, and a tap on the
+    selected course opens the team menu to choose who runs it.
+    """
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=openmenu%20danger_room")
+    room = wait_settled_touch_menu(case, "danger_room", 20)
+    (case.dir / "grades.json").write_text(json.dumps(room, indent=1) + "\n")
+    grades = [r["label"] for r in room.get("rows", [])]
+    case.check("the touch menu is shown over the game's danger room",
+               room.get("visible") is True
+               and read_menu(case).get("class") == "CMenuDangerRoom",
+               str(read_menu(case).get("class")))
+    case.check("its rows are the game's grades with no tabs",
+               grades == menu_list(case).get("entries")
+               and grades[:1] == ["Freshman"] and not room.get("tabs"),
+               "%s, tabs %s" % (grades, room.get("tabs")))
+    case.check("with the game's description and Back and Select",
+               room.get("detail", [])[:1] == ["TRAINING MODE"]
+               and [b["label"] for b in room.get("buttons", [])
+                    if b["part"] == "footer"] == ["Back", "Select"],
+               "detail %s" % room.get("detail"))
+    if room.get("visible") is not True or not grades:
+        return
+    case.shot("grades")
+
+    tap_touch_button(case, room, touch_button(room, "row", "freshman"))
+    room = wait_game_menu(case, lambda m: bool(m.get("touch_menu", {})
+                                                .get("tabs")),
+                          10).get("touch_menu", {})
+    courses = [r["label"] for r in room.get("rows", [])]
+    case.check("a tap on the selected Freshman opened its courses",
+               courses == menu_list(case).get("entries")
+               and courses[:1] == ["Setting 101 - Hidden Goods"]
+               and option_tabs(case, r"option_text\d")
+               == {"Overview": True, "Status": False},
+               "%s, %s" % (courses, option_tabs(case, r"option_text\d")))
+    case.shot("courses")
+
+    tap_touch_button(case, room, touch_button(room, "tab", "status"))
+    room = wait_game_menu(case, lambda m: any(
+        t["lit"] and t["label"] == "Status"
+        for t in m.get("touch_menu", {}).get("tabs", [])),
+        10).get("touch_menu", {})
+    case.check("a tap on Status opened it in the game",
+               option_tabs(case, r"option_text\d")
+               == {"Overview": False, "Status": True}
+               and room.get("detail", [])[:1] == ["Status: Incomplete"],
+               "%s, detail %s" % (option_tabs(case, r"option_text\d"),
+                                  room.get("detail")))
+    case.shot("status")
+
+    tap_touch_button(case, room, touch_button(room, "footer", "back"))
+    wait_game_menu(case, lambda m: [r["label"] for r in m.get(
+        "touch_menu", {}).get("rows", [])] == grades, 10)
+    case.check("Back returned to the grades", touch_rows(case) == grades,
+               str(touch_rows(case)))
+
+    room = touch_menu(case)
+    tap_touch_button(case, room, touch_button(room, "row", "freshman"))
+    wait_game_menu(case, lambda m: bool(m.get("touch_menu", {}).get("tabs")),
+                   10)
+    room = touch_menu(case)
+    tap_touch_button(case, room,
+                     touch_button(room, "row", "setting 101 - hidden goods"))
+    team = wait_game_menu(case, lambda m: m.get("menu") == "team", 10)
+    case.check("a tap on the selected course opened the team menu",
+               team.get("class") == "CMenuTeam",
+               "%s %s" % (team.get("menu"), team.get("class")))
+    case.shot("team")

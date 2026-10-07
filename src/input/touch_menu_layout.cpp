@@ -67,7 +67,7 @@ std::optional<std::size_t> TouchMenuLayout::hit(float x, float y) const {
 
 TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
                                   const X2LayoutViewport &viewport,
-                                  float scroll) {
+                                  float scroll, float detail_scroll) {
   TouchMenuLayout layout;
   const float left = viewport.safe_left;
   const float top = viewport.safe_top;
@@ -113,6 +113,18 @@ TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
   layout.detail_line_height = kDetailLineHeight * u;
   layout.detail_text_top = layout.detail.top + kDetailPad * u +
                            (view.facts.empty() ? 0.0F : kFactsHeight * u);
+  layout.detail_text = layout.detail;
+  if (!layout.reading) {
+    layout.detail_text.top = layout.detail_text_top;
+    const float lines =
+        static_cast<float>(view.detail.size()) * layout.detail_line_height;
+    layout.detail_max_scroll = std::max(
+        lines - (layout.detail_text.bottom - layout.detail_text.top), 0.0F);
+    layout.detail_scroll =
+        std::clamp(std::isfinite(detail_scroll) ? detail_scroll : 0.0F, 0.0F,
+                   layout.detail_max_scroll);
+    layout.detail_text_top -= layout.detail_scroll;
+  }
 
   const float row_height = std::max(kRowHeight * u, kMinimumTarget);
   const float gap = kRowGap * u;

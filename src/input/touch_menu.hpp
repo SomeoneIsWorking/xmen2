@@ -72,6 +72,8 @@ private:
     float scroll_origin = 0.0F;
     std::optional<std::size_t> button;
     bool dragging = false;
+    /* Began on detail lines that scroll on their own: drags scroll them. */
+    bool on_detail = false;
   };
   struct Walk {
     std::uint32_t address = 0;
@@ -95,6 +97,7 @@ private:
   bool has_viewport_ = false;
   TouchMenuLayout layout_;
   float scroll_ = 0.0F;
+  float detail_scroll_ = 0.0F;
   int followed_focus_ = -1;
   std::optional<Finger> finger_;
   std::optional<Walk> walk_;

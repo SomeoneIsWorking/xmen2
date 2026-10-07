@@ -1,6 +1,7 @@
 #include "touch_menu_view.hpp"
 
 #include "touch_menu_codex.hpp"
+#include "touch_menu_danger_room.hpp"
 #include "touch_menu_parts.hpp"
 #include "touch_menu_region.hpp"
 #include "touch_menu_review.hpp"
@@ -115,7 +116,7 @@ struct ReplacedClass {
   ViewBuilder build;
 };
 
-constexpr std::array<ReplacedClass, 9> kReplacedClasses = {{
+constexpr std::array<ReplacedClass, 10> kReplacedClasses = {{
     {"CMenuMain", build_row_menu_view},
     {"CMenuOptions", build_row_menu_view},
     {"CMenuPDA", build_row_menu_view},
@@ -125,6 +126,7 @@ constexpr std::array<ReplacedClass, 9> kReplacedClasses = {{
     {"CMenuWorldMap", build_worldmap_view},
     {"CMenuReviewPaths", build_review_view},
     {"CMenuRegion", build_region_view},
+    {"CMenuDangerRoom", build_danger_room_view},
 }};
 
 } // namespace
