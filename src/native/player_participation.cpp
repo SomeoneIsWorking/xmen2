@@ -113,8 +113,10 @@ static uint32_t participation_manager(const CPU *cpu) {
   return manager && RD32(manager) ? manager : 0;
 }
 
-void x2_player_participation_apply(CPU *cpu, uint8_t join_seats,
-                                   uint8_t leave_seats) {
+namespace x2::native {
+
+void player_participation_apply(CPU *cpu, uint8_t join_seats,
+                                uint8_t leave_seats) {
   uint32_t manager;
   X2PlayerSeatMap map;
 
@@ -129,8 +131,8 @@ void x2_player_participation_apply(CPU *cpu, uint8_t join_seats,
                    x2_player_seats_to_players(&map, leave_seats));
 }
 
-void x2_player_participation_enforce_eligibility(CPU *cpu,
-                                                 uint8_t eligible_seats) {
+void player_participation_enforce_eligibility(CPU *cpu,
+                                              uint8_t eligible_seats) {
   uint32_t manager;
   X2PlayerSeatMap map;
   uint8_t evict, leave_players = 0;
@@ -153,3 +155,5 @@ void x2_player_participation_enforce_eligibility(CPU *cpu,
   if (leave_players)
     apply_to_manager(cpu, manager, &map, 0u, leave_players);
 }
+
+} // namespace x2::native

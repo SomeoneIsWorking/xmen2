@@ -1,6 +1,8 @@
 #include "controller_hotplug.h"
 
-void x2_controller_hotplug_invalidate(X2ControllerHotplug *state) {
+namespace x2::input {
+
+void controller_hotplug_invalidate(ControllerHotplug *state) {
   /* The next pump must admit the live inventory again even though no SDL
      generation changed: a save payload deserializes the input manager's
      own controller table over the live one, so the table can name devices
@@ -9,8 +11,8 @@ void x2_controller_hotplug_invalidate(X2ControllerHotplug *state) {
     state->initialized = 0;
 }
 
-int x2_controller_hotplug_needs_admission(X2ControllerHotplug *state,
-                                          uint64_t generation) {
+int controller_hotplug_needs_admission(ControllerHotplug *state,
+                                       uint64_t generation) {
   if (!state)
     return 0;
   if (state->initialized && state->processed_generation == generation)
@@ -20,9 +22,9 @@ int x2_controller_hotplug_needs_admission(X2ControllerHotplug *state,
   return 1;
 }
 
-void x2_controller_hotplug_enumerated(X2ControllerHotplug *state,
-                                      uint64_t generation, int connected,
-                                      int reported) {
+void controller_hotplug_enumerated(ControllerHotplug *state,
+                                   uint64_t generation, int connected,
+                                   int reported) {
   if (!state)
     return;
   state->initialized = 1;
@@ -31,7 +33,9 @@ void x2_controller_hotplug_enumerated(X2ControllerHotplug *state,
   state->last_reported = reported;
 }
 
-void x2_controller_hotplug_admitted(X2ControllerHotplug *state) {
+void controller_hotplug_admitted(ControllerHotplug *state) {
   if (state)
     state->admissions++;
 }
+
+} // namespace x2::input

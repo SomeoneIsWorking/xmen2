@@ -30,7 +30,7 @@ static int g_hidden;
    must not impose a cursor state, but it must undo a hide it previously
    owned before giving the desktop back. */
 static int g_cursor_hidden;
-static X2Win32Mouse g_mouse;
+static x2::native::Win32Mouse g_mouse;
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
   C->reg[kX86pEax] = eax;
@@ -57,7 +57,7 @@ static void apply_cursor_policy(void) {
     }
     return;
   }
-  show = x2_win32_mouse_os_cursor_visible(&g_mouse);
+  show = x2::native::win32_mouse_os_cursor_visible(&g_mouse);
   if (show && g_cursor_hidden) {
     set_cursor_visible(1);
     g_cursor_hidden = 0;
@@ -75,7 +75,7 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   if (!window) {
     x2_touch_runtime_cancel();
     x2_win32_pointer_window(NULL);
-    x2_win32_mouse_window_state(&g_mouse, 0, 0, 0);
+    x2::native::win32_mouse_window_state(&g_mouse, 0, 0, 0);
     apply_cursor_policy();
     g_window = NULL;
     g_hwnd = 0;
@@ -89,18 +89,18 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   g_hidden = hidden != 0;
   {
     SDL_WindowFlags flags = SDL_GetWindowFlags(window);
-    x2_win32_mouse_window_state(&g_mouse, hidden,
-                                (flags & SDL_WINDOW_INPUT_FOCUS) != 0u,
-                                (flags & SDL_WINDOW_MOUSE_FOCUS) != 0u);
+    x2::native::win32_mouse_window_state(
+        &g_mouse, hidden, (flags & SDL_WINDOW_INPUT_FOCUS) != 0u,
+        (flags & SDL_WINDOW_MOUSE_FOCUS) != 0u);
   }
-  x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+  x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
   apply_cursor_policy();
 }
 
 void win32_events_hide_window(int hidden) {
   g_hidden = hidden != 0;
-  x2_win32_mouse_window_state(&g_mouse, hidden, g_mouse.window_focused,
-                              g_mouse.pointer_inside);
+  x2::native::win32_mouse_window_state(&g_mouse, hidden, g_mouse.window_focused,
+                                       g_mouse.pointer_inside);
   apply_cursor_policy();
 }
 
@@ -113,12 +113,12 @@ uint32_t win32_events_registered_wndproc() { return g_registered_wndproc; }
 void win32_events_set_wndproc(uint32_t wndproc) { g_wndproc = wndproc; }
 
 void win32_events_modal(int visible) {
-  x2_win32_mouse_modal(&g_mouse, visible);
+  x2::native::win32_mouse_modal(&g_mouse, visible);
   apply_cursor_policy();
 }
 
 int win32_events_guest_show_cursor(int show) {
-  return x2_win32_mouse_guest_show_cursor(&g_mouse, show);
+  return x2::native::win32_mouse_guest_show_cursor(&g_mouse, show);
 }
 
 int win32_events_client_to_screen(int32_t *x, int32_t *y) {
@@ -141,7 +141,7 @@ int win32_events_set_cursor_pos(int32_t x, int32_t y) {
 
 namespace {
 
-static void put_msg(uint32_t p, const X2Win32Message *message) {
+static void put_msg(uint32_t p, const x2::native::Win32Message *message) {
   if (!p)
     return;
   WR32(p + 0u, message->hwnd);
@@ -153,9 +153,9 @@ static void put_msg(uint32_t p, const X2Win32Message *message) {
   WR32(p + 24u, (uint32_t)message->screen_y);
 }
 
-static void post_message_or_abort(const X2Win32Message *message,
+static void post_message_or_abort(const x2::native::Win32Message *message,
                                   const char *kind) {
-  if (x2_win32_message_post(&g_mouse, message))
+  if (x2::native::win32_message_post(&g_mouse, message))
     return;
   x2_log_error("win32 events: ordered queue filled while posting %s; "
                "refusing to discard input\n",
@@ -164,12 +164,12 @@ static void post_message_or_abort(const X2Win32Message *message,
 }
 
 static void post_activation(int active, uint64_t timestamp) {
-  X2Win32Message message;
+  x2::native::Win32Message message;
 
   memset(&message, 0, sizeof message);
   message.hwnd = g_hwnd;
-  message.message = X2_WM_ACTIVATE;
-  message.wparam = active ? X2_WA_ACTIVE : X2_WA_INACTIVE;
+  message.message = x2::native::kWmActivate;
+  message.wparam = active ? x2::native::kWaActive : x2::native::kWaInactive;
   message.time = (uint32_t)(timestamp / 1000000u);
   post_message_or_abort(&message, "WM_ACTIVATE");
 }
@@ -188,7 +188,7 @@ static void pump_sdl(void) {
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT ||
         event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
-      if (!x2_win32_message_post_quit(&g_mouse)) {
+      if (!x2::native::win32_message_post_quit(&g_mouse)) {
         x2_log_error("win32 events: ordered queue filled while "
                      "posting WM_QUIT\n");
         abort();
@@ -197,19 +197,19 @@ static void pump_sdl(void) {
     }
 
     if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
-      x2_win32_mouse_window_state(&g_mouse, g_hidden, 1,
-                                  g_mouse.pointer_inside);
+      x2::native::win32_mouse_window_state(&g_mouse, g_hidden, 1,
+                                           g_mouse.pointer_inside);
       post_activation(1, event.window.timestamp);
     } else if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
-      x2_win32_mouse_window_state(&g_mouse, g_hidden, 0,
-                                  g_mouse.pointer_inside);
+      x2::native::win32_mouse_window_state(&g_mouse, g_hidden, 0,
+                                           g_mouse.pointer_inside);
       post_activation(0, event.window.timestamp);
     } else if (event.type == SDL_EVENT_WINDOW_MOUSE_ENTER) {
-      x2_win32_mouse_window_state(&g_mouse, g_hidden, g_mouse.window_focused,
-                                  1);
+      x2::native::win32_mouse_window_state(&g_mouse, g_hidden,
+                                           g_mouse.window_focused, 1);
     } else if (event.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
-      x2_win32_mouse_window_state(&g_mouse, g_hidden, g_mouse.window_focused,
-                                  0);
+      x2::native::win32_mouse_window_state(&g_mouse, g_hidden,
+                                           g_mouse.window_focused, 0);
     }
     /* Before the overlay's own gate and before the UI can consume the
        event: which device the player is using is a fact about every event,
@@ -223,7 +223,7 @@ static void pump_sdl(void) {
         x2_touch_runtime_cancel();
         drain_touch_pointer();
       }
-      x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+      x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
       apply_cursor_policy();
       continue;
     }
@@ -235,7 +235,7 @@ static void pump_sdl(void) {
     if (touch_handled) {
       continue;
     }
-    x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+    x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
 
     if (event.type == SDL_EVENT_MOUSE_MOTION ||
         event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
@@ -253,18 +253,18 @@ static void pump_sdl(void) {
     apply_cursor_policy();
   }
 
-  x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+  x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
   apply_cursor_policy();
 }
 
 } // namespace
 
 void imp_USER32_PeekMessageA(CPU *C) {
-  X2Win32Message message;
+  x2::native::Win32Message message;
 
   pump_sdl();
-  if (x2_win32_message_take(&g_mouse, A(1), A(2), A(3), (A(4) & 1u) != 0u,
-                            &message)) {
+  if (x2::native::win32_message_take(&g_mouse, A(1), A(2), A(3),
+                                     (A(4) & 1u) != 0u, &message)) {
     put_msg(A(0), &message);
     ret_std(C, 1, 5);
     return;
@@ -273,16 +273,16 @@ void imp_USER32_PeekMessageA(CPU *C) {
 }
 
 void imp_USER32_GetMessageA(CPU *C) {
-  X2Win32Message message;
+  x2::native::Win32Message message;
 
   for (;;) {
     pump_sdl();
-    if (x2_win32_message_take(&g_mouse, A(1), A(2), A(3), 1, &message))
+    if (x2::native::win32_message_take(&g_mouse, A(1), A(2), A(3), 1, &message))
       break;
     SDL_Delay(1);
   }
   put_msg(A(0), &message);
-  ret_std(C, message.message == X2_WM_QUIT ? 0u : 1u, 4);
+  ret_std(C, message.message == x2::native::kWmQuit ? 0u : 1u, 4);
 }
 
 void imp_USER32_TranslateMessage(CPU *C) { ret_std(C, 0, 1); }

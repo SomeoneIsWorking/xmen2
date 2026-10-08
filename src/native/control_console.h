@@ -19,7 +19,7 @@
 #include "control_http.h"
 #include "x86rt.h"
 
-void control_console_route(x2_socket_t fd, const char *query);
+void control_console_route(x2::native::Socket fd, const char *query);
 
 /* Called from control_pump on the guest's input thread. */
 void control_console_pump(CPU *cpu);

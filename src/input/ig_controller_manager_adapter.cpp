@@ -10,8 +10,8 @@ namespace {
 using alchemy::input::Button;
 using alchemy::input::ControllerState;
 
-constexpr std::array<Button, X2_DIRECTINPUT_BUTTON_COUNT> kDirectInputButtons =
-    {
+constexpr std::array<Button, x2::input::kDirectInputButtonCount>
+    kDirectInputButtons = {
         Button::faceDown,   Button::faceRight,    Button::faceLeft,
         Button::faceUp,     Button::leftShoulder, Button::rightShoulder,
         Button::select,     Button::start,        Button::leftStick,
@@ -79,9 +79,10 @@ std::uint32_t projectPov(const ControllerState &state) noexcept {
   return UINT32_MAX;
 }
 
-ControllerState toAlchemyState(const X2DirectInputControllerSample &sample,
-                               std::int32_t lo, std::int32_t hi,
-                               float triggerThreshold) noexcept {
+ControllerState
+toAlchemyState(const x2::input::DirectInputControllerSample &sample,
+               std::int32_t lo, std::int32_t hi,
+               float triggerThreshold) noexcept {
   ControllerState state;
   for (std::size_t index = 0; index < kDirectInputButtons.size(); ++index) {
     const bool pressed = (sample.buttons & (std::uint16_t{1} << index)) != 0;
@@ -101,13 +102,14 @@ ControllerState toAlchemyState(const X2DirectInputControllerSample &sample,
   return state;
 }
 
-DirectInputComparison compareState(const X2DirectInputControllerSample &sample,
-                                   const ControllerState &state,
-                                   std::int32_t lo, std::int32_t hi) noexcept {
+DirectInputComparison
+compareState(const x2::input::DirectInputControllerSample &sample,
+             const ControllerState &state, std::int32_t lo,
+             std::int32_t hi) noexcept {
   const auto left = state.stick(0);
   const auto right = state.stick(1);
   const std::int32_t midpoint = lo + (hi - lo) / 2;
-  const std::array<std::int32_t, X2_DIRECTINPUT_AXIS_COUNT> projected = {
+  const std::array<std::int32_t, x2::input::kDirectInputAxisCount> projected = {
       projectAxis(left.x, lo, hi),
       projectAxis(left.y, lo, hi),
       projectAxis(state.pressure(Button::leftTrigger) -
@@ -148,7 +150,7 @@ IgControllerManagerAdapter::IgControllerManagerAdapter(
     : settings_(settings), guestEvents_(guestEvents) {}
 
 DirectInputComparison IgControllerManagerAdapter::publish(
-    std::size_t hostSlot, const X2DirectInputControllerSample &sample,
+    std::size_t hostSlot, const x2::input::DirectInputControllerSample &sample,
     std::int32_t axisLo, std::int32_t axisHi) noexcept {
   const alchemy::input::DeviceId device{sample.device_id};
   if (hostSlot >= hostDevices_.size() || !device || axisHi <= axisLo ||
@@ -169,7 +171,7 @@ DirectInputComparison IgControllerManagerAdapter::publish(
 
 DirectInputComparison IgControllerManagerAdapter::compareAgainstDirectInput(
     alchemy::input::DeviceId device,
-    const X2DirectInputControllerSample &retained, std::int32_t axisLo,
+    const x2::input::DirectInputControllerSample &retained, std::int32_t axisLo,
     std::int32_t axisHi) const noexcept {
   const auto *controller = controllers_.find(device);
   return controller != nullptr

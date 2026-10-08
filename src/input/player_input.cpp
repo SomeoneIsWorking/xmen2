@@ -135,8 +135,9 @@ static void sync_participation(CPU *cpu, const X2Settings *settings,
   eligible = eligibility_mask(settings, keyboard);
   x2_player_participation_policy_configure(&g_participation, eligible);
   transition = x2_player_participation_policy_consume(&g_participation);
-  x2_player_participation_apply(cpu, transition.join, transition.leave);
-  x2_player_participation_enforce_eligibility(cpu, eligible);
+  x2::native::player_participation_apply(cpu, transition.join,
+                                         transition.leave);
+  x2::native::player_participation_enforce_eligibility(cpu, eligible);
 }
 
 static void publish_player(CPU *cpu, const X2Settings *settings,

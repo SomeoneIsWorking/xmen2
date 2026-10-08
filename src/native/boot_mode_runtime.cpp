@@ -8,7 +8,7 @@ namespace x2::native {
 
 namespace {
 
-X2BootModeDecision g_decision;
+BootModeDecision g_decision;
 
 X2SaveCandidate g_latest;
 
@@ -20,7 +20,7 @@ int g_catalog_failed;
 
 } // namespace
 
-const X2BootModeDecision *
+const BootModeDecision *
 boot_mode_runtime_prepare(X2BootMode requested,
                           const char *retail_save_directory) {
   int latest_available = 0;
@@ -34,7 +34,7 @@ boot_mode_runtime_prepare(X2BootMode requested,
     latest_available = result == 1;
     g_catalog_failed = result < 0;
   }
-  g_decision = x2_boot_mode_decide(requested, latest_available);
+  g_decision = boot_mode_decide(requested, latest_available);
   g_continue_pending = g_decision.effective == X2_BOOT_CONTINUE;
   g_ready = 1;
   return &g_decision;

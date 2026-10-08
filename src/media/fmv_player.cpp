@@ -49,7 +49,7 @@ struct FmvPlayer {
   int drain_error;
   FmvState state;
   X2FmvAudioSink sink;
-  X2FmvTimeline timeline;
+  x2::media::FmvTimeline timeline;
   VideoFrame video_queue[VIDEO_QUEUE_CAPACITY];
   int video_head;
   int video_count;
@@ -129,7 +129,7 @@ int queue_video_frame(FmvPlayer *player, const AVFrame *frame) {
   strides[1] = strides[2] = strides[3] = 0;
   sws_scale(player->scaler, (const uint8_t *const *)frame->data,
             frame->linesize, 0, player->height, planes, strides);
-  slot->timestamp = x2_fmv_timestamp(
+  slot->timestamp = x2::media::fmv_timestamp(
       &player->timeline, frame->best_effort_timestamp, AV_NOPTS_VALUE,
       stream->time_base.num, stream->time_base.den, frame->duration);
   player->video_count++;
@@ -381,8 +381,8 @@ FmvPlayer *fmv_open(const char *path, const X2FmvAudioSink *sink, char *error,
   if (rate.num <= 0 || rate.den <= 0)
     rate = av_guess_frame_rate(
         player->format, player->format->streams[player->video_stream], NULL);
-  x2_fmv_timeline_init(&player->timeline,
-                       rate.num > 0 && rate.den > 0 ? av_q2d(rate) : 30.0);
+  x2::media::fmv_timeline_init(
+      &player->timeline, rate.num > 0 && rate.den > 0 ? av_q2d(rate) : 30.0);
   player->state = FmvState::Ready;
   return player;
 }

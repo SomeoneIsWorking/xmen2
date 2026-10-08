@@ -50,7 +50,7 @@ void lan_join_command(CPU *cpu) {
   cpu->reg[kX86pEsp] += 4u;
 }
 
-void lan_session_route(x2_socket_t fd, const char *query) {
+void lan_session_route(x2::native::Socket fd, const char *query) {
   x2::lan::SessionDirector &director = x2::lan::session_director();
   using Role = x2::lan::SessionDirector::Role;
   std::array<char, 8> value{};

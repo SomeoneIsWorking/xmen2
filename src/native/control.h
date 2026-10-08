@@ -53,9 +53,9 @@ void control_report(void);
 
 /* The HTTP wire helpers, shared with the endpoints that live beside their
  * instruments. */
-void control_reply_text(x2_socket_t socket, int code, const char *status,
+void control_reply_text(x2::native::Socket socket, int code, const char *status,
                         const char *fmt, ...);
-void control_reply_json(x2_socket_t socket, int code, const char *status,
+void control_reply_json(x2::native::Socket socket, int code, const char *status,
                         const char *body, size_t size);
 
 #endif

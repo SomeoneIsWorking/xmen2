@@ -55,7 +55,7 @@ int main(void) {
   memset(&C, 0, sizeof C);
   C.reg[kX86pEsp] = stack + 0xff0u;
   WR32(C.reg[kX86pEsp], 0xabcdef01u);
-  x2_override_005f4900(&C);
+  x2::native::override_005f4900(&C);
 
   failures += check(options_menu_stubs_override_is("XMen2.exe", 0x005f4900u),
                     "the additive command registrar override is absent");
@@ -89,7 +89,7 @@ int main(void) {
   memset(&C, 0, sizeof C);
   C.reg[kX86pEsp] = stack + 0xfd0u;
   WR32(C.reg[kX86pEsp], 0xabcdef03u);
-  x2_override_005f4900(&C);
+  x2::native::override_005f4900(&C);
   failures += check(options_menu_stubs_original_calls() == 2,
                     "a repeated retail registrar call was not super-called");
   failures += check(options_menu_stubs_registration_calls() == 2 &&

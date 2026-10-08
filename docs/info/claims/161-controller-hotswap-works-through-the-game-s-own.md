@@ -6,7 +6,7 @@ created: 2026-08-12
 tags: input,controller,hotswap
 reconfirmed: 2026-09-22
 verified_at: 2026-08-22 13:15:12
-depends: src/native/dinput8_hotplug.cpp#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.cpp#dinput8_hotplug_pump, src/input/controller_hotplug.cpp#x2_controller_hotplug_needs_admission, tests/test_controller_hotplug.cpp#main
+depends: src/native/dinput8_hotplug.cpp#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.cpp#dinput8_hotplug_pump, src/input/controller_hotplug.cpp#controller_hotplug_needs_admission, tests/test_controller_hotplug.cpp#main
 ---
 
 ## Claim

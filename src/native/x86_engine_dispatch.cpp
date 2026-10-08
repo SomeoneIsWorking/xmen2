@@ -36,7 +36,7 @@ void x86_engine_run_host_at(struct X86pCpu *cpu,
   (void)require_call_frame(cpu, frame);
   /* Eligible native imports run directly on the canonical x86port state. */
   if (__builtin_expect(x86_import_fastpath_dispatch(cpu), 0)) {
-    x2_engine_note_callout();
+    x2::native::engine_note_callout();
     return;
   }
   const uint32_t target = cpu->eip;
@@ -48,7 +48,7 @@ void x86_engine_run_host_at(struct X86pCpu *cpu,
    * and a stack argument for everything else.
    */
   const uint32_t ret = RD32(cpu->reg[kX86pEsp]);
-  x2_engine_note_callout();
+  x2::native::engine_note_callout();
   x86_dispatch(cpu, target);
   /* The dispatched body emulated its own RET, so the guest ESP it returns
      with is already right. Only EIP is this loop's to restore. */
@@ -67,7 +67,7 @@ X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user,
     return kX86pDispatchUnwind;
   if (eip != ctx->entry && x86_setjmp3_thunk(eip))
     return kX86pDispatchUnwind;
-  if (eip == ENGINE_RETURN_ADDR)
+  if (eip == x2::native::kEngineReturnAddr)
     return kX86pDispatchUnwind;
 
   if (!x86_engine_host_body_at(eip, ctx->entry))

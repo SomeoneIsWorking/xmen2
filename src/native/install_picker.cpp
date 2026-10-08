@@ -334,7 +334,7 @@ int install_picker_choose(const char **directory) {
     *directory = g_directory;
     return 0;
   }
-  const char *source = x2_android_install_source();
+  const char *source = x2::native::android_install_source();
   if (!source) {
     x2_log_error(
         "install picker: Android setup has not supplied an install source.\n");

@@ -88,7 +88,7 @@ void x2_interrupt_reports(int killed) {
   x2_touch_runtime_report("");
   dinput_device_report();
   dinput_pad_report();
-  x2_stick_axis_report();
+  x2::native::stick_axis_report();
   x2_alchemy_controller_report();
   input_record_report();
   live_session_stop();

@@ -133,7 +133,7 @@ void read_party(void *context) {
 
 } // namespace
 
-void party_route(x2_socket_t fd) {
+void party_route(x2::native::Socket fd) {
   std::string body;
   if (control_command_guest_read(read_party, &body) < 0) {
     control_reply_text(fd, 504, "Gateway Timeout",

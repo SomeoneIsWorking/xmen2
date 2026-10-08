@@ -6,8 +6,9 @@
  * counters is a thing exactly one caller may do, and only because its own work
  * is not part of the measurement it would otherwise pollute.
  */
-#ifndef X2_X86_ENGINE_PRIVATE_H
-#define X2_X86_ENGINE_PRIVATE_H
+#pragma once
+
+namespace x2::native {
 
 /*
  * Where a function this engine runs returns TO.
@@ -36,8 +37,8 @@
  * named outcome, so a return and a guest that really did execute an INT3 stay
  * distinguishable.
  */
-#define ENGINE_RETURN_PAGE 0x00080000u
-#define ENGINE_RETURN_ADDR ENGINE_RETURN_PAGE
+inline constexpr unsigned kEngineReturnPage = 0x00080000u;
+inline constexpr unsigned kEngineReturnAddr = kEngineReturnPage;
 
 /*
  * The engine's own work is done; everything from here is the game.
@@ -56,12 +57,12 @@
  *     program with no FS-relative access at all, so the invariant is about
  *     what comes after it, not about every entry.
  */
-void x2_engine_enter_service(void);
+void engine_enter_service();
 
 /* One host thunk / override crossing happened. A run counter for the shutdown
    report; kept in x86_engine.cpp with the rest of g_engine. */
-void x2_engine_note_callout(void);
+void engine_note_callout();
 
-int x2_engine_jump_selftest(unsigned int page, unsigned int stack);
+int engine_jump_selftest(unsigned int page, unsigned int stack);
 
-#endif
+} // namespace x2::native

@@ -25,15 +25,18 @@ int main(void) {
   unsigned i;
 
   memset(header, 0xa5, sizeof header);
-  CHECK(x2_autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, header));
+  CHECK(
+      x2::save::autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, header));
   CHECK(!strcmp((const char *)header, EXPECTED));
   for (i = (unsigned)strlen(EXPECTED); i < sizeof header; i++)
     CHECK(header[i] == 0u);
-  CHECK(!x2_autosave_header_from_payload(NO_TAG, sizeof NO_TAG, header));
-  CHECK(!x2_autosave_header_from_payload(NO_CLOSE, sizeof NO_CLOSE, header));
-  CHECK(!x2_autosave_header_from_payload(CONTROL, sizeof CONTROL, header));
-  CHECK(!x2_autosave_header_from_payload(NULL, sizeof PAYLOAD, header));
-  CHECK(!x2_autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, NULL));
+  CHECK(!x2::save::autosave_header_from_payload(NO_TAG, sizeof NO_TAG, header));
+  CHECK(!x2::save::autosave_header_from_payload(NO_CLOSE, sizeof NO_CLOSE,
+                                                header));
+  CHECK(
+      !x2::save::autosave_header_from_payload(CONTROL, sizeof CONTROL, header));
+  CHECK(!x2::save::autosave_header_from_payload(NULL, sizeof PAYLOAD, header));
+  CHECK(!x2::save::autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, NULL));
 
   printf("autosave_format: %d checks, %d failures\n", checks, failures);
   return failures != 0;

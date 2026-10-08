@@ -317,8 +317,9 @@ static void x2_movie_next_frame(CPU *C) {
     image = RD32(info + INFO_IMAGE);
     data = image ? RD32(image + IMAGE_DATA) : 0;
     bytes = image ? RD32(image + IMAGE_BYTES) : 0;
-    if (!x2_movie_image_pitch(x2::media::fmv_width(player),
-                              x2::media::fmv_height(player), bytes, &pitch))
+    if (!x2::native::movie_image_pitch(x2::media::fmv_width(player),
+                                       x2::media::fmv_height(player), bytes,
+                                       &pitch))
       pitch = 0;
     if (!data || !pitch ||
         !x2::media::fmv_copy_bgra(player, guest_memory_pointer(data), bytes,

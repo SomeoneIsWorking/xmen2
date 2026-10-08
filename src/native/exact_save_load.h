@@ -1,23 +1,19 @@
-#ifndef X2_EXACT_SAVE_LOAD_H
-#define X2_EXACT_SAVE_LOAD_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-typedef enum {
-  X2_EXACT_SAVE_LOAD_NONE,
-  X2_EXACT_SAVE_LOAD_CONTINUE,
-  X2_EXACT_SAVE_LOAD_MENU
-} X2ExactSaveLoadOwner;
+namespace x2::native {
 
-typedef void (*X2ExactSaveLoadCompletion)(int succeeded);
+enum class ExactSaveLoadOwner { None, Continue, Menu };
 
-int x2_exact_save_load_read_header(const struct X86pCpu *source, uint32_t exe,
-                                   const char *leaf, uint32_t metadata);
-int x2_exact_save_load_start(const struct X86pCpu *source, uint32_t exe,
-                             const char *leaf, unsigned staging_slot,
-                             X2ExactSaveLoadOwner owner,
-                             X2ExactSaveLoadCompletion completion);
+using ExactSaveLoadCompletion = void (*)(int succeeded);
 
-#endif /* X2_EXACT_SAVE_LOAD_H */
+int exact_save_load_read_header(const X86pCpu *source, uint32_t exe,
+                                const char *leaf, uint32_t metadata);
+int exact_save_load_start(const X86pCpu *source, uint32_t exe, const char *leaf,
+                          unsigned staging_slot, ExactSaveLoadOwner owner,
+                          ExactSaveLoadCompletion completion);
+
+} // namespace x2::native

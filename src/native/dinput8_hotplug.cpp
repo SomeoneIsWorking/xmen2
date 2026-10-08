@@ -27,7 +27,7 @@
 /* The game's enumeration identity, remembered from its first GAMECTRL
    EnumDevices; the pump re-enters the guest through it. */
 static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
-static X2ControllerHotplug g_hotplug;
+static x2::input::ControllerHotplug g_hotplug;
 
 void dinput8_check_controller_table(void);
 
@@ -60,7 +60,7 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
   x2_player_input_sync(C);
   dinput8_check_controller_table();
   generation = dinput_pad_generation();
-  if (!x2_controller_hotplug_needs_admission(&g_hotplug, generation))
+  if (!x2::input::controller_hotplug_needs_admission(&g_hotplug, generation))
     return;
   if (!g_pad_ref) {
     static int told_ref;
@@ -85,7 +85,7 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
                "enumeration routine at 0x%08x so disconnects and arrivals "
                "are applied by the game's rules.\n",
                (unsigned long long)generation, dinput_pad_count(), g_pad_enum);
-  x2_controller_hotplug_admitted(&g_hotplug);
+  x2::input::controller_hotplug_admitted(&g_hotplug);
   {
     /* __thiscall FUN_00628e20(BOOL bRecordNew): ECX = the input manager,
        one stack argument. TRUE is what admits a controller the game has
@@ -142,7 +142,7 @@ void dinput8_check_controller_table(void) {
                "the game's enumeration so it re-admits them by its own "
                "rules.\n",
                dinput_pad_count());
-  x2_controller_hotplug_invalidate(&g_hotplug);
+  x2::input::controller_hotplug_invalidate(&g_hotplug);
 }
 
 void dinput8_hotplug_note_game_enumeration(unsigned int callback,
@@ -184,7 +184,8 @@ void dinput8_hotplug_note_game_enumeration(unsigned int callback,
 
 void dinput8_hotplug_enumerated(unsigned long long generation, int connected,
                                 int reported) {
-  x2_controller_hotplug_enumerated(&g_hotplug, generation, connected, reported);
+  x2::input::controller_hotplug_enumerated(&g_hotplug, generation, connected,
+                                           reported);
 }
 
 unsigned long dinput8_hotplug_admissions(void) { return g_hotplug.admissions; }

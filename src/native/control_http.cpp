@@ -22,10 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void send_all(x2_socket_t socket, const void *p, size_t n) {
+static void send_all(x2::native::Socket socket, const void *p, size_t n) {
   const char *b = (const char *)p;
   while (n) {
-    x2_socket_ssize_t k = x2_socket_send(socket, b, n);
+    x2::native::SocketSsize k = x2::native::socket_send(socket, b, n);
     if (k <= 0)
       return;
     b += k;
@@ -33,7 +33,7 @@ static void send_all(x2_socket_t socket, const void *p, size_t n) {
   }
 }
 
-static void reply(x2_socket_t socket, int code, const char *status,
+static void reply(x2::native::Socket socket, int code, const char *status,
                   const char *ctype, const void *body, size_t n) {
   char head[256];
   int hn = snprintf(head, sizeof head,
@@ -45,7 +45,7 @@ static void reply(x2_socket_t socket, int code, const char *status,
     send_all(socket, body, n);
 }
 
-void control_reply_text(x2_socket_t socket, int code, const char *status,
+void control_reply_text(x2::native::Socket socket, int code, const char *status,
                         const char *fmt, ...) {
   va_list ap, measure;
   char *body;
@@ -68,29 +68,30 @@ void control_reply_text(x2_socket_t socket, int code, const char *status,
   free(body);
 }
 
-void control_reply_json(x2_socket_t socket, int code, const char *status,
+void control_reply_json(x2::native::Socket socket, int code, const char *status,
                         const char *body, size_t size) {
   reply(socket, code, status, "application/json", body, size);
 }
 
-void control_reply_bytes(x2_socket_t socket, int code, const char *status,
-                         const char *ctype, const void *body, size_t size) {
+void control_reply_bytes(x2::native::Socket socket, int code,
+                         const char *status, const char *ctype,
+                         const void *body, size_t size) {
   reply(socket, code, status, ctype, body, size);
 }
 
 static ControlHttpHandler g_handler;
 
 static void *server_thread(void *arg) {
-  x2_socket_t lfd = (x2_socket_t)(intptr_t)arg;
+  x2::native::Socket lfd = (x2::native::Socket)(intptr_t)arg;
   for (;;) {
-    x2_socket_t socket = x2_socket_accept(lfd);
-    if (x2_socket_is_invalid(socket)) {
-      if (x2_socket_error_is_interrupt())
+    x2::native::Socket socket = x2::native::socket_accept(lfd);
+    if (x2::native::socket_is_invalid(socket)) {
+      if (x2::native::socket_error_is_interrupt())
         continue;
       break;
     }
     g_handler(socket);
-    x2_socket_close(socket);
+    x2::native::socket_close(socket);
   }
   return NULL;
 }
@@ -98,34 +99,34 @@ static void *server_thread(void *arg) {
 int control_http_listen(int port, ControlHttpHandler handler) {
   struct sockaddr_in a;
   pthread_t th;
-  x2_socket_t lfd;
+  x2::native::Socket lfd;
 
   g_handler = handler;
-  if (!x2_socket_startup()) {
+  if (!x2::native::socket_startup()) {
     x2_log_error("control: socket runtime startup failed. REFUSING to run "
                  "without the control channel that was asked for.\n");
     return 0;
   }
-  lfd = x2_socket_open(AF_INET, SOCK_STREAM, 0);
-  if (x2_socket_is_invalid(lfd)) {
+  lfd = x2::native::socket_open(AF_INET, SOCK_STREAM, 0);
+  if (x2::native::socket_is_invalid(lfd)) {
     x2_log_error("control: socket() failed: %s. REFUSING to run without "
                  "the control channel that was asked for.\n",
                  strerror(errno));
     return 0;
   }
-  x2_socket_reuse_address(lfd);
+  x2::native::socket_reuse_address(lfd);
   memset(&a, 0, sizeof a);
   a.sin_family = AF_INET;
   a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* loopback ONLY */
   a.sin_port = htons((unsigned short)port);
-  if (x2_socket_bind(lfd, (struct sockaddr *)&a, sizeof a) < 0 ||
-      x2_socket_listen(lfd, 8) < 0) {
+  if (x2::native::socket_bind(lfd, (struct sockaddr *)&a, sizeof a) < 0 ||
+      x2::native::socket_listen(lfd, 8) < 0) {
     x2_log_error("control: cannot listen on 127.0.0.1:%d: %s.\n"
                  "REFUSING rather than running deaf -- a run that "
                  "silently failed to bind ignores every command while "
                  "looking healthy.\n",
                  port, strerror(errno));
-    x2_socket_close(lfd);
+    x2::native::socket_close(lfd);
     return 0;
   }
   pthread_create(&th, NULL, server_thread, (void *)(intptr_t)lfd);

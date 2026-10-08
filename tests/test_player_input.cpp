@@ -80,7 +80,9 @@ unsigned input_bindings_write_player(CPU *cpu, uint32_t player, uint32_t row,
   (void)cpu;
   return input_binding_sets_for_player(player, write_test_set, &write);
 }
-void x2_player_participation_apply(CPU *cpu, uint8_t join, uint8_t leave) {
+namespace x2::native {
+
+void player_participation_apply(CPU *cpu, uint8_t join, uint8_t leave) {
   (void)cpu;
   participation_join |= join;
   participation_leave |= leave;
@@ -88,11 +90,13 @@ void x2_player_participation_apply(CPU *cpu, uint8_t join, uint8_t leave) {
   participation_active &= (unsigned)~leave;
 }
 
-void x2_player_participation_enforce_eligibility(CPU *cpu, uint8_t eligible) {
+void player_participation_enforce_eligibility(CPU *cpu, uint8_t eligible) {
   (void)cpu;
   participation_eligible = eligible;
   participation_active &= eligible;
 }
+
+} // namespace x2::native
 int main(void) {
   CPU cpu = {0};
   unsigned char keyboard_state[256] = {0};

@@ -30,14 +30,14 @@ performance evidence.
 ### 1. The JIT translated basic blocks straight through consumer interception points
 
 x86port's dispatch checks the consumer's `jit_intercept` predicate only
-*between* translated blocks. A host thunk, an `ENGINE_RETURN_ADDR`, or a native
+*between* translated blocks. A host thunk, an `kEngineReturnAddr`, or a native
 override entry reached by **fall-through** (not by a branch) sat in the middle
 of a block, so the JIT ran the raw guest bytes there instead of handing control
 to the host. The interpreter checks every instruction and was unaffected.
 
 Fix, in x86port (`75c7a08`): `x86p_jit_translate_bounded` +
 `x86p_jit_engine_set_boundary`. xmen2's `jit_boundary` (the pure-EIP subset of
-`jit_intercept`: thunk range, `ENGINE_RETURN_ADDR`, `x86_native_body_at`,
+`jit_intercept`: thunk range, `kEngineReturnAddr`, `x86_native_body_at`,
 `x86_setjmp3_thunk`) stops a block before any interception point.
 
 Measured: guest logic went from "stuck at 1 present" to progressing; a

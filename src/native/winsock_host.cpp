@@ -17,7 +17,7 @@ enum {
 };
 
 struct Slot {
-  x2_socket_t host;
+  x2::native::Socket host;
   uint8_t flags;
   /* The adapter address a datagram socket asked to bind, which it is bound
      to in Winsock's eyes but not the host's (winsock_bind); 0 for none. */
@@ -33,9 +33,9 @@ bool g_host_started;
 /* The WSA code for the host call that just failed. */
 uint32_t host_error() {
 #if defined(_WIN32)
-  return static_cast<uint32_t>(x2_socket_error());
+  return static_cast<uint32_t>(x2::native::socket_error());
 #else
-  return winsock_error_from_errno(x2_socket_error());
+  return winsock_error_from_errno(x2::native::socket_error());
 #endif
 }
 
@@ -131,7 +131,7 @@ uint32_t winsock_error_from_errno(int err) {
 
 int winsock_host_ready(void) {
   std::call_once(g_host_start,
-                 [] { g_host_started = x2_socket_startup() != 0; });
+                 [] { g_host_started = x2::native::socket_startup() != 0; });
   return g_host_started;
 }
 
@@ -301,17 +301,18 @@ int winsock_socket_open(int32_t family, int32_t type, int32_t protocol,
   }
   /* SOCK_STREAM 1 / SOCK_DGRAM 2 and the IPPROTO numbers are the BSD values
      on both sides. */
-  const x2_socket_t host = x2_socket_open(AF_INET,
-                                          type == 1   ? SOCK_STREAM
-                                          : type == 2 ? SOCK_DGRAM
-                                                      : -1,
-                                          protocol);
-  if (x2_socket_is_invalid(host)) {
+  const x2::native::Socket host =
+      x2::native::socket_open(AF_INET,
+                              type == 1   ? SOCK_STREAM
+                              : type == 2 ? SOCK_DGRAM
+                                          : -1,
+                              protocol);
+  if (x2::native::socket_is_invalid(host)) {
     *error = host_error();
     return -1;
   }
 #ifdef SO_NOSIGPIPE
-  (void)x2_socket_set_int_option(host, SOL_SOCKET, SO_NOSIGPIPE, 1);
+  (void)x2::native::socket_set_int_option(host, SOL_SOCKET, SO_NOSIGPIPE, 1);
 #endif
   g_sockets[handle] =
       Slot{host,
@@ -334,7 +335,7 @@ int winsock_set_blocking(uint32_t handle, int blocking, uint32_t *error) {
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  if (x2_socket_set_nonblocking(slot->host, !blocking) != 0) {
+  if (x2::native::socket_set_nonblocking(slot->host, !blocking) != 0) {
     return fail(error, host_error());
   }
   slot->flags =
@@ -348,10 +349,10 @@ int winsock_close(uint32_t handle, uint32_t *error) {
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  const x2_socket_t host = slot->host;
-  *slot = Slot{X2_SOCKET_INVALID, 0, 0};
+  const x2::native::Socket host = slot->host;
+  *slot = Slot{x2::native::kSocketInvalid, 0, 0};
   --g_open;
-  if (x2_socket_close(host) != 0) {
+  if (x2::native::socket_close(host) != 0) {
     return fail(error, host_error());
   }
   return 1;
@@ -401,8 +402,9 @@ int winsock_bind(uint32_t handle, const void *host_sockaddr_in,
   if (widen) {
     at.sin_addr.s_addr = htonl(INADDR_ANY);
   }
-  if (x2_socket_bind(slot->host, reinterpret_cast<const struct sockaddr *>(&at),
-                     sizeof at) != 0) {
+  if (x2::native::socket_bind(slot->host,
+                              reinterpret_cast<const struct sockaddr *>(&at),
+                              sizeof at) != 0) {
     return fail(error, host_error());
   }
   slot->bound_address = widen ? requested : 0;
@@ -416,7 +418,7 @@ int winsock_getsockname(uint32_t handle, void *host_sockaddr_in,
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  if (x2_socket_name(slot->host, &at) != 0) {
+  if (x2::native::socket_name(slot->host, &at) != 0) {
     return fail(error, host_error());
   }
   if (slot->bound_address) {
@@ -434,8 +436,9 @@ int winsock_connect(uint32_t handle, const void *host_sockaddr_in,
   }
   struct sockaddr_in to;
   memcpy(&to, host_sockaddr_in, sizeof to);
-  return x2_socket_connect(slot->host, &to) == 0 ? 1
-                                                 : fail(error, host_error());
+  return x2::native::socket_connect(slot->host, &to) == 0
+             ? 1
+             : fail(error, host_error());
 }
 
 int winsock_shutdown(uint32_t handle, int how, uint32_t *error) {
@@ -443,8 +446,9 @@ int winsock_shutdown(uint32_t handle, int how, uint32_t *error) {
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  return x2_socket_shutdown(slot->host, how) == 0 ? 1
-                                                  : fail(error, host_error());
+  return x2::native::socket_shutdown(slot->host, how) == 0
+             ? 1
+             : fail(error, host_error());
 }
 
 int winsock_pending(uint32_t handle, uint32_t *bytes, uint32_t *error) {
@@ -453,7 +457,7 @@ int winsock_pending(uint32_t handle, uint32_t *bytes, uint32_t *error) {
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  if (x2_socket_pending(slot->host, &pending) != 0) {
+  if (x2::native::socket_pending(slot->host, &pending) != 0) {
     return fail(error, host_error());
   }
   *bytes = pending;
@@ -466,14 +470,15 @@ int winsock_set_option(uint32_t handle, int host_level, int host_name,
   if (!slot) {
     return fail(error, WINSOCK_ENOTSOCK);
   }
-  return x2_socket_set_int_option(slot->host, host_level, host_name, value) == 0
+  return x2::native::socket_set_int_option(slot->host, host_level, host_name,
+                                           value) == 0
              ? 1
              : fail(error, host_error());
 }
 
 namespace {
 
-int64_t transferred(x2_socket_ssize_t n, uint32_t *error) {
+int64_t transferred(x2::native::SocketSsize n, uint32_t *error) {
   if (n < 0) {
     *error = host_error();
     return -1;
@@ -490,8 +495,8 @@ int64_t winsock_send(uint32_t handle, const void *data, size_t size, int flags,
     *error = WINSOCK_ENOTSOCK;
     return -1;
   }
-  return transferred(x2_socket_send_flags(slot->host, data, size, flags),
-                     error);
+  return transferred(
+      x2::native::socket_send_flags(slot->host, data, size, flags), error);
 }
 
 int64_t winsock_recv(uint32_t handle, void *data, size_t size, int flags,
@@ -501,8 +506,8 @@ int64_t winsock_recv(uint32_t handle, void *data, size_t size, int flags,
     *error = WINSOCK_ENOTSOCK;
     return -1;
   }
-  return transferred(x2_socket_recv_flags(slot->host, data, size, flags),
-                     error);
+  return transferred(
+      x2::native::socket_recv_flags(slot->host, data, size, flags), error);
 }
 
 int64_t winsock_sendto(uint32_t handle, const void *data, size_t size,
@@ -515,8 +520,8 @@ int64_t winsock_sendto(uint32_t handle, const void *data, size_t size,
   }
   struct sockaddr_in to;
   memcpy(&to, host_sockaddr_in, sizeof to);
-  return transferred(x2_socket_sendto(slot->host, data, size, flags, &to),
-                     error);
+  return transferred(
+      x2::native::socket_sendto(slot->host, data, size, flags, &to), error);
 }
 
 int64_t winsock_recvfrom(uint32_t handle, void *data, size_t size, int flags,
@@ -529,7 +534,7 @@ int64_t winsock_recvfrom(uint32_t handle, void *data, size_t size, int flags,
   struct sockaddr_in from;
   memset(&from, 0, sizeof from);
   const int64_t n = transferred(
-      x2_socket_recvfrom(slot->host, data, size, flags, &from), error);
+      x2::native::socket_recvfrom(slot->host, data, size, flags, &from), error);
   if (n >= 0 && host_sockaddr_in) {
     memcpy(host_sockaddr_in, &from, sizeof from);
   }
@@ -540,7 +545,7 @@ namespace {
 
 /* One host poll entry per distinct guest handle across the three sets. */
 struct PollSet {
-  x2_pollfd polls[WINSOCK_FD_SETSIZE * 3];
+  x2::native::PollFd polls[WINSOCK_FD_SETSIZE * 3];
   uint32_t handles[WINSOCK_FD_SETSIZE * 3];
   unsigned count;
 };
@@ -563,7 +568,7 @@ int gather(const WinsockFdSet *set, short events, PollSet *poll,
       ++at;
     }
     if (at == poll->count) {
-      x2_pollfd entry;
+      x2::native::PollFd entry;
       memset(&entry, 0, sizeof entry);
       entry.fd = slot->host;
       poll->polls[at] = entry;
@@ -600,20 +605,24 @@ int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
                    WinsockFdSet *except, int64_t timeout_us, uint32_t *error) {
   PollSet poll;
   poll.count = 0;
-  if (!gather(read, X2_POLL_IN, &poll, error) ||
-      !gather(write, X2_POLL_OUT, &poll, error) ||
-      !gather(except, X2_POLL_EXCEPT, &poll, error)) {
+  if (!gather(read, x2::native::kPollIn, &poll, error) ||
+      !gather(write, x2::native::kPollOut, &poll, error) ||
+      !gather(except, x2::native::kPollExcept, &poll, error)) {
     return -1;
   }
   const int timeout_ms =
       timeout_us < 0 ? -1 : static_cast<int>((timeout_us + 999) / 1000);
-  if (x2_socket_poll(poll.polls, poll.count, timeout_ms) < 0) {
+  if (x2::native::socket_poll(poll.polls, poll.count, timeout_ms) < 0) {
     *error = host_error();
     return -1;
   }
   /* A closed or failed peer is readable on Windows -- the recv that follows
      reports it -- and a failed connect lands in the except set. */
-  return keep_ready(read, X2_POLL_IN | X2_POLL_HUP | X2_POLL_ERR, &poll) +
-         keep_ready(write, X2_POLL_OUT, &poll) +
-         keep_ready(except, X2_POLL_EXCEPT | X2_POLL_ERR, &poll);
+  return keep_ready(read,
+                    x2::native::kPollIn | x2::native::kPollHup |
+                        x2::native::kPollErr,
+                    &poll) +
+         keep_ready(write, x2::native::kPollOut, &poll) +
+         keep_ready(except, x2::native::kPollExcept | x2::native::kPollErr,
+                    &poll);
 }

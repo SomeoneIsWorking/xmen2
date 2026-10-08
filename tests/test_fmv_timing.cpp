@@ -10,16 +10,19 @@ static int near(double left, double right) {
 
 int main(void) {
   const int64_t no_timestamp = INT64_MIN;
-  X2FmvTimeline timeline;
+  x2::media::FmvTimeline timeline;
   double first, duplicate, fallback, clamped, later;
   int failures = 0;
-  x2_fmv_timeline_init(&timeline, 30.0);
-  first = x2_fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
-  duplicate = x2_fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
-  fallback =
-      x2_fmv_timestamp(&timeline, no_timestamp, no_timestamp, 1, 90000, 3000);
-  clamped = x2_fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
-  later = x2_fmv_timestamp(&timeline, 18000, no_timestamp, 1, 90000, 3000);
+  x2::media::fmv_timeline_init(&timeline, 30.0);
+  first = x2::media::fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
+  duplicate =
+      x2::media::fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
+  fallback = x2::media::fmv_timestamp(&timeline, no_timestamp, no_timestamp, 1,
+                                      90000, 3000);
+  clamped =
+      x2::media::fmv_timestamp(&timeline, 0, no_timestamp, 1, 90000, 3000);
+  later =
+      x2::media::fmv_timestamp(&timeline, 18000, no_timestamp, 1, 90000, 3000);
   failures += !near(first, 0.0);
   failures += !near(duplicate, 1.0 / 30.0);
   failures += !near(fallback, 2.0 / 30.0);

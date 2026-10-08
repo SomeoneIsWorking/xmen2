@@ -14,8 +14,10 @@ int x2_win32_pointer_screen_to_client(int32_t *x, int32_t *y);
 int x2_win32_pointer_get_cursor_pos(int32_t *x, int32_t *y);
 int x2_win32_pointer_set_cursor_pos(int32_t x, int32_t y);
 void x2_win32_pointer_translate_mouse(const SDL_Event *event,
-                                      X2Win32Mouse *mouse, uint32_t hwnd);
+                                      x2::native::Win32Mouse *mouse,
+                                      uint32_t hwnd);
 void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
-                                      X2Win32Mouse *mouse, uint32_t hwnd);
+                                      x2::native::Win32Mouse *mouse,
+                                      uint32_t hwnd);
 
 #endif
