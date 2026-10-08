@@ -25,6 +25,6 @@ void lan_join_command(CPU *cpu);
 
 /* /lan: presence and director status; /lan?host=1 re-forms this game as a
    lobby; /lan?join=1 joins the LAN game the browser finds. */
-void lan_session_route(x2_socket_t fd, const char *query);
+void lan_session_route(x2::native::Socket fd, const char *query);
 
 } // namespace x2::native

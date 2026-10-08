@@ -228,7 +228,8 @@ void imp_USER32_SetWindowPos(CPU *C) {
   /* (hWnd, hWndInsertAfter, X, Y, cx, cy, uFlags) */
   const uint32_t SWP_NOMOVE = 0x0002u, SWP_NOSIZE = 0x0001u;
   uint32_t flags = A(6);
-  if (g_win && hwnd_is_main(A(0)) && !x2_window_settings_owns_geometry()) {
+  if (g_win && hwnd_is_main(A(0)) &&
+      !x2::presentation::window_settings_owns_geometry()) {
     if (!(flags & SWP_NOMOVE))
       SDL_SetWindowPosition(g_win, (int)A(2), (int)A(3));
     if (!(flags & SWP_NOSIZE))
@@ -594,8 +595,8 @@ void imp_USER32_CreateWindowExA(CPU *C) {
   g_gwl[1] = x2::native::win32_events_registered_wndproc();
   x2::native::win32_events_set_wndproc(g_gwl[1]);
   x2::native::win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
-  if (!g_hide_windows &&
-      !x2_window_settings_apply(g_win, settings, why, (int)sizeof why))
+  if (!g_hide_windows && !x2::presentation::window_settings_apply(
+                             g_win, settings, why, (int)sizeof why))
     x2_log_error("SETTINGS: could not apply requested presentation "
                  "mode (%s). The existing window remains active.\n",
                  why);
@@ -705,7 +706,7 @@ void imp_USER32_MoveWindow(CPU *C) {
     ret_std(C, 0, 6);
     return;
   }
-  if (!x2_window_settings_owns_geometry()) {
+  if (!x2::presentation::window_settings_owns_geometry()) {
     SDL_SetWindowPosition(g_win, (int)(int32_t)A(1), (int)(int32_t)A(2));
     SDL_SetWindowSize(g_win, (int)(int32_t)A(3), (int)(int32_t)A(4));
   }

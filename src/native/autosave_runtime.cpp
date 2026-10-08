@@ -91,7 +91,7 @@ int publish_snapshot(const CPU *source) {
     g_last_result = AUTOSAVE_LAST_SERIALIZER_FAILED;
     return 0;
   }
-  if (!x2_autosave_header_from_payload(
+  if (!x2::save::autosave_header_from_payload(
           guest_memory_as<const unsigned char>(
               x2::native::campaign_snapshot_address(g_snapshot)),
           x2::native::kCampaignSnapshotPayloadBytes, header)) {

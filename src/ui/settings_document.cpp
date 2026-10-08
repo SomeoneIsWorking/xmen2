@@ -257,11 +257,12 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     char why[256];
     settings->window_mode =
         (X2WindowMode)(((unsigned)settings->window_mode + 1u) % 3u);
-    if (!x2_window_settings_apply(host_window, settings, why, sizeof why)) {
+    if (!x2::presentation::window_settings_apply(host_window, settings, why,
+                                                 sizeof why)) {
       char rollback_why[256];
       *settings = before;
-      if (!x2_window_settings_apply(host_window, &before, rollback_why,
-                                    sizeof rollback_why))
+      if (!x2::presentation::window_settings_apply(
+              host_window, &before, rollback_why, sizeof rollback_why))
         x2_log_error("RMLUI: display rollback also failed: %s\n", rollback_why);
       set_status(why);
     } else {

@@ -15,7 +15,7 @@
 
 void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
                            uint32_t size) {
-  X2DirectInputControllerSample sample;
+  x2::input::DirectInputControllerSample sample;
 
   /* Latch SDL's current view ONCE, before reading the sixteen values below
      out of it. Without this every one of them reports what SDL happened to
@@ -29,11 +29,11 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
                  size);
     return;
   }
-  if (!x2_directinput_controller_capture(pad, lo, hi, &sample)) {
+  if (!x2::input::directinput_controller_capture(pad, lo, hi, &sample)) {
     return;
   }
-  x2_directinput_controller_write(&sample, guest_memory_as<unsigned char>(out),
-                                  size);
+  x2::input::directinput_controller_write(
+      &sample, guest_memory_as<unsigned char>(out), size);
   x2_alchemy_controller_observe(pad, &sample, lo, hi);
 }
 

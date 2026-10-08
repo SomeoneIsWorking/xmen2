@@ -11,9 +11,9 @@ static unsigned long g_root_calls;
 static void hud_draw(CPU *cpu) {
   ++g_root_calls;
   x2_gameplay_control_hud_drawn(guest_clock_now_s());
-  x2_hud_party_draw(cpu);
+  x2::native::hud_party_draw(cpu);
   if (g_root_calls % 300 == 0)
-    x2_hud_draw_report();
+    x2::native::hud_draw_report();
 }
 
 void x2_touch_hud_report(void) {
@@ -21,7 +21,7 @@ void x2_touch_hud_report(void) {
                   g_root_calls,
                   x2_gameplay_control_name(
                       (int)x2_gameplay_control_state(guest_clock_now_s())));
-  x2_hud_draw_report();
+  x2::native::hud_draw_report();
 }
 
 __attribute__((constructor)) static void register_hud_draw(void) {

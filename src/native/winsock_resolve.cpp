@@ -47,8 +47,9 @@ void add_adapter(uint32_t address, uint32_t *out, unsigned *count) {
    UDP connect only selects a route; nothing is sent. 192.0.2.1 is TEST-NET-1,
    documentation-only, so no real peer is implied. */
 int primary_address(uint32_t *out) {
-  const x2_socket_t probe = x2_socket_open(AF_INET, SOCK_DGRAM, 0);
-  if (x2_socket_is_invalid(probe)) {
+  const x2::native::Socket probe =
+      x2::native::socket_open(AF_INET, SOCK_DGRAM, 0);
+  if (x2::native::socket_is_invalid(probe)) {
     return 0;
   }
   struct sockaddr_in to;
@@ -57,10 +58,11 @@ int primary_address(uint32_t *out) {
   to.sin_port = htons(9);
   to.sin_addr.s_addr = htonl(0xc0000201u);
   struct sockaddr_in from;
-  const int found =
-      x2_socket_connect(probe, &to) == 0 && x2_socket_name(probe, &from) == 0 &&
-      from.sin_addr.s_addr != 0 && !is_loopback(from.sin_addr.s_addr);
-  x2_socket_close(probe);
+  const int found = x2::native::socket_connect(probe, &to) == 0 &&
+                    x2::native::socket_name(probe, &from) == 0 &&
+                    from.sin_addr.s_addr != 0 &&
+                    !is_loopback(from.sin_addr.s_addr);
+  x2::native::socket_close(probe);
   if (found) {
     *out = from.sin_addr.s_addr;
   }
@@ -163,7 +165,7 @@ unsigned winsock_local_addresses(uint32_t *out, unsigned max) {
 }
 
 int winsock_host_name(char *out, size_t size) {
-  if (!winsock_host_ready() || x2_socket_host_name(out, size) != 0) {
+  if (!winsock_host_ready() || x2::native::socket_host_name(out, size) != 0) {
     return 0;
   }
   out[size - 1] = 0;

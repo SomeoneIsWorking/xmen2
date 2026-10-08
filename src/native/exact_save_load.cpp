@@ -32,8 +32,8 @@ enum {
 
 static uint32_t g_leaf_guest;
 static uint32_t g_pending_exe;
-static X2ExactSaveLoadOwner g_owner;
-static X2ExactSaveLoadCompletion g_completion;
+static x2::native::ExactSaveLoadOwner g_owner;
+static x2::native::ExactSaveLoadCompletion g_completion;
 
 static uint32_t guest_call0(const CPU *source, uint32_t target) {
   CPU call = *source;
@@ -44,7 +44,7 @@ static uint32_t guest_call0(const CPU *source, uint32_t target) {
 static int prepare_leaf(const char *leaf) {
   size_t length;
 
-  if (!leaf || g_owner != X2_EXACT_SAVE_LOAD_NONE)
+  if (!leaf || g_owner != x2::native::ExactSaveLoadOwner::None)
     return 0;
   length = strlen(leaf);
   if (length == 0u || length >= X2_SAVE_LEAF_CAPACITY)
@@ -87,15 +87,17 @@ static void set_manager_mode(const CPU *source, uint32_t exe, uint32_t manager,
   x86_guest_call_args(&call, exe + FN_SET_MODE, 4u);
 }
 
-int x2_exact_save_load_read_header(const CPU *source, uint32_t exe,
-                                   const char *leaf, uint32_t metadata) {
+namespace x2::native {
+
+int exact_save_load_read_header(const CPU *source, uint32_t exe,
+                                const char *leaf, uint32_t metadata) {
   return source && exe && prepare_leaf(leaf) &&
          read_prepared_header(source, exe, metadata);
 }
 
-int x2_exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
-                             unsigned staging_slot, X2ExactSaveLoadOwner owner,
-                             X2ExactSaveLoadCompletion completion) {
+int exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
+                          unsigned staging_slot, ExactSaveLoadOwner owner,
+                          ExactSaveLoadCompletion completion) {
   CPU call;
   uint8_t previous_metadata[METADATA_STRIDE];
   uint32_t manager;
@@ -104,22 +106,22 @@ int x2_exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
   int entered_load_mode = 0;
 
   if (!source || !exe ||
-      (owner != X2_EXACT_SAVE_LOAD_CONTINUE &&
-       owner != X2_EXACT_SAVE_LOAD_MENU) ||
+      (owner != ExactSaveLoadOwner::Continue &&
+       owner != ExactSaveLoadOwner::Menu) ||
       staging_slot >= MANAGER_METADATA_SLOTS || !prepare_leaf(leaf))
     return 0;
   manager = guest_call0(source, exe + FN_SAVE_MANAGER);
   if (!manager)
     return 0;
   expected_mode =
-      owner == X2_EXACT_SAVE_LOAD_CONTINUE ? SAVE_MODE_IDLE : SAVE_MODE_LOAD;
+      owner == ExactSaveLoadOwner::Continue ? SAVE_MODE_IDLE : SAVE_MODE_LOAD;
   if (RD32(manager + MANAGER_MODE) != expected_mode)
     return 0;
 
   /* Continue owns the idle -> load transition. Preserve that evidenced
      ordering: SetMode resets the manager transaction before any header I/O.
      The Load Game menu already owns mode 3, so it must not reset itself. */
-  if (owner == X2_EXACT_SAVE_LOAD_CONTINUE) {
+  if (owner == ExactSaveLoadOwner::Continue) {
     set_manager_mode(source, exe, manager, SAVE_MODE_LOAD);
     if (RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD) {
       set_manager_mode(source, exe, manager, SAVE_MODE_IDLE);
@@ -165,16 +167,18 @@ int x2_exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
   return 1;
 }
 
+} // namespace x2::native
+
 static int redirect_pending_load(CPU *cpu) {
-  X2ExactSaveLoadCompletion completion = g_completion;
-  X2ExactSaveLoadOwner pending = g_owner;
+  x2::native::ExactSaveLoadCompletion completion = g_completion;
+  x2::native::ExactSaveLoadOwner pending = g_owner;
   uint32_t exe = g_pending_exe;
   int succeeded;
 
-  if (!cpu || !exe || pending == X2_EXACT_SAVE_LOAD_NONE)
+  if (!cpu || !exe || pending == x2::native::ExactSaveLoadOwner::None)
     return 0;
   g_pending_exe = 0u;
-  g_owner = X2_EXACT_SAVE_LOAD_NONE;
+  g_owner = x2::native::ExactSaveLoadOwner::None;
   g_completion = NULL;
   WR32(cpu->reg[kX86pEsp] + 8u, g_leaf_guest);
   x86_dispatch(cpu, exe + FN_READ_LEAF);

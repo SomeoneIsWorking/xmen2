@@ -31,8 +31,10 @@ static int set_exclusive_mode(SDL_Window *window, unsigned width,
   return applied;
 }
 
-int x2_window_settings_apply(SDL_Window *window, const X2Settings *settings,
-                             char *why, int whyn) {
+namespace x2::presentation {
+
+int window_settings_apply(SDL_Window *window, const X2Settings *settings,
+                          char *why, int whyn) {
   if (!window || !settings) {
     if (why && whyn > 0)
       snprintf(why, (size_t)whyn, "window and settings are required");
@@ -84,4 +86,6 @@ int x2_window_settings_apply(SDL_Window *window, const X2Settings *settings,
   return 1;
 }
 
-int x2_window_settings_owns_geometry(void) { return g_owns_geometry; }
+int window_settings_owns_geometry() { return g_owns_geometry; }
+
+} // namespace x2::presentation

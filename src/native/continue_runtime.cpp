@@ -332,9 +332,9 @@ static int start_latest_load(const CPU *source) {
   if (!g_latest_ready || !prepare_strings() ||
       !x2::save::continue_leaf_slot(g_latest_leaf, &slot))
     return 0;
-  if (!x2_exact_save_load_start(source, g_exe, g_latest_leaf, slot,
-                                X2_EXACT_SAVE_LOAD_CONTINUE,
-                                continue_load_completed))
+  if (!x2::native::exact_save_load_start(
+          source, g_exe, g_latest_leaf, slot,
+          x2::native::ExactSaveLoadOwner::Continue, continue_load_completed))
     return 0;
   x2::save::continue_transaction_begin(&g_transaction);
   return 1;

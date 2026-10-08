@@ -202,7 +202,9 @@ void stop_log_router() {
 
 } // namespace
 
-void x2_android_log_stdio(void) {
+namespace x2::native {
+
+void android_log_stdio() {
   static bool routed = false;
   if (routed)
     return;
@@ -225,16 +227,20 @@ void x2_android_log_stdio(void) {
   routed = true;
 }
 
-#else
-
-const char *x2_android_install_source(void) { return nullptr; }
-
-void x2_android_log_stdio(void) {}
-
-#endif
-
-#if defined(__ANDROID__)
-const char *x2_android_install_source(void) {
+const char *android_install_source() {
   return install_source[0] ? install_source : nullptr;
 }
+
+} // namespace x2::native
+
+#else
+
+namespace x2::native {
+
+const char *android_install_source() { return nullptr; }
+
+void android_log_stdio() {}
+
+} // namespace x2::native
+
 #endif

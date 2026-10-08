@@ -1486,7 +1486,7 @@ int main(int argc, char **argv) {
   /* Before anything that can refuse: Android discards a process's stdio, so
      until this runs every fatal message the port prints is invisible and a
      deliberate exit looks like an unexplained crash. */
-  x2_android_log_stdio();
+  x2::native::android_log_stdio();
   /* Before the options are read: a double-clicked .app or Windows folder
      supplies no options, and being packaged IS the launch shape --appimage
      names on Linux. Each publishes its own resources. */

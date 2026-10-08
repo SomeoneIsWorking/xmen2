@@ -82,7 +82,7 @@ int x2_engine_selftest(void) {
      there; a guest CALL wrote a real one) -- so the selftest
      meets it too, rather than being the one entry that does not. */
   stack = SELFTEST_PAGE + 0x800u;
-  WR32(stack - 4u, ENGINE_RETURN_ADDR);
+  WR32(stack - 4u, x2::native::kEngineReturnAddr);
 
   cpu_reset(&cpu);
   cpu.reg[kX86pEsp] = stack - 4u;
@@ -128,7 +128,7 @@ int x2_engine_selftest(void) {
     const uint32_t frame_esp = stack - 8u;
     memcpy(guest_memory_pointer(SELFTEST_PAGE + 0x100u), body, sizeof body);
     memcpy(guest_memory_pointer(SELFTEST_PAGE + 0x200u), beyond, sizeof beyond);
-    WR32(stack - 4u, ENGINE_RETURN_ADDR);
+    WR32(stack - 4u, x2::native::kEngineReturnAddr);
     WR32(frame_esp, SELFTEST_PAGE + 0x200u);
     WR32(frame_esp - 4u, 0x5555u);
     cpu_reset(&cpu);
@@ -192,6 +192,6 @@ int x2_engine_selftest(void) {
    */
   /* The selftest's own work is not a measurement of the game, and the
      invariants that hold for the game do not hold for it. */
-  x2_engine_enter_service();
+  x2::native::engine_enter_service();
   return 1;
 }

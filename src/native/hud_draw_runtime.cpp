@@ -136,7 +136,9 @@ static void capture_portrait(void *context, uint32_t portrait, float xyz[3]) {
   }
 }
 
-void x2_hud_party_draw(CPU *cpu) {
+namespace x2::native {
+
+void hud_party_draw(CPU *cpu) {
   HudScope saved = g_scope;
   g_scope = (HudScope){0};
   ++g_total[0];
@@ -155,6 +157,8 @@ void x2_hud_party_draw(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", PARTY_DRAW);
   g_scope = saved;
 }
+
+} // namespace x2::native
 
 static void vitals_draw(CPU *cpu) {
   HudScope saved = g_scope;
@@ -378,7 +382,9 @@ static void scene_matrix(CPU *cpu) {
   ++g_matrices;
 }
 
-void x2_hud_draw_report(void) {
+namespace x2::native {
+
+void hud_draw_report() {
   lucent_log_info("hud",
                   "mobile groups party %lu/%lu, vitals %lu/%lu, inventory "
                   "%lu/%lu, portraits %lu/%lu; transformed sprite %lu/%lu, "
@@ -389,6 +395,8 @@ void x2_hud_draw_report(void) {
                   g_matrix_calls);
   x2_hud_portrait_position_report();
 }
+
+} // namespace x2::native
 
 __attribute__((constructor)) static void register_hud(void) {
   x86_register_override("XMen2.exe", VITALS_DRAW, vitals_draw);

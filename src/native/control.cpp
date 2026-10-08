@@ -322,7 +322,7 @@ int control_command_assignment(unsigned player_index, double pad_or_clear,
 
 /* -------------------------------------------------------------- serving --- */
 
-static void route_shot(x2_socket_t fd) {
+static void route_shot(x2::native::Socket fd) {
   const unsigned char *png;
   size_t png_bytes;
 
@@ -342,7 +342,7 @@ static void route_shot(x2_socket_t fd) {
   control_reply_bytes(fd, 200, "OK", "image/png", png, png_bytes);
 }
 
-static void route_input(x2_socket_t fd, const char *query) {
+static void route_input(x2::native::Socket fd, const char *query) {
   char which[16] = "";
   g_cmd_controller = control_query_arg(query, "controller", which, sizeof which)
                          ? (unsigned)atoi(which)
@@ -364,9 +364,9 @@ static void route_input(x2_socket_t fd, const char *query) {
                       g_probe_len);
 }
 
-static void serve(x2_socket_t fd) {
+static void serve(x2::native::Socket fd) {
   char req[1024], *path, *query, *sp;
-  x2_socket_ssize_t n = x2_socket_recv(fd, req, sizeof req - 1);
+  x2::native::SocketSsize n = x2::native::socket_recv(fd, req, sizeof req - 1);
 
   if (n <= 0)
     return;

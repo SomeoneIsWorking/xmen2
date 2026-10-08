@@ -163,10 +163,10 @@ static uint32_t mapped_exe_base(void) {
 }
 
 static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
-  const X2BootModeDecision *decision;
+  const x2::native::BootModeDecision *decision;
   X2BootMode requested;
-  if (!command ||
-      !x2_boot_mode_is_intro_command(guest_memory_as<const char>(command)))
+  if (!command || !x2::native::boot_mode_is_intro_command(
+                      guest_memory_as<const char>(command)))
     return 0;
   requested = x2_settings_store()->boot_mode;
   decision = x2::native::boot_mode_runtime_prepare(requested,
@@ -286,7 +286,7 @@ void x2_override_0055beb0(CPU *C) {
     return;
   }
   if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
-      x2_boot_mode_is_intro_command(guest_memory_as<const char>(s))) {
+      x2::native::boot_mode_is_intro_command(guest_memory_as<const char>(s))) {
     /* The boot has already reset the game. Run the retail New Game owner;
        its nested menus/new_game command is intercepted below only after
        it has installed the default party. */

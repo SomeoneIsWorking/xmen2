@@ -251,8 +251,8 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   if (!g_autosave_metadata)
     g_autosave_metadata = guest_malloc(METADATA_STRIDE);
   if (!g_autosave_metadata ||
-      !x2_exact_save_load_read_header(source, g_exe, AUTOSAVE_LEAF,
-                                      g_autosave_metadata))
+      !x2::native::exact_save_load_read_header(source, g_exe, AUTOSAVE_LEAF,
+                                               g_autosave_metadata))
     return;
 
   mask = manual_present_mask(manager);
@@ -385,8 +385,9 @@ static void x2_override_0049f010(CPU *C) {
     }
     return;
   }
-  if (x2_exact_save_load_start(C, g_exe, AUTOSAVE_LEAF, 0u,
-                               X2_EXACT_SAVE_LOAD_MENU, NULL)) {
+  if (x2::native::exact_save_load_start(C, g_exe, AUTOSAVE_LEAF, 0u,
+                                        x2::native::ExactSaveLoadOwner::Menu,
+                                        NULL)) {
     g_autosave_choices++;
     g_last_manager_selection = (int)(int8_t)RD8(g_manager + MANAGER_SELECTION);
   } else {

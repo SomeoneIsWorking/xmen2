@@ -116,12 +116,16 @@ static void resolve_action(CPU *C) {
   C->reg[kX86pEsp] = esp + 4u;
 }
 
-void x2_stick_axis_report(void) {
+namespace x2::native {
+
+void stick_axis_report() {
   x2_log_info("stick axes: %lu axis resolution(s) native, %lu of them below "
               "retail's 0.75 gate; %lu button/trigger resolution(s) by the "
               "retail body\n",
               g_axis_calls, g_axis_below_retail, g_other_calls);
 }
+
+} // namespace x2::native
 
 __attribute__((constructor)) static void stick_axis_register_overrides(void) {
   x86_register_override("XMen2.exe", RESOLVE_ACTION, resolve_action);

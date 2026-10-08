@@ -69,7 +69,7 @@ Why the shipped version is wrong rather than merely unpolished:
   plus a base at +0x4. Input state objects hang off `[0x00a0a098]` and
   `[0x00a0a0a4]`; the window handle is `[0x00a0a004]`.
 - The port already has the whole Win32 mouse path including the right button
-  (`src/native/win32_mouse.{c,h}`: `X2_WM_RBUTTONDOWN`/`UP`, `X2_MK_RBUTTON`),
+  (`src/native/win32_mouse.{c,h}`: `kWmRButtonDown`/`Up`, `kMkRButton`),
   so "use / open doors" needs no new plumbing -- only a caller.
   `touch_runtime.cpp` currently publishes pointer events for portrait zones
   only, and only as a left button.

@@ -150,11 +150,11 @@ bool button_down(SDL_Gamepad *pad, const char *name) {
  * What the GUEST reads.
  *
  * Everything above this line stops at SDL. The game does not read SDL: it
- * reads a DIJOYSTATE2 buffer that x2_directinput_controller_write fills from
- * a capture of the pad in the DirectInput inventory. A press that reaches the
- * SDL gamepad and not this buffer is a press the game never sees, and the two
- * are separated by the DirectInput button order -- the exact place a mapping
- * lands every press one button off.
+ * reads a DIJOYSTATE2 buffer that x2::input::directinput_controller_write fills
+ * from a capture of the pad in the DirectInput inventory. A press that reaches
+ * the SDL gamepad and not this buffer is a press the game never sees, and the
+ * two are separated by the DirectInput button order -- the exact place a
+ * mapping lands every press one button off.
  */
 constexpr int32_t kAxisLo = -32768;
 constexpr int32_t kAxisHi = 32767;
@@ -168,8 +168,9 @@ constexpr int kDirectInputButtonA = 0;
 int guest_buttons(int slot) {
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
-  X2DirectInputControllerSample sample;
-  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+  x2::input::DirectInputControllerSample sample;
+  if (!x2::input::directinput_controller_capture(slot, kAxisLo, kAxisHi,
+                                                 &sample)) {
     return -1; /* No device at that slot at all -- distinct from "none down". */
   }
   return sample.buttons;
@@ -184,8 +185,9 @@ int guest_buttons(int slot) {
 int32_t guest_axis(int slot, int axis) {
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
-  X2DirectInputControllerSample sample;
-  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+  x2::input::DirectInputControllerSample sample;
+  if (!x2::input::directinput_controller_capture(slot, kAxisLo, kAxisHi,
+                                                 &sample)) {
     return 0;
   }
   return sample.axes[axis];
@@ -194,24 +196,25 @@ int32_t guest_axis(int slot, int axis) {
 int guest_button_byte(int slot, int button) {
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
-  X2DirectInputControllerSample sample;
-  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+  x2::input::DirectInputControllerSample sample;
+  if (!x2::input::directinput_controller_capture(slot, kAxisLo, kAxisHi,
+                                                 &sample)) {
     return -1;
   }
   unsigned char state[64];
   std::memset(state, 0, sizeof state);
-  x2_directinput_controller_write(&sample, state, sizeof state);
+  x2::input::directinput_controller_write(&sample, state, sizeof state);
   return state[kButtonsOffset + static_cast<unsigned>(button)];
 }
 
 void sample_as_the_guest_does() {
-  X2DirectInputControllerSample sample;
+  x2::input::DirectInputControllerSample sample;
   /* dinput_joystick_state latches SDL once and reads the whole state out of
      that latch; a sampler that skipped the latch would be waiting on a
      counter the real guest moves and this test never does. */
   dinput_pad_refresh_state();
-  x2_directinput_controller_capture(dinput_pad_virtual_slot(), kAxisLo, kAxisHi,
-                                    &sample);
+  x2::input::directinput_controller_capture(dinput_pad_virtual_slot(), kAxisLo,
+                                            kAxisHi, &sample);
 }
 
 float axis_value(SDL_Gamepad *pad, const char *name) {

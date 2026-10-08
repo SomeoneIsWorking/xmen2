@@ -7,18 +7,19 @@
 
 /* Called on the server thread with an accepted connection; it does not close
    it. */
-typedef void (*ControlHttpHandler)(x2_socket_t socket);
+typedef void (*ControlHttpHandler)(x2::native::Socket socket);
 
 /* Bind 127.0.0.1:<port> and serve it from a detached thread. Returns 0 having
    already SAID why it could not, so the caller can refuse the run. */
 int control_http_listen(int port, ControlHttpHandler handler);
 
 /* One HTTP reply. `control_reply_text` formats its body. */
-void control_reply_text(x2_socket_t socket, int code, const char *status,
+void control_reply_text(x2::native::Socket socket, int code, const char *status,
                         const char *fmt, ...);
-void control_reply_json(x2_socket_t socket, int code, const char *status,
+void control_reply_json(x2::native::Socket socket, int code, const char *status,
                         const char *body, size_t size);
-void control_reply_bytes(x2_socket_t socket, int code, const char *status,
-                         const char *ctype, const void *body, size_t size);
+void control_reply_bytes(x2::native::Socket socket, int code,
+                         const char *status, const char *ctype,
+                         const void *body, size_t size);
 
 #endif /* X2_CONTROL_HTTP_H */

@@ -23,7 +23,7 @@ uint32_t dinput_pad_pov(int pad) {
 
 int dinput_pad_button_count(int pad) {
   assert(pad == 2);
-  return X2_DIRECTINPUT_BUTTON_COUNT;
+  return x2::input::kDirectInputButtonCount;
 }
 
 int dinput_pad_button(int pad, int button) {
@@ -43,13 +43,13 @@ static uint32_t read_u32(const unsigned char *bytes, uint32_t offset) {
 }
 
 int main(void) {
-  X2DirectInputControllerSample sample;
+  x2::input::DirectInputControllerSample sample;
   unsigned char state[176];
 
-  assert(!x2_directinput_controller_capture(1, -1000, 1000, &sample));
-  assert(x2_directinput_controller_capture(2, -1000, 1000, &sample));
+  assert(!x2::input::directinput_controller_capture(1, -1000, 1000, &sample));
+  assert(x2::input::directinput_controller_capture(2, -1000, 1000, &sample));
   assert(sample.device_id == 77u);
-  for (int axis = 0; axis < X2_DIRECTINPUT_AXIS_COUNT; ++axis) {
+  for (int axis = 0; axis < x2::input::kDirectInputAxisCount; ++axis) {
     assert(sample.axes[axis] == -900 + axis * 300);
   }
   assert(sample.pov == 4500u);
@@ -58,12 +58,13 @@ int main(void) {
   assert(sample.right_trigger == 0.75F);
 
   memset(state, 0, sizeof state);
-  x2_directinput_controller_write(&sample, state, sizeof state);
-  for (uint32_t axis = 0; axis < X2_DIRECTINPUT_AXIS_COUNT; ++axis) {
+  x2::input::directinput_controller_write(&sample, state, sizeof state);
+  for (uint32_t axis = 0; axis < x2::input::kDirectInputAxisCount; ++axis) {
     assert((int32_t)read_u32(state, axis * 4u) == -900 + (int32_t)axis * 300);
   }
   assert(read_u32(state, 32u) == 4500u);
-  for (uint32_t button = 0; button < X2_DIRECTINPUT_BUTTON_COUNT; ++button) {
+  for (uint32_t button = 0; button < x2::input::kDirectInputButtonCount;
+       ++button) {
     assert(state[48u + button] == ((button % 2u) == 0u ? 0x80u : 0u));
   }
 

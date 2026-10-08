@@ -43,7 +43,7 @@ enum { REASON_BYTES = 192 };
  * chasing "nothing happened" needs them apart. Saying so once means no route
  * can drift into reporting one as the other.
  */
-static int delivered(x2_socket_t fd, int outcome, const char *reason,
+static int delivered(x2::native::Socket fd, int outcome, const char *reason,
                      const char *timeout_text) {
   if (outcome < 0) {
     control_reply_text(fd, 504, "Gateway Timeout", "%s", timeout_text);
@@ -56,7 +56,7 @@ static int delivered(x2_socket_t fd, int outcome, const char *reason,
   return 1;
 }
 
-void control_route_key(x2_socket_t fd, const char *query) {
+void control_route_key(x2::native::Socket fd, const char *query) {
   char name[32] = "", hold[16] = "", reason[REASON_BYTES] = "";
   double held;
   int outcome;
@@ -82,7 +82,7 @@ void control_route_key(x2_socket_t fd, const char *query) {
                      name, held > 0.0 ? held : 0.30, gpu_frames_presented());
 }
 
-void control_route_pad(x2_socket_t fd, const char *query) {
+void control_route_pad(x2::native::Socket fd, const char *query) {
   char what[32] = "", hold[16] = "", value[16] = "", reason[REASON_BYTES] = "";
   int outcome;
 
@@ -127,7 +127,7 @@ void control_route_pad(x2_socket_t fd, const char *query) {
  * log afterwards, and a script that drifts answers whatever screen it landed
  * on: two such runs were read as evidence before a file gate caught them.
  */
-void control_route_touch(x2_socket_t fd, const char *query) {
+void control_route_touch(x2::native::Socket fd, const char *query) {
   static const char *const kPhases[] = {"down", "motion", "up", "cancel"};
   char x[16] = "", y[16] = "", phase[16] = "", reason[REASON_BYTES] = "";
   double at_x, at_y;
@@ -202,7 +202,7 @@ void control_route_touch(x2_socket_t fd, const char *query) {
                      y, gpu_frames_presented(), reason);
 }
 
-void control_route_assignment(x2_socket_t fd, const char *query) {
+void control_route_assignment(x2::native::Socket fd, const char *query) {
   char player[8] = "", pad[8] = "", clear[8] = "", reason[REASON_BYTES] = "";
   int player_number, pad_number, outcome;
   double target;
@@ -246,7 +246,7 @@ void control_route_assignment(x2_socket_t fd, const char *query) {
  * with a value rather than a state, and without it "the thumb is down" and
  * "the thumb is pushing" cannot be told apart from outside.
  */
-void control_route_controls(x2_socket_t fd) {
+void control_route_controls(x2::native::Socket fd) {
   X2TouchVisual visuals[X2_TOUCH_CONTROLS_MAX_LISTED];
   size_t count =
       x2_touch_runtime_visuals(visuals, X2_TOUCH_CONTROLS_MAX_LISTED);

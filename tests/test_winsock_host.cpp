@@ -230,13 +230,14 @@ static void adapter_bind(void) {
 #if !defined(_WIN32)
   /* The instrument's negative: a raw POSIX bind to the same address does not
      hear the broadcast, which is why winsock_bind widens it. */
-  const x2_socket_t raw = x2_socket_open(AF_INET, SOCK_DGRAM, 0);
-  CHECK(x2_socket_bind(raw, (struct sockaddr *)&at, sizeof at) == 0);
-  CHECK(x2_socket_name(raw, &seen) == 0);
+  const x2::native::Socket raw =
+      x2::native::socket_open(AF_INET, SOCK_DGRAM, 0);
+  CHECK(x2::native::socket_bind(raw, (struct sockaddr *)&at, sizeof at) == 0);
+  CHECK(x2::native::socket_name(raw, &seen) == 0);
   CHECK(send_broadcast(seen.sin_port));
-  x2_pollfd poll = {raw, X2_POLL_IN, 0};
-  CHECK(x2_socket_poll(&poll, 1, 500) == 0);
-  x2_socket_close(raw);
+  x2::native::PollFd poll = {raw, x2::native::kPollIn, 0};
+  CHECK(x2::native::socket_poll(&poll, 1, 500) == 0);
+  x2::native::socket_close(raw);
 #endif
 
   /* An address that is not this machine's binds as given, and fails. */

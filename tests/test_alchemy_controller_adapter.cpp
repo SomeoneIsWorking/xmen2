@@ -26,8 +26,8 @@ public:
   std::size_t count = 0;
 };
 
-X2DirectInputControllerSample sample(std::uint32_t device) {
-  X2DirectInputControllerSample value{};
+x2::input::DirectInputControllerSample sample(std::uint32_t device) {
+  x2::input::DirectInputControllerSample value{};
   value.device_id = device;
   value.axes[0] = -1000;
   value.axes[1] = 500;

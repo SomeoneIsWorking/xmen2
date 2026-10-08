@@ -37,7 +37,7 @@ typedef struct {
 } PortCommand;
 
 static const PortCommand PORT_COMMANDS[] = {
-    {"port_settings", x2_port_settings_command, "options_menu"},
+    {"port_settings", x2::native::port_settings_command, "options_menu"},
     {"port_lan_join", x2::native::lan_join_command, "lan_session"}};
 
 enum { PORT_COMMAND_COUNT = sizeof PORT_COMMANDS / sizeof PORT_COMMANDS[0] };
@@ -58,11 +58,15 @@ static uint32_t exe_base(void) {
   return g_exe;
 }
 
-void x2_port_settings_command(CPU *C) {
+namespace x2::native {
+
+void port_settings_command(CPU *C) {
   x2_settings_overlay_show();
   /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
   C->reg[kX86pEsp] += 4u;
 }
+
+} // namespace x2::native
 
 static void refuse_registration(const char *command, const char *reason) {
   x2_log_error("options menu: cannot register `%s`: %s\n", command, reason);
@@ -119,12 +123,17 @@ static void register_port_commands(const CPU *source) {
   g_registered = 1;
 }
 
-void x2_override_005f4900(CPU *C) {
+namespace x2::native {
+
+void override_005f4900(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x005f4900u);
   register_port_commands(C);
 }
 
+} // namespace x2::native
+
 __attribute__((constructor)) static void
 x2_options_menu_register_override(void) {
-  x86_register_override("XMen2.exe", 0x005f4900u, x2_override_005f4900);
+  x86_register_override("XMen2.exe", 0x005f4900u,
+                        x2::native::override_005f4900);
 }

@@ -3,14 +3,16 @@
 #include <math.h>
 #include <string.h>
 
-void x2_fmv_timeline_init(X2FmvTimeline *timeline, double frame_rate) {
+namespace x2::media {
+
+void fmv_timeline_init(FmvTimeline *timeline, double frame_rate) {
   memset(timeline, 0, sizeof(*timeline));
   timeline->frame_duration = frame_rate > 0.0 ? 1.0 / frame_rate : 1.0 / 30.0;
 }
 
-double x2_fmv_timestamp(X2FmvTimeline *timeline, int64_t best_effort,
-                        int64_t no_timestamp, int timebase_num,
-                        int timebase_den, int64_t frame_duration) {
+double fmv_timestamp(FmvTimeline *timeline, int64_t best_effort,
+                     int64_t no_timestamp, int timebase_num, int timebase_den,
+                     int64_t frame_duration) {
   double timestamp;
   double duration = timeline->frame_duration;
   if (frame_duration > 0 && timebase_num > 0 && timebase_den > 0)
@@ -39,3 +41,5 @@ double x2_fmv_timestamp(X2FmvTimeline *timeline, int64_t best_effort,
   timeline->have_last = 1;
   return timestamp;
 }
+
+} // namespace x2::media

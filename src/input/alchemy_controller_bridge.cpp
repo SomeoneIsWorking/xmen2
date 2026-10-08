@@ -56,7 +56,8 @@ public:
     }
   }
 
-  void observe(int hostSlot, const X2DirectInputControllerSample &sample,
+  void observe(int hostSlot,
+               const x2::input::DirectInputControllerSample &sample,
                std::int32_t lo, std::int32_t hi) noexcept {
     if (hostSlot < 0 || static_cast<std::size_t>(hostSlot) >= devices_.size()) {
       return;
@@ -116,9 +117,9 @@ AlchemyControllerBridge &bridge() {
 
 } // namespace
 
-void x2_alchemy_controller_observe(int host_slot,
-                                   const X2DirectInputControllerSample *sample,
-                                   int32_t axis_lo, int32_t axis_hi) {
+void x2_alchemy_controller_observe(
+    int host_slot, const x2::input::DirectInputControllerSample *sample,
+    int32_t axis_lo, int32_t axis_hi) {
   if (sample != nullptr) {
     bridge().observe(host_slot, *sample, axis_lo, axis_hi);
   }

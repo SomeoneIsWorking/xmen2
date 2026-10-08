@@ -2,9 +2,11 @@
 
 #include <string.h>
 
-int x2_autosave_header_from_payload(
-    const unsigned char *payload, size_t payload_size,
-    unsigned char header[X2_SAVE_HEADER_BYTES]) {
+namespace x2::save {
+
+int autosave_header_from_payload(const unsigned char *payload,
+                                 size_t payload_size,
+                                 unsigned char header[X2_SAVE_HEADER_BYTES]) {
   static const unsigned char PREFIX[] = "[SAVEGAMEBEGIN: ";
   const unsigned char *description;
   size_t description_size = 0;
@@ -30,3 +32,5 @@ int x2_autosave_header_from_payload(
   memcpy(header, description, description_size);
   return 1;
 }
+
+} // namespace x2::save

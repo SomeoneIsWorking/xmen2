@@ -4,8 +4,10 @@
 
 #include <string.h>
 
-int x2_directinput_controller_capture(int pad, int32_t axis_lo, int32_t axis_hi,
-                                      X2DirectInputControllerSample *out) {
+namespace x2::input {
+
+int directinput_controller_capture(int pad, int32_t axis_lo, int32_t axis_hi,
+                                   DirectInputControllerSample *out) {
   int button;
 
   if (out == NULL) {
@@ -16,12 +18,12 @@ int x2_directinput_controller_capture(int pad, int32_t axis_lo, int32_t axis_hi,
   if (out->device_id == 0) {
     return 0;
   }
-  for (int axis = 0; axis < X2_DIRECTINPUT_AXIS_COUNT; ++axis) {
+  for (int axis = 0; axis < kDirectInputAxisCount; ++axis) {
     out->axes[axis] = dinput_pad_axis(pad, axis, axis_lo, axis_hi);
   }
   out->pov = dinput_pad_pov(pad);
   for (button = 0; button < dinput_pad_button_count(pad) &&
-                   button < X2_DIRECTINPUT_BUTTON_COUNT;
+                   button < kDirectInputButtonCount;
        ++button) {
     if (dinput_pad_button(pad, button)) {
       out->buttons |= (uint16_t)(1u << (unsigned)button);
@@ -32,27 +34,32 @@ int x2_directinput_controller_capture(int pad, int32_t axis_lo, int32_t axis_hi,
   return 1;
 }
 
-static void write_u32(unsigned char *out, uint32_t offset, uint32_t value) {
+namespace {
+
+void write_u32(unsigned char *out, uint32_t offset, uint32_t value) {
   memcpy(out + offset, &value, sizeof value);
 }
 
-void x2_directinput_controller_write(
-    const X2DirectInputControllerSample *sample, unsigned char *out,
-    uint32_t out_size) {
+} // namespace
+
+void directinput_controller_write(const DirectInputControllerSample *sample,
+                                  unsigned char *out, uint32_t out_size) {
   int button;
 
   if (sample == NULL || out == NULL) {
     return;
   }
-  for (uint32_t axis = 0; axis < X2_DIRECTINPUT_AXIS_COUNT; ++axis) {
+  for (uint32_t axis = 0; axis < kDirectInputAxisCount; ++axis) {
     write_u32(out, axis * 4u, (uint32_t)sample->axes[axis]);
   }
   write_u32(out, 32u, sample->pov);
-  for (button = 0; button < X2_DIRECTINPUT_BUTTON_COUNT &&
-                   48u + (uint32_t)button < out_size;
+  for (button = 0;
+       button < kDirectInputButtonCount && 48u + (uint32_t)button < out_size;
        ++button) {
     if ((sample->buttons & (uint16_t)(1u << (unsigned)button)) != 0) {
       out[48u + (uint32_t)button] = 0x80u;
     }
   }
 }
+
+} // namespace x2::input

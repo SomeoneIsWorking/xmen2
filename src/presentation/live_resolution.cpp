@@ -50,8 +50,8 @@ static void rollback(struct SDL_Window *window, X2Settings *settings,
   int window_ok, title_ok, d3d_ok;
 
   *settings = *before;
-  window_ok = x2_window_settings_apply(window, before, window_why,
-                                       (int)sizeof window_why);
+  window_ok = x2::presentation::window_settings_apply(
+      window, before, window_why, (int)sizeof window_why);
   title_ok = x2_display_mode_runtime_apply(before->width, before->height,
                                            title_why, (int)sizeof title_why);
   d3d_ok = d3d8_live_resolution_apply(before->width, before->height, d3d_why,
@@ -96,8 +96,8 @@ int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
     }
     return 0;
   }
-  if (!x2_window_settings_apply(window, settings, failure,
-                                (int)sizeof failure)) {
+  if (!x2::presentation::window_settings_apply(window, settings, failure,
+                                               (int)sizeof failure)) {
     rollback(window, settings, before, failure, why, whyn);
     return 0;
   }

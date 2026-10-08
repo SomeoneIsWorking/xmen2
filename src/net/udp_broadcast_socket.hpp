@@ -46,7 +46,8 @@ public:
 private:
   void fail(const char *step);
 
-  /* The host x2_socket_t, kept opaque so no socket header reaches callers. */
+  /* The host x2::native::Socket, kept opaque so no socket header reaches
+   * callers. */
   std::uintptr_t socket_ = 0u;
   bool open_ = false;
   uint16_t port_ = 0u;

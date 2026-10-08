@@ -57,13 +57,13 @@ public:
       GuestConnectionSink *guestEvents = nullptr);
 
   [[nodiscard]] DirectInputComparison
-  publish(std::size_t hostSlot, const X2DirectInputControllerSample &sample,
+  publish(std::size_t hostSlot,
+          const x2::input::DirectInputControllerSample &sample,
           std::int32_t axisLo, std::int32_t axisHi) noexcept;
-  [[nodiscard]] DirectInputComparison
-  compareAgainstDirectInput(alchemy::input::DeviceId device,
-                            const X2DirectInputControllerSample &retained,
-                            std::int32_t axisLo,
-                            std::int32_t axisHi) const noexcept;
+  [[nodiscard]] DirectInputComparison compareAgainstDirectInput(
+      alchemy::input::DeviceId device,
+      const x2::input::DirectInputControllerSample &retained,
+      std::int32_t axisLo, std::int32_t axisHi) const noexcept;
   void disconnectHostSlot(std::size_t hostSlot) noexcept;
 
   [[nodiscard]] const alchemy::input::ControllerManager &

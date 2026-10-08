@@ -33,7 +33,9 @@ static unsigned checkpoint(uint8_t *code, unsigned *n, uint32_t env,
   unsigned branch = (*n)++;
   return branch;
 }
-int x2_engine_jump_selftest(uint32_t page, uint32_t stack) {
+namespace x2::native {
+
+int engine_jump_selftest(uint32_t page, uint32_t stack) {
   const uint32_t save = x86_native_thunk("MSVCR71.DLL", "_setjmp3");
   const uint32_t jump = x86_native_thunk("MSVCR71.DLL", "longjmp");
   const uint32_t env = guest_malloc(128);
@@ -69,7 +71,7 @@ int x2_engine_jump_selftest(uint32_t page, uint32_t stack) {
   memcpy(guest_memory_pointer(page), code, n);
   cpu_reset(&cpu);
   cpu.reg[kX86pEsp] = stack - 4;
-  WR32(stack - 4, ENGINE_RETURN_ADDR);
+  WR32(stack - 4, x2::native::kEngineReturnAddr);
   int ok = x2_engine_call(page, &cpu) && cpu.reg[kX86pEax] == 0x12345678 &&
            cpu.reg[kX86pEsp] == stack;
   guest_free(env);
@@ -79,3 +81,5 @@ int x2_engine_jump_selftest(uint32_t page, uint32_t stack) {
               ok ? "PASS" : "FAIL");
   return ok;
 }
+
+} // namespace x2::native

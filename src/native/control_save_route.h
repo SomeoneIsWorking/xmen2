@@ -3,6 +3,6 @@
 
 #include "platform_socket.h"
 
-void control_save_route(x2_socket_t fd);
+void control_save_route(x2::native::Socket fd);
 
 #endif

@@ -19,7 +19,7 @@ int x86_engine_host_body_at(uint32_t eip, uint32_t entry) {
 
 int x86_engine_intercepts_addr(uint32_t eip) {
   if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0)) {
-    if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)
+    if (x86_is_thunk(eip) || eip == x2::native::kEngineReturnAddr)
       return 1;
   }
   if (__builtin_expect(!x86_override_bloom_has(eip), 1))
@@ -32,7 +32,7 @@ int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user,
   (void)user;
   const uint32_t eip = cpu->eip;
   if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0)) {
-    if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)
+    if (x86_is_thunk(eip) || eip == x2::native::kEngineReturnAddr)
       return 1;
   }
   {

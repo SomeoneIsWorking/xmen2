@@ -109,7 +109,8 @@ void crt_selftest_run(uint32_t stack_top, int skip_body,
   x2_log_info("  native CRT import ABI and operator delete[] route\n");
   uint32_t jump_program = guest_malloc(256);
   check("older setjmp continuation survives a later setjmp",
-        !skip_body && x2_engine_jump_selftest(jump_program, stack_top), 1u);
+        !skip_body && x2::native::engine_jump_selftest(jump_program, stack_top),
+        1u);
   guest_free(jump_program);
   check_malloc_free(stack_top, skip_body, check);
   check_delete_array(stack_top, skip_body, check);

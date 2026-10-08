@@ -403,7 +403,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
   return out;
 }
 
-void menu_route(x2_socket_t fd, const char *query) {
+void menu_route(x2::native::Socket fd, const char *query) {
   char items[8] = "";
   MenuRead read;
   read.all_items =

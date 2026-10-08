@@ -88,7 +88,8 @@ X86Module *x86_modules(void) { return &module; }
 uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
                              const char *name, void *ctx) {
   if (!ctx && !strcmp(owner, "options_menu") &&
-      !strcmp(name, "port_settings") && fn == x2_port_settings_command) {
+      !strcmp(name, "port_settings") &&
+      fn == x2::native::port_settings_command) {
     callback_function = fn;
     return CALLBACK_TARGET;
   }

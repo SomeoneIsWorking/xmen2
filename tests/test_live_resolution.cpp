@@ -76,8 +76,10 @@ int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
   return 1;
 }
 
-int x2_window_settings_apply(struct SDL_Window *window,
-                             const X2Settings *settings, char *why, int whyn) {
+namespace x2::presentation {
+
+int window_settings_apply(SDL_Window *window, const X2Settings *settings,
+                          char *why, int whyn) {
   (void)window;
   steps[step_count++] = STEP_WINDOW;
   window_width[window_calls] = settings->width;
@@ -89,6 +91,8 @@ int x2_window_settings_apply(struct SDL_Window *window,
   }
   return 1;
 }
+
+} // namespace x2::presentation
 
 /* The text scale is derived from the output height, so a resolution the
    player accepted has to re-derive it: fonts already in memory are not

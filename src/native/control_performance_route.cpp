@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void control_performance_reset_route(x2_socket_t fd) {
+void control_performance_reset_route(x2::native::Socket fd) {
   char reason[192];
   const int result = control_command_performance_reset(reason, sizeof reason);
   if (result < 0) {
@@ -31,7 +31,7 @@ void control_performance_reset_route(x2_socket_t fd) {
  * so it is safe to flip from here, and the heartbeat prints the split on its
  * next interval. n=0 disarms and the probe goes back to answering nothing.
  */
-void control_performance_probe_route(x2_socket_t fd, const char *query) {
+void control_performance_probe_route(x2::native::Socket fd, const char *query) {
   const char *n = strstr(query, "n=");
   unsigned long want;
 

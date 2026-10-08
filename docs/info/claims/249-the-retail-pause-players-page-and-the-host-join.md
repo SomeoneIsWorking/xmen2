@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: input,co-op,retail,pause,participation
-depends: src/native/player_participation.cpp#x2_player_participation_apply, src/native/player_participation_probe.cpp#player_participation_probe_report
+depends: src/native/player_participation.cpp#player_participation_apply, src/native/player_participation_probe.cpp#player_participation_probe_report
 ---
 
 ## Claim

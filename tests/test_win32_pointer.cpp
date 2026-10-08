@@ -36,8 +36,8 @@ static void check(int ok, const char *what) {
    and compare the message's position with GetCursorPos's. */
 static void cursor_agrees(SDL_Window *window, float x, float y,
                           const char *what) {
-  X2Win32Mouse mouse;
-  X2Win32Message message;
+  x2::native::Win32Mouse mouse;
+  x2::native::Win32Message message;
   SDL_Event event;
   int32_t cursor_x = 0, cursor_y = 0;
   int moved = 0;
@@ -52,8 +52,8 @@ static void cursor_agrees(SDL_Window *window, float x, float y,
     }
   }
   check(moved, what);
-  check(x2_win32_message_take(&mouse, 0u, 0u, 0u, 1, &message) &&
-            message.message == X2_WM_MOUSEMOVE,
+  check(x2::native::win32_message_take(&mouse, 0u, 0u, 0u, 1, &message) &&
+            message.message == x2::native::kWmMouseMove,
         "the warp was translated into WM_MOUSEMOVE");
   check(x2_win32_pointer_get_cursor_pos(&cursor_x, &cursor_y),
         "GetCursorPos answers");
@@ -89,8 +89,8 @@ int main(void) {
      no window mapping: the touch menu's clicks land on the box the game
      hit-tests. */
   {
-    X2Win32Mouse mouse;
-    X2Win32Message message;
+    x2::native::Win32Mouse mouse;
+    x2::native::Win32Message message;
     X2TouchPointer pointer = {1, 1100.0f, 650.0f, 1, 0, 1};
     int32_t screen_x = 1100;
     int32_t screen_y = 650;
@@ -99,9 +99,10 @@ int main(void) {
           "the window has an origin");
     memset(&mouse, 0, sizeof mouse);
     x2_win32_pointer_translate_touch(&pointer, &mouse, 1u);
-    check(x2_win32_message_take(&mouse, 0u, X2_WM_LBUTTONDOWN, X2_WM_LBUTTONUP,
-                                1, &message) &&
-              message.message == X2_WM_LBUTTONDOWN,
+    check(x2::native::win32_message_take(&mouse, 0u, x2::native::kWmLButtonDown,
+                                         x2::native::kWmLButtonUp, 1,
+                                         &message) &&
+              message.message == x2::native::kWmLButtonDown,
           "a client-space contact presses the button");
     check(message.screen_x == screen_x && message.screen_y == screen_y,
           "a client-space contact is delivered at its own client point");

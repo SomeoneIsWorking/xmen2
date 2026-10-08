@@ -4,9 +4,11 @@
 
 #define BOOT_INTRO_COMMAND "runscript menus/intro_normal"
 
-X2BootModeDecision x2_boot_mode_decide(X2BootMode requested,
-                                       int latest_save_available) {
-  X2BootModeDecision decision;
+namespace x2::native {
+
+BootModeDecision boot_mode_decide(X2BootMode requested,
+                                  int latest_save_available) {
+  BootModeDecision decision;
   decision.requested = requested;
   decision.effective =
       (unsigned)requested <= X2_BOOT_CONTINUE ? requested : X2_BOOT_NORMAL;
@@ -18,6 +20,8 @@ X2BootModeDecision x2_boot_mode_decide(X2BootMode requested,
   return decision;
 }
 
-int x2_boot_mode_is_intro_command(const char *command) {
+int boot_mode_is_intro_command(const char *command) {
   return command && strcmp(command, BOOT_INTRO_COMMAND) == 0;
 }
+
+} // namespace x2::native

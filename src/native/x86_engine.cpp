@@ -66,16 +66,16 @@ static struct {
 
 static int map_return_page(char *reason, unsigned reason_len) {
   void *host;
-  if (guest_memory_map_fixed(ENGINE_RETURN_PAGE, 0x1000u,
+  if (guest_memory_map_fixed(x2::native::kEngineReturnPage, 0x1000u,
                              x2::native::kProtRead | x2::native::kProtWrite) !=
       0) {
     snprintf(reason, reason_len,
              "the engine's return page at 0x%08x is already mapped -- "
              "something else claimed a range this dispatcher owns",
-             ENGINE_RETURN_PAGE);
+             x2::native::kEngineReturnPage);
     return 0;
   }
-  host = guest_memory_pointer(ENGINE_RETURN_PAGE);
+  host = guest_memory_pointer(x2::native::kEngineReturnPage);
   memset(host, 0xCC, 0x1000u); /* INT3, every byte */
   return 1;
 }
@@ -117,7 +117,7 @@ int x2_engine_init(char *reason, unsigned reason_len) {
                             : "at the host's own addresses",
       g_engine.mem.guard_above ? "accesses unchecked under a guard page at 4 GB"
                                : "every access bounds-checked",
-      ENGINE_RETURN_ADDR);
+      x2::native::kEngineReturnAddr);
   return 1;
 }
 
@@ -176,7 +176,11 @@ static void refuse(uint32_t entry, const CPU *cpu, const char *what) {
 
 void x2_engine_program_entry(uint32_t addr) { g_engine.program_entry = addr; }
 
-void x2_engine_note_callout(void) { g_engine.callouts++; }
+namespace x2::native {
+
+void engine_note_callout() { g_engine.callouts++; }
+
+} // namespace x2::native
 
 /* One guest call, as the loop that runs it needs it. */
 typedef struct EngineRun {
@@ -227,7 +231,7 @@ static EngineRunOutcome run_guest(volatile EngineRun *run) {
      */
     if (cpu->eip == run->return_to && cpu->reg[kX86pEsp] >= run->entry_esp + 4u)
       return kEngineRunReturned;
-    if (cpu->eip == ENGINE_RETURN_ADDR)
+    if (cpu->eip == x2::native::kEngineReturnAddr)
       return kEngineRunReturned;
     /*
      * A target this dispatcher owns is HOST code -- an import thunk, a
@@ -456,7 +460,9 @@ void x2_engine_report(void) {
   x86_engine_report_jit_totals(g_engine.jit);
 }
 
-void x2_engine_enter_service(void) {
+namespace x2::native {
+
+void engine_enter_service() {
   g_engine.in_service = 1;
   g_engine.calls = 0;
   g_engine.callouts = 0;
@@ -464,3 +470,5 @@ void x2_engine_enter_service(void) {
   g_engine.setjmps = 0;
   g_engine.longjmps = 0;
 }
+
+} // namespace x2::native

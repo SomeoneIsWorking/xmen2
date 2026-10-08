@@ -25,7 +25,7 @@ int main(void) {
   const char *directory;
   char path[1024];
   char save_path[1024];
-  const X2BootModeDecision *decision;
+  const x2::native::BootModeDecision *decision;
   FILE *save;
 
   ensure_directory(X2_TEST_BOOT_STORAGE_ROOT);

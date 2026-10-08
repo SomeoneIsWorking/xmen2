@@ -29,22 +29,22 @@ void BroadcastSocket::fail(const char *step) { error_ = step; }
 
 namespace {
 
-static_assert(sizeof(x2_socket_t) <= sizeof(std::uintptr_t));
+static_assert(sizeof(x2::native::Socket) <= sizeof(std::uintptr_t));
 
-x2_socket_t host_socket(std::uintptr_t stored) {
-  return static_cast<x2_socket_t>(stored);
+x2::native::Socket host_socket(std::uintptr_t stored) {
+  return static_cast<x2::native::Socket>(stored);
 }
 
 } // namespace
 
 BroadcastSocket::~BroadcastSocket() {
   if (open_) {
-    x2_socket_close(host_socket(socket_));
+    x2::native::socket_close(host_socket(socket_));
   }
 }
 
 void BroadcastSocket::fail(const char *step) {
-  const int code = x2_socket_error();
+  const int code = x2::native::socket_error();
 #if defined(_WIN32)
   error_ = std::string(step) + ": Winsock error " + std::to_string(code);
 #else
@@ -54,12 +54,13 @@ void BroadcastSocket::fail(const char *step) {
 
 bool BroadcastSocket::open(uint16_t port) {
   port_ = port;
-  if (!x2_socket_startup()) {
+  if (!x2::native::socket_startup()) {
     fail("WSAStartup");
     return false;
   }
-  const x2_socket_t socket = x2_socket_open(AF_INET, SOCK_DGRAM, 0);
-  if (x2_socket_is_invalid(socket)) {
+  const x2::native::Socket socket =
+      x2::native::socket_open(AF_INET, SOCK_DGRAM, 0);
+  if (x2::native::socket_is_invalid(socket)) {
     fail("socket");
     return false;
   }
@@ -68,20 +69,21 @@ bool BroadcastSocket::open(uint16_t port) {
   address.sin_port = htons(port);
   address.sin_addr.s_addr = htonl(INADDR_ANY);
   const char *step = nullptr;
-  if (x2_socket_reuse_address(socket)) {
+  if (x2::native::socket_reuse_address(socket)) {
     step = "SO_REUSEADDR";
-  } else if (x2_socket_set_int_option(socket, SOL_SOCKET, SO_BROADCAST, 1)) {
+  } else if (x2::native::socket_set_int_option(socket, SOL_SOCKET, SO_BROADCAST,
+                                               1)) {
     step = "SO_BROADCAST";
-  } else if (x2_socket_set_nonblocking(socket, 1)) {
+  } else if (x2::native::socket_set_nonblocking(socket, 1)) {
     step = "O_NONBLOCK";
-  } else if (x2_socket_bind(socket,
-                            reinterpret_cast<const sockaddr *>(&address),
-                            sizeof address)) {
+  } else if (x2::native::socket_bind(
+                 socket, reinterpret_cast<const sockaddr *>(&address),
+                 sizeof address)) {
     step = "bind";
   }
   if (step) {
     fail(step);
-    x2_socket_close(socket);
+    x2::native::socket_close(socket);
     return false;
   }
   socket_ = static_cast<std::uintptr_t>(socket);
@@ -94,9 +96,9 @@ bool BroadcastSocket::broadcast(std::span<const uint8_t> datagram) {
   to.sin_family = AF_INET;
   to.sin_port = htons(port_);
   to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-  const x2_socket_ssize_t sent = x2_socket_sendto(
+  const x2::native::SocketSsize sent = x2::native::socket_sendto(
       host_socket(socket_), datagram.data(), datagram.size(), 0, &to);
-  if (sent != static_cast<x2_socket_ssize_t>(datagram.size())) {
+  if (sent != static_cast<x2::native::SocketSsize>(datagram.size())) {
     fail("sendto");
     return false;
   }
@@ -104,13 +106,14 @@ bool BroadcastSocket::broadcast(std::span<const uint8_t> datagram) {
 }
 
 std::optional<size_t> BroadcastSocket::receive(std::span<uint8_t> buffer) {
-  const x2_socket_ssize_t size = x2_socket_recv_datagram(
+  const x2::native::SocketSsize size = x2::native::socket_recv_datagram(
       host_socket(socket_), buffer.data(), buffer.size());
   if (size >= 0) {
     return static_cast<size_t>(size);
   }
-  const int code = x2_socket_error();
-  if (!x2_socket_error_would_block(code) && !x2_socket_error_is_interrupt()) {
+  const int code = x2::native::socket_error();
+  if (!x2::native::socket_error_would_block(code) &&
+      !x2::native::socket_error_is_interrupt()) {
     fail("recv");
   }
   return std::nullopt;
