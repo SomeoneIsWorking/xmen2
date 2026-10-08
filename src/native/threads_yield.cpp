@@ -24,35 +24,35 @@
 
 #include "platform_posix.h"
 #include "platform_threads.h"
-#include <stdatomic.h>
+#include <atomic>
 #include <time.h>
 
 #define YIELD_SLICE_MS 10
 
 /* Any thread newly acquiring the guest lock advances this; a yielding thread
    waits for it to move under it. */
-static _Atomic unsigned long g_acquires;
-static _Atomic unsigned long g_yielders;
-static _Atomic unsigned long g_yield_parks;
-static _Atomic unsigned long g_yield_worst_ms;
-static _Atomic unsigned long g_park_signalled, g_park_timed_out;
+static std::atomic<unsigned long> g_acquires;
+static std::atomic<unsigned long> g_yielders;
+static std::atomic<unsigned long> g_yield_parks;
+static std::atomic<unsigned long> g_yield_worst_ms;
+static std::atomic<unsigned long> g_park_signalled, g_park_timed_out;
 static pthread_mutex_t g_yield_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_yield_cond = PTHREAD_COND_INITIALIZER;
 
 void guest_yield_turn(void) {
-  unsigned long epoch = atomic_load_explicit(&g_acquires, memory_order_relaxed);
+  unsigned long epoch = g_acquires.load(std::memory_order_relaxed);
   int parked = 0;
   double t0 = 0.0;
 
   guest_unlock();
-  if (atomic_load_explicit(&g_acquires, memory_order_relaxed) != epoch)
+  if (g_acquires.load(std::memory_order_relaxed) != epoch)
     goto relock; /* someone took a turn while we were releasing */
 
   pthread_mutex_lock(&g_yield_lock);
   if (scheduler_has_waiter()) {
-    atomic_fetch_add(&g_yielders, 1);
+    g_yielders.fetch_add(1);
     t0 = guest_clock_now_s();
-    while (atomic_load_explicit(&g_acquires, memory_order_relaxed) == epoch &&
+    while (g_acquires.load(std::memory_order_relaxed) == epoch &&
            scheduler_has_waiter()) {
       struct timespec deadline;
       clock_gettime(CLOCK_REALTIME, &deadline);
@@ -64,23 +64,23 @@ void guest_yield_turn(void) {
       parked = 1;
       pthread_cond_timedwait(&g_yield_cond, &g_yield_lock, &deadline);
     }
-    atomic_fetch_sub(&g_yielders, 1);
+    g_yielders.fetch_sub(1);
   }
   pthread_mutex_unlock(&g_yield_lock);
 
 relock:
   if (parked) {
     unsigned long ms = (unsigned long)((guest_clock_now_s() - t0) * 1000.0);
-    atomic_fetch_add(&g_yield_parks, 1);
-    if (ms > atomic_load(&g_yield_worst_ms))
-      atomic_store(&g_yield_worst_ms, ms); /* diagnostic; racing is fine */
+    g_yield_parks.fetch_add(1);
+    if (ms > g_yield_worst_ms.load())
+      g_yield_worst_ms.store(ms); /* diagnostic; racing is fine */
   }
   guest_lock();
 }
 
 void guest_yield_turn_taken(void) {
-  atomic_fetch_add(&g_acquires, 1);
-  if (atomic_load(&g_yielders) == 0)
+  g_acquires.fetch_add(1);
+  if (g_yielders.load() == 0)
     return;
   pthread_mutex_lock(&g_yield_lock);
   pthread_cond_broadcast(&g_yield_cond);
@@ -88,18 +88,18 @@ void guest_yield_turn_taken(void) {
 }
 
 void guest_yield_note_park(int timed_out) {
-  atomic_fetch_add(timed_out ? &g_park_timed_out : &g_park_signalled, 1);
+  (timed_out ? g_park_timed_out : g_park_signalled).fetch_add(1);
 }
 
 void guest_yield_counts(unsigned long *handoffs, unsigned long *worst_ms,
                         unsigned long *parks_signalled,
                         unsigned long *parks_timed_out) {
   if (handoffs)
-    *handoffs = atomic_load(&g_yield_parks);
+    *handoffs = g_yield_parks.load();
   if (worst_ms)
-    *worst_ms = atomic_load(&g_yield_worst_ms);
+    *worst_ms = g_yield_worst_ms.load();
   if (parks_signalled)
-    *parks_signalled = atomic_load(&g_park_signalled);
+    *parks_signalled = g_park_signalled.load();
   if (parks_timed_out)
-    *parks_timed_out = atomic_load(&g_park_timed_out);
+    *parks_timed_out = g_park_timed_out.load();
 }

@@ -10,13 +10,13 @@
 
 #include <lucent/log_c.h>
 
-#include <stdatomic.h>
+#include <atomic>
 #include <stdio.h>
 
-static atomic_int g_live_requested = 1;
+static std::atomic<int> g_live_requested = 1;
 
 int x86_engine_report_request(void) {
-  return atomic_exchange_explicit(&g_live_requested, 1, memory_order_relaxed);
+  return g_live_requested.exchange(1, std::memory_order_relaxed);
 }
 
 /*
@@ -230,8 +230,8 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
                                          unsigned long callouts) {
   /* Every engine call passes here, so the stats block is zeroed only once a
      report is actually due: zeroing it first was a memset per call. */
-  if (!atomic_load_explicit(&g_live_requested, memory_order_relaxed) ||
-      !atomic_exchange_explicit(&g_live_requested, 0, memory_order_relaxed)) {
+  if (!g_live_requested.load(std::memory_order_relaxed) ||
+      !g_live_requested.exchange(0, std::memory_order_relaxed)) {
     return;
   }
   X86pJitEngineStats js = {0};

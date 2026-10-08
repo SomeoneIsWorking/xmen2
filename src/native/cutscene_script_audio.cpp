@@ -6,7 +6,7 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
-#include <stdatomic.h>
+#include <atomic>
 #include <string.h>
 
 namespace x2::native {
@@ -15,9 +15,9 @@ namespace {
 
 enum { FN_SCRIPT_SOUND = 0x004a7130u };
 
-_Atomic unsigned long g_ordinary_commands;
-_Atomic unsigned long g_silent_commands;
-_Atomic unsigned g_last_context;
+std::atomic<unsigned long> g_ordinary_commands;
+std::atomic<unsigned long> g_silent_commands;
+std::atomic<unsigned> g_last_context;
 
 } // namespace
 
@@ -30,29 +30,26 @@ void override_004a7130(CPU *cpu) {
    * 004d8b30 publishes the executing BehavEd context at 00787730. */
   (void)RD32(cpu->reg[kX86pEsp] + 4u);
   if (cutscene_player_silences_current_context(&context)) {
-    atomic_store_explicit(&g_last_context, context, memory_order_relaxed);
+    g_last_context.store(context, std::memory_order_relaxed);
     /* The retail command's audio presentation is its only side effect and
      * it unconditionally returns zero with a caller-clean plain RET. */
     cpu->reg[kX86pEax] = 0u;
     cpu->reg[kX86pEsp] += 4u;
-    atomic_fetch_add_explicit(&g_silent_commands, 1u, memory_order_relaxed);
+    g_silent_commands.fetch_add(1u, std::memory_order_relaxed);
     return;
   }
-  atomic_store_explicit(&g_last_context, context, memory_order_relaxed);
+  g_last_context.store(context, std::memory_order_relaxed);
   x86_guest_body(cpu, "XMen2.exe", 0x004a7130u);
-  atomic_fetch_add_explicit(&g_ordinary_commands, 1u, memory_order_relaxed);
+  g_ordinary_commands.fetch_add(1u, std::memory_order_relaxed);
 }
 
 void cutscene_script_audio_snapshot(CutsceneScriptAudioSnapshot *out) {
   if (!out)
     return;
   memset(out, 0, sizeof *out);
-  out->ordinary_commands =
-      atomic_load_explicit(&g_ordinary_commands, memory_order_relaxed);
-  out->silent_commands =
-      atomic_load_explicit(&g_silent_commands, memory_order_relaxed);
-  out->last_context =
-      atomic_load_explicit(&g_last_context, memory_order_relaxed);
+  out->ordinary_commands = g_ordinary_commands.load(std::memory_order_relaxed);
+  out->silent_commands = g_silent_commands.load(std::memory_order_relaxed);
+  out->last_context = g_last_context.load(std::memory_order_relaxed);
 }
 
 namespace {

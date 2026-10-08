@@ -24,8 +24,8 @@
 
 #include "platform_posix.h"
 #include "platform_threads.h"
+#include <atomic>
 #include <errno.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,14 +50,14 @@ uintptr_t g_guest_memory_base;
    its answer was already stale by the time a caller used it (the lock was
    released before the copy it guards), and the lock per call was ~1.5% of
    samples under a native override that validates each field it reads. */
-static _Atomic unsigned char g_pages[GUEST_PAGE_COUNT];
+static std::atomic<unsigned char> g_pages[GUEST_PAGE_COUNT];
 static pthread_mutex_t g_pages_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Call with g_pages_lock held. */
 static void pages_fill(uint32_t first, uint32_t count, unsigned char value) {
   uint32_t i;
   for (i = 0; i < count; i++)
-    atomic_store_explicit(&g_pages[first + i], value, memory_order_relaxed);
+    g_pages[first + i].store(value, std::memory_order_relaxed);
 }
 static int g_ready;
 static GuestMemoryWindow g_window;
@@ -82,14 +82,14 @@ void guest_memory_set_remap_observer(GuestMemoryRemapObserver observer) {
   g_remapped = observer;
 }
 
-static atomic_ullong g_remap_calls[kGuestRemapCauseCount];
-static atomic_ullong g_remap_pages[kGuestRemapCauseCount];
+static std::atomic<unsigned long long> g_remap_calls[kGuestRemapCauseCount];
+static std::atomic<unsigned long long> g_remap_pages[kGuestRemapCauseCount];
 
 static void notify_remap(GuestMemoryRemapCause cause, uint32_t address,
                          uint32_t size) {
-  atomic_fetch_add_explicit(&g_remap_calls[cause], 1u, memory_order_relaxed);
-  atomic_fetch_add_explicit(&g_remap_pages[cause], size / GUEST_PAGE_SIZE,
-                            memory_order_relaxed);
+  g_remap_calls[cause].fetch_add(1u, std::memory_order_relaxed);
+  g_remap_pages[cause].fetch_add(size / GUEST_PAGE_SIZE,
+                                 std::memory_order_relaxed);
   if (g_remapped) {
     g_remapped(address, size);
   }
@@ -99,10 +99,8 @@ GuestMemoryRemapCounts guest_memory_remap_counts(void) {
   GuestMemoryRemapCounts out;
   int i;
   for (i = 0; i < kGuestRemapCauseCount; i++) {
-    out.calls[i] =
-        atomic_load_explicit(&g_remap_calls[i], memory_order_relaxed);
-    out.pages[i] =
-        atomic_load_explicit(&g_remap_pages[i], memory_order_relaxed);
+    out.calls[i] = g_remap_calls[i].load(std::memory_order_relaxed);
+    out.pages[i] = g_remap_pages[i].load(std::memory_order_relaxed);
   }
   return out;
 }
@@ -431,8 +429,7 @@ int guest_memory_is_readable(uint32_t address, size_t size) {
   if (span(address, size, &first, &count) != 0)
     return 0;
   for (i = 0; i < count; i++) {
-    const unsigned page =
-        atomic_load_explicit(&g_pages[first + i], memory_order_relaxed);
+    const unsigned page = g_pages[first + i].load(std::memory_order_relaxed);
     if (!(page & PAGE_MAPPED) || !(page & x2::native::kProtRead)) {
       readable = 0;
       break;
