@@ -560,7 +560,7 @@ void imp_USER32_UnregisterClassA(CPU *C) {
 void imp_USER32_CreateWindowExA(CPU *C) {
   uint32_t name = A(2);
   int32_t w = (int32_t)A(6), h = (int32_t)A(7);
-  X2Settings *settings = x2_settings_store();
+  x2::config::Settings *settings = x2::config::settings_store();
   SDL_WindowFlags window_flags;
   char why[256];
   if (g_win_live) {
@@ -609,15 +609,16 @@ void imp_USER32_CreateWindowExA(CPU *C) {
    * back black. That black image reads as "the renderer draws nothing". One
    * line here is the difference between that and the truth.
    */
-  x2_log_info("win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
-              g_hide_windows ? "HIDDEN " : "", w, h,
-              x2_window_mode_name(settings->window_mode),
-              SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver()
-                                          : "(none)",
-              x2_config_override_get(kX2ConfigDisplay) ? "  DISPLAY=" : "",
-              x2_config_override_get(kX2ConfigDisplay)
-                  ? x2_config_override_get(kX2ConfigDisplay)
-                  : "");
+  x2_log_info(
+      "win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
+      g_hide_windows ? "HIDDEN " : "", w, h,
+      window_mode_name(settings->window_mode),
+      SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)",
+      config_override_get(x2::config::ConfigOverride::Display) ? "  DISPLAY="
+                                                               : "",
+      config_override_get(x2::config::ConfigOverride::Display)
+          ? config_override_get(x2::config::ConfigOverride::Display)
+          : "");
   ret_std(C, HWND_MAIN_TOK, 12);
 }
 

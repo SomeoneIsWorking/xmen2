@@ -159,10 +159,11 @@ public:
   // portraits, potions and the retail menu icons. A group with a rectangle
   // that is not a real on-screen area is dropped whole rather than routed
   // to; a change releases only HUD captures, never the stick or buttons.
-  std::vector<ActionEvent> set_hud(const X2HudRegions &regions);
+  std::vector<ActionEvent> set_hud(const x2::presentation::HudRegions &regions);
   // The HUD owner's placement; the zones lay out around it. A change
   // releases captured contacts, as a layout change does. Null withdraws it.
-  std::vector<ActionEvent> set_hud_placement(const X2HudPlacement *placement);
+  std::vector<ActionEvent>
+  set_hud_placement(const x2::presentation::HudPlacement *placement);
   // The atlas cell of each power slot, or -1 when the hero has no power
   // there; only slots with a power get a zone. A change releases captured
   // contacts, as a layout change does, so a power that vanishes under a
@@ -178,24 +179,25 @@ public:
   }
   // Where the movement ring is drawn: centred on the thumb while one holds
   // it, at its layout position otherwise.
-  X2Rect stick_ring() const;
+  x2::presentation::Rect stick_ring() const;
 
 private:
   void rebuild_zones();
   // Where the port menu goes: the next place in the game's menu-icon row,
   // once the game has drawn that row, and `waiting` until it has.
-  X2Rect port_menu_rect(X2Rect waiting) const;
-  unsigned accept_regions(std::span<const X2Rect> regions, unsigned mask,
-                          std::span<X2Rect> out) const;
+  x2::presentation::Rect port_menu_rect(x2::presentation::Rect waiting) const;
+  unsigned accept_regions(std::span<const x2::presentation::Rect> regions,
+                          unsigned mask,
+                          std::span<x2::presentation::Rect> out) const;
   std::vector<ActionEvent>
   translate(std::span<const lucent::touch::Event> events);
 
   ThumbStick stick_;
-  X2Rect stick_ring_{};
+  x2::presentation::Rect stick_ring_{};
   Viewport viewport_;
   std::array<int, 4> power_icons_{-1, -1, -1, -1};
-  X2HudRegions hud_{};
-  X2HudPlacement hud_placement_{};
+  x2::presentation::HudRegions hud_{};
+  x2::presentation::HudPlacement hud_placement_{};
   bool hud_placed_ = false;
   std::vector<ZoneVisual> zones_;
   lucent::touch::Router router_;

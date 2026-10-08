@@ -142,7 +142,7 @@ void x86_guest_call(CPU *C, uint32_t target);
  * These are NOT an import stub, and cannot be: a host longjmp resumes into a
  * frame that must still be alive, and an import stub's frame is dead the
  * moment it returns. The JIT run therefore unwinds at the `_setjmp3` thunk and
- * takes the host setjmp in the still-live `x2_engine_call` frame.
+ * takes the host setjmp in the still-live `engine_call` frame.
  *
  * x86_setjmp_buf snapshots the guest register file against the guest's own
  * jmp_buf pointer (read from the stack, where _setjmp3's first argument sits)

@@ -38,7 +38,7 @@ const char *dinput_pad_persistent_id(int pad) {
 
 int main(void) {
   const char *path = X2_TEST_TRANSIENT_SETTINGS_PATH;
-  X2Settings settings, loaded;
+  x2::config::Settings settings, loaded;
   char why[128];
 
   memset(guid[0], 0x11, 16);
@@ -84,12 +84,12 @@ int main(void) {
   CHECK(x2::input::transient_controller_player_for_pad(1) == -1);
 
   remove(path);
-  x2_settings_defaults(&settings);
-  CHECK(x2_settings_save(&settings, path, why, sizeof why));
+  settings_defaults(&settings);
+  CHECK(settings_save(&settings, path, why, sizeof why));
   x2::input::transient_controller_reset(); /* process restart */
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(!x2::input::transient_controller_has_assignment(2));
-  CHECK(x2_settings_player_controller(&loaded, 2) == NULL);
+  CHECK(settings_player_controller(&loaded, 2) == NULL);
   remove(path);
 
   printf("test_transient_controller_assignment: %d checks passed\n", checks);

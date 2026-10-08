@@ -23,11 +23,11 @@ GUI's pointer. Measured by `tools/live_case.py menu-touch`, 9/9.
 
 ## The cause
 
-`x2_touch_runtime_event` routed a contact only while
-`x2_touch_runtime_overlay_visible()` was true, and that is
+`touch_runtime_event` routed a contact only while
+`touch_runtime_overlay_visible()` was true, and that is
 
 ```
-window && x2_touch_runtime_active() && x2_gameplay_control_active(now)
+window && touch_runtime_active() && x2_gameplay_control_active(now)
 ```
 
 The gameplay gate is `never-seen` until the retail HUD has drawn, `hud-stale`

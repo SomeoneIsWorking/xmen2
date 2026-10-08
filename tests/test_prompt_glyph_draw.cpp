@@ -209,7 +209,7 @@ int main(void) {
   /* The feature gate caches on first read, so it is set before anything calls
      into the subsystem. Without it the override is inert by design and the
      whole test would pass while measuring nothing. */
-  x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
+  x2::config::guest_environment_set("X2_PROMPT_GLYPHS", "1");
   x2::config::runtime_config_init(0, NULL);
 
   if (guest_memory_init() != 0 ||

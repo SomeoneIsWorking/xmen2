@@ -354,12 +354,9 @@ static int g_probe_rigid; /* best rigid-bone count across the layouts */
 /*
  * SIGUSR1 arms it too.
  *
- * F9 needs the window to have focus, which needs a window manager and a user
- * at the machine; a headless run has neither, and that is exactly where this
- * had to be provable. The handler only sets a flag -- fprintf from a signal
- * handler is not async-signal-safe, and this project has already been bitten
- * by a shutdown report written from one being cut short. The draw path picks
- * the flag up and does the talking.
+ * F9 needs a focused window and a user at the machine; a headless run has
+ * neither. The handler only sets a flag, because fprintf is not
+ * async-signal-safe; the draw path picks the flag up and does the talking.
  */
 static volatile sig_atomic_t g_ft_signal;
 
@@ -425,7 +422,7 @@ static FILE *g_obj;
 static unsigned long g_obj_verts;
 
 static void obj_open_if_wanted(void) {
-  const char *path = x2_config_override_get(kX2ConfigDrawObj);
+  const char *path = config_override_get(x2::config::ConfigOverride::DrawObj);
   if (g_obj || !path || !*path)
     return;
   g_obj = fopen(path, "w");
@@ -505,7 +502,8 @@ static void obj_finish(void) {
  * so the comparison is arithmetic and not transcription.
  */
 static void constants_dump(const float c[][4], int used) {
-  const char *path = x2_config_override_get(kX2ConfigVsConstants);
+  const char *path =
+      config_override_get(x2::config::ConfigOverride::VsConstants);
   FILE *f;
   int i;
   if (!path || !*path)
@@ -732,7 +730,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
   const uint8_t *vb;
 
   if (g_ft_on < 0) {
-    const char *e = x2_config_override_get(kX2ConfigFrameTable);
+    const char *e = config_override_get(x2::config::ConfigOverride::FrameTable);
     g_ft_on = (e && *e) ? atoi(e) : 0;
   }
   if (g_ft_signal) {
@@ -749,7 +747,8 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
     if (!g_ft_manual && !k32_file_gate_open())
       return;
     if (minimum < 0) {
-      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::LightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if (!g_ft_frame) {

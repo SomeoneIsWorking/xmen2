@@ -81,8 +81,9 @@ int display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
 
 namespace x2::presentation {
 
-int window_settings_apply(SDL_Window *window, const X2Settings *settings,
-                          char *why, int whyn) {
+int window_settings_apply(SDL_Window *window,
+                          const x2::config::Settings *settings, char *why,
+                          int whyn) {
   (void)window;
   steps[step_count++] = STEP_WINDOW;
   window_width[window_calls] = settings->width;
@@ -109,7 +110,8 @@ int ui_text_scale_reapply(void) {
 }
 } // namespace x2::native
 
-int x2_settings_store_save(char *why, int whyn) {
+namespace x2::config {
+int settings_store_save(char *why, int whyn) {
   steps[step_count++] = STEP_SAVE;
   save_calls++;
   if (save_calls == fail_save_call) {
@@ -118,6 +120,7 @@ int x2_settings_store_save(char *why, int whyn) {
   }
   return 1;
 }
+} // namespace x2::config
 
 static void reset_calls(void) {
   memset(steps, 0, sizeof steps);
@@ -131,8 +134,8 @@ static void reset_calls(void) {
   fail_d3d_call = fail_title_call = fail_window_call = fail_save_call = 0;
 }
 
-static X2Settings changed(const X2Settings *before) {
-  X2Settings next = *before;
+static x2::config::Settings changed(const x2::config::Settings *before) {
+  x2::config::Settings next = *before;
   next.width = 1920;
   next.height = 1080;
   return next;
@@ -140,13 +143,13 @@ static X2Settings changed(const X2Settings *before) {
 
 int main(void) {
   struct SDL_Window window = {1};
-  X2Settings before, settings;
+  x2::config::Settings before, settings;
   char why[256];
 
   memset(&before, 0, sizeof before);
   before.width = 1280;
   before.height = 720;
-  before.window_mode = X2_WINDOW_WINDOWED;
+  before.window_mode = x2::config::WindowMode::Windowed;
 
   /* 1080p display: the ladder offers only what the panel can show, so it is
      720p <-> 1080p and never climbs to 1440p. */

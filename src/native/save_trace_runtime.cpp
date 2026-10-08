@@ -274,7 +274,8 @@ void save_trace_runtime_print(void) {
 namespace {
 
 __attribute__((constructor)) static void x2_save_trace_register(void) {
-  const char *enabled = x2_config_override_get(kX2ConfigSaveTrace);
+  const char *enabled =
+      config_override_get(x2::config::ConfigOverride::SaveTrace);
 
   g_trace_enabled = !(enabled && strcmp(enabled, "0") == 0);
   save_trace_init(&g_trace, g_trace_enabled);

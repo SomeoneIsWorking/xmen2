@@ -26,7 +26,7 @@ struct TouchMenuButton {
      tab. */
   int index = 0;
   /* Output pixels, scroll applied; a row may extend past the list. */
-  X2Rect rect{};
+  x2::presentation::Rect rect{};
 };
 
 /* Where everything of the touch menu is, in output pixels. The document draws
@@ -34,26 +34,26 @@ struct TouchMenuButton {
 struct TouchMenuLayout {
   /* Output pixels per design unit; the document scales its type by it. */
   float unit = 1.0F;
-  X2Rect title{};
+  x2::presentation::Rect title{};
   /* The tab bar, pinned above the list; empty without tabs. */
-  X2Rect tabs{};
+  x2::presentation::Rect tabs{};
   /* The scrolling area the rows live in. */
-  X2Rect list{};
+  x2::presentation::Rect list{};
   /* The facts and detail text, pinned below the list; empty without them.
      When reading (a view with no rows) it is the list's own place. */
-  X2Rect detail{};
+  x2::presentation::Rect detail{};
   bool reading = false;
   /* Where the first detail line's top is, its scroll applied, and each
      line's height; lines outside `detail_text` are not drawn. */
   float detail_text_top = 0.0F;
   float detail_line_height = 0.0F;
   /* The part of `detail` its lines may occupy: below the facts. */
-  X2Rect detail_text{};
+  x2::presentation::Rect detail_text{};
   /* Beside a list the detail lines scroll on their own; read text scrolls
      with `scroll`. */
   float detail_scroll = 0.0F;
   float detail_max_scroll = 0.0F;
-  X2Rect footer{};
+  x2::presentation::Rect footer{};
   std::vector<TouchMenuButton> buttons;
   float scroll = 0.0F;
   float max_scroll = 0.0F;
@@ -66,9 +66,10 @@ struct TouchMenuLayout {
 /* Lays the view out inside the viewport's safe area. `scroll` is clamped to
    what the rows need, `detail_scroll` to what the detail lines beside them
    need. */
-TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
-                                  const X2LayoutViewport &viewport,
-                                  float scroll, float detail_scroll);
+TouchMenuLayout
+layout_touch_menu(const TouchMenuView &view,
+                  const x2::presentation::LayoutViewport &viewport,
+                  float scroll, float detail_scroll);
 
 /* The scroll that brings row `row` fully into the list, from `scroll`. */
 float touch_menu_scroll_to(const TouchMenuLayout &layout, int row);

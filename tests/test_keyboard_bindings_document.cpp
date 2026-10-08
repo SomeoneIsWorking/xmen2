@@ -8,8 +8,8 @@
 #include <cstring>
 
 static bool game_known;
-static uint32_t game_kind[X2_SETTINGS_ROWS];
-static uint32_t game_code[X2_SETTINGS_ROWS];
+static uint32_t game_kind[x2::config::kSettingsRows];
+static uint32_t game_code[x2::config::kSettingsRows];
 static int checks;
 #define CHECK(c)                                                               \
   do {                                                                         \
@@ -28,17 +28,19 @@ const char *dinput_system_dik_name(unsigned char dik) {
   }
 }
 
-int x2_player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
-                                          uint32_t *code) {
-  if (!game_known || row >= X2_SETTINGS_ROWS)
+namespace x2::input {
+int player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
+                                       uint32_t *code) {
+  if (!game_known || row >= x2::config::kSettingsRows)
     return 0;
   *kind = game_kind[row];
   *code = game_code[row];
   return 1;
 }
+} // namespace x2::input
 
 int main() {
-  X2KeyboardProfile profile{};
+  x2::config::KeyboardProfile profile{};
 
   CHECK(!x2::ui::keyboard_bindings_game_known());
   CHECK(x2::ui::keyboard_binding_label(profile, 0) == "Game default");

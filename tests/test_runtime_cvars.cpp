@@ -64,7 +64,7 @@ int main() {
     return 1;
   }
   const ScratchDirectory owned(config);
-  x2_guest_environment_set("XDG_CONFIG_HOME", config);
+  x2::config::guest_environment_set("XDG_CONFIG_HOME", config);
 
   char program[] = "test_runtime_cvars";
   char *argv[] = {program, nullptr};

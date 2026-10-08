@@ -12,12 +12,12 @@ int main(void) {
   int failures = 0;
   /* Disarmed, the per-upload pass must not run: scanning every level-0 upload
      is the cost this gate exists to remove. */
-  x2_config_override_unset(kX2ConfigTextureLuma);
+  config_override_unset(x2::config::ConfigOverride::TextureLuma);
   d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white, sizeof(white));
   d3d8_texture_luma_note(12, 0, 1, 1, white, sizeof(white));
   d3d8_texture_luma_get_stats(&stats);
   failures += stats.textures != 0 || stats.unreadable_uploads != 0;
-  x2_config_override_set(kX2ConfigTextureLuma, "1", 1);
+  config_override_set(x2::config::ConfigOverride::TextureLuma, "1", 1);
   d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, black, sizeof(black));
   d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white, sizeof(white));
   d3d8_texture_luma_note(11, D3DFMT_X8R8G8B8, 1, 1, black, sizeof(black));

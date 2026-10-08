@@ -31,7 +31,7 @@ static int lightlog_on(void) {
   if (g_tried)
     return g_log != NULL;
   g_tried = 1;
-  path = x2_config_override_get(kX2ConfigLightLog);
+  path = config_override_get(x2::config::ConfigOverride::LightLog);
   if (!path || !*path)
     return 0;
   g_log = fopen(path, "w");

@@ -58,12 +58,12 @@ enum {
 
 typedef struct PowerSlotSource {
   uint32_t actor;
-  uint8_t names[X2_POWER_SLOTS][SLOT_NAME_BYTES];
+  uint8_t names[x2::input::kPowerSlots][SLOT_NAME_BYTES];
 } PowerSlotSource;
 
 static PowerSlotSource g_source;
 static char g_atlas[512];
-static int g_icons[X2_POWER_SLOTS] = {-1, -1, -1, -1};
+static int g_icons[x2::input::kPowerSlots] = {-1, -1, -1, -1};
 
 namespace x2::native {
 const char *power_slots_atlas(void) { return g_atlas; }
@@ -137,7 +137,7 @@ static void atlas_host_path(const char *guest, char *out, size_t size) {
 
 static void look_up(const CPU *cpu, uint32_t actor, uint32_t stats) {
   char atlas[GUEST_TEXT_MAX] = "";
-  for (uint32_t slot = 0; slot < X2_POWER_SLOTS; ++slot) {
+  for (uint32_t slot = 0; slot < x2::input::kPowerSlots; ++slot) {
     const uint32_t name = call_this(cpu, exe(SLOT_NAME), stats, &slot);
     CPU frame = *cpu;
     frame.reg[kX86pEsp] -= 4u;
@@ -157,7 +157,7 @@ static void look_up(const CPU *cpu, uint32_t actor, uint32_t stats) {
   }
   atlas_host_path(atlas, g_atlas, sizeof g_atlas);
   if (!g_atlas[0])
-    for (unsigned slot = 0; slot < X2_POWER_SLOTS; ++slot)
+    for (unsigned slot = 0; slot < x2::input::kPowerSlots; ++slot)
       g_icons[slot] = -1;
   lucent_log_info("touch", "power slots: atlas \"%s\" -> %s; icons %d %d %d %d",
                   atlas, g_atlas[0] ? g_atlas : "(none)", g_icons[0],
@@ -171,7 +171,7 @@ static void publish(const CPU *cpu) {
   const uint32_t stats =
       now.actor ? call_this(cpu, exe(ACTOR_STATS), now.actor, NULL) : 0u;
   if (stats) {
-    for (unsigned slot = 0; slot < X2_POWER_SLOTS; ++slot)
+    for (unsigned slot = 0; slot < x2::input::kPowerSlots; ++slot)
       for (unsigned i = 0; i < SLOT_NAME_BYTES; ++i)
         now.names[slot][i] =
             RD8(stats + SLOT_NAMES + slot * SLOT_NAME_BYTES + i);
@@ -180,18 +180,18 @@ static void publish(const CPU *cpu) {
   } else {
     now.actor = 0;
     g_atlas[0] = 0;
-    for (unsigned slot = 0; slot < X2_POWER_SLOTS; ++slot)
+    for (unsigned slot = 0; slot < x2::input::kPowerSlots; ++slot)
       g_icons[slot] = -1;
   }
   g_source = now;
-  x2_touch_runtime_power_slots(g_icons);
+  x2::input::touch_runtime_power_slots(g_icons);
 }
 
 static void hud_input_map_update(CPU *cpu) {
   const uint32_t self = cpu->reg[kX86pEcx];
   const CPU entry = *cpu;
   x86_guest_body(cpu, "XMen2.exe", HUD_INPUT_MAP_UPDATE);
-  if (RD32(self + HUD_PLAYER_INDEX) == 0u && x2_touch_runtime_active())
+  if (RD32(self + HUD_PLAYER_INDEX) == 0u && x2::input::touch_runtime_active())
     publish(&entry);
 }
 

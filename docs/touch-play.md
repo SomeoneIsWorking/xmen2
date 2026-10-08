@@ -35,7 +35,7 @@ window and no game:
 touchscreen at all; a layout nobody can look at until it is on a phone is a
 layout that ships wrong.
 
-`x2_touch_runtime_active()` is the one answer, read by both the overlay and the
+`touch_runtime_active()` is the one answer, read by both the overlay and the
 HUD relocation. The HUD moving while no pad is drawn would be the HUD making
 room for nothing.
 
@@ -68,7 +68,7 @@ navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
 above), and a shoulder above each cluster for tabbed screens
-(`x2_layout_build_menu`, `x2::input::MenuControls`). They publish through the
+(`layout_build_menu`, `x2::input::MenuControls`). They publish through the
 same virtual pad as the gameplay controls, so the footers name that pad's
 buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
 drawn from. A finger that begins on a pad button holds it until it lifts; one
@@ -233,7 +233,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 
 | Zone | Action mapping |
 |---|---|
-| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`x2_layout_stick_reach`) takes it |
+| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`layout_stick_reach`) takes it |
 | Bottom-right action diamond | Attack (A) below, Smash (B) outside, Use (X) above, Jump (Y) inside |
 | Arc inboard of the diamond | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
 | Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
@@ -280,7 +280,7 @@ game draws its own icons.
 
 The HUD's three slots in the touch layout are the HUD owner's own placement:
 `hud_draw_runtime.cpp` publishes `x2::presentation::hud_layout_build`'s result to the touch
-runtime, and `x2_layout_build` copies it rather than computing rectangles of
+runtime, and `layout_build` copies it rather than computing rectangles of
 its own. The controls then fit around it: the stick shrinks to fit under the
 potions, and the port menu button shrinks to stop short of the portraits, or
 drops under them when there is no room. Without a placement (HUD not
@@ -322,7 +322,7 @@ and then -- only while touch is the input, and only when the actor or its four
 slot names changed -- asks the same functions the ring asks. A move's `icon`
 is the byte at `+0x13c`; its style (`move->vfunc 0xe0`) keeps the `iconfile`
 name as a string-pool handle at `+0x68`. The runtime hands the four atlas
-cells to `x2_touch_runtime_power_slots`, which builds a zone only for a slot
+cells to `touch_runtime_power_slots`, which builds a zone only for a slot
 with a power, so a locked or unassigned power has no button. A press routes to
 `TouchAction::PowerN`, which the pad publisher turns into RT plus that face
 button; a button shared by several held controls stays down until the last

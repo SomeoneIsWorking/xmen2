@@ -12,7 +12,7 @@ int x86_guest_body_try(CPU *C, const char *module, uint32_t linked_ep,
   uint32_t mapped = 0;
   if (x86_override_resolve_check(module, linked_ep, &mapped, why, why_len) != 0)
     return 0;
-  return x2_engine_call(mapped, C) ? 1 : 0;
+  return x2::native::engine_call(mapped, C) ? 1 : 0;
 }
 
 /* Resolve `linked_ep` in `module`, or stop the run naming why. */
@@ -46,13 +46,13 @@ static void declined(const char *module, uint32_t linked_ep, uint32_t mapped) {
 
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
   const uint32_t mapped = resolve_or_stop(module, linked_ep);
-  if (!x2_engine_call(mapped, C))
+  if (!x2::native::engine_call(mapped, C))
     declined(module, linked_ep, mapped);
 }
 
 void x86_guest_body_resume(CPU *C, const char *module, uint32_t linked_at,
                            uint32_t frame_esp) {
   const uint32_t mapped = resolve_or_stop(module, linked_at);
-  if (!x2_engine_resume(mapped, C, frame_esp))
+  if (!x2::native::engine_resume(mapped, C, frame_esp))
     declined(module, linked_at, mapped);
 }

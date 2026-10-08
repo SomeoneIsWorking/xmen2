@@ -9,27 +9,28 @@
  * executes. There is no title-local register/flag/x87 model and therefore no
  * state conversion at a hand-back.
  */
-#ifndef X2_X86_ENGINE_H
-#define X2_X86_ENGINE_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * Build the required runtime JIT. Returns 0, having written `reason`, when
  * this host cannot provide it. No selector or fallback exists.
  */
-int x2_engine_init(char *reason, unsigned reason_len);
+int engine_init(char *reason, unsigned reason_len);
 
 /* Whether the required runtime JIT is ready. */
-int x2_engine_active(void);
+int engine_active(void);
 
 /* Mapping owner calls before replacing or revoking guest backing. */
-void x2_engine_invalidate_memory(uint32_t address, uint32_t size);
+void engine_invalidate_memory(uint32_t address, uint32_t size);
 
 /* The product executor's fixed name, for reports. Never null. */
-const char *x2_engine_name(void);
+const char *engine_name(void);
 
 /*
  * Execute the guest function at `addr` with the canonical CPU context,
@@ -40,19 +41,19 @@ const char *x2_engine_name(void);
  * address, the instruction, and why: a call this cannot finish leaves the
  * guest stack in a state nothing downstream can reason about.
  */
-int x2_engine_call(uint32_t addr, struct X86pCpu *C);
+int engine_call(uint32_t addr, struct X86pCpu *C);
 
 /*
  * Continue a guest function at `addr`, an address INSIDE its body, until it
  * returns: the function's own return address is the word at `frame_esp`, and
  * the caller has already built the frame the body expects at `addr`. The same
- * contract as x2_engine_call otherwise, which is this with `addr` the entry
+ * contract as engine_call otherwise, which is this with `addr` the entry
  * and `frame_esp` the entry ESP.
  */
-int x2_engine_resume(uint32_t addr, struct X86pCpu *C, uint32_t frame_esp);
+int engine_resume(uint32_t addr, struct X86pCpu *C, uint32_t frame_esp);
 
 /* Release a finished guest pthread's worker-local WASM translations. */
-void x2_engine_detach_thread(void);
+void engine_detach_thread(void);
 
 /*
  * The program's own entry point, named before it is entered.
@@ -61,7 +62,7 @@ void x2_engine_detach_thread(void);
  * exit(), so the engine's "this call is not finishing" cap must not apply to
  * it. Calls made FROM it are capped normally.
  */
-void x2_engine_program_entry(uint32_t addr);
+void engine_program_entry(uint32_t addr);
 
 /*
  * What the engine did. Printed at shutdown beside the other run reports.
@@ -80,16 +81,16 @@ void x2_engine_program_entry(uint32_t addr);
  * address back -- and that predicate has nothing to say before there is
  * anything to hand back to.
  */
-int x2_engine_selftest(void);
+int engine_selftest(void);
 
 /*
  * Where the engine is, RIGHT NOW. Printed on every stop path, because a host
- * backtrace stops at x2_engine_call and names no guest function below it.
+ * backtrace stops at engine_call and names no guest function below it.
  * Silent before initialization; says when the ready JIT has no guest call on
  * its stack, which is a different fact from "the engine is not here".
  */
-void x2_engine_where(void);
+void engine_where(void);
 
-void x2_engine_report(void);
+void engine_report(void);
 
-#endif
+} // namespace x2::native

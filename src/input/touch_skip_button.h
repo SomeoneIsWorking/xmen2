@@ -28,14 +28,16 @@ public:
   /* Where the button sits in this viewport, in output pixels: the top-right
      corner inside the safe area, sized from the viewport's height so it is
      the same physical fraction of the screen on every display. */
-  static X2Rect place(X2LayoutViewport viewport);
+  static x2::presentation::Rect
+  place(x2::presentation::LayoutViewport viewport);
 
   /* Is a skip offered, so that the button is drawn and pressable? */
   static bool offered();
 
   /* A contact. True means this button took it and it must go nowhere else. */
   bool press(std::int64_t contact_id, float x, float y,
-             lucent::touch::Phase phase, X2LayoutViewport viewport);
+             lucent::touch::Phase phase,
+             x2::presentation::LayoutViewport viewport);
 
   /* Is a finger on it now? */
   bool held() const { return contact_.has_value(); }

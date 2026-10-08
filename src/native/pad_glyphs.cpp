@@ -73,7 +73,8 @@ static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
 static int probe_char(void) {
   static int c = -1;
   if (c < 0) {
-    const char *e = x2_config_override_get(kX2ConfigPadGlyphProbe);
+    const char *e =
+        config_override_get(x2::config::ConfigOverride::PadGlyphProbe);
     /* "0xNN" forces a raw byte -- use it to put an ASYMMETRIC glyph on
        every prompt (LB and RB carry an L and an R), which is the only way
        to tell a mirrored atlas cell from an upright one. A bare character
@@ -160,8 +161,8 @@ void x2_override_006281f0(CPU *C) {
 
   glyph = pad_glyph_code(code);
   host_pad = host_pad_for_kind(kind);
-  if (!x2_prompt_glyphs_enabled() || host_pad < 0 || !glyph ||
-      !x2_prompt_glyph_available(glyph) ||
+  if (!x2::native::prompt_glyphs_enabled() || host_pad < 0 || !glyph ||
+      !x2::native::prompt_glyph_available(glyph) ||
       !dinput_pad_uses_xbox_glyphs(host_pad) || !(out = name_buffer())) {
     g_deferred++;
     x86_guest_body(C, "XMen2.exe", 0x006281f0u);
@@ -198,7 +199,7 @@ static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
     host_pad = host_pad_for_kind(k);
     if (host_pad < 0)
       continue;
-    if (!x2_player_input_pad_is_active_source(host_pad))
+    if (!x2::input::player_input_pad_is_active_source(host_pad))
       continue;
     *kind = k;
     *code = c;
@@ -215,7 +216,7 @@ void x2_override_006294b0(CPU *C) {
   uint32_t kind, code;
 
   g_rows_asked++;
-  if (!x2_prompt_glyphs_enabled() || row >= INPUT_BINDING_ROWS ||
+  if (!x2::native::prompt_glyphs_enabled() || row >= INPUT_BINDING_ROWS ||
       !row_pad_binding(object, row, &kind, &code)) {
     g_rows_no_pad++;
     x86_guest_body(C, "XMen2.exe", 0x006294b0u);
@@ -243,7 +244,7 @@ void pad_glyphs_report(void) {
   x2_log_info("  Xbox prompt names: %lu glyph(s), %lu original name(s); native "
               "prompt rendering %s\n",
               g_mapped, g_deferred,
-              x2_prompt_glyphs_enabled() ? "enabled" : "disabled");
+              x2::native::prompt_glyphs_enabled() ? "enabled" : "disabled");
   /* With the denominator, because "0 glyphs" means one thing when the label
      was never built at all and another when it was built 900 times and every
      row named the keyboard. */

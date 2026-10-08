@@ -255,7 +255,8 @@ X86pJitLeafFn x86_override_leaf_at(uint32_t target, void *user) {
 
 int x86_override_leaves_install(X86pJitEngine *jit, char *reason,
                                 unsigned reason_len) {
-  const char *stack_check = x2_config_override_get(kX2ConfigStackCheck);
+  const char *stack_check =
+      config_override_get(x2::config::ConfigOverride::StackCheck);
   if (!lucent_cvar_flag("jit.leaves", 1) || (stack_check && *stack_check)) {
     return 1;
   }

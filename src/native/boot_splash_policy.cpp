@@ -21,7 +21,8 @@ struct {
 } // namespace
 
 void boot_splash_trace(std::uint32_t command) {
-  if (!x2_config_override_get(kX2ConfigBootCmdTrace) || !command)
+  if (!config_override_get(x2::config::ConfigOverride::BootCmdTrace) ||
+      !command)
     return;
   if (g_splash.traced >= 40u)
     return;

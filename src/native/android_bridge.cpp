@@ -77,12 +77,14 @@ bool valid_boot_map(const char *value) {
  * values give two useful heartbeats quickly without becoming player policy. */
 bool configure_performance_trace(jboolean enabled) {
   if (enabled != JNI_TRUE) {
-    x2_config_override_unset(kX2ConfigHotEp);
-    x2_config_override_unset(kX2ConfigHeartbeat);
+    config_override_unset(x2::config::ConfigOverride::HotEp);
+    config_override_unset(x2::config::ConfigOverride::Heartbeat);
     return true;
   }
-  return x2_config_override_set(kX2ConfigHotEp, "4096", 1) == 0 &&
-         x2_config_override_set(kX2ConfigHeartbeat, "2", 1) == 0;
+  return config_override_set(x2::config::ConfigOverride::HotEp, "4096", 1) ==
+             0 &&
+         config_override_set(x2::config::ConfigOverride::Heartbeat, "2", 1) ==
+             0;
 }
 
 /* The first sufficiently busy frame captures the complete D3D8 state that
@@ -128,16 +130,17 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
   if (!read_string(environment, source, install_source, sizeof install_source))
     return JNI_FALSE;
   if (trace_files == JNI_TRUE) {
-    if (x2_config_override_set(kX2ConfigFiles, "1", 1) != 0)
+    if (config_override_set(x2::config::ConfigOverride::Files, "1", 1) != 0)
       return JNI_FALSE;
   } else {
-    x2_config_override_unset(kX2ConfigFiles);
+    config_override_unset(x2::config::ConfigOverride::Files);
   }
   if (requested_boot_map[0]) {
-    if (x2_config_override_set(kX2ConfigBootMap, requested_boot_map, 1) != 0)
+    if (config_override_set(x2::config::ConfigOverride::BootMap,
+                            requested_boot_map, 1) != 0)
       return JNI_FALSE;
   } else {
-    x2_config_override_unset(kX2ConfigBootMap);
+    config_override_unset(x2::config::ConfigOverride::BootMap);
   }
   /* The synthetic pad touch publishes through is attached by the touch owner
    * itself (src/input/touch_runtime.cpp), on every platform. Setting

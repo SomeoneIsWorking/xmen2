@@ -59,7 +59,8 @@ int readable_rows(size_t bytes, size_t pitch) {
 } // namespace
 
 void fmv_probe_begin(const char *guest_path) {
-  const char *filter = x2_config_override_get(kX2ConfigFmvProbe);
+  const char *filter =
+      config_override_get(x2::config::ConfigOverride::FmvProbe);
   free(g_probe.expected);
   memset(&g_probe, 0, sizeof(g_probe));
   if (!filter || !*filter || !guest_path || !strstr(guest_path, filter))

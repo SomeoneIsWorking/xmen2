@@ -16,10 +16,15 @@ void check(const char *what, bool ok) {
   }
 }
 
-constexpr X2LayoutViewport kPhone{2728.0F, 1264.0F, 96.0F, 0.0F, 96.0F, 0.0F};
+constexpr x2::presentation::LayoutViewport kPhone{2728.0F, 1264.0F, 96.0F,
+                                                  0.0F,    96.0F,   0.0F};
 
-float centre_x(X2Rect rect) { return (rect.left + rect.right) * 0.5F; }
-float centre_y(X2Rect rect) { return (rect.top + rect.bottom) * 0.5F; }
+float centre_x(x2::presentation::Rect rect) {
+  return (rect.left + rect.right) * 0.5F;
+}
+float centre_y(x2::presentation::Rect rect) {
+  return (rect.top + rect.bottom) * 0.5F;
+}
 
 } // namespace
 
@@ -53,7 +58,7 @@ int main() {
 
   /* Placement: top-right, inside the safe area, on screen. */
   {
-    const X2Rect rect = SkipButton::place(kPhone);
+    const x2::presentation::Rect rect = SkipButton::place(kPhone);
     check("the button is inside the right safe inset",
           rect.right <= kPhone.width - kPhone.safe_right);
     check("and in the top half", rect.bottom < kPhone.height * 0.5F);
@@ -66,7 +71,7 @@ int main() {
   {
     x2_cutscene_skip_reset();
     SkipButton button;
-    const X2Rect rect = SkipButton::place(kPhone);
+    const x2::presentation::Rect rect = SkipButton::place(kPhone);
     const float x = centre_x(rect);
     const float y = centre_y(rect);
     check("with no skip offered the button takes nothing",

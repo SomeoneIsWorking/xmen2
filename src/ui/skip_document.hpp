@@ -15,7 +15,7 @@ namespace x2::ui {
  * Its own document rather than a zone of the touch overlay: that overlay is
  * hidden while a cinematic holds the controls, which is the only time this
  * button exists. Placement, the offer and the press all belong to input/
- * (touch_skip_button.h); this mirrors x2_touch_runtime_skip_button and
+ * (touch_skip_button.h); this mirrors touch_runtime_skip_button and
  * nothing else. Styled inline in the touch overlay's ring-and-fill look, so it
  * reads as one of the same set of controls.
  */

@@ -236,7 +236,7 @@ class ShippingCensusTest(unittest.TestCase):
 
     The fixtures above were typed by hand and can only drift from
     src/input/touch_census.cpp. This runs the C touch test, which ends by
-    calling the real x2_touch_runtime_report, and reads its output. If a
+    calling the real touch_runtime_report, and reads its output. If a
     census line is reworded, this fails and the fixtures above are wrong.
     """
 

@@ -54,7 +54,7 @@ Why the shipped version is wrong rather than merely unpolished:
   truth that can only agree by luck.
 - The action buttons are eighteen hand-tuned fractions spread over the whole
   right half and the bottom middle, not the requested bottom-right cluster.
-- Visibility is gated on `x2_touch_runtime_overlay_visible()`, which is a
+- Visibility is gated on `touch_runtime_overlay_visible()`, which is a
   setting, not a statement about whether the player controls a character.
 
 ## RE established 2026-09-02
@@ -214,8 +214,8 @@ events deliberately do NOT count: SDL's synthetic touch-as-mouse reports
 inside half deflection, which is a resting or drifting stick. A device merely
 being connected says nothing.
 
-`x2_touch_runtime_active()` is the one answer both consumers ask --
-`x2_touch_runtime_overlay_visible()` for the drawn controls (with a window and
+`touch_runtime_active()` is the one answer both consumers ask --
+`touch_runtime_overlay_visible()` for the drawn controls (with a window and
 gameplay control on top of it) and `hud_draw_runtime.cpp` for the mobile HUD
 placement. They are one feature, so a HUD that relocates while no pad is drawn
 would be the HUD making room for nothing.

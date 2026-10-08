@@ -55,7 +55,7 @@ read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base) {
 }
 
 void TouchMenuSource::refresh(std::uint64_t now_ms) {
-  if (!x2_touch_runtime_active()) {
+  if (!x2::input::touch_runtime_active()) {
     if (offered_) {
       offered_ = false;
       input::touch_runtime_set_menu(std::nullopt);

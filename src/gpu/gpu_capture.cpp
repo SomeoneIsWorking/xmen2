@@ -360,19 +360,24 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
   if (!checked) {
     const char *value;
     checked = 1;
-    path = x2_config_override_get(kX2ConfigShot);
+    path = config_override_get(x2::config::ConfigOverride::Shot);
     if (path && !*path)
       path = NULL;
-    if ((value = x2_config_override_get(kX2ConfigShotEvery)) && *value)
+    if ((value = config_override_get(x2::config::ConfigOverride::ShotEvery)) &&
+        *value)
       every = atoi(value);
     if (every < 1)
       every = 1;
-    if ((value = x2_config_override_get(kX2ConfigShotMinDraws)) && *value)
+    if ((value =
+             config_override_get(x2::config::ConfigOverride::ShotMinDraws)) &&
+        *value)
       min_draws = strtoul(value, NULL, 10);
-    if ((value = x2_config_override_get(kX2ConfigShotVertexShader)) && *value &&
-        *value != '0')
+    if ((value = config_override_get(
+             x2::config::ConfigOverride::ShotVertexShader)) &&
+        *value && *value != '0')
       require_vs = 1;
-    if ((value = x2_config_override_get(kX2ConfigShotKeep)) && *value) {
+    if ((value = config_override_get(x2::config::ConfigOverride::ShotKeep)) &&
+        *value) {
       keep = atol(value);
       if (keep < 1)
         keep = 1;
@@ -381,13 +386,15 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
       x2_log_info("gpu: X2_SHOT -- the headless target is written to %s every "
                   "%d frame(s), overwriting.\n",
                   path, every);
-    if (path && x2_config_override_get(kX2ConfigShotAfterFile) &&
-        *x2_config_override_get(kX2ConfigShotAfterFile))
-      x2_log_info("gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
-                  "until the game opens a file whose name contains that. If "
-                  "it never does, no file is written and this run "
-                  "photographed NOTHING.\n",
-                  x2_config_override_get(kX2ConfigShotAfterFile));
+    if (path &&
+        config_override_get(x2::config::ConfigOverride::ShotAfterFile) &&
+        *config_override_get(x2::config::ConfigOverride::ShotAfterFile))
+      x2_log_info(
+          "gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
+          "until the game opens a file whose name contains that. If "
+          "it never does, no file is written and this run "
+          "photographed NOTHING.\n",
+          config_override_get(x2::config::ConfigOverride::ShotAfterFile));
     if (path && min_draws)
       x2_log_info("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
                   "that many draws are photographed. If none ever is, NO "

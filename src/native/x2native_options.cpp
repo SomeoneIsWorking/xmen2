@@ -20,7 +20,7 @@
  * quietly does not arm is worse than one that is missing.
  */
 static int apply_env_override(const char *assignment) {
-  X2ConfigOverride variable;
+  x2::config::ConfigOverride variable;
   char name[64];
   const char *equals = assignment ? strchr(assignment, '=') : NULL;
   size_t length;
@@ -37,14 +37,14 @@ static int apply_env_override(const char *assignment) {
   }
   memcpy(name, assignment, length);
   name[length] = 0;
-  if (!x2_config_override_from_name(name, &variable)) {
+  if (!config_override_from_name(name, &variable)) {
     lucent_log_error("x2",
                      "x2native: --env '%s' is not one of the overrides this "
                      "port knows, so nothing would have been armed.\n",
                      name);
     return 0;
   }
-  if (x2_config_override_set(variable, equals + 1, 1) != 0) {
+  if (config_override_set(variable, equals + 1, 1) != 0) {
     lucent_log_error("x2", "x2native: --env '%s' could not be set.\n", name);
     return 0;
   }

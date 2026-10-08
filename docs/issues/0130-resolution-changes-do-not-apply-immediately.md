@@ -11,7 +11,7 @@ updated: 2026-08-28
 
 ## Root cause
 
-Port Settings updates the persistent `X2Settings` and SDL window geometry, but
+Port Settings updates the persistent `Settings` and SDL window geometry, but
 the active game render size remains the `D3DPRESENT_PARAMETERS` copied by
 `IDirect3D8::CreateDevice`. The host left `IDirect3DDevice8::Reset` unimplemented
 and created its backbuffer/depth surfaces for the lifetime of that device, so

@@ -138,7 +138,7 @@ static unsigned long g_untracked;
 
 namespace x2::native {
 float ui_text_scale(void) {
-  const X2Settings *settings = x2_settings_store();
+  const x2::config::Settings *settings = x2::config::settings_store();
   const char *forced = lucent_cvar_text("text_scale");
   float configured = settings->text_scale;
   float scale;
@@ -161,7 +161,7 @@ float ui_text_scale(void) {
 static const char *scale_source(void) {
   if (lucent_cvar_text("text_scale")[0])
     return "X2_TEXT_SCALE";
-  if (x2_settings_store()->text_scale > 0.0f)
+  if (x2::config::settings_store()->text_scale > 0.0f)
     return "ui.text_scale";
   return "auto, holding the retail 1080p size";
 }
@@ -248,8 +248,8 @@ static void scale_font_record(const FontOriginal *slot, float k) {
   if (g_fonts == 1)
     x2_log_error("UI TEXT: scaling every font the game loads by %.3f "
                  "(%s, output %ux%u); first font %u drawing glyph(s).\n",
-                 k, scale_source(), x2_settings_store()->width,
-                 x2_settings_store()->height, drawn);
+                 k, scale_source(), x2::config::settings_store()->width,
+                 x2::config::settings_store()->height, drawn);
 }
 
 /*
@@ -271,13 +271,14 @@ int ui_text_scale_reapply(void) {
     /* The port's own codepoints are written into the same record and were
        just overwritten from the origin, so they are republished here from
        the rescaled record, in the same order as at load. */
-    if (x2_prompt_glyphs_enabled())
+    if (prompt_glyphs_enabled())
       x2::native::prompt_glyph_publish_metrics(g_tracked[i].at);
   }
   x2_log_error("UI TEXT: output is %ux%u now; %u loaded font(s) re-derived "
                "from %.3f to %.3f (%s).\n",
-               x2_settings_store()->width, x2_settings_store()->height,
-               g_tracked_count, (double)g_applied, (double)k, scale_source());
+               x2::config::settings_store()->width,
+               x2::config::settings_store()->height, g_tracked_count,
+               (double)g_applied, (double)k, scale_source());
   g_applied = k;
   return (int)g_tracked_count;
 }
@@ -311,7 +312,7 @@ static void x2_override_font_loader(CPU *C) {
      moment -- AFTER the scaler, so they are sized from the scaled capitals
      rather than scaled twice. Unconditional on k, since the port's glyphs
      need metrics even when the text scale is 1.0. */
-  if (x2_prompt_glyphs_enabled())
+  if (x2::native::prompt_glyphs_enabled())
     x2::native::prompt_glyph_publish_metrics(slot->at);
 }
 

@@ -23,19 +23,19 @@ static void check_hud_configuration(const char *path) {
                                               "safe_inset_percent=-1",
                                               "safe_inset_percent=1e0",
                                               "unknown=100"};
-  X2Settings settings, original, loaded;
+  x2::config::Settings settings, original, loaded;
   char why[256];
-  x2_settings_defaults(&original);
+  settings_defaults(&original);
   original.hud = (X2HudSettings){X2_HUD_LAYOUT_MOBILE, 50, 150, 125, 10};
-  CHECK(x2_settings_save(&original, path, why, sizeof why));
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_save(&original, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&original, &loaded, sizeof original) == 0);
 
   /* Saving an invalid edit preserves the previous persistent selection. */
   settings = original;
   settings.hud.layout = (X2HudLayout)-1;
-  CHECK(!x2_settings_save(&settings, path, why, sizeof why));
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(!settings_save(&settings, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&original, &loaded, sizeof original) == 0);
   CHECK(strcmp(x2_hud_layout_name(settings.hud.layout), "invalid") == 0);
   settings.hud = original.hud;
@@ -50,7 +50,7 @@ static void check_hud_configuration(const char *path) {
           0);
     CHECK(fclose(file) == 0);
     loaded = original;
-    CHECK(!x2_settings_load(&loaded, path, why, sizeof why));
+    CHECK(!settings_load(&loaded, path, why, sizeof why));
     CHECK(strstr(why, ":2") != NULL);
     CHECK(memcmp(&original, &loaded, sizeof original) == 0);
   }
@@ -64,59 +64,59 @@ static void check_hud_configuration(const char *path) {
 
 /* Changing one controller's seat never turns another controller off. */
 static void check_controller_change_keeps_other_controller(void) {
-  X2Settings settings;
-  x2_settings_defaults(&settings);
-  CHECK(x2_settings_assign_controller(&settings, "pad-a", 0));
-  CHECK(x2_settings_assign_controller(&settings, "pad-b", 1));
+  x2::config::Settings settings;
+  settings_defaults(&settings);
+  CHECK(settings_assign_controller(&settings, "pad-a", 0));
+  CHECK(settings_assign_controller(&settings, "pad-b", 1));
 
-  CHECK(x2_settings_assign_controller(&settings, "pad-a", 2));
-  CHECK(x2_settings_controller_player(&settings, "pad-a") == 2);
-  CHECK(x2_settings_controller_player(&settings, "pad-b") == 1);
+  CHECK(settings_assign_controller(&settings, "pad-a", 2));
+  CHECK(settings_controller_player(&settings, "pad-a") == 2);
+  CHECK(settings_controller_player(&settings, "pad-b") == 1);
 
-  CHECK(x2_settings_assign_controller(&settings, "pad-a", 1));
-  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
-  CHECK(x2_settings_controller_player(&settings, "pad-b") == 2);
+  CHECK(settings_assign_controller(&settings, "pad-a", 1));
+  CHECK(settings_controller_player(&settings, "pad-a") == 1);
+  CHECK(settings_controller_player(&settings, "pad-b") == 2);
 
-  CHECK(x2_settings_assign_controller(&settings, "pad-b", 0));
-  CHECK(x2_settings_controller_player(&settings, "pad-b") == 0);
-  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+  CHECK(settings_assign_controller(&settings, "pad-b", 0));
+  CHECK(settings_controller_player(&settings, "pad-b") == 0);
+  CHECK(settings_controller_player(&settings, "pad-a") == 1);
 
-  CHECK(x2_settings_assign_controller(&settings, "pad-a",
-                                      X2_SETTINGS_UNASSIGNED));
-  CHECK(x2_settings_controller_player(&settings, "pad-b") == 0);
+  CHECK(settings_assign_controller(&settings, "pad-a",
+                                   x2::config::kSettingsUnassigned));
+  CHECK(settings_controller_player(&settings, "pad-b") == 0);
 }
 
 /* A device displaced across kinds takes the seat the mover left when that
    seat can hold it, and only otherwise goes off. */
 static void check_displaced_device_takes_vacated_seat(void) {
-  X2Settings settings;
-  x2_settings_defaults(&settings);
-  CHECK(x2_settings_assign_keyboard(&settings, 1, 1));
-  CHECK(x2_settings_assign_controller(&settings, "pad-a", 2));
+  x2::config::Settings settings;
+  settings_defaults(&settings);
+  CHECK(settings_assign_keyboard(&settings, 1, 1));
+  CHECK(settings_assign_controller(&settings, "pad-a", 2));
 
-  CHECK(x2_settings_assign_controller(&settings, "pad-a", 1));
-  CHECK(x2_settings_player_keyboard(&settings, 2) == 1);
-  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+  CHECK(settings_assign_controller(&settings, "pad-a", 1));
+  CHECK(settings_player_keyboard(&settings, 2) == 1);
+  CHECK(settings_controller_player(&settings, "pad-a") == 1);
 
   /* The only P1 keyboard can move: the displaced keyboard takes P1. */
-  CHECK(x2_settings_assign_keyboard(&settings, 0, 2));
-  CHECK(x2_settings_player_keyboard(&settings, 0) == 1);
-  CHECK(x2_settings_player_keyboard(&settings, 2) == 0);
+  CHECK(settings_assign_keyboard(&settings, 0, 2));
+  CHECK(settings_player_keyboard(&settings, 0) == 1);
+  CHECK(settings_player_keyboard(&settings, 2) == 0);
 
   /* P1 already holds a keyboard, so a controller-displaced keyboard cannot
      return there and goes off. */
-  CHECK(x2_settings_assign_controller(&settings, "pad-b", 0));
-  CHECK(x2_settings_assign_controller(&settings, "pad-b", 2));
-  CHECK(x2_settings_player_keyboard(&settings, 0) == 1);
-  CHECK(x2_settings_player_keyboard(&settings, 2) == -1);
-  CHECK(settings.keyboard_player[0] == X2_SETTINGS_UNASSIGNED);
-  CHECK(x2_settings_controller_player(&settings, "pad-a") == 1);
+  CHECK(settings_assign_controller(&settings, "pad-b", 0));
+  CHECK(settings_assign_controller(&settings, "pad-b", 2));
+  CHECK(settings_player_keyboard(&settings, 0) == 1);
+  CHECK(settings_player_keyboard(&settings, 2) == -1);
+  CHECK(settings.keyboard_player[0] == x2::config::kSettingsUnassigned);
+  CHECK(settings_controller_player(&settings, "pad-a") == 1);
 }
 
 static void check_keyboard_profile_restore(const char *path) {
-  X2Settings settings, loaded;
+  x2::config::Settings settings, loaded;
   char why[256];
-  x2_settings_defaults(&settings);
+  settings_defaults(&settings);
   settings.keyboard_profile[1].keyboard_set[4] = 1;
   settings.keyboard_profile[1].keyboard[4] = 30;
   settings.keyboard_profile[1].keyboard_set[5] = 1;
@@ -124,37 +124,37 @@ static void check_keyboard_profile_restore(const char *path) {
   settings.keyboard_profile[2].keyboard_set[6] = 1;
   settings.keyboard_profile[2].keyboard[6] = 31;
 
-  x2_keyboard_profile_restore_row(&settings.keyboard_profile[1], 4);
+  keyboard_profile_restore_row(&settings.keyboard_profile[1], 4);
   CHECK(!settings.keyboard_profile[1].keyboard_set[4]);
   CHECK(settings.keyboard_profile[1].keyboard_set[5]);
-  CHECK(x2_settings_save(&settings, path, why, sizeof why));
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_save(&settings, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&settings, &loaded, sizeof settings) == 0);
 
-  x2_keyboard_profile_restore_all(&settings.keyboard_profile[1]);
+  keyboard_profile_restore_all(&settings.keyboard_profile[1]);
   CHECK(!settings.keyboard_profile[1].keyboard_set[5]);
   CHECK(settings.keyboard_profile[2].keyboard_set[6]);
-  CHECK(x2_settings_save(&settings, path, why, sizeof why));
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_save(&settings, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&settings, &loaded, sizeof settings) == 0);
 }
 
 static void check_extraction_revive(const char *path) {
-  X2Settings saved, loaded, untouched;
+  x2::config::Settings saved, loaded, untouched;
   char why[256];
   FILE *file;
-  x2_settings_defaults(&saved);
-  CHECK(saved.extraction_revive == X2_EXTRACTION_REVIVE_OFF);
-  for (int mode = X2_EXTRACTION_REVIVE_OFF; mode <= X2_EXTRACTION_REVIVE_PAID;
-       mode++) {
-    saved.extraction_revive = (X2ExtractionRevive)mode;
-    CHECK(x2_settings_save(&saved, path, why, sizeof why));
-    CHECK(x2_settings_load(&loaded, path, why, sizeof why));
-    CHECK(loaded.extraction_revive == (X2ExtractionRevive)mode);
-    X2ExtractionRevive parsed;
-    CHECK(x2_extraction_revive_parse(
-        x2_extraction_revive_name((X2ExtractionRevive)mode), &parsed));
-    CHECK(parsed == (X2ExtractionRevive)mode);
+  settings_defaults(&saved);
+  CHECK(saved.extraction_revive == x2::config::ExtractionRevive::Off);
+  for (int mode = static_cast<int>(x2::config::ExtractionRevive::Off);
+       mode <= static_cast<int>(x2::config::ExtractionRevive::Paid); mode++) {
+    saved.extraction_revive = (x2::config::ExtractionRevive)mode;
+    CHECK(settings_save(&saved, path, why, sizeof why));
+    CHECK(settings_load(&loaded, path, why, sizeof why));
+    CHECK(loaded.extraction_revive == (x2::config::ExtractionRevive)mode);
+    x2::config::ExtractionRevive parsed;
+    CHECK(extraction_revive_parse(
+        extraction_revive_name((x2::config::ExtractionRevive)mode), &parsed));
+    CHECK(parsed == (x2::config::ExtractionRevive)mode);
   }
   file = fopen(path, "r");
   assert(file);
@@ -167,36 +167,37 @@ static void check_extraction_revive(const char *path) {
   assert(file);
   fprintf(file, "video.width=1280\nvideo.height=720\nvideo.mode=windowed\n");
   fclose(file);
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
-  CHECK(loaded.extraction_revive == X2_EXTRACTION_REVIVE_OFF);
+  CHECK(settings_load(&loaded, path, why, sizeof why));
+  CHECK(loaded.extraction_revive == x2::config::ExtractionRevive::Off);
   /* An unknown value refuses and leaves the settings alone. */
   untouched = loaded;
   file = fopen(path, "w");
   assert(file);
   fprintf(file, "gameplay.extraction_revive=sometimes\n");
   fclose(file);
-  CHECK(!x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(!settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&loaded, &untouched, sizeof loaded) == 0);
   CHECK(strstr(why, ":1") != NULL);
 }
 
 int main(void) {
   const char *path = X2_TEST_SETTINGS_PATH;
-  X2Settings saved, loaded, untouched;
+  x2::config::Settings saved, loaded, untouched;
   char why[256];
   FILE *file;
 
   remove(path);
-  x2_settings_defaults(&saved);
+  settings_defaults(&saved);
   CHECK(saved.width == 1280 && saved.height == 720);
-  CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
+  CHECK(saved.window_mode == x2::config::WindowMode::Windowed);
   CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 2048);
-  CHECK(saved.touch_controls == X2_TOUCH_CONTROLS_AUTO);
-  CHECK(strcmp(x2_touch_controls_label(saved.touch_controls), "Automatic") ==
+  CHECK(saved.touch_controls == x2::config::kTouchControlsAuto);
+  CHECK(strcmp(x2::config::touch_controls_label(saved.touch_controls),
+               "Automatic") == 0);
+  CHECK(strcmp(touch_controls_label(x2::config::kTouchControlsOff), "Off") ==
         0);
-  CHECK(strcmp(x2_touch_controls_label(X2_TOUCH_CONTROLS_OFF), "Off") == 0);
-  CHECK(strcmp(x2_touch_controls_label(X2_TOUCH_CONTROLS_ALWAYS), "Always") ==
-        0);
+  CHECK(strcmp(touch_controls_label(x2::config::kTouchControlsAlways),
+               "Always") == 0);
   CHECK(saved.hud.layout == X2_HUD_LAYOUT_AUTO);
   CHECK(saved.hud.vitals_scale_percent == 100);
   CHECK(saved.hud.potions_scale_percent == 100);
@@ -208,56 +209,55 @@ int main(void) {
   CHECK(x2::config::boot_mode_parse("menu", &saved.boot_mode));
   CHECK(saved.boot_mode == x2::config::BootMode::Menu);
   CHECK(!x2::config::boot_mode_parse("new-game", &saved.boot_mode));
-  CHECK(x2_settings_player_keyboard(&saved, 0) == 0);
-  CHECK(x2_settings_player_keyboard(&saved, 1) == -1);
+  CHECK(settings_player_keyboard(&saved, 0) == 0);
+  CHECK(settings_player_keyboard(&saved, 1) == -1);
 
   saved.width = 1920;
   saved.height = 1080;
-  saved.window_mode = X2_WINDOW_BORDERLESS;
+  saved.window_mode = x2::config::WindowMode::Borderless;
   saved.dynamic_shadows = 0;
   saved.shadow_resolution = 4096;
-  saved.touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
+  saved.touch_controls = x2::config::kTouchControlsAlways;
   saved.boot_mode = x2::config::BootMode::Continue;
-  CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
-  CHECK(x2_settings_player_keyboard(&saved, 0) == 2);
-  CHECK(saved.keyboard_player[0] == X2_SETTINGS_UNASSIGNED);
-  CHECK(x2_settings_assign_controller(&saved, "sdl-045e-028e-a1", 0));
-  CHECK(strcmp(x2_settings_player_controller(&saved, 0), "sdl-045e-028e-a1") ==
-        0);
+  CHECK(settings_assign_keyboard(&saved, 2, 0));
+  CHECK(settings_player_keyboard(&saved, 0) == 2);
+  CHECK(saved.keyboard_player[0] == x2::config::kSettingsUnassigned);
+  CHECK(settings_assign_controller(&saved, "sdl-045e-028e-a1", 0));
+  CHECK(strcmp(settings_player_controller(&saved, 0), "sdl-045e-028e-a1") == 0);
   saved.keyboard_profile[2].keyboard_set[4] = 1;
   saved.keyboard_profile[2].keyboard[4] = 30;
-  CHECK(x2_settings_save(&saved, path, why, sizeof why));
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_save(&saved, path, why, sizeof why));
+  CHECK(settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&saved, &loaded, sizeof saved) == 0);
 
   /* A device has one owner. P2-P4 have exactly one device kind when
      assigned, so changing kind evicts the other kind. */
-  CHECK(x2_settings_assign_keyboard(&loaded, 1, 2));
-  CHECK(x2_settings_assign_keyboard(&loaded, 3, 2));
-  CHECK(loaded.keyboard_player[1] == X2_SETTINGS_UNASSIGNED);
-  CHECK(x2_settings_assign_controller(&loaded, "pad-b", 2));
-  CHECK(x2_settings_assign_controller(&loaded, "pad-c", 2));
-  CHECK(x2_settings_player_keyboard(&loaded, 2) == -1);
-  CHECK(x2_settings_controller_player(&loaded, "pad-b") ==
-        X2_SETTINGS_UNASSIGNED);
-  CHECK(x2_settings_controller_player(&loaded, "pad-c") == 2);
+  CHECK(settings_assign_keyboard(&loaded, 1, 2));
+  CHECK(settings_assign_keyboard(&loaded, 3, 2));
+  CHECK(loaded.keyboard_player[1] == x2::config::kSettingsUnassigned);
+  CHECK(settings_assign_controller(&loaded, "pad-b", 2));
+  CHECK(settings_assign_controller(&loaded, "pad-c", 2));
+  CHECK(settings_player_keyboard(&loaded, 2) == -1);
+  CHECK(settings_controller_player(&loaded, "pad-b") ==
+        x2::config::kSettingsUnassigned);
+  CHECK(settings_controller_player(&loaded, "pad-c") == 2);
 
   /* Only P1 can hotswap. A controller assignment replaces P2's keyboard,
      while P1 retains its keyboard and controller together. */
-  x2_settings_defaults(&loaded);
-  CHECK(x2_settings_assign_keyboard(&loaded, 1, 1));
-  CHECK(x2_settings_assign_controller(&loaded, "hot-pad-a", 0));
-  CHECK(x2_settings_assign_controller(&loaded, "hot-pad-b", 1));
-  CHECK(x2_settings_player_keyboard(&loaded, 0) == 0);
-  CHECK(x2_settings_player_keyboard(&loaded, 1) == -1);
-  CHECK(strcmp(x2_settings_player_controller(&loaded, 0), "hot-pad-a") == 0);
-  CHECK(strcmp(x2_settings_player_controller(&loaded, 1), "hot-pad-b") == 0);
+  settings_defaults(&loaded);
+  CHECK(settings_assign_keyboard(&loaded, 1, 1));
+  CHECK(settings_assign_controller(&loaded, "hot-pad-a", 0));
+  CHECK(settings_assign_controller(&loaded, "hot-pad-b", 1));
+  CHECK(settings_player_keyboard(&loaded, 0) == 0);
+  CHECK(settings_player_keyboard(&loaded, 1) == -1);
+  CHECK(strcmp(settings_player_controller(&loaded, 0), "hot-pad-a") == 0);
+  CHECK(strcmp(settings_player_controller(&loaded, 1), "hot-pad-b") == 0);
 
   /* P1 is the retail primary player and may not be left with no device. */
-  CHECK(x2_settings_assign_controller(&loaded, "hot-pad-a",
-                                      X2_SETTINGS_UNASSIGNED));
-  CHECK(!x2_settings_assign_keyboard(&loaded, 0, X2_SETTINGS_UNASSIGNED));
-  CHECK(x2_settings_player_keyboard(&loaded, 0) == 0);
+  CHECK(settings_assign_controller(&loaded, "hot-pad-a",
+                                   x2::config::kSettingsUnassigned));
+  CHECK(!settings_assign_keyboard(&loaded, 0, x2::config::kSettingsUnassigned));
+  CHECK(settings_player_keyboard(&loaded, 0) == 0);
 
   /* Old Auto migrates to its keyboard profile only; an old explicit pad is
      reserved by identity and never becomes roaming controller policy. */
@@ -270,10 +270,10 @@ int main(void) {
                 "input.player2.device=none\ninput.player2.profile=2\n"
                 "input.player3.device=none\ninput.player3.profile=3\n");
   fclose(file);
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
-  CHECK(x2_settings_player_keyboard(&loaded, 0) == 1);
-  CHECK(strcmp(x2_settings_player_controller(&loaded, 1), "legacy-pad") == 0);
-  CHECK(x2_settings_player_keyboard(&loaded, 1) == -1);
+  CHECK(settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_player_keyboard(&loaded, 0) == 1);
+  CHECK(strcmp(settings_player_controller(&loaded, 1), "legacy-pad") == 0);
+  CHECK(settings_player_keyboard(&loaded, 1) == -1);
 
   /* Legacy allowed multiple players to reference one profile. The grid does
      not: later owners receive the lowest unreserved row with bindings cloned.
@@ -287,9 +287,9 @@ int main(void) {
                 "input.player3.device=none\ninput.player3.profile=3\n"
                 "input.profile1.row4=77\n");
   fclose(file);
-  CHECK(x2_settings_load(&loaded, path, why, sizeof why));
-  CHECK(x2_settings_player_keyboard(&loaded, 0) == 1);
-  CHECK(x2_settings_player_keyboard(&loaded, 1) == 0);
+  CHECK(settings_load(&loaded, path, why, sizeof why));
+  CHECK(settings_player_keyboard(&loaded, 0) == 1);
+  CHECK(settings_player_keyboard(&loaded, 1) == 0);
   CHECK(loaded.keyboard_profile[0].keyboard_set[4] == 1);
   CHECK(loaded.keyboard_profile[0].keyboard[4] == 77);
   /* Existing files have no HUD keys and preserve the prior automatic layout. */
@@ -304,7 +304,7 @@ int main(void) {
   assert(file);
   fprintf(file, "video.width=12\n");
   fclose(file);
-  CHECK(!x2_settings_load(&loaded, path, why, sizeof why));
+  CHECK(!settings_load(&loaded, path, why, sizeof why));
   CHECK(memcmp(&loaded, &untouched, sizeof loaded) == 0);
   CHECK(strstr(why, ":1") != NULL);
   check_hud_configuration(path);

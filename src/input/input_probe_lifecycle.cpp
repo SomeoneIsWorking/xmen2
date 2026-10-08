@@ -55,7 +55,7 @@ std::size_t input_probe_lifecycle_report(char *out, std::size_t n) {
   append(out, n, &at, "  resolved players:");
   for (player = 0; player < 4; player++) {
     const char *resolved = NULL;
-    pad = x2_player_input_resolved_pad((unsigned)player);
+    pad = player_input_resolved_pad((unsigned)player);
     if (pad >= 0)
       resolved = dinput_pad_persistent_id(pad);
     append(out, n, &at, " P%d=%s", player + 1,

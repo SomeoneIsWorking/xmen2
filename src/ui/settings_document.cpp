@@ -72,8 +72,8 @@ void wire(const char *id, const char *event) {
 }
 
 void rebuild() {
-  X2Settings *settings = x2_settings_store();
-  const X2KeyboardProfile &profile =
+  x2::config::Settings *settings = x2::config::settings_store();
+  const x2::config::KeyboardProfile &profile =
       settings->keyboard_profile[selected_profile];
   Rml::Element *content;
   std::ostringstream rml;
@@ -101,7 +101,7 @@ void rebuild() {
     visible_controllers = controller_assignment_rows(*settings);
     rml << "<pane><div class='section-heading'>Device assignments</div>"
            "<select-button id='touch-controls'><key>Touch controls</key><value>"
-        << x2_touch_controls_label(settings->touch_controls)
+        << x2::config::touch_controls_label(settings->touch_controls)
         << "</value></select-button>"
            "<div class='help'>Automatic shows the on-screen pad and the "
            "mobile HUD placement while the player is using touch, and puts "
@@ -113,9 +113,9 @@ void rebuild() {
            "<div class='assignment-row assignment-head'><key>Device</key>"
            "<value>Off</value><value>P1</value><value>P2</value>"
            "<value>P3</value><value>P4</value></div>";
-    for (unsigned p = 0; p < X2_SETTINGS_KEYBOARD_PROFILES; p++) {
+    for (unsigned p = 0; p < x2::config::kSettingsKeyboardProfiles; p++) {
       rml << "<div class='assignment-row'><key>Keyboard " << p + 1 << "</key>";
-      for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
+      for (int owner = -1; owner < (int)x2::config::kSettingsPlayers; owner++)
         assignment_cell(
             rml, "kb", p, owner,
             settings->keyboard_player[p] == owner &&
@@ -127,7 +127,7 @@ void rebuild() {
       int assigned = visible_controllers[i].owner;
       rml << "<div class='assignment-row'><key>"
           << escape_rml(visible_controllers[i].name) << "</key>";
-      for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
+      for (int owner = -1; owner < (int)x2::config::kSettingsPlayers; owner++)
         assignment_cell(rml, "pad", i, owner, assigned == owner);
       rml << "</div>";
     }
@@ -153,14 +153,14 @@ void rebuild() {
     wire("touch-controls", "keydown");
     wire("profile", "click");
     wire("profile", "keydown");
-    for (unsigned p = 0; p < X2_SETTINGS_KEYBOARD_PROFILES; p++)
-      for (int owner = 0; owner <= (int)X2_SETTINGS_PLAYERS; owner++) {
+    for (unsigned p = 0; p < x2::config::kSettingsKeyboardProfiles; p++)
+      for (int owner = 0; owner <= (int)x2::config::kSettingsPlayers; owner++) {
         std::string id =
             "assign-kb-" + std::to_string(p) + "-" + std::to_string(owner);
         wire(id.c_str(), "click");
       }
     for (size_t i = 0; i < visible_controllers.size(); i++)
-      for (int owner = 0; owner <= (int)X2_SETTINGS_PLAYERS; owner++) {
+      for (int owner = 0; owner <= (int)x2::config::kSettingsPlayers; owner++) {
         std::string id =
             "assign-pad-" + std::to_string(i) + "-" + std::to_string(owner);
         wire(id.c_str(), "click");
@@ -177,7 +177,7 @@ void set_status(const std::string &status) {
 
 std::string save_settings() {
   char why[256];
-  if (!x2_settings_store_save(why, sizeof why))
+  if (!x2::config::settings_store_save(why, sizeof why))
     return why;
   return "Saved";
 }
@@ -192,20 +192,20 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
           Rml::Input::KI_RETURN)
     return;
   if (id == "boot-mode") {
-    X2Settings *settings = x2_settings_store();
+    x2::config::Settings *settings = x2::config::settings_store();
     x2::config::BootMode before = settings->boot_mode;
     char why[256];
     bool saved;
     settings->boot_mode =
         (x2::config::BootMode)(((unsigned)settings->boot_mode + 1u) % 3u);
-    saved = x2_settings_store_save(why, sizeof why);
+    saved = x2::config::settings_store_save(why, sizeof why);
     if (!saved)
       settings->boot_mode = before;
     rebuild();
     set_status(saved ? "Saved" : why);
   } else if (id == "dynamic-shadows" || id == "shadow-resolution") {
-    X2Settings *settings = x2_settings_store();
-    X2Settings before = *settings;
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::Settings before = *settings;
     char why[256];
     if (id == "dynamic-shadows")
       settings->dynamic_shadows ^= 1u;
@@ -214,7 +214,7 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
           settings->shadow_resolution == 4096
               ? 512
               : (uint16_t)(settings->shadow_resolution * 2u);
-    bool saved = x2_settings_store_save(why, sizeof why);
+    bool saved = x2::config::settings_store_save(why, sizeof why);
     if (!saved)
       *settings = before;
     gpu_shadow_configure(settings->dynamic_shadows,
@@ -222,8 +222,8 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     rebuild();
     set_status(saved ? "Saved" : why);
   } else if (id.rfind("gameplay-", 0) == 0) {
-    X2Settings *settings = x2_settings_store();
-    X2Settings before = *settings;
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::Settings before = *settings;
     if (!gameplay_settings_document_change(*settings, id))
       return;
     std::string status = save_settings();
@@ -232,7 +232,7 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     rebuild();
     set_status(status);
   } else if (id.rfind("hud-", 0) == 0) {
-    X2Settings *settings = x2_settings_store();
+    x2::config::Settings *settings = x2::config::settings_store();
     X2HudSettings before = settings->hud;
     if (!hud_settings_document_change(settings->hud, id))
       return;
@@ -242,8 +242,8 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     rebuild();
     set_status(status);
   } else if (id == "resolution") {
-    X2Settings *settings = x2_settings_store();
-    X2Settings before = *settings;
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::Settings before = *settings;
     char why[256];
     x2::presentation::live_resolution_select_next(settings);
     bool applied = x2::presentation::live_resolution_apply(
@@ -253,11 +253,11 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     if (!applied)
       return;
   } else if (id == "window-mode") {
-    X2Settings *settings = x2_settings_store();
-    X2Settings before = *settings;
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::Settings before = *settings;
     char why[256];
     settings->window_mode =
-        (X2WindowMode)(((unsigned)settings->window_mode + 1u) % 3u);
+        (x2::config::WindowMode)(((unsigned)settings->window_mode + 1u) % 3u);
     if (!x2::presentation::window_settings_apply(host_window, settings, why,
                                                  sizeof why)) {
       char rollback_why[256];
@@ -283,15 +283,15 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
       tab->SetPseudoClass("selected", active_tab == 2);
     rebuild();
   } else if (id.rfind("assign-kb-", 0) == 0) {
-    X2Settings *settings = x2_settings_store();
+    x2::config::Settings *settings = x2::config::settings_store();
     unsigned profile_index, owner_index;
     if (std::sscanf(id.c_str(), "assign-kb-%u-%u", &profile_index,
                     &owner_index) != 2 ||
-        profile_index >= X2_SETTINGS_KEYBOARD_PROFILES)
+        profile_index >= x2::config::kSettingsKeyboardProfiles)
       return;
     int vacated = settings->keyboard_player[profile_index];
-    if (!x2_settings_assign_keyboard(settings, profile_index,
-                                     (int)owner_index - 1))
+    if (!settings_assign_keyboard(settings, profile_index,
+                                  (int)owner_index - 1))
       return;
     if (owner_index > 1)
       relocate_session_pad(owner_index - 1, vacated);
@@ -319,8 +319,9 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
                            : "Assigned for this session only; not saved");
       return;
     }
-    if (!x2_settings_assign_controller(
-            x2_settings_store(), controller.id.c_str(), (int)owner_index - 1))
+    if (!settings_assign_controller(x2::config::settings_store(),
+                                    controller.id.c_str(),
+                                    (int)owner_index - 1))
       return;
     if (owner_index > 0)
       relocate_session_pad(owner_index - 1, controller.owner);
@@ -328,22 +329,25 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     rebuild();
     set_status(status);
   } else if (id == "touch-controls") {
-    X2Settings *settings = x2_settings_store();
-    X2Settings before = *settings;
-    settings->touch_controls = (uint8_t)((settings->touch_controls + 1u) %
-                                         (X2_TOUCH_CONTROLS_ALWAYS + 1u));
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::Settings before = *settings;
+    settings->touch_controls =
+        (uint8_t)((settings->touch_controls + 1u) %
+                  (x2::config::kTouchControlsAlways + 1u));
     std::string status = save_settings();
     if (status != "Saved")
       *settings = before;
     rebuild();
     set_status(status);
   } else if (id == "profile") {
-    selected_profile = (selected_profile + 1u) % X2_SETTINGS_KEYBOARD_PROFILES;
+    selected_profile =
+        (selected_profile + 1u) % x2::config::kSettingsKeyboardProfiles;
     rebuild();
   } else if (id.rfind("binding-reset-", 0) == 0) {
-    X2Settings *settings = x2_settings_store();
-    X2KeyboardProfile &profile = settings->keyboard_profile[selected_profile];
-    X2KeyboardProfile before = profile;
+    x2::config::Settings *settings = x2::config::settings_store();
+    x2::config::KeyboardProfile &profile =
+        settings->keyboard_profile[selected_profile];
+    x2::config::KeyboardProfile before = profile;
     if (!keyboard_bindings_document_restore(profile, id))
       return;
     std::string status = save_settings();
@@ -360,8 +364,9 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
 bool capture(const SDL_Event &event) {
   if (capture_row < 0)
     return false;
-  X2Settings *settings = x2_settings_store();
-  X2KeyboardProfile &profile = settings->keyboard_profile[selected_profile];
+  x2::config::Settings *settings = x2::config::settings_store();
+  x2::config::KeyboardProfile &profile =
+      settings->keyboard_profile[selected_profile];
   int code = 0;
   if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
       event.key.key == SDLK_DELETE) {

@@ -25,8 +25,8 @@ struct Scale {
   float y = 1.0F;
 };
 
-std::string box(const X2Rect &rect, float origin_x, float origin_y,
-                Scale scale) {
+std::string box(const x2::presentation::Rect &rect, float origin_x,
+                float origin_y, Scale scale) {
   char text[160];
   std::snprintf(text, sizeof text,
                 "left:%.1fpx;top:%.1fpx;width:%.1fpx;height:%.1fpx;",
@@ -81,8 +81,8 @@ void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
         line_top + height > layout.detail_text.bottom) {
       continue;
     }
-    const X2Rect line{layout.detail.left, line_top, layout.detail.right,
-                      line_top + height};
+    const x2::presentation::Rect line{layout.detail.left, line_top,
+                                      layout.detail.right, line_top + height};
     rml << "<div class='tm-text' style='" << box(line, 0.0F, 0.0F, scale)
         << "'>" << escape_rml(state.view.detail[i]) << "</div>";
   }
@@ -91,14 +91,16 @@ void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
 std::string markup(const input::TouchMenuState &state, Scale scale) {
   const input::TouchMenuLayout &layout = state.layout;
   const float pad = kPanelPad * layout.unit;
-  const X2Rect panel{layout.title.left - pad, layout.title.top - pad,
-                     layout.footer.right + pad, layout.footer.bottom + pad};
+  const x2::presentation::Rect panel{
+      layout.title.left - pad, layout.title.top - pad,
+      layout.footer.right + pad, layout.footer.bottom + pad};
   /* Rows scrolled past the list are covered rather than clipped: the SDL_GPU
      backend does not clip overflow. */
-  const X2Rect above{layout.list.left, panel.top + 0.5F * pad,
-                     layout.list.right, layout.list.top};
-  const X2Rect below{layout.list.left, layout.list.bottom, layout.list.right,
-                     panel.bottom - 0.5F * pad};
+  const x2::presentation::Rect above{layout.list.left, panel.top + 0.5F * pad,
+                                     layout.list.right, layout.list.top};
+  const x2::presentation::Rect below{layout.list.left, layout.list.bottom,
+                                     layout.list.right,
+                                     panel.bottom - 0.5F * pad};
   std::ostringstream rml;
   rml << "<div id='tm-panel' style='" << box(panel, 0.0F, 0.0F, scale)
       << "'></div>";

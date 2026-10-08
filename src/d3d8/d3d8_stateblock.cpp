@@ -148,7 +148,8 @@ int d3d8_sb_apply(uint32_t token, D3D8State *dst) {
   {
     static long want = -2, done;
     if (want == -2) {
-      const char *e = x2_config_override_get(kX2ConfigStateBlockDump);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::StateBlockDump);
       want = (e && *e) ? atol(e) : -1;
     }
     if (want > 0 && done < want) {

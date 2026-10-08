@@ -28,7 +28,7 @@ constexpr float kListWidth = 960.0F;
 /* The gameplay controls' own minimum target, in output pixels. */
 constexpr float kMinimumTarget = 48.0F;
 
-bool inside(const X2Rect &rect, float x, float y) {
+bool inside(const x2::presentation::Rect &rect, float x, float y) {
   return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
 }
 
@@ -65,9 +65,10 @@ std::optional<std::size_t> TouchMenuLayout::hit(float x, float y) const {
   return std::nullopt;
 }
 
-TouchMenuLayout layout_touch_menu(const TouchMenuView &view,
-                                  const X2LayoutViewport &viewport,
-                                  float scroll, float detail_scroll) {
+TouchMenuLayout
+layout_touch_menu(const TouchMenuView &view,
+                  const x2::presentation::LayoutViewport &viewport,
+                  float scroll, float detail_scroll) {
   TouchMenuLayout layout;
   const float left = viewport.safe_left;
   const float top = viewport.safe_top;

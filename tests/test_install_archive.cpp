@@ -139,7 +139,7 @@ int main() {
   const std::filesystem::path archive = root / "selected.zip";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
-  x2_guest_environment_set("XDG_CONFIG_HOME", config.string().c_str());
+  x2::config::guest_environment_set("XDG_CONFIG_HOME", config.string().c_str());
 
   char executable[4096];
   char reason[512];

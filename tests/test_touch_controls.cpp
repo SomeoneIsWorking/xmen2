@@ -13,9 +13,10 @@
 namespace {
 
 /* The HUD publication with only these portraits drawn. */
-X2HudRegions with_portraits(const std::array<X2Rect, 4> &portraits,
-                            unsigned mask) {
-  X2HudRegions regions{};
+x2::presentation::HudRegions
+with_portraits(const std::array<x2::presentation::Rect, 4> &portraits,
+               unsigned mask) {
+  x2::presentation::HudRegions regions{};
   std::copy(portraits.begin(), portraits.end(), regions.portraits);
   regions.portrait_mask = mask;
   return regions;
@@ -99,10 +100,10 @@ bool portrait_regions() {
     return false;
   }
   const auto base_zone_count = controls.zones().size();
-  std::array<X2Rect, 4> rectangles{{{100, 100, 150, 170},
-                                    {200, 100, 230, 180},
-                                    {500, 150, 550, 200},
-                                    {650, 100, 730, 180}}};
+  std::array<x2::presentation::Rect, 4> rectangles{{{100, 100, 150, 170},
+                                                    {200, 100, 230, 180},
+                                                    {500, 150, 550, 200},
+                                                    {650, 100, 730, 180}}};
   controls.set_hud(with_portraits(rectangles, 5));
   const auto hero3 = std::find_if(
       controls.zones().begin(), controls.zones().end(),
@@ -183,22 +184,22 @@ bool portrait_regions() {
 
 int main() {
   x2::input::TouchControls controls;
-  const X2LayoutViewport layout_viewport{1000.0F, 600.0F, 20.0F,
-                                         10.0F,   20.0F,  10.0F};
+  const x2::presentation::LayoutViewport layout_viewport{
+      1000.0F, 600.0F, 20.0F, 10.0F, 20.0F, 10.0F};
   controls.set_viewport({1000.0F, 600.0F, {20.0F, 10.0F, 20.0F, 10.0F}});
 
   /* Probe points come from the layout, not remembered pixels; no HUD yet. */
-  X2Rect slots[kX2SlotCount];
-  if (!x2_layout_build(layout_viewport, nullptr, slots)) {
+  x2::presentation::Rect slots[x2::presentation::kSlotCount];
+  if (!layout_build(layout_viewport, nullptr, slots)) {
     std::cerr << "layout refused a viewport the controls accept\n";
     return 1;
   }
-  const auto centre = [&slots](X2LayoutSlot slot) {
+  const auto centre = [&slots](x2::presentation::LayoutSlot slot) {
     return lucent::touch::Point{(slots[slot].left + slots[slot].right) * 0.5F,
                                 (slots[slot].top + slots[slot].bottom) * 0.5F};
   };
 
-  const auto stick_centre = centre(kX2SlotStick);
+  const auto stick_centre = centre(x2::presentation::kSlotStick);
   const std::vector<lucent::touch::Contact> stick_down = {
       {1, stick_centre, lucent::touch::Phase::began}};
   const auto began = controls.route(stick_down);
@@ -213,8 +214,9 @@ int main() {
      Every check above lands exactly on the ring's centre, which is the one
      landing that cannot tell a stick measured from the ring apart from one
      measured from the contact. This lands where a thumb actually does. */
-  const float stick_radius =
-      (slots[kX2SlotStick].right - slots[kX2SlotStick].left) * 0.5F;
+  const float stick_radius = (slots[x2::presentation::kSlotStick].right -
+                              slots[x2::presentation::kSlotStick].left) *
+                             0.5F;
   const lucent::touch::Point thumb{stick_centre.x + stick_radius * 0.45F,
                                    stick_centre.y + stick_radius * 0.5F};
   const auto off_centre =
@@ -237,8 +239,9 @@ int main() {
   }
   controls.route({{{3, thumb, lucent::touch::Phase::ended}}});
 
-  const float stick_reach =
-      (slots[kX2SlotStick].right - slots[kX2SlotStick].left) * 0.4F;
+  const float stick_reach = (slots[x2::presentation::kSlotStick].right -
+                             slots[x2::presentation::kSlotStick].left) *
+                            0.4F;
   const std::vector<lucent::touch::Contact> stick_up = {
       {1,
        {stick_centre.x - stick_reach, stick_centre.y - stick_reach},
@@ -265,16 +268,18 @@ int main() {
   /* A thumb that lands above the ring, outside it, still takes the stick,
      and the ring is drawn under that thumb until it lifts. */
   {
-    const float ring = slots[kX2SlotStick].right - slots[kX2SlotStick].left;
+    const float ring = slots[x2::presentation::kSlotStick].right -
+                       slots[x2::presentation::kSlotStick].left;
     /* Halfway between the reach's top and the ring's: outside the ring,
        inside the area the stick owns, whatever the ring's size. */
-    const X2Rect reach = x2_layout_stick_reach(layout_viewport, slots);
-    const lucent::touch::Point outside{stick_centre.x + ring * 0.2F,
-                                       (reach.top + slots[kX2SlotStick].top) *
-                                           0.5F};
+    const x2::presentation::Rect reach =
+        layout_stick_reach(layout_viewport, slots);
+    const lucent::touch::Point outside{
+        stick_centre.x + ring * 0.2F,
+        (reach.top + slots[x2::presentation::kSlotStick].top) * 0.5F};
     const auto landed =
         controls.route({{{4, outside, lucent::touch::Phase::began}}});
-    const X2Rect drawn = controls.stick_ring();
+    const x2::presentation::Rect drawn = controls.stick_ring();
     if (!has_value(landed, x2::input::TouchAction::Forward, 0.0F) ||
         std::fabs((drawn.left + drawn.right) * 0.5F - outside.x) > 0.5F ||
         std::fabs((drawn.top + drawn.bottom) * 0.5F - outside.y) > 0.5F) {
@@ -294,16 +299,17 @@ int main() {
       return 1;
     }
     controls.route({{{4, outside, lucent::touch::Phase::ended}}});
-    const X2Rect rest = controls.stick_ring();
-    if (rest.left != slots[kX2SlotStick].left ||
-        rest.top != slots[kX2SlotStick].top) {
+    const x2::presentation::Rect rest = controls.stick_ring();
+    if (rest.left != slots[x2::presentation::kSlotStick].left ||
+        rest.top != slots[x2::presentation::kSlotStick].top) {
       std::cerr << "the ring did not return to its place on release\n";
       return 1;
     }
   }
 
   const std::vector<lucent::touch::Contact> button = {
-      {2, centre(kX2SlotLightAttack), lucent::touch::Phase::began}};
+      {2, centre(x2::presentation::kSlotLightAttack),
+       lucent::touch::Phase::began}};
   const auto button_events = controls.route(button);
   if (!has_value(button_events, x2::input::TouchAction::LightAttack, 1.0F)) {
     std::cerr << "light-attack zone was not reachable\n";
@@ -312,7 +318,8 @@ int main() {
 
   /* A touch player has no F2: this button is the port menu's only way in. */
   const std::vector<lucent::touch::Contact> menu_button = {
-      {3, centre(kX2SlotPortMenu), lucent::touch::Phase::began}};
+      {3, centre(x2::presentation::kSlotPortMenu),
+       lucent::touch::Phase::began}};
   const auto menu_events = controls.route(menu_button);
   if (!has_value(menu_events, x2::input::TouchAction::PortMenu, 1.0F)) {
     std::cerr << "port menu zone was not reachable\n";
@@ -321,7 +328,7 @@ int main() {
 
   /* Jump must route independently while the movement thumb remains held. */
   const std::vector<lucent::touch::Contact> jump_button = {
-      {7, centre(kX2SlotJump), lucent::touch::Phase::began}};
+      {7, centre(x2::presentation::kSlotJump), lucent::touch::Phase::began}};
   const auto jump_events = controls.route(jump_button);
   if (!has_value(jump_events, x2::input::TouchAction::Jump, 1.0F)) {
     std::cerr << "jump zone was not reachable\n";
@@ -347,9 +354,9 @@ int main() {
 
   /* The HUD producer publishes exact output-pixel bounds; the input owner
      neither divides a slot into quarters nor assumes all four are visible. */
-  const std::array<X2Rect, 4> portrait_rectangles{
+  const std::array<x2::presentation::Rect, 4> portrait_rectangles{
       {{710, 30, 758, 80}, {}, {}, {}}};
-  X2HudRegions hud = with_portraits(portrait_rectangles, 1);
+  x2::presentation::HudRegions hud = with_portraits(portrait_rectangles, 1);
   controls.set_hud(hud);
   const lucent::touch::Point portrait_point{734, 55};
   const std::vector<lucent::touch::Contact> portrait = {
@@ -426,10 +433,11 @@ int main() {
   const auto beside =
       controls.route({{{9, {576, 26}, lucent::touch::Phase::began}}});
   controls.route({{{9, {576, 26}, lucent::touch::Phase::ended}}});
-  const auto waited = controls.route(
-      {{{10, centre(kX2SlotPortMenu), lucent::touch::Phase::began}}});
-  controls.route(
-      {{{10, centre(kX2SlotPortMenu), lucent::touch::Phase::ended}}});
+  const auto waited =
+      controls.route({{{10, centre(x2::presentation::kSlotPortMenu),
+                        lucent::touch::Phase::began}}});
+  controls.route({{{10, centre(x2::presentation::kSlotPortMenu),
+                    lucent::touch::Phase::ended}}});
   if (!has_value(beside, x2::input::TouchAction::PortMenu, 1.0F) ||
       has_value(waited, x2::input::TouchAction::PortMenu, 1.0F)) {
     std::cerr << "the port menu did not join the game's menu-icon row\n";
@@ -455,7 +463,8 @@ int main() {
   }
 
   const std::vector<lucent::touch::Contact> held_button = {
-      {6, centre(kX2SlotLightAttack), lucent::touch::Phase::began}};
+      {6, centre(x2::presentation::kSlotLightAttack),
+       lucent::touch::Phase::began}};
   controls.route(held_button);
   const auto rotated =
       controls.set_viewport({600.0F, 1000.0F, {10.0F, 20.0F, 10.0F, 20.0F}});
@@ -468,10 +477,10 @@ int main() {
   }
   /* Zones are laid out around the placement the HUD owner publishes. */
   {
-    const X2LayoutViewport rotated_viewport{600.0F, 1000.0F, 10.0F,
-                                            20.0F,  10.0F,   20.0F};
-    X2HudPlacement hud{};
-    X2Rect drawn[X2_HUD_POTIONS + 5];
+    const x2::presentation::LayoutViewport rotated_viewport{
+        600.0F, 1000.0F, 10.0F, 20.0F, 10.0F, 20.0F};
+    x2::presentation::HudPlacement hud{};
+    x2::presentation::Rect drawn[x2::presentation::kHudPotions + 5];
     std::vector<lucent::touch::Zone> control_zones;
     std::size_t drawn_count = 0;
     hud.vitals = {20.0F, 30.0F, 260.0F, 90.0F};
@@ -484,7 +493,7 @@ int main() {
     hud.selector = {-1000.0F, -1000.0F, -1000.0F, -1000.0F};
     controls.set_hud_placement(&hud);
     drawn[drawn_count++] = hud.vitals;
-    for (int i = 0; i < X2_HUD_POTIONS; ++i)
+    for (int i = 0; i < x2::presentation::kHudPotions; ++i)
       drawn[drawn_count++] = hud.potions[i];
     for (int i = 0; i < 4; ++i)
       drawn[drawn_count++] = hud.portraits[i];
@@ -497,7 +506,7 @@ int main() {
     for (const auto &zone : control_zones) {
       for (std::size_t d = 0; d < drawn_count; ++d) {
         clear = clear &&
-                !x2_layout_rects_overlap(
+                !layout_rects_overlap(
                     {zone.left, zone.top, zone.right, zone.bottom}, drawn[d]);
       }
     }
@@ -515,8 +524,8 @@ int main() {
       std::cerr << "withdrawing the placement released a held control\n";
       return 1;
     }
-    X2Rect back[kX2SlotCount];
-    if (!x2_layout_build(rotated_viewport, nullptr, back)) {
+    x2::presentation::Rect back[x2::presentation::kSlotCount];
+    if (!layout_build(rotated_viewport, nullptr, back)) {
       std::cerr << "layout refused a viewport the controls accept\n";
       return 1;
     }
@@ -526,8 +535,9 @@ int main() {
         jump_zone = &zone.zone;
       }
     }
-    if (jump_zone == nullptr || jump_zone->left != back[kX2SlotJump].left ||
-        jump_zone->right != back[kX2SlotJump].right) {
+    if (jump_zone == nullptr ||
+        jump_zone->left != back[x2::presentation::kSlotJump].left ||
+        jump_zone->right != back[x2::presentation::kSlotJump].right) {
       std::cerr << "withdrawing the HUD placement did not restore the layout "
                    "without it\n";
       return 1;

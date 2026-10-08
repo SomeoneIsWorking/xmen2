@@ -17,7 +17,8 @@ const char *const kWiredControls[] = {"resolution", "window-mode",
 
 } // namespace
 
-std::string display_settings_document_rml(const X2Settings &settings) {
+std::string
+display_settings_document_rml(const x2::config::Settings &settings) {
   std::ostringstream rml;
   char resolution_label[16];
 
@@ -31,7 +32,7 @@ std::string display_settings_document_rml(const X2Settings &settings) {
       << resolution_label << " (" << settings.width << "x" << settings.height
       << ")</value></select-button>"
       << "<select-button id='window-mode'><key>Window mode</key><value>"
-      << escape_rml(x2_window_mode_name(settings.window_mode))
+      << escape_rml(window_mode_name(settings.window_mode))
       << "</value></select-button>"
       << "<select-button id='dynamic-shadows'><key>Dynamic "
          "shadows</key><value>"

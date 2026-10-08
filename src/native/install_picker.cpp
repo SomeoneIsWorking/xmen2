@@ -411,7 +411,8 @@ int install_picker_choose(const char **directory) {
 }
 
 int install_picker_resolve_env(int appimage_product, int have_install_dir) {
-  const char *current = x2_config_override_get(kX2ConfigGamePcDir);
+  const char *current =
+      config_override_get(x2::config::ConfigOverride::GamePcDir);
   if (!appimage_product || have_install_dir || (current && current[0]))
     return 0;
   const char *picked = nullptr;
@@ -419,7 +420,8 @@ int install_picker_resolve_env(int appimage_product, int have_install_dir) {
     x2_log_error("x2native: no PC installation was selected; exiting.\n");
     return 1;
   }
-  if (x2_config_override_set(kX2ConfigGamePcDir, picked, 1) != 0) {
+  if (config_override_set(x2::config::ConfigOverride::GamePcDir, picked, 1) !=
+      0) {
     x2_log_error("x2native: could not set the selected installation: %s\n",
                  strerror(errno));
     return 2;

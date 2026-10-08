@@ -40,13 +40,13 @@ int g_host_capable = -1;
  * so the layout is reachable without a touchscreen -- still gets its pad.
  */
 void prepare_for_host() {
-  const unsigned mode = x2_settings_store()->touch_controls;
+  const unsigned mode = x2::config::settings_store()->touch_controls;
   g_host_devices = x2::native::host_touch_devices();
   g_host_capable = x2::native::host_touch_capable();
-  if (mode == X2_TOUCH_CONTROLS_OFF) {
+  if (mode == x2::config::kTouchControlsOff) {
     return;
   }
-  if (mode != X2_TOUCH_CONTROLS_ALWAYS && !g_host_capable) {
+  if (mode != x2::config::kTouchControlsAlways && !g_host_capable) {
     return;
   }
   ensure();
@@ -121,7 +121,7 @@ void claim_player_one() {
    * is actually here.
    *
    * This used to test that the setting existed at all, which is not what
-   * holds a player: x2_player_input_sync resolves a reservation through
+   * holds a player: player_input_sync resolves a reservation through
    * dinput_pad_for_persistent_id and leaves the player unassigned when that
    * device is absent. So a phone whose owner had once paired a Bluetooth pad
    * kept a reservation nothing could satisfy, player one ended up with no
@@ -129,7 +129,7 @@ void claim_player_one() {
    * to fill. Same resolver, same answer.
    */
   const char *const reserved =
-      x2_settings_player_controller(x2_settings_store(), 0);
+      settings_player_controller(x2::config::settings_store(), 0);
   if (reserved && dinput_pad_for_persistent_id(reserved) >= 0) {
     x2::input::touch_census()->player_one_held_by_setting++;
     return;

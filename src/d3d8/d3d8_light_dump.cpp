@@ -78,7 +78,7 @@ static long g_ld_want = -2, g_ld_done, g_ld_skip = -1, g_ld_skipped,
  */
 static long dump_requested(void) {
   if (g_ld_want == -2) {
-    const char *e = x2_config_override_get(kX2ConfigLightDump);
+    const char *e = config_override_get(x2::config::ConfigOverride::LightDump);
     g_ld_want = (e && *e) ? atol(e) : -1;
   }
   return g_ld_want;
@@ -129,7 +129,8 @@ void d3d8_light_dump(const GpuDraw *d) {
     static long minimum = -1;
     static int told;
     if (minimum < 0) {
-      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::LightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if ((long)gpu_frame_draws_so_far() < minimum)
@@ -162,7 +163,8 @@ void d3d8_light_dump(const GpuDraw *d) {
     return;
   {
     if (g_ld_skip < 0) {
-      const char *e = x2_config_override_get(kX2ConfigLightDumpSkip);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::LightDumpSkip);
       g_ld_skip = (e && *e) ? atol(e) : 0;
     }
     if (g_ld_skipped < g_ld_skip) {

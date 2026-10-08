@@ -73,7 +73,7 @@ namespace x2::native {
 
 void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   if (!window) {
-    x2_touch_runtime_cancel();
+    x2::input::touch_runtime_cancel();
     x2::native::win32_pointer_window(NULL);
     x2::native::win32_mouse_window_state(&g_mouse, 0, 0, 0);
     apply_cursor_policy();
@@ -84,7 +84,7 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
 
   g_window = window;
   x2::native::win32_pointer_window(window);
-  x2_touch_runtime_window(window);
+  x2::input::touch_runtime_window(window);
   g_hwnd = hwnd;
   g_hidden = hidden != 0;
   {
@@ -175,8 +175,8 @@ static void post_activation(int active, uint64_t timestamp) {
 }
 
 static void drain_touch_pointer(void) {
-  X2TouchPointer pointer;
-  while (x2_touch_runtime_take_pointer(&pointer))
+  x2::input::TouchPointer pointer;
+  while (x2::input::touch_runtime_take_pointer(&pointer))
     x2::native::win32_pointer_translate_touch(&pointer, &g_mouse, g_hwnd);
 }
 
@@ -214,13 +214,13 @@ static void pump_sdl(void) {
     /* Before the overlay's own gate and before the UI can consume the
        event: which device the player is using is a fact about every event,
        and the answer decides whether the overlay is drawn at all. */
-    x2_touch_runtime_note_source(&event);
-    x2_touch_runtime_lifecycle_event(&event);
+    x2::input::touch_runtime_note_source(&event);
+    x2::input::touch_runtime_lifecycle_event(&event);
     drain_touch_pointer();
 
     if (x2::ui::ui_handle_event(&event)) {
       if (x2::ui::ui_captures_input()) {
-        x2_touch_runtime_cancel();
+        x2::input::touch_runtime_cancel();
         drain_touch_pointer();
       }
       x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
@@ -230,7 +230,7 @@ static void pump_sdl(void) {
     if (x2::input::revive_prompt_event(event)) {
       continue;
     }
-    int touch_handled = x2_touch_runtime_event(&event);
+    int touch_handled = x2::input::touch_runtime_event(&event);
     drain_touch_pointer();
     if (touch_handled) {
       continue;

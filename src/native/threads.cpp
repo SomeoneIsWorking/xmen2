@@ -368,7 +368,7 @@ static void *thread_main(void *argument) {
   WR32(C.reg[kX86pEsp], t->arg);
   x86_guest_call_args(&C, t->start, 4u);
   t->exit_code = C.reg[kX86pEax];
-  x2_engine_detach_thread();
+  x2::native::engine_detach_thread();
 
   t->finished = 1;
   g_live_threads.fetch_sub(1, std::memory_order_relaxed);

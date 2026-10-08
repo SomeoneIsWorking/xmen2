@@ -53,16 +53,16 @@ void SkipDocument::shutdown() {
 }
 
 bool SkipDocument::wanted() {
-  return x2_touch_runtime_skip_button(nullptr, nullptr) != 0;
+  return x2::input::touch_runtime_skip_button(nullptr, nullptr) != 0;
 }
 
 void SkipDocument::update() {
   if (!document_ || !button_) {
     return;
   }
-  X2Rect rect{};
+  x2::presentation::Rect rect{};
   int held = 0;
-  const bool drawn = x2_touch_runtime_skip_button(&rect, &held) != 0;
+  const bool drawn = x2::input::touch_runtime_skip_button(&rect, &held) != 0;
   if (drawn != visible_) {
     visible_ = drawn;
     if (drawn) {

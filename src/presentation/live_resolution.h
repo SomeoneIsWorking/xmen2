@@ -11,7 +11,7 @@ namespace x2::presentation {
  * 1440p, 2160p -- and derive its width from the display's aspect ratio. See
  * resolution_ladder.h for the policy and display_geometry.h for the query.
  */
-void live_resolution_select_next(X2Settings *settings);
+void live_resolution_select_next(x2::config::Settings *settings);
 
 /*
  * Apply and persist one Port Settings resolution change as a transaction.
@@ -20,7 +20,9 @@ void live_resolution_select_next(X2Settings *settings);
  * the SDL window policy, retained title display state, and active D3D8
  * presentation are restored.
  */
-int live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
-                          const X2Settings *before, char *why, int whyn);
+int live_resolution_apply(struct SDL_Window *window,
+                          x2::config::Settings *settings,
+                          const x2::config::Settings *before, char *why,
+                          int whyn);
 
 } // namespace x2::presentation

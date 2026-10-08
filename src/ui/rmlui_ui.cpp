@@ -240,7 +240,8 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
                SDL_Window *window) {
   static bool environment_checked;
   if (!environment_checked) {
-    const char *open = x2_config_override_get(kX2ConfigSettingsOpen);
+    const char *open =
+        config_override_get(x2::config::ConfigOverride::SettingsOpen);
     environment_checked = true;
     if (open && open[0] && open[0] != '0') {
       x2::ui::settings_overlay_show();
@@ -248,7 +249,7 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
                   "startup.\n");
     }
   }
-  if (x2_touch_runtime_take_menu_request()) {
+  if (x2::input::touch_runtime_take_menu_request()) {
     x2::ui::settings_overlay_show();
     x2_log_info("RMLUI: the touch menu button showed the Port Settings "
                 "overlay.\n");
@@ -257,7 +258,7 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   /* Not the gameplay overlay's own gate: the menu pad is drawn on exactly
      the screens where that gate is false. */
   const bool touch_visible =
-      x2_touch_runtime_has_visuals() && !settings_visible;
+      x2::input::touch_runtime_has_visuals() && !settings_visible;
   /* Its own gate: a cinematic hides the gameplay overlay. */
   const bool skip_visible = x2::ui::SkipDocument::wanted() && !settings_visible;
   /* The paid revive offer: gameplay only, under the modal port settings. */

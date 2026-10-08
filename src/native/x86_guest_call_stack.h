@@ -7,7 +7,7 @@ struct X86pCpu;
 
 /*
  * One title-owned guest call that is live on the host stack. The nodes are
- * intrusive: each x2_engine_call owns its node for exactly as long as its
+ * intrusive: each engine_call owns its node for exactly as long as its
  * host frame exists. That removes the former fixed-depth shadow array and
  * gives JIT interception, inline native-import dispatch, longjmp recovery,
  * and fault diagnostics one current-call authority.

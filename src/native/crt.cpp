@@ -365,7 +365,7 @@ static void crt_exit_from(CPU *C, uint32_t code, const char *what) {
                "0x%08x). It is QUITTING on purpose -- this is not a "
                "crash.\n",
                what, code, from, mod ? mod : "unmapped", guest);
-  if (x2_config_override_get(kX2ConfigExitRing))
+  if (config_override_get(x2::config::ConfigOverride::ExitRing))
     x86_diag_dump();
   else
     x2_log_error("  Set X2_EXIT_RING=1 to dump the boundary ring here "
@@ -783,7 +783,7 @@ void imp_MSVCR71_getenv(CPU *C) {
   /* The host environment, copied into guest memory so the pointer fits. The
      copies are never freed, which is correct: getenv's result is meant to
      stay valid for the life of the program. */
-  const char *v = x2_guest_environment_get(ACS(0));
+  const char *v = x2::config::guest_environment_get(ACS(0));
   uint32_t p;
   if (!v) {
     ret_c(C, 0);

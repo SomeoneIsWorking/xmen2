@@ -56,7 +56,8 @@ static int g_probe_enabled = -1;
 
 int d3d8_selector_probe_enabled(void) {
   if (g_probe_enabled < 0) {
-    const char *path = x2_config_override_get(kX2ConfigSelectorProbe);
+    const char *path =
+        config_override_get(x2::config::ConfigOverride::SelectorProbe);
     g_probe_enabled = path && *path;
   }
   return g_probe_enabled;
@@ -252,10 +253,10 @@ static FILE *probe_output(void) {
   if (g_probe.initialized)
     return g_probe.output;
   g_probe.initialized = 1;
-  path = x2_config_override_get(kX2ConfigSelectorProbe);
+  path = config_override_get(x2::config::ConfigOverride::SelectorProbe);
   if (!path || !*path)
     return NULL;
-  target = x2_config_override_get(kX2ConfigSelectorTexture);
+  target = config_override_get(x2::config::ConfigOverride::SelectorTexture);
   primitive_text =
       target && !strncmp(target, "untextured:", 11) ? target + 11 : NULL;
   g_probe.target_untextured =

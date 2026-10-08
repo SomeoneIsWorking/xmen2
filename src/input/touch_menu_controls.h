@@ -12,7 +12,7 @@ namespace x2::input {
 
 /*
  * The menu pad: the controller every screen that is not gameplay is driven
- * with in touch play (x2_layout_build_menu places it).
+ * with in touch play (layout_build_menu places it).
  *
  * The retail menus were built for a controller and name its buttons in their
  * footers, so the port offers that controller rather than guessing which

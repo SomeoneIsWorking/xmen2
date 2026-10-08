@@ -72,24 +72,24 @@ bool is_release(lucent::touch::Phase phase) {
 class TouchRuntime {
 public:
   void set_window(SDL_Window *window);
-  bool viewport(X2LayoutViewport &out) const;
+  bool viewport(x2::presentation::LayoutViewport &out) const;
 
   // True when the event was this owner's to handle.
   bool handle(const SDL_Event &event);
   void handle_lifecycle(const SDL_Event &event);
   void note_source(const SDL_Event &event);
 
-  void cancel(X2TouchCancelCause cause);
-  void set_hud_regions(const X2HudRegions *regions);
-  void set_hud_placement(const X2HudPlacement *placement);
+  void cancel(TouchCancelCause cause);
+  void set_hud_regions(const x2::presentation::HudRegions *regions);
+  void set_hud_placement(const x2::presentation::HudPlacement *placement);
   // True once per press of the port menu button.
   bool take_menu_request();
-  void set_power_slots(const int icons[X2_POWER_SLOTS]);
-  bool take_pointer(X2TouchPointer &out);
-  std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
+  void set_power_slots(const int icons[kPowerSlots]);
+  bool take_pointer(TouchPointer &out);
+  std::size_t visuals(TouchVisual *out, std::size_t capacity) const;
   // The skip button's rectangle and whether a finger is on it, while one is
   // drawn: touch play, a window, and a skip offered.
-  bool skip_button(X2Rect &rect, bool &held) const;
+  bool skip_button(x2::presentation::Rect &rect, bool &held) const;
 
   bool has_window() const { return window_ != nullptr; }
   // Is there anything for the overlay document to draw -- the gameplay
@@ -150,7 +150,7 @@ private:
   /* The one viewport both the control zones and the relocated HUD lay out
      from, so neither owner computes its own and they cannot disagree about
      where the screen is. */
-  X2LayoutViewport viewport_{};
+  x2::presentation::LayoutViewport viewport_{};
   bool menu_requested_ = false;
 };
 
@@ -161,9 +161,10 @@ TouchRuntime runtime;
 } // namespace
 
 bool TouchRuntime::active() {
-  const unsigned mode = x2_settings_store()->touch_controls;
-  return mode == X2_TOUCH_CONTROLS_ALWAYS ||
-         (mode == X2_TOUCH_CONTROLS_AUTO && x2::input::touch_source_is_touch());
+  const unsigned mode = x2::config::settings_store()->touch_controls;
+  return mode == x2::config::kTouchControlsAlways ||
+         (mode == x2::config::kTouchControlsAuto &&
+          x2::input::touch_source_is_touch());
 }
 
 bool TouchRuntime::overlay_visible() const {
@@ -305,7 +306,7 @@ void TouchRuntime::set_window(SDL_Window *window) {
   touch_menu_.set_viewport(viewport_);
 }
 
-bool TouchRuntime::viewport(X2LayoutViewport &out) const {
+bool TouchRuntime::viewport(x2::presentation::LayoutViewport &out) const {
   if (!window_) {
     return false;
   }
@@ -383,7 +384,7 @@ bool TouchRuntime::route_to_skip(const SDL_TouchFingerEvent &finger) {
                      phase_of(finger.type), viewport_);
 }
 
-bool TouchRuntime::skip_button(X2Rect &rect, bool &held) const {
+bool TouchRuntime::skip_button(x2::presentation::Rect &rect, bool &held) const {
   if (!window_ || !active() || !SkipButton::offered()) {
     return false;
   }
@@ -466,7 +467,7 @@ bool TouchRuntime::handle(const SDL_Event &event) {
   }
   if (touch_menu_shown()) {
     if (!contacts_.empty()) {
-      cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+      cancel(TouchCancelCause::OverlayHidden);
     }
     if (!menu_contacts_.empty()) {
       release_menu();
@@ -485,7 +486,7 @@ bool TouchRuntime::handle(const SDL_Event &event) {
   }
   if (!overlay_visible()) {
     if (!contacts_.empty()) {
-      cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+      cancel(TouchCancelCause::OverlayHidden);
     }
     if (!menu_visible() && !menu_contacts_.empty()) {
       release_menu();
@@ -521,7 +522,7 @@ void TouchRuntime::handle_lifecycle(const SDL_Event &event) {
   if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
       event.type == SDL_EVENT_WINDOW_HIDDEN ||
       event.type == SDL_EVENT_WINDOW_MINIMIZED) {
-    cancel(X2_TOUCH_CANCEL_WINDOW_GONE);
+    cancel(TouchCancelCause::WindowGone);
   } else if (event.type == SDL_EVENT_WINDOW_RESIZED ||
              event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
              event.type == SDL_EVENT_WINDOW_SAFE_AREA_CHANGED) {
@@ -535,23 +536,23 @@ void TouchRuntime::note_source(const SDL_Event &event) {
   if (was_touch && !x2::input::touch_source_is_touch()) {
     /* Whatever was under a finger is not held any more: the zones that were
        down would otherwise stay down with the overlay gone. */
-    cancel(X2_TOUCH_CANCEL_SOURCE_CHANGED);
+    cancel(TouchCancelCause::SourceChanged);
   }
 }
 
-void TouchRuntime::cancel(X2TouchCancelCause cause) {
+void TouchRuntime::cancel(TouchCancelCause cause) {
   x2::input::TouchCensus &census = *x2::input::touch_census();
   switch (cause) {
-  case X2_TOUCH_CANCEL_OVERLAY_HIDDEN:
+  case TouchCancelCause::OverlayHidden:
     census.cancelled_overlay_hidden++;
     break;
-  case X2_TOUCH_CANCEL_WINDOW_GONE:
+  case TouchCancelCause::WindowGone:
     census.cancelled_window_gone++;
     break;
-  case X2_TOUCH_CANCEL_SOURCE_CHANGED:
+  case TouchCancelCause::SourceChanged:
     census.cancelled_source_changed++;
     break;
-  case X2_TOUCH_CANCEL_WINDOW_CHANGED:
+  case TouchCancelCause::WindowChanged:
     census.cancelled_window_changed++;
     break;
   }
@@ -559,7 +560,7 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
      zones and the pointer are two routes out of one finger, and leaving
      either held is the same defect. The overlay merely being hidden is not
      one of them -- that is the state in which the pointer is IN USE. */
-  if (cause != X2_TOUCH_CANCEL_OVERLAY_HIDDEN && pointer_.release_if_held()) {
+  if (cause != TouchCancelCause::OverlayHidden && pointer_.release_if_held()) {
     census.pointer_events++;
   }
   publish(controls_.cancel());
@@ -572,11 +573,13 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   deliver(touch_menu_.cancel());
 }
 
-void TouchRuntime::set_hud_placement(const X2HudPlacement *placement) {
+void TouchRuntime::set_hud_placement(
+    const x2::presentation::HudPlacement *placement) {
   publish(controls_.set_hud_placement(overlay_visible() ? placement : nullptr));
 }
 
-void TouchRuntime::set_hud_regions(const X2HudRegions *regions) {
+void TouchRuntime::set_hud_regions(
+    const x2::presentation::HudRegions *regions) {
   if (!regions || !overlay_visible()) {
     publish(controls_.set_hud({}));
   } else {
@@ -590,15 +593,15 @@ bool TouchRuntime::take_menu_request() {
   return requested;
 }
 
-void TouchRuntime::set_power_slots(const int icons[X2_POWER_SLOTS]) {
-  std::array<int, X2_POWER_SLOTS> next{};
-  std::copy(icons, icons + X2_POWER_SLOTS, next.begin());
+void TouchRuntime::set_power_slots(const int icons[kPowerSlots]) {
+  std::array<int, kPowerSlots> next{};
+  std::copy(icons, icons + kPowerSlots, next.begin());
   publish(controls_.set_power_icons(next));
 }
 
-bool TouchRuntime::take_pointer(X2TouchPointer &out) {
+bool TouchRuntime::take_pointer(TouchPointer &out) {
   if (!overlay_visible() && !contacts_.empty()) {
-    cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+    cancel(TouchCancelCause::OverlayHidden);
   }
   /* Asked every frame, so a pad button held while its screen gave way to
      gameplay or a cinematic is let go even if the finger never moves. */
@@ -612,7 +615,7 @@ bool TouchRuntime::has_visuals() const {
   return overlay_visible() || menu_visible();
 }
 
-std::size_t TouchRuntime::visuals(X2TouchVisual *out,
+std::size_t TouchRuntime::visuals(TouchVisual *out,
                                   std::size_t capacity) const {
   const auto zones = overlay_visible() ? controls_.zones()
                      : menu_visible()
@@ -628,79 +631,75 @@ void touch_runtime_set_menu(std::optional<TouchMenuView> view) {
 
 TouchMenuState touch_menu_state() { return runtime.touch_menu_state(); }
 
-} // namespace x2::input
-
 /* ------------------------------------------------------------------------ */
 /* The C surface the host event pump, the HUD and the renderer call. It holds
    no state: every entry point below forwards to the one owner above. */
 
-using x2::input::TouchRuntime;
-
-void x2_touch_runtime_window(SDL_Window *new_window) {
-  x2::input::runtime.set_window(new_window);
+void touch_runtime_window(SDL_Window *new_window) {
+  runtime.set_window(new_window);
 }
 
-int x2_touch_runtime_viewport(X2LayoutViewport *out) {
-  return out && x2::input::runtime.viewport(*out) ? 1 : 0;
+int touch_runtime_viewport(x2::presentation::LayoutViewport *out) {
+  return out && runtime.viewport(*out) ? 1 : 0;
 }
 
-int x2_touch_runtime_event(const SDL_Event *event) {
-  return event && x2::input::runtime.handle(*event) ? 1 : 0;
+int touch_runtime_event(const SDL_Event *event) {
+  return event && runtime.handle(*event) ? 1 : 0;
 }
 
-void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
+void touch_runtime_lifecycle_event(const SDL_Event *event) {
   if (event) {
-    x2::input::runtime.handle_lifecycle(*event);
+    runtime.handle_lifecycle(*event);
   }
 }
 
-void x2_touch_runtime_note_source(const SDL_Event *event) {
+void touch_runtime_note_source(const SDL_Event *event) {
   if (event) {
-    x2::input::runtime.note_source(*event);
+    runtime.note_source(*event);
   }
 }
 
-void x2_touch_runtime_cancel(void) {
-  x2::input::runtime.cancel(X2_TOUCH_CANCEL_WINDOW_CHANGED);
+void touch_runtime_cancel(void) {
+  runtime.cancel(TouchCancelCause::WindowChanged);
 }
 
-void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
-  x2::input::runtime.cancel(cause);
+void touch_runtime_cancel_because(TouchCancelCause cause) {
+  runtime.cancel(cause);
 }
 
-void x2_touch_runtime_hud_regions(const X2HudRegions *regions) {
-  x2::input::runtime.set_hud_regions(regions);
+void touch_runtime_hud_regions(const x2::presentation::HudRegions *regions) {
+  runtime.set_hud_regions(regions);
 }
 
-void x2_touch_runtime_hud_placement(const X2HudPlacement *placement) {
-  x2::input::runtime.set_hud_placement(placement);
+void touch_runtime_hud_placement(
+    const x2::presentation::HudPlacement *placement) {
+  runtime.set_hud_placement(placement);
 }
 
-int x2_touch_runtime_take_menu_request(void) {
-  return x2::input::runtime.take_menu_request() ? 1 : 0;
+int touch_runtime_take_menu_request(void) {
+  return runtime.take_menu_request() ? 1 : 0;
 }
 
-void x2_touch_runtime_power_slots(const int icons[X2_POWER_SLOTS]) {
-  x2::input::runtime.set_power_slots(icons);
+void touch_runtime_power_slots(const int icons[kPowerSlots]) {
+  runtime.set_power_slots(icons);
 }
 
-int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
-  return pointer && x2::input::runtime.take_pointer(*pointer) ? 1 : 0;
+int touch_runtime_take_pointer(TouchPointer *pointer) {
+  return pointer && runtime.take_pointer(*pointer) ? 1 : 0;
 }
 
-size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
-  return x2::input::runtime.visuals(out, capacity);
+size_t touch_runtime_visuals(TouchVisual *out, size_t capacity) {
+  return runtime.visuals(out, capacity);
 }
 
-const char *x2_touch_runtime_action_name(int action) {
-  return x2::input::touch_action_name(
-      static_cast<x2::input::TouchAction>(action));
+const char *touch_runtime_action_name(int action) {
+  return touch_action_name(static_cast<TouchAction>(action));
 }
 
-int x2_touch_runtime_skip_button(X2Rect *rect, int *held) {
-  X2Rect placed{};
+int touch_runtime_skip_button(x2::presentation::Rect *rect, int *held) {
+  x2::presentation::Rect placed{};
   bool pressed = false;
-  if (!x2::input::runtime.skip_button(placed, pressed)) {
+  if (!runtime.skip_button(placed, pressed)) {
     return 0;
   }
   if (rect) {
@@ -712,18 +711,17 @@ int x2_touch_runtime_skip_button(X2Rect *rect, int *held) {
   return 1;
 }
 
-int x2_touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }
+int touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }
 
-int x2_touch_runtime_overlay_visible(void) {
-  return x2::input::runtime.overlay_visible() ? 1 : 0;
+int touch_runtime_overlay_visible(void) {
+  return runtime.overlay_visible() ? 1 : 0;
 }
 
-int x2_touch_runtime_has_visuals(void) {
-  return x2::input::runtime.has_visuals() ? 1 : 0;
+int touch_runtime_has_visuals(void) { return runtime.has_visuals() ? 1 : 0; }
+
+void touch_runtime_report(const char *tag) {
+  touch_census_report(tag, runtime.has_window() ? 1 : 0,
+                      touch_pad::host_devices(), touch_pad::host_capable());
 }
 
-void x2_touch_runtime_report(const char *tag) {
-  x2::input::touch_census_report(tag, x2::input::runtime.has_window() ? 1 : 0,
-                                 x2::input::touch_pad::host_devices(),
-                                 x2::input::touch_pad::host_capable());
-}
+} // namespace x2::input

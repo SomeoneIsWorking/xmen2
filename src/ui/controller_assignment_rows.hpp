@@ -18,7 +18,7 @@ struct ControllerAssignmentRow {
 };
 
 std::vector<ControllerAssignmentRow>
-controller_assignment_rows(const X2Settings &settings);
+controller_assignment_rows(const x2::config::Settings &settings);
 
 } // namespace x2::ui
 

@@ -49,9 +49,9 @@ int x2::input::transient_controller_player_for_pad(int pad) {
 }
 
 int main() {
-  X2Settings settings{};
+  x2::config::Settings settings{};
   for (auto &assignment : settings.controller)
-    assignment.player = X2_SETTINGS_UNASSIGNED;
+    assignment.player = x2::config::kSettingsUnassigned;
   std::strcpy(settings.controller[0].id, "stable-a");
   settings.controller[0].player = 1;
   transient_id[1] = "stable-a";

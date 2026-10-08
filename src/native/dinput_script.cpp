@@ -47,7 +47,8 @@ static double g_script_t0;
 static double script_now(void) { return guest_clock_now_s(); }
 
 static void script_parse(void) {
-  const char *value = x2_config_override_get(kX2ConfigInputScript);
+  const char *value =
+      config_override_get(x2::config::ConfigOverride::InputScript);
   const char *p;
 
   g_script_parsed = 1;

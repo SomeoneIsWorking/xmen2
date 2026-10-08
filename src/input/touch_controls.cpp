@@ -29,7 +29,7 @@ void add_button_events(std::vector<ActionEvent> &out,
 
 void add_stick_events(std::vector<ActionEvent> &out,
                       const lucent::touch::Event &event, ThumbStick &stick,
-                      const X2Rect &ring,
+                      const x2::presentation::Rect &ring,
                       const std::array<TouchAction, 4> &actions) {
   stick.set_travel(std::min(ring.right - ring.left, ring.bottom - ring.top) *
                    0.5F);
@@ -217,12 +217,14 @@ PortraitPointer::route(std::span<const ActionEvent> events) {
 
 namespace {
 
-bool same_rects(std::span<const X2Rect> a, std::span<const X2Rect> b) {
-  return std::equal(a.begin(), a.end(), b.begin(), b.end(),
-                    [](const X2Rect &x, const X2Rect &y) {
-                      return x.left == y.left && x.top == y.top &&
-                             x.right == y.right && x.bottom == y.bottom;
-                    });
+bool same_rects(std::span<const x2::presentation::Rect> a,
+                std::span<const x2::presentation::Rect> b) {
+  return std::equal(
+      a.begin(), a.end(), b.begin(), b.end(),
+      [](const x2::presentation::Rect &x, const x2::presentation::Rect &y) {
+        return x.left == y.left && x.top == y.top && x.right == y.right &&
+               x.bottom == y.bottom;
+      });
 }
 
 } // namespace
@@ -230,10 +232,11 @@ bool same_rects(std::span<const X2Rect> a, std::span<const X2Rect> b) {
 /* The drawn HUD regions for a mask, all-or-nothing: one rectangle that is not
    a real on-screen area drops the whole group rather than routing to it.
    Returns the accepted mask. */
-unsigned TouchControls::accept_regions(std::span<const X2Rect> regions,
-                                       unsigned mask,
-                                       std::span<X2Rect> out) const {
-  std::fill(out.begin(), out.end(), X2Rect{});
+unsigned
+TouchControls::accept_regions(std::span<const x2::presentation::Rect> regions,
+                              unsigned mask,
+                              std::span<x2::presentation::Rect> out) const {
+  std::fill(out.begin(), out.end(), x2::presentation::Rect{});
   if (regions.size() != out.size() || (mask & ~((1u << out.size()) - 1u)))
     return 0;
   for (unsigned i = 0; i < out.size(); ++i) {
@@ -245,7 +248,7 @@ unsigned TouchControls::accept_regions(std::span<const X2Rect> regions,
         rect.left < 0 || rect.top < 0 || rect.right > viewport_.width ||
         rect.bottom > viewport_.height || rect.right <= rect.left ||
         rect.bottom <= rect.top) {
-      std::fill(out.begin(), out.end(), X2Rect{});
+      std::fill(out.begin(), out.end(), x2::presentation::Rect{});
       return 0;
     }
     out[i] = rect;
@@ -253,8 +256,9 @@ unsigned TouchControls::accept_regions(std::span<const X2Rect> regions,
   return mask;
 }
 
-std::vector<ActionEvent> TouchControls::set_hud(const X2HudRegions &regions) {
-  X2HudRegions next{};
+std::vector<ActionEvent>
+TouchControls::set_hud(const x2::presentation::HudRegions &regions) {
+  x2::presentation::HudRegions next{};
   next.portrait_mask =
       accept_regions(regions.portraits, regions.portrait_mask, next.portraits);
   next.potion_mask =
@@ -274,9 +278,10 @@ std::vector<ActionEvent> TouchControls::set_hud(const X2HudRegions &regions) {
   return released;
 }
 
-std::vector<ActionEvent>
-TouchControls::set_hud_placement(const X2HudPlacement *placement) {
-  const X2HudPlacement next = placement ? *placement : X2HudPlacement{};
+std::vector<ActionEvent> TouchControls::set_hud_placement(
+    const x2::presentation::HudPlacement *placement) {
+  const x2::presentation::HudPlacement next =
+      placement ? *placement : x2::presentation::HudPlacement{};
   if (hud_placed_ == (placement != nullptr) &&
       same_rects(std::span{&next.vitals, 1},
                  std::span{&hud_placement_.vitals, 1}) &&
@@ -302,15 +307,19 @@ TouchControls::set_power_icons(const std::array<int, 4> &icons) {
   return released;
 }
 
-X2Rect TouchControls::port_menu_rect(X2Rect waiting) const {
-  constexpr unsigned all_icons = (1u << X2_HUD_MENU_ICONS) - 1u;
+x2::presentation::Rect
+TouchControls::port_menu_rect(x2::presentation::Rect waiting) const {
+  constexpr unsigned all_icons = (1u << x2::presentation::kHudMenuIcons) - 1u;
   if (hud_.menu_icon_mask != all_icons)
     return waiting;
   // One more step along the row the game spaced its own icons on, at their
   // size, kept on screen.
-  const X2Rect &last = hud_.menu_icons[X2_HUD_MENU_ICONS - 1];
-  const float step = last.left - hud_.menu_icons[X2_HUD_MENU_ICONS - 2].left;
-  const X2Rect next{last.left + step, last.top, last.right + step, last.bottom};
+  const x2::presentation::Rect &last =
+      hud_.menu_icons[x2::presentation::kHudMenuIcons - 1];
+  const float step =
+      last.left - hud_.menu_icons[x2::presentation::kHudMenuIcons - 2].left;
+  const x2::presentation::Rect next{last.left + step, last.top,
+                                    last.right + step, last.bottom};
   if (step <= 0.0F || next.right > viewport_.width - viewport_.safe_area.right)
     return waiting;
   return next;
@@ -318,13 +327,13 @@ X2Rect TouchControls::port_menu_rect(X2Rect waiting) const {
 
 void TouchControls::rebuild_zones() {
   zones_.clear();
-  X2LayoutViewport layout_viewport{
+  x2::presentation::LayoutViewport layout_viewport{
       viewport_.width,           viewport_.height,
       viewport_.safe_area.left,  viewport_.safe_area.top,
       viewport_.safe_area.right, viewport_.safe_area.bottom};
-  X2Rect slots[kX2SlotCount];
-  if (!x2_layout_build(layout_viewport, hud_placed_ ? &hud_placement_ : nullptr,
-                       slots)) {
+  x2::presentation::Rect slots[x2::presentation::kSlotCount];
+  if (!layout_build(layout_viewport, hud_placed_ ? &hud_placement_ : nullptr,
+                    slots)) {
     // No usable area: no zones. Distinct from "zones that cover nothing" --
     // the router is told there is nothing to route against.
     const std::vector<lucent::touch::Zone> empty;
@@ -333,7 +342,7 @@ void TouchControls::rebuild_zones() {
     return;
   }
 
-  auto add = [this](std::uint32_t id, X2Rect r, int priority,
+  auto add = [this](std::uint32_t id, x2::presentation::Rect r, int priority,
                     TouchAction action, bool stick, bool visible = true) {
     zones_.push_back({{id, r.left, r.top, r.right, r.bottom, priority},
                       action,
@@ -347,33 +356,35 @@ void TouchControls::rebuild_zones() {
   // touchable zones drift apart.
   // The stick captures the whole lower-left reach, not only its ring; the
   // ring is drawn where the thumb lands.
-  stick_ring_ = slots[kX2SlotStick];
-  add(left_stick, x2_layout_stick_reach(layout_viewport, slots), 0,
+  stick_ring_ = slots[x2::presentation::kSlotStick];
+  add(left_stick, layout_stick_reach(layout_viewport, slots), 0,
       TouchAction::MoveLeft, true);
-  add(10, slots[kX2SlotLightAttack], 20, TouchAction::LightAttack, false);
-  add(11, slots[kX2SlotHeavyAttack], 20, TouchAction::HeavyAttack, false);
-  add(12, slots[kX2SlotUse], 20, TouchAction::Use, false);
-  add(13, slots[kX2SlotJump], 20, TouchAction::Jump, false);
+  add(10, slots[x2::presentation::kSlotLightAttack], 20,
+      TouchAction::LightAttack, false);
+  add(11, slots[x2::presentation::kSlotHeavyAttack], 20,
+      TouchAction::HeavyAttack, false);
+  add(12, slots[x2::presentation::kSlotUse], 20, TouchAction::Use, false);
+  add(13, slots[x2::presentation::kSlotJump], 20, TouchAction::Jump, false);
   for (std::uint32_t i = 0; i < power_icons_.size(); ++i) {
     if (power_icons_[i] < 0)
       continue;
-    add(20 + i, slots[kX2SlotPower1 + i], 20,
+    add(20 + i, slots[x2::presentation::kSlotPower1 + i], 20,
         static_cast<TouchAction>(static_cast<int>(TouchAction::Power1) + i),
         false);
     zones_.back().power_icon = power_icons_[i];
   }
-  add(40, port_menu_rect(slots[kX2SlotPortMenu]), 20, TouchAction::PortMenu,
-      false);
+  add(40, port_menu_rect(slots[x2::presentation::kSlotPortMenu]), 20,
+      TouchAction::PortMenu, false);
 
   // Camera is an invisible relative swipe over the playfield -- everything
   // the controls and the HUD do not claim. Lowest priority, so a combat
   // chord or a portrait tap never moves it.
   {
     const float left = layout_viewport.safe_left;
-    const float top =
-        hud_placed_ ? slots[kX2SlotVitals].bottom : layout_viewport.safe_top;
+    const float top = hud_placed_ ? slots[x2::presentation::kSlotVitals].bottom
+                                  : layout_viewport.safe_top;
     const float right = layout_viewport.width - layout_viewport.safe_right;
-    const float bottom = slots[kX2SlotStick].top;
+    const float bottom = slots[x2::presentation::kSlotStick].top;
     if (bottom > top && right > left)
       add(camera_swipe, {left, top, right, bottom}, -10,
           TouchAction::CameraLeft, false, false);
@@ -389,7 +400,8 @@ void TouchControls::rebuild_zones() {
   // separate router lets their changing bounds cancel only HUD captures.
   router_zones.clear();
   const auto add_hud = [&](std::uint32_t first_id,
-                           std::span<const X2Rect> regions, unsigned mask,
+                           std::span<const x2::presentation::Rect> regions,
+                           unsigned mask,
                            std::span<const TouchAction> actions) {
     for (std::uint32_t i = 0; i < regions.size(); ++i) {
       if (!(mask & (1u << i)))
@@ -462,7 +474,7 @@ TouchControls::translate(std::span<const lucent::touch::Event> events) {
   return actions;
 }
 
-X2Rect TouchControls::stick_ring() const {
+x2::presentation::Rect TouchControls::stick_ring() const {
   if (!stick_.engaged()) {
     return stick_ring_;
   }

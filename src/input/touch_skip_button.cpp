@@ -13,7 +13,7 @@ constexpr float kWidthPerHeight = 2.4F;
    clear of the edge. */
 constexpr float kMarginFraction = 0.035F;
 
-bool inside(X2Rect rect, float x, float y) {
+bool inside(x2::presentation::Rect rect, float x, float y) {
   return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom;
 }
 
@@ -24,19 +24,21 @@ bool is_release(lucent::touch::Phase phase) {
 
 } // namespace
 
-X2Rect SkipButton::place(X2LayoutViewport viewport) {
+x2::presentation::Rect
+SkipButton::place(x2::presentation::LayoutViewport viewport) {
   const float height = viewport.height * kHeightFraction;
   const float width = height * kWidthPerHeight;
   const float margin = viewport.height * kMarginFraction;
   const float right = viewport.width - viewport.safe_right - margin;
   const float top = viewport.safe_top + margin;
-  return X2Rect{right - width, top, right, top + height};
+  return x2::presentation::Rect{right - width, top, right, top + height};
 }
 
 bool SkipButton::offered() { return x2_cutscene_skip_available() != 0; }
 
 bool SkipButton::press(std::int64_t contact_id, float x, float y,
-                       lucent::touch::Phase phase, X2LayoutViewport viewport) {
+                       lucent::touch::Phase phase,
+                       x2::presentation::LayoutViewport viewport) {
   if (contact_) {
     if (*contact_ != contact_id) {
       return false;

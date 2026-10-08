@@ -52,7 +52,7 @@ static uint64_t phys_bytes(void) {
 static int verbose(void) {
   static int v = -1;
   if (v < 0) {
-    const char *e = x2_config_override_get(kX2ConfigVerbose);
+    const char *e = config_override_get(x2::config::ConfigOverride::Verbose);
     v = e && *e == '1';
   }
   return v;

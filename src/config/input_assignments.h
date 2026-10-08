@@ -5,6 +5,6 @@
 namespace x2::config {
 
 int input_owner_valid(int player);
-int input_assignments_valid(const X2Settings *settings);
+int input_assignments_valid(const Settings *settings);
 
 } // namespace x2::config

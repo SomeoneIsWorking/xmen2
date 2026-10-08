@@ -198,7 +198,8 @@ void dsound_mixer_open_device(void) {
    * about time. `SDL_AUDIODRIVER=dummy` is that request. Only a hidden run with
    * no such request falls back to the guest-clocked silent device.
    */
-  const char *driver = x2_config_override_get(kX2ConfigSdlAudioDriver);
+  const char *driver =
+      config_override_get(x2::config::ConfigOverride::SdlAudioDriver);
   const int want_sdl = driver && !strcmp(driver, "dummy");
   if (win32_sdl_windows_hidden() && !want_sdl) {
     x2_log_error("DSOUND: --no-window, so no host playback device is "

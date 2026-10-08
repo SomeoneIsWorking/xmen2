@@ -108,7 +108,8 @@ void d3d8_light_survey(const GpuDraw *d) {
   int black, only_atten, i;
 
   if (g_sv_on < 0) {
-    const char *e = x2_config_override_get(kX2ConfigLightSurvey);
+    const char *e =
+        config_override_get(x2::config::ConfigOverride::LightSurvey);
     g_sv_on = (e && *e) ? atoi(e) : 0;
   }
   if (!g_sv_on)
@@ -140,7 +141,8 @@ void d3d8_light_survey(const GpuDraw *d) {
       return;
     }
     if (minimum < 0) {
-      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::LightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if (!g_sv_started) {
@@ -176,7 +178,8 @@ void d3d8_light_survey(const GpuDraw *d) {
     {
       static long every = -1;
       if (every < 0) {
-        const char *e = x2_config_override_get(kX2ConfigLightSurveyEvery);
+        const char *e =
+            config_override_get(x2::config::ConfigOverride::LightSurveyEvery);
         every = (e && *e) ? atol(e) : 120;
         if (every < 1)
           every = 1;

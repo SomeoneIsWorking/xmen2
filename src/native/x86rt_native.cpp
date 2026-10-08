@@ -575,7 +575,7 @@ static int g_epc_n = -1;
 static unsigned long g_epc_dispatches;
 
 static void epcount_init(void) {
-  const char *e = x2_config_override_get(kX2ConfigEpCount);
+  const char *e = config_override_get(x2::config::ConfigOverride::EpCount);
   char buf[256], *p, *save;
   g_epc_n = 0;
   if (!e || !*e)
@@ -652,7 +652,8 @@ void x86_epcount_report(void) {
  */
 void x86_stackcheck_arm(int on) {
   if (on && !g_sc_out) {
-    const char *path = x2_config_override_get(kX2ConfigStackCheck);
+    const char *path =
+        config_override_get(x2::config::ConfigOverride::StackCheck);
     if (!path || !*path)
       return; /* not asked for */
     g_sc_out = fopen(path, "w");

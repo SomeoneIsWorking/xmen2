@@ -79,8 +79,8 @@ int main(void) {
     SDL_Quit();
     return 77;
   }
-  x2_settings_store()->width = 1280;
-  x2_settings_store()->height = 720;
+  x2::config::settings_store()->width = 1280;
+  x2::config::settings_store()->height = 720;
   x2::native::win32_pointer_window(window);
 
   cursor_agrees(window, 320.0f, 240.0f,
@@ -93,7 +93,7 @@ int main(void) {
   {
     x2::native::Win32Mouse mouse;
     x2::native::Win32Message message;
-    X2TouchPointer pointer = {1, 1100.0f, 650.0f, 1, 0, 1};
+    x2::input::TouchPointer pointer = {1, 1100.0f, 650.0f, 1, 0, 1};
     int32_t screen_x = 1100;
     int32_t screen_y = 650;
 

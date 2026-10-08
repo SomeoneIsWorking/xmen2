@@ -114,7 +114,7 @@ int main(void) {
             RD16(occupied + GL_OFFSET) == 4u &&
             RD32(occupied + GL_BASELINE) == 5u,
         "an occupied shipped codepoint is not overwritten");
-  check(!x2_prompt_glyph_available(X2_PROMPT_GLYPH_FIRST) &&
+  check(!x2::native::prompt_glyph_available(X2_PROMPT_GLYPH_FIRST) &&
             !x2::native::prompt_glyph_cell(X2_PROMPT_GLYPH_FIRST),
         "an occupied codepoint becomes globally unavailable to native art");
 
@@ -144,7 +144,7 @@ int main(void) {
   check(RD16(empty_cell + GL_WIDTH) == 0u &&
             RD32(empty_cell + GL_BASELINE) == 0u,
         "a font without evidenced capitals is left untouched");
-  check(!x2_prompt_glyph_available(X2_PROMPT_GLYPH_LAST),
+  check(!x2::native::prompt_glyph_available(X2_PROMPT_GLYPH_LAST),
         "occupancy is authoritative even in a font without a baseline");
 
   printf("  the report reads:\n");

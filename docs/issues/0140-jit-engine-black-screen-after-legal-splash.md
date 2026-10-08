@@ -63,11 +63,11 @@ blocked on the lock.
 
 ### 3. The engine's call-frame stack was process-global, not per-thread
 
-`x2_engine_call` is re-entered by every guest thread. Its frame stack
+`engine_call` is re-entered by every guest thread. Its frame stack
 (`g_frame[]`) and depth counter were
 `static`, guarded only by the comment "exactly one guest thread is inside this
 loop at a time". Cause 2's fix broke that assumption: once MAIN yields
-mid-call, the decoder thread enters `x2_engine_call` too, and the shared depth
+mid-call, the decoder thread enters `engine_call` too, and the shared depth
 counter makes `jit_intercept`'s `eip == frame->return_to` check read the wrong
 frame. A libCriMovie thread then ran past its own `0xDEADBEEF` entry sentinel
 (pushed by `x86_guest_call_args`) into unmapped memory:
@@ -96,7 +96,7 @@ made the array's current-frame lookup return null, which suppressed native
 override hand-back and sent the JIT through the original guest bodies.
 
 The current `src/native/x86_guest_call_stack.{c,h}` is one intrusive,
-thread-local stack whose nodes live in `x2_engine_call` host frames. Intercept
+thread-local stack whose nodes live in `engine_call` host frames. Intercept
 predicates, inline import dispatch, longjmp restoration, fault reporting, and
 nesting telemetry all read that same stack; there is no fixed-depth shadow
 state to diverge. The hand-back address predicate also remains unconditional.

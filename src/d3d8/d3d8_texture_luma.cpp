@@ -35,7 +35,7 @@ static double bgra_luma(const uint8_t *pixel) {
  * floating-point work per movie frame -- so the collector is armed explicitly
  * and the report says so when it was not. */
 static int armed(void) {
-  return x2_config_override_get(kX2ConfigTextureLuma) != NULL;
+  return config_override_get(x2::config::ConfigOverride::TextureLuma) != NULL;
 }
 
 void d3d8_texture_luma_note(uint32_t handle, uint32_t format, uint32_t width,
@@ -135,7 +135,7 @@ void d3d8_texture_luma_report(void) {
                 "NOTHING about the textures.\n");
     return;
   }
-  if (x2_config_override_get(kX2ConfigTextureLumaAll)) {
+  if (config_override_get(x2::config::ConfigOverride::TextureLumaAll)) {
     for (index = 0; index < g_luma_count; ++index)
       x2_log_info("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f\n",
                   g_luma[index].handle, g_luma[index].width,

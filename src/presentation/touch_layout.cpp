@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+namespace x2::presentation {
+
 /*
  * The proportions, named once.
  *
@@ -16,62 +18,65 @@
  * a tall phone and a wide tablet; positions are insets from the safe edges for
  * the same reason.
  */
-static const float kStickDiameter = 0.38F; /* of the short edge */
+namespace {
+const float kStickDiameter = 0.38F; /* of the short edge */
 /* Every round button -- the four actions and the four powers -- is this one
    size, so no control reads as more important than its neighbours. */
-static const float kButtonDiameter = 0.165F;
-static const float kButtonGap = 0.025F;
-static const float kEdgeInset = 0.06F;
+const float kButtonDiameter = 0.165F;
+const float kButtonGap = 0.025F;
+const float kEdgeInset = 0.06F;
 /* The powers ring the action diamond on its open side, inboard and up, where
    the right thumb reaches from the attacks without crossing them. Degrees
    from the cluster's right, counter-clockwise, in slot order. The angles are
    not evenly spread: each neighbouring pair -- and each power beside Jump or
    Use -- differs by a full diameter on one axis, so no two touch squares
    overlap, and the highest stays clear of the party portraits. */
-static const float kPowerAngles[4] = {208.0F, 179.0F, 146.0F, 109.0F};
+const float kPowerAngles[4] = {208.0F, 179.0F, 146.0F, 109.0F};
 /* The game's own menu icons are 32 units of its 384-unit screen height; the
    port menu that waits for them is that size. */
-static const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
+const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
 
-static const char *const kSlotNames[] = {
+const char *const kSlotNames[] = {
     "vitals",       "potions", "portraits", "stick",   "light-attack",
     "heavy-attack", "use",     "jump",      "power-1", "power-2",
     "power-3",      "power-4", "port-menu"};
 
-_Static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
-                   (int)kX2SlotCount,
-               "every X2LayoutSlot needs a name");
+static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
+                  (int)kSlotCount,
+              "every LayoutSlot needs a name");
 
-static const char *const kMenuSlotNames[] = {
+const char *const kMenuSlotNames[] = {
     "dpad-up", "dpad-down", "dpad-left", "dpad-right",    "a",
     "b",       "x",         "y",         "left-shoulder", "right-shoulder"};
 
-_Static_assert((int)(sizeof kMenuSlotNames / sizeof kMenuSlotNames[0]) ==
-                   (int)kX2MenuSlotCount,
-               "every X2MenuSlot needs a name");
+static_assert((int)(sizeof kMenuSlotNames / sizeof kMenuSlotNames[0]) ==
+                  (int)kMenuSlotCount,
+              "every MenuSlot needs a name");
+} // namespace
 
-const char *x2_menu_slot_name(int slot) {
-  if (slot < 0 || slot >= (int)kX2MenuSlotCount)
+const char *menu_slot_name(int slot) {
+  if (slot < 0 || slot >= (int)kMenuSlotCount)
     return "invalid-slot";
   return kMenuSlotNames[slot];
 }
 
-const char *x2_layout_slot_name(int slot) {
-  if (slot < 0 || slot >= (int)kX2SlotCount)
+const char *layout_slot_name(int slot) {
+  if (slot < 0 || slot >= (int)kSlotCount)
     return "invalid-slot";
   return kSlotNames[slot];
 }
 
-int x2_layout_slot_is_hud(int slot) {
-  return slot >= (int)kX2SlotVitals && slot <= (int)kX2SlotPortraits;
+int layout_slot_is_hud(int slot) {
+  return slot >= (int)kSlotVitals && slot <= (int)kSlotPortraits;
 }
 
-int x2_layout_rects_overlap(X2Rect a, X2Rect b) {
+int layout_rects_overlap(Rect a, Rect b) {
   return a.left < b.right && b.left < a.right && a.top < b.bottom &&
          b.top < a.bottom;
 }
 
-static int finite_viewport(X2LayoutViewport v) {
+namespace {
+int finite_viewport(LayoutViewport v) {
   return isfinite(v.width) && isfinite(v.height) && isfinite(v.safe_left) &&
          isfinite(v.safe_top) && isfinite(v.safe_right) &&
          isfinite(v.safe_bottom);
@@ -79,15 +84,15 @@ static int finite_viewport(X2LayoutViewport v) {
 
 /* A square of `size`, centred on (x, y). Every control is round or square and
    is placed by its centre, so the arithmetic exists once. */
-static X2Rect centred(float x, float y, float size) {
+Rect centred(float x, float y, float size) {
   const float half = size * 0.5F;
-  X2Rect r = {x - half, y - half, x + half, y + half};
+  Rect r = {x - half, y - half, x + half, y + half};
   return r;
 }
 
 /* The smallest rectangle holding all `count` rectangles. */
-static X2Rect bounds(const X2Rect *rects, unsigned count) {
-  X2Rect r = rects[0];
+Rect bounds(const Rect *rects, unsigned count) {
+  Rect r = rects[0];
   for (unsigned i = 1; i < count; ++i) {
     r.left = fminf(r.left, rects[i].left);
     r.top = fminf(r.top, rects[i].top);
@@ -96,9 +101,9 @@ static X2Rect bounds(const X2Rect *rects, unsigned count) {
   }
   return r;
 }
+} // namespace
 
-int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
-                    X2Rect *out) {
+int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
   float left, top, right, bottom, width, height, shortest;
   float inset, stick, button, gap, cluster_x, cluster_y;
 
@@ -123,11 +128,11 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
   /* --- The retail HUD: copied from its owner, never re-guessed ------- */
   /* No placement means empty bands: the controls lay out as if the HUD were
      not on screen. */
-  out[kX2SlotVitals] = hud ? hud->vitals : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
-  out[kX2SlotPotions] = hud ? bounds(hud->potions, X2_HUD_POTIONS)
-                            : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
-  out[kX2SlotPortraits] =
-      hud ? bounds(hud->portraits, 4) : X2Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kSlotVitals] = hud ? hud->vitals : Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kSlotPotions] =
+      hud ? bounds(hud->potions, kHudPotions) : Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kSlotPortraits] =
+      hud ? bounds(hud->portraits, 4) : Rect{0.0F, 0.0F, 0.0F, 0.0F};
 
   /*
    * THE TWO THUMB CLUSTERS SHARE ONE BAND, so their natural sizes are only a
@@ -159,9 +164,9 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
       arc_rise = fmaxf(arc_rise, sinf(angle) * arc + power * 0.5F);
     }
     const float needed_h = inset + extent + fmaxf(extent, arc_rise) + gap;
-    const float room_h = bottom - out[kX2SlotPortraits].bottom;
+    const float room_h = bottom - out[kSlotPortraits].bottom;
     /* The stick sits under the potions, so it must fit the room left there. */
-    const float room_stick = bottom - out[kX2SlotPotions].bottom;
+    const float room_stick = bottom - out[kSlotPotions].bottom;
     const float fit =
         fminf(1.0F, fminf(fminf(width / needed, room_h / needed_h),
                           room_stick / (inset + stick)));
@@ -172,8 +177,8 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
     const float s_extent = s_reach + s_button * 0.5F;
 
     /* --- Movement, bottom left ---------------------------------------- */
-    out[kX2SlotStick] = centred(left + s_inset + s_stick * 0.5F,
-                                bottom - s_inset - s_stick * 0.5F, s_stick);
+    out[kSlotStick] = centred(left + s_inset + s_stick * 0.5F,
+                              bottom - s_inset - s_stick * 0.5F, s_stick);
 
     /* --- Actions, bottom right ---------------------------------------- */
     /*
@@ -187,10 +192,10 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
      */
     cluster_x = right - s_inset - s_extent;
     cluster_y = bottom - s_inset - s_extent;
-    out[kX2SlotLightAttack] = centred(cluster_x, cluster_y + s_reach, s_button);
-    out[kX2SlotHeavyAttack] = centred(cluster_x + s_reach, cluster_y, s_button);
-    out[kX2SlotUse] = centred(cluster_x, cluster_y - s_reach, s_button);
-    out[kX2SlotJump] = centred(cluster_x - s_reach, cluster_y, s_button);
+    out[kSlotLightAttack] = centred(cluster_x, cluster_y + s_reach, s_button);
+    out[kSlotHeavyAttack] = centred(cluster_x + s_reach, cluster_y, s_button);
+    out[kSlotUse] = centred(cluster_x, cluster_y - s_reach, s_button);
+    out[kSlotJump] = centred(cluster_x - s_reach, cluster_y, s_button);
 
     /* Four power slots on an arc outside the diamond, centred as far out as
      * the diamond's reach plus both radii and a gap, so no power touches an
@@ -200,7 +205,7 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
       const float radius = arc * fit;
       for (int i = 0; i < 4; ++i) {
         const float angle = kPowerAngles[i] * 3.14159265F / 180.0F;
-        out[kX2SlotPower1 + i] =
+        out[kSlotPower1 + i] =
             centred(cluster_x + cosf(angle) * radius,
                     cluster_y - sinf(angle) * radius, s_power);
       }
@@ -217,25 +222,25 @@ int x2_layout_build(X2LayoutViewport v, const X2HudPlacement *hud,
       /* Right of the game's icon pair, shrunk to fit short of the portraits;
          under the portraits when the HUD leaves no room there. */
       const float menu_left = mid + icon + gap * 0.25F;
-      const float room = out[kX2SlotPortraits].left - gap * 0.25F - menu_left;
+      const float room = out[kSlotPortraits].left - gap * 0.25F - menu_left;
       const float size = hud ? fminf(icon, room) : icon;
-      X2Rect menu = {menu_left, top + gap, menu_left + size, top + gap + size};
-      for (int i = kX2SlotVitals; i <= kX2SlotPortraits; ++i) {
-        if (size < icon * 0.5F || x2_layout_rects_overlap(menu, out[i])) {
-          menu = centred(
-              menu_left + icon * 0.5F,
-              out[kX2SlotPortraits].bottom + gap * 0.25F + icon * 0.5F, icon);
+      Rect menu = {menu_left, top + gap, menu_left + size, top + gap + size};
+      for (int i = kSlotVitals; i <= kSlotPortraits; ++i) {
+        if (size < icon * 0.5F || layout_rects_overlap(menu, out[i])) {
+          menu = centred(menu_left + icon * 0.5F,
+                         out[kSlotPortraits].bottom + gap * 0.25F + icon * 0.5F,
+                         icon);
           break;
         }
       }
-      out[kX2SlotPortMenu] = menu;
+      out[kSlotPortMenu] = menu;
     }
   }
 
   return 1;
 }
 
-int x2_layout_build_menu(X2LayoutViewport v, X2Rect *out) {
+int layout_build_menu(LayoutViewport v, Rect *out) {
   float left, top, right, bottom, width, height, shortest;
   float inset, button, gap, reach, extent, fit, centre_y, dpad_x, face_x;
 
@@ -273,32 +278,34 @@ int x2_layout_build_menu(X2LayoutViewport v, X2Rect *out) {
   centre_y = bottom - inset - extent;
   dpad_x = left + inset + extent;
   face_x = right - inset - extent;
-  out[kX2MenuDpadUp] = centred(dpad_x, centre_y - reach, button);
-  out[kX2MenuDpadDown] = centred(dpad_x, centre_y + reach, button);
-  out[kX2MenuDpadLeft] = centred(dpad_x - reach, centre_y, button);
-  out[kX2MenuDpadRight] = centred(dpad_x + reach, centre_y, button);
-  out[kX2MenuA] = centred(face_x, centre_y + reach, button);
-  out[kX2MenuB] = centred(face_x + reach, centre_y, button);
-  out[kX2MenuX] = centred(face_x - reach, centre_y, button);
-  out[kX2MenuY] = centred(face_x, centre_y - reach, button);
+  out[kMenuDpadUp] = centred(dpad_x, centre_y - reach, button);
+  out[kMenuDpadDown] = centred(dpad_x, centre_y + reach, button);
+  out[kMenuDpadLeft] = centred(dpad_x - reach, centre_y, button);
+  out[kMenuDpadRight] = centred(dpad_x + reach, centre_y, button);
+  out[kMenuA] = centred(face_x, centre_y + reach, button);
+  out[kMenuB] = centred(face_x + reach, centre_y, button);
+  out[kMenuX] = centred(face_x - reach, centre_y, button);
+  out[kMenuY] = centred(face_x, centre_y - reach, button);
   {
     const float shoulder_y = centre_y - extent - gap - button * 0.5F;
-    out[kX2MenuLeftShoulder] = centred(dpad_x, shoulder_y, button);
-    out[kX2MenuRightShoulder] = centred(face_x, shoulder_y, button);
+    out[kMenuLeftShoulder] = centred(dpad_x, shoulder_y, button);
+    out[kMenuRightShoulder] = centred(face_x, shoulder_y, button);
   }
   return 1;
 }
 
-X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots) {
-  const X2Rect ring = slots[kX2SlotStick];
+Rect layout_stick_reach(LayoutViewport viewport, const Rect *slots) {
+  const Rect ring = slots[kSlotStick];
   float right = viewport.width * 0.5F;
   float top = viewport.height * 0.5F;
-  for (int slot = kX2SlotLightAttack; slot <= kX2SlotPower4; ++slot) {
+  for (int slot = kSlotLightAttack; slot <= kSlotPower4; ++slot) {
     right = fminf(right, slots[slot].left);
   }
-  top = fmaxf(top, slots[kX2SlotPotions].bottom);
-  const X2Rect reach = {viewport.safe_left, fminf(top, ring.top),
-                        fmaxf(right, ring.right),
-                        viewport.height - viewport.safe_bottom};
+  top = fmaxf(top, slots[kSlotPotions].bottom);
+  const Rect reach = {viewport.safe_left, fminf(top, ring.top),
+                      fmaxf(right, ring.right),
+                      viewport.height - viewport.safe_bottom};
   return reach;
 }
+
+} // namespace x2::presentation

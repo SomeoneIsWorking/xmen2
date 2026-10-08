@@ -11,7 +11,8 @@
 namespace x2::diagnostics {
 
 void Startup::begin(const char *user_data) {
-  const char *override_directory = x2_config_override_get(kX2ConfigLogDir);
+  const char *override_directory =
+      config_override_get(x2::config::ConfigOverride::LogDir);
   RunLog::Options options;
   if (override_directory != nullptr && override_directory[0] != '\0') {
     options.directory = override_directory;

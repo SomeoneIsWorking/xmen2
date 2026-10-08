@@ -57,7 +57,7 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
     return;
   dinput_pad_refresh();
   x2::input::alchemy_controller_sync_inventory();
-  x2_player_input_sync(C);
+  x2::input::player_input_sync(C);
   dinput8_check_controller_table();
   generation = dinput_pad_generation();
   if (!x2::input::controller_hotplug_needs_admission(&g_hotplug, generation))

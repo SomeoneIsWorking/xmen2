@@ -29,10 +29,11 @@ void touch_census_report(const char *tag, int has_window, int touch_devices,
   const unsigned long contacts_seen =
       g_census.contacts_down + g_census.contacts_moved + g_census.contacts_up +
       g_census.contacts_canceled;
-  const unsigned mode = x2_settings_store()->touch_controls;
-  const char *const mode_name = mode == X2_TOUCH_CONTROLS_ALWAYS ? "ALWAYS"
-                                : mode == X2_TOUCH_CONTROLS_OFF  ? "OFF"
-                                                                 : "AUTO";
+  const unsigned mode = x2::config::settings_store()->touch_controls;
+  const char *const mode_name =
+      mode == x2::config::kTouchControlsAlways ? "ALWAYS"
+      : mode == x2::config::kTouchControlsOff  ? "OFF"
+                                               : "AUTO";
   /*
    * A run in which nothing was touched and a run in which every touch was
    * thrown away both end with zero presses. Saying which, by name, is the

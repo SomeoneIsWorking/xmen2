@@ -68,7 +68,7 @@ const struct x2_prompt_cell *prompt_glyph_cell(uint16_t codepoint) {
   unsigned index;
   if (codepoint < X2_PROMPT_GLYPH_FIRST || codepoint > X2_PROMPT_GLYPH_LAST)
     return NULL;
-  if (!x2_prompt_glyph_available(codepoint))
+  if (!prompt_glyph_available(codepoint))
     return NULL;
   index = (unsigned)(codepoint - X2_PROMPT_GLYPH_FIRST);
   if (index >= X2_PROMPT_CELL_COUNT || !x2_prompt_cells[index].published)
@@ -162,7 +162,7 @@ void prompt_glyph_publish_metrics(uint32_t font_record) {
     if (!x2_prompt_cells[code - X2_PROMPT_GLYPH_FIRST].published)
       continue;
     if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT)) {
-      x2_prompt_glyph_mark_unavailable(code);
+      prompt_glyph_mark_unavailable(code);
       text_put(named, sizeof named, &at, " 0x%02x", code);
       occupied++;
     }

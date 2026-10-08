@@ -46,7 +46,9 @@ int dinput8_controller_host_pad_for_slot(int controller_slot) {
              : -1;
 }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
-int x2_player_input_pad_is_active_source(int pad) { return pad == active_pad; }
+namespace x2::input {
+int player_input_pad_is_active_source(int pad) { return pad == active_pad; }
+} // namespace x2::input
 static void guest_body_006281f0(CPU *c) {
   real_calls++;
   c->reg[kX86pEax] = 0x12345678u;
@@ -186,15 +188,15 @@ int main(int argc, char **argv) {
   host_pad_for_slot[0] = 1; /* guest slot 0 is Xbox-family host pad 1 */
   host_pad_for_slot[1] = 0; /* guest slot 1 is generic host pad 0 */
   if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
-    x2_guest_environment_set("X2_PROMPT_GLYPHS", "0");
-    x2_guest_environment_set("X2_PAD_GLYPHS", nullptr);
+    x2::config::guest_environment_set("X2_PROMPT_GLYPHS", "0");
+    x2::config::guest_environment_set("X2_PAD_GLYPHS", nullptr);
     x2::config::runtime_config_init(0, NULL);
     ok = check_call(3, 0x15, 0, 1);
     printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
   }
 
-  x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
+  x2::config::guest_environment_set("X2_PROMPT_GLYPHS", "1");
   x2::config::runtime_config_init(0, NULL);
   ok = check_call(3, 0x15, 0x80, 0) && /* A */
        check_call(3, 5, 0x86, 0) &&    /* Z+ = LT */
@@ -393,7 +395,7 @@ int main(int argc, char **argv) {
        instead of pairing its metrics with native art. */
     char foreign[2] = {(char)X2_PAD_GLYPH_FACE_A, 0};
     char bracketed[4] = {'[', (char)X2_PAD_GLYPH_FACE_A, ']', 0};
-    x2_prompt_glyph_mark_unavailable(X2_PAD_GLYPH_FACE_A);
+    x2::native::prompt_glyph_mark_unavailable(X2_PAD_GLYPH_FACE_A);
     if (!check_call(4, 0x15, 0, 1)) {
       fprintf(stderr, "pad glyph availability: an occupied codepoint "
                       "did not use the retail naming body\n");
@@ -405,7 +407,7 @@ int main(int argc, char **argv) {
       return 1;
     }
 
-    x2_prompt_glyph_mark_unavailable(X2_KEYCAP_GLYPH_RIGHT);
+    x2::native::prompt_glyph_mark_unavailable(X2_KEYCAP_GLYPH_RIGHT);
     if (strcmp(label_after("ENTER"), "[ENTER]") != 0) {
       fprintf(stderr, "keycap availability: a keycap with an occupied "
                       "edge did not retain the retail label\n");

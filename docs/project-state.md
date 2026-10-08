@@ -729,7 +729,7 @@ thread for 2.8 s behind "Loading...", two frames of it exactly 702 ms: the
 storage-device check (XMen2.exe `0x004aee50`) spins on the game timer for
 0.7 s, an Xbox memory-unit settle delay, before asking a PC device manager
 whose answers are constants. `src/native/storage_device_check.cpp` runs the
-check without the spin (engine `x2_engine_resume`, proved by the engine
+check without the spin (engine `engine_resume`, proved by the engine
 selftest and a mutant it caught): the same load shows 1.56 s, and every save,
 load and transition check drops 0.7 s. The rest is load work, drawn a
 loading frame every 200 ms; `tools/jit_map_profile.py --time` ranks it.
@@ -906,7 +906,7 @@ built for. `src/input/touch_source.cpp` classifies each host event into touch /
 not-touch — ignoring SDL's `SDL_TOUCH_MOUSEID` synthetic pointer, treating a
 resting stick below half of SDL's signed range as no answer, and ignoring every
 other device kind rather than counting it as not-touch — and
-`x2_touch_runtime_active()` publishes one answer that both the drawn controls
+`touch_runtime_active()` publishes one answer that both the drawn controls
 and the HUD relocation read. `input.touch_controls` forces OFF or ALWAYS on
 every platform. The title's safe-area-aware action vocabulary, zone routing,
 multi-touch capture, cancellation on focus/rotation/lifecycle loss, invisible
@@ -1465,7 +1465,7 @@ from 35% to 41% of the worker and port native code falls from 25% to 18%.
 
 **A guest call crosses into JavaScript only when its guest takes a setjmp.**
 Emscripten routes every call out of a function that holds `setjmp` through a
-JavaScript `invoke_*` wrapper, and `x2_engine_call` held the one that
+JavaScript `invoke_*` wrapper, and `engine_call` held the one that
 `_setjmp3` needs around its whole run loop. The loop is now in `run_guest`,
 which holds none, and `run_setjmps` holds the setjmp and is entered only after a
 guest reaches `_setjmp3`. On `#test-play` (10,114,051-byte wasm, 25 s profile)

@@ -266,7 +266,8 @@ void the_shop_is_its_tabs_and_entries() {
             out[0].at.x == visible.tabs[0].click.x &&
             out[0].at.y == visible.tabs[0].click.y,
         "a tap on a tab is a click on the tab");
-  const X2Rect entry_row = find(touch.layout(), TouchMenuPart::row, 6)->rect;
+  const x2::presentation::Rect entry_row =
+      find(touch.layout(), TouchMenuPart::row, 6)->rect;
   out = tap(touch, entry_row, 20u);
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
             out[0].button == TouchAction::MenuA,
@@ -827,7 +828,7 @@ void the_layout_is_finger_sized_and_inside_the_safe_area() {
     view.rows.push_back(view.rows[1]);
     view.rows.back().slot = 100u + static_cast<unsigned>(i);
   }
-  X2LayoutViewport viewport = viewport_1280x720();
+  x2::presentation::LayoutViewport viewport = viewport_1280x720();
   viewport.safe_left = 40.0F;
   viewport.safe_bottom = 30.0F;
   const TouchMenuLayout layout =
@@ -948,7 +949,7 @@ void a_tap_delivers_the_games_own_input() {
 
   menu.set_view(std::nullopt, 820u);
   check(!menu.shown(), "no menu to replace hides it");
-  out = tap(menu, X2Rect{600.0F, 300.0F, 620.0F, 320.0F}, 830u);
+  out = tap(menu, x2::presentation::Rect{600.0F, 300.0F, 620.0F, 320.0F}, 830u);
   check(out.empty(), "and a hidden touch menu delivers nothing");
 }
 
@@ -962,7 +963,8 @@ void a_drag_scrolls_and_does_not_press() {
   TouchMenu menu;
   menu.set_viewport(viewport_1280x720());
   menu.set_view(view, 0u);
-  const X2Rect row = find(menu.layout(), TouchMenuPart::row, 3)->rect;
+  const x2::presentation::Rect row =
+      find(menu.layout(), TouchMenuPart::row, 3)->rect;
   const float x = 0.5F * (row.left + row.right);
   const float y = 0.5F * (row.top + row.bottom);
   menu.contact(7, {x, y}, lucent::touch::Phase::began, 0u);

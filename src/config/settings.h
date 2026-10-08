@@ -1,67 +1,60 @@
-#ifndef X2_SETTINGS_H
-#define X2_SETTINGS_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "boot_mode.h"
 #include "hud_settings.h"
 
-#define X2_SETTINGS_PLAYERS 4u
-#define X2_SETTINGS_KEYBOARD_PROFILES 4u
-#define X2_SETTINGS_ROWS 42u
-#define X2_SETTINGS_DEVICE_ID 64u
-#define X2_SETTINGS_CONTROLLER_ASSIGNMENTS X2_SETTINGS_PLAYERS
-#define X2_SETTINGS_UNASSIGNED (-1)
+namespace x2::config {
 
-typedef enum {
-  X2_WINDOW_WINDOWED = 0,
-  X2_WINDOW_BORDERLESS,
-  X2_WINDOW_FULLSCREEN
-} X2WindowMode;
+inline constexpr unsigned kSettingsPlayers = 4u;
+inline constexpr unsigned kSettingsKeyboardProfiles = 4u;
+inline constexpr unsigned kSettingsRows = 42u;
+inline constexpr unsigned kSettingsDeviceId = 64u;
+inline constexpr unsigned kSettingsControllerAssignments = kSettingsPlayers;
+inline constexpr int kSettingsUnassigned = -1;
 
-typedef struct {
-  char id[X2_SETTINGS_DEVICE_ID];
+enum class WindowMode : int { Windowed = 0, Borderless, Fullscreen };
+
+struct ControllerAssignment {
+  char id[kSettingsDeviceId];
   int8_t player;
-} X2ControllerAssignment;
+};
 
-typedef enum {
-  X2_TOUCH_CONTROLS_OFF = 0,
-  X2_TOUCH_CONTROLS_AUTO = 1,
-  X2_TOUCH_CONTROLS_ALWAYS = 2
-} X2TouchControls;
+enum TouchControls : int {
+  kTouchControlsOff = 0,
+  kTouchControlsAuto = 1,
+  kTouchControlsAlways = 2
+};
 
-const char *x2_touch_controls_label(unsigned mode);
+const char *touch_controls_label(unsigned mode);
 
 /* What reaching an extraction point does for a fallen or hurt party. */
-typedef enum {
-  X2_EXTRACTION_REVIVE_OFF = 0,
-  X2_EXTRACTION_REVIVE_FREE,
-  X2_EXTRACTION_REVIVE_PAID
-} X2ExtractionRevive;
+enum class ExtractionRevive : int { Off = 0, Free, Paid };
 
-const char *x2_extraction_revive_name(X2ExtractionRevive mode);
-const char *x2_extraction_revive_label(X2ExtractionRevive mode);
-int x2_extraction_revive_parse(const char *text, X2ExtractionRevive *mode);
+const char *extraction_revive_name(ExtractionRevive mode);
+const char *extraction_revive_label(ExtractionRevive mode);
+int extraction_revive_parse(const char *text, ExtractionRevive *mode);
 
 /* A row with keyboard_set clear follows the game's own binding. */
-typedef struct {
-  uint16_t keyboard[X2_SETTINGS_ROWS];
-  uint8_t keyboard_set[X2_SETTINGS_ROWS];
-} X2KeyboardProfile;
+struct KeyboardProfile {
+  uint16_t keyboard[kSettingsRows];
+  uint8_t keyboard_set[kSettingsRows];
+};
 
-void x2_keyboard_profile_restore_row(X2KeyboardProfile *profile, unsigned row);
-void x2_keyboard_profile_restore_all(X2KeyboardProfile *profile);
+void keyboard_profile_restore_row(KeyboardProfile *profile, unsigned row);
+void keyboard_profile_restore_all(KeyboardProfile *profile);
 
-typedef struct {
+struct Settings {
   unsigned width;
   unsigned height;
-  X2WindowMode window_mode;
+  WindowMode window_mode;
   uint8_t dynamic_shadows;
   uint16_t shadow_resolution;
   /* Multiplier on every glyph the engine loads. 0 means AUTO: hold the
      share of the screen the text has at 800x600. See ui_text_scale.cpp. */
   float text_scale;
-  x2::config::BootMode boot_mode;
+  BootMode boot_mode;
   /* Whether the on-screen touch pad and the mobile HUD placement it comes
      with are allowed on screen. AUTO is the default everywhere: neither the
      host platform nor a saved preference knows whether the player has a
@@ -73,29 +66,26 @@ typedef struct {
   /* gameplay.extraction_revive: off is the retail rule (a fallen hero stays
      down), free restores the party at the pad, paid offers the retail
      revive cost near it. */
-  X2ExtractionRevive extraction_revive;
+  ExtractionRevive extraction_revive;
   X2HudSettings hud;
   /* Device-assignment grid: each row has one owner or is unassigned. P1 may
      own one row of each kind for hotswap. P2-P4 own one device total. */
-  int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];
-  X2ControllerAssignment controller[X2_SETTINGS_CONTROLLER_ASSIGNMENTS];
-  X2KeyboardProfile keyboard_profile[X2_SETTINGS_KEYBOARD_PROFILES];
-} X2Settings;
+  int8_t keyboard_player[kSettingsKeyboardProfiles];
+  ControllerAssignment controller[kSettingsControllerAssignments];
+  KeyboardProfile keyboard_profile[kSettingsKeyboardProfiles];
+};
 
-void x2_settings_defaults(X2Settings *settings);
-int x2_settings_load(X2Settings *settings, const char *path, char *why,
-                     int whyn);
-int x2_settings_save(const X2Settings *settings, const char *path, char *why,
-                     int whyn);
-const char *x2_window_mode_name(X2WindowMode mode);
-int x2_window_mode_parse(const char *text, X2WindowMode *mode);
-int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
-                                int player);
-int x2_settings_assign_controller(X2Settings *settings, const char *id,
-                                  int player);
-int x2_settings_controller_player(const X2Settings *settings, const char *id);
-const char *x2_settings_player_controller(const X2Settings *settings,
-                                          unsigned player);
-int x2_settings_player_keyboard(const X2Settings *settings, unsigned player);
+void settings_defaults(Settings *settings);
+int settings_load(Settings *settings, const char *path, char *why, int whyn);
+int settings_save(const Settings *settings, const char *path, char *why,
+                  int whyn);
+const char *window_mode_name(WindowMode mode);
+int window_mode_parse(const char *text, WindowMode *mode);
+int settings_assign_keyboard(Settings *settings, unsigned profile, int player);
+int settings_assign_controller(Settings *settings, const char *id, int player);
+int settings_controller_player(const Settings *settings, const char *id);
+const char *settings_player_controller(const Settings *settings,
+                                       unsigned player);
+int settings_player_keyboard(const Settings *settings, unsigned player);
 
-#endif
+} // namespace x2::config

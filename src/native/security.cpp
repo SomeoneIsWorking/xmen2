@@ -114,7 +114,8 @@ static int g_security_watch_armed;
 void x2_override_0046b750_watch(CPU *C) {
   static int want = -1;
   if (want < 0) {
-    const char *e = x2_config_override_get(kX2ConfigSecurityWatch);
+    const char *e =
+        config_override_get(x2::config::ConfigOverride::SecurityWatch);
     want = (e && *e && *e != '0') ? 1 : 0;
   }
   if (want) {

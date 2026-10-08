@@ -49,15 +49,18 @@ static void check_hud_layout_shapes(void) {
 
   /* Rejects invalid parameters */
   CHECK(!x2::presentation::hud_layout_build(
-      (X2LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL, -1.0f, NULL));
-  X2HudPlacement placement;
+      (x2::presentation::LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL, -1.0f,
+      NULL));
+  x2::presentation::HudPlacement placement;
   CHECK(!x2::presentation::hud_layout_build(
-      (X2LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL, -1.0f, &placement));
+      (x2::presentation::LayoutViewport){1280, 720, 0, 0, 0, 0}, NULL, -1.0f,
+      &placement));
 
   for (unsigned v = 0; v < sizeof(viewports) / sizeof(viewports[0]); ++v) {
-    X2LayoutViewport vp = {viewports[v].width,      viewports[v].height,
-                           viewports[v].safe_left,  viewports[v].safe_top,
-                           viewports[v].safe_right, viewports[v].safe_bottom};
+    x2::presentation::LayoutViewport vp = {
+        viewports[v].width,      viewports[v].height,
+        viewports[v].safe_left,  viewports[v].safe_top,
+        viewports[v].safe_right, viewports[v].safe_bottom};
 
     CHECK(x2::presentation::hud_layout_build(vp, &settings, -1.0f, &placement));
 
@@ -69,10 +72,10 @@ static void check_hud_layout_shapes(void) {
 
     /* Potions: two round buttons side by side directly below vitals, each
        holding the retail icon and its count inside the ring. */
-    for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
-      X2Rect ring = placement.potions[i];
-      X2Rect icon = x2::presentation::hud_potion_icon(ring);
-      X2Rect count = x2::presentation::hud_potion_count(ring);
+    for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i) {
+      x2::presentation::Rect ring = placement.potions[i];
+      x2::presentation::Rect icon = x2::presentation::hud_potion_icon(ring);
+      x2::presentation::Rect count = x2::presentation::hud_potion_count(ring);
       CHECK(ring.left >= vp.safe_left);
       CHECK(ring.top >= placement.vitals.bottom);
       CHECK(ring.right > ring.left);
@@ -82,29 +85,29 @@ static void check_hud_layout_shapes(void) {
       CHECK(count.left > ring.left && count.right <= ring.right);
       CHECK(count.top > ring.top && count.bottom <= ring.bottom);
     }
-    CHECK(placement.potions[X2_HUD_POTION_ENERGY].left >
-          placement.potions[X2_HUD_POTION_HEALTH].right);
+    CHECK(placement.potions[x2::presentation::kHudPotionEnergy].left >
+          placement.potions[x2::presentation::kHudPotionHealth].right);
     /* The touch layout is handed this placement: no control lands on the
        drawn HUD and the stick's reach stays off the potions. */
-    X2Rect slots[kX2SlotCount];
-    X2Rect drawn[X2_HUD_POTIONS + 5];
+    x2::presentation::Rect slots[x2::presentation::kSlotCount];
+    x2::presentation::Rect drawn[x2::presentation::kHudPotions + 5];
     unsigned drawn_count = 0;
-    CHECK(x2_layout_build(vp, &placement, slots));
+    CHECK(layout_build(vp, &placement, slots));
     drawn[drawn_count++] = placement.vitals;
-    for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+    for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i)
       drawn[drawn_count++] = placement.potions[i];
     for (unsigned i = 0; i < 4; ++i)
       drawn[drawn_count++] = placement.portraits[i];
-    for (int control = (int)kX2SlotStick; control < (int)kX2SlotCount;
-         ++control)
+    for (int control = (int)x2::presentation::kSlotStick;
+         control < (int)x2::presentation::kSlotCount; ++control)
       for (unsigned d = 0; d < drawn_count; ++d)
         CHECK("no control overlaps the drawn HUD",
-              !x2_layout_rects_overlap(slots[control], drawn[d]));
+              !layout_rects_overlap(slots[control], drawn[d]));
     {
-      const X2Rect reach = x2_layout_stick_reach(vp, slots);
-      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+      const x2::presentation::Rect reach = layout_stick_reach(vp, slots);
+      for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i)
         CHECK("the stick's reach stays off the potions",
-              !x2_layout_rects_overlap(reach, placement.potions[i]));
+              !layout_rects_overlap(reach, placement.potions[i]));
     }
 
     /* Portraits in top-right */
@@ -127,9 +130,9 @@ static void check_hud_layout_shapes(void) {
 }
 
 static void check_hud_scales(void) {
-  X2LayoutViewport vp = {1280, 720, 0, 0, 0, 0};
+  x2::presentation::LayoutViewport vp = {1280, 720, 0, 0, 0, 0};
   X2HudSettings base, scaled;
-  X2HudPlacement p_base, p_scaled;
+  x2::presentation::HudPlacement p_base, p_scaled;
 
   x2_hud_settings_defaults(&base);
   CHECK(x2::presentation::hud_layout_build(vp, &base, -1.0f, &p_base));
@@ -137,29 +140,29 @@ static void check_hud_scales(void) {
   /* At every HUD size the controls still clear the HUD. */
   for (unsigned percent = X2_HUD_SCALE_MIN; percent <= X2_HUD_SCALE_MAX;
        percent += 25) {
-    X2Rect slots[kX2SlotCount];
+    x2::presentation::Rect slots[x2::presentation::kSlotCount];
     scaled = base;
     scaled.vitals_scale_percent = percent;
     scaled.potions_scale_percent = percent;
     scaled.portraits_scale_percent = percent;
     CHECK(x2::presentation::hud_layout_build(vp, &scaled, -1.0f, &p_scaled));
-    CHECK(x2_layout_build(vp, &p_scaled, slots));
-    for (int control = (int)kX2SlotStick; control < (int)kX2SlotCount;
-         ++control) {
+    CHECK(layout_build(vp, &p_scaled, slots));
+    for (int control = (int)x2::presentation::kSlotStick;
+         control < (int)x2::presentation::kSlotCount; ++control) {
       CHECK("no control on the HUD at any HUD scale",
-            !x2_layout_rects_overlap(slots[control], p_scaled.vitals));
+            !layout_rects_overlap(slots[control], p_scaled.vitals));
       for (unsigned i = 0; i < 4; ++i)
         CHECK("no control on a portrait at any HUD scale",
-              !x2_layout_rects_overlap(slots[control], p_scaled.portraits[i]));
-      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+              !layout_rects_overlap(slots[control], p_scaled.portraits[i]));
+      for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i)
         CHECK("no control on a potion at any HUD scale",
-              !x2_layout_rects_overlap(slots[control], p_scaled.potions[i]));
+              !layout_rects_overlap(slots[control], p_scaled.potions[i]));
     }
     {
-      const X2Rect reach = x2_layout_stick_reach(vp, slots);
-      for (unsigned i = 0; i < X2_HUD_POTIONS; ++i)
+      const x2::presentation::Rect reach = layout_stick_reach(vp, slots);
+      for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i)
         CHECK("the reach stays off the potions at any HUD scale",
-              !x2_layout_rects_overlap(reach, p_scaled.potions[i]));
+              !layout_rects_overlap(reach, p_scaled.potions[i]));
     }
   }
 
@@ -197,9 +200,9 @@ static void check_hud_scales(void) {
    vitals and portraits start at that row's top even where the safe area's
    top is lower -- a phone that reports a status-bar inset in landscape. */
 static void check_menu_row_alignment(void) {
-  X2LayoutViewport vp = {2728, 1264, 240, 130, 240, 0};
+  x2::presentation::LayoutViewport vp = {2728, 1264, 240, 130, 240, 0};
   X2HudSettings settings;
-  X2HudPlacement waiting, aligned;
+  x2::presentation::HudPlacement waiting, aligned;
   x2_hud_settings_defaults(&settings);
 
   CHECK(x2::presentation::hud_layout_build(vp, &settings, -1.0f, &waiting));
@@ -245,8 +248,8 @@ static void check_transforms(void) {
   CHECK(mat[14] == 6.0f * 2.0f - 5.0f);
 
   /* Output rectangle mapping */
-  X2Rect rect = x2::presentation::hud_output_rect(space, 1280.0f, 720.0f,
-                                                  256.0f, 192.0f, 20.0f);
+  x2::presentation::Rect rect = x2::presentation::hud_output_rect(
+      space, 1280.0f, 720.0f, 256.0f, 192.0f, 20.0f);
   /* Center is at (256, 192), which is screen center (640, 360) */
   float cx = (rect.left + rect.right) * 0.5f;
   float cy = (rect.top + rect.bottom) * 0.5f;
