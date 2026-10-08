@@ -128,6 +128,9 @@ name. Release builds ignore it. Use the loopback control endpoint after the
 level appears to reset timing and collect frame-time percentiles during actual
 combat; a boot screenshot or menu run is not gameplay performance evidence.
 
+Launch on a device with `am start`, never `adb shell monkey`: monkey's default
+rotation events unlock rotation and leave the phone's auto-rotate on (#193).
+
 ## Touch controls
 
 Touch play is NOT an Android feature and is not owned here — see

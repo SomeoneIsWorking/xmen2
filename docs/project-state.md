@@ -20,9 +20,8 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S022 — native Windows host package and CI release.** The portable ZIP ships
-in v0.3.0, built and fault-checked on a Windows runner. The active work is a
-game run on real Windows hardware.
+**S018 — measured mobile performance.** v0.3.0 runs on the HONOR 600 and
+combat is reported slow; the active work is a combat profile on that phone.
 
 ## Capability inventory
 
@@ -47,7 +46,7 @@ game run on real Windows hardware.
 | S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
 | S021 | Web (WASM + PWA) product with browser-side install | partial | S001, S020, W1, W2, W3 | G005 |
-| S022 | Native Windows host package and CI release | partial | S001, S002 | G005 |
+| S022 | Native Windows host package and CI release | verified | S001, S002 | G005 |
 | S023 | Seamless LAN multiplayer without GameSpy's servers | partial | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 | S024 | Optional free or paid party revive at extraction points | partial | S002, S008, S016 | G004 |
@@ -2157,9 +2156,9 @@ is the retail "dropped" path); and no run has crossed two physical machines,
 real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
-### S022 — native Windows host package and CI release: partial
+### S022 — native Windows host package and CI release: verified
 
-Observed subset: `tools/windows_deps.py` provisions a checksummed llvm-mingw
+Evidence: `tools/windows_deps.py` provisions a checksummed llvm-mingw
 toolchain and static SDL3, SDL3_image, FreeType, zlib and FFmpeg.
 `tools/build_windows.py` then cross-builds `x2native.exe` (PE32+ x86-64) and
 every test with no warnings. Under Wine 11:
@@ -2194,13 +2193,9 @@ every test with no warnings. Under Wine 11:
   unzips it and runs `--fault-selftest` from the folder, then publishes it.
   It passed in release run `37798996880`, and the ZIP ships in v0.3.0.
 
-Gap:
-- No native Windows run of the game has been made (window, input, audio,
-  speed on real hardware).
-
-Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
-the order of the remaining work. Until a Windows hardware run qualifies the ZIP,
-the Windows comparison baseline is the retail executable.
+The project owner accepts the Wine runs as qualification (2026-10-08); no run
+on Windows hardware has been made. Issue
+[#146](issues/0146-native-windows-host-boundary.md) has the evidence.
 
 ### S024 — optional extraction-point revive: partial
 
