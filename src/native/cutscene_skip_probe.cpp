@@ -117,7 +117,7 @@ static void report_publication(char *out, size_t size, size_t *at,
 }
 
 static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
-  CutsceneScriptAudioSnapshot audio;
+  x2::native::CutsceneScriptAudioSnapshot audio;
   CutsceneDialogueSnapshot dialogue;
   static const char *const controls[] = {"unreadable", "locked", "released"};
   static const char *const conversations[] = {
@@ -131,7 +131,7 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
 
   cutscene_player_snapshot(cpu, &player);
   cutscene_dialogue_snapshot(&dialogue);
-  cutscene_script_audio_snapshot(&audio);
+  x2::native::cutscene_script_audio_snapshot(&audio);
   append(
       out, size, at,
       "Cutscene player: active %u sequence %u; %u owned BehavEd context(s)\n",

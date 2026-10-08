@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-27
 tags: cutscene,audio,native,issue-126
-depends: src/native/cutscene_player.cpp#finish, src/native/behaved_context.cpp#behaved_context_run, src/native/cutscene_dialogue.cpp#cutscene_dialogue_advance, src/native/cutscene_script_audio.cpp#x2_override_004a7130
+depends: src/native/cutscene_player.cpp#finish, src/native/behaved_context.cpp#behaved_context_run, src/native/cutscene_dialogue.cpp#cutscene_dialogue_advance, src/native/cutscene_script_audio.cpp#override_004a7130
 reconfirmed: 2026-08-27
 verified_at: 2026-08-27 20:46:50
 ---

@@ -1,17 +1,18 @@
-#ifndef X2_ATTR_STACK_H
-#define X2_ATTR_STACK_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
+namespace x2::native {
+
 /* Native override for libIGSg.dll!0x10034d10: igAttrStack::customReset */
-void x2_override_10034d10(struct X86pCpu *C);
+void override_10034d10(struct X86pCpu *C);
 
 /* Native override for libIGSg.dll!0x10034d30: igAttrStackManager::reset */
-void x2_override_10034d30(struct X86pCpu *C);
+void override_10034d30(struct X86pCpu *C);
 
 /* Pure fast implementation for a single igAttrStack */
-void attr_stack_custom_reset(uint32_t stack);
+void attr_stack_custom_reset(std::uint32_t stack);
 
-#endif /* X2_ATTR_STACK_H */
+} // namespace x2::native

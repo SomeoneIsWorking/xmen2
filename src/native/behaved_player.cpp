@@ -201,7 +201,7 @@ static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
   if (!context_index(heap->manager, context, &fiber_index))
     return BEHAVED_PLAYER_STEP_REFUSED;
   remove_heap_entry(heap, index);
-  completed = behaved_context_run(cpu, context);
+  completed = x2::native::behaved_context_run(cpu, context);
   if ((completed & 0xffu) == 1u) {
     uint32_t live_manager;
     call_guest(cpu, base + (FN_CONTEXT_CLEANUP - EXE_PREFERRED), context, 0, 0);

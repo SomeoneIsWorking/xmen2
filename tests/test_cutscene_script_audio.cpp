@@ -62,7 +62,7 @@ static CPU call_with(uint32_t argument_list) {
 }
 
 int main(void) {
-  CutsceneScriptAudioSnapshot snapshot;
+  x2::native::CutsceneScriptAudioSnapshot snapshot;
   CPU cpu;
 
   if (guest_memory_init() != 0 ||
@@ -89,7 +89,7 @@ int main(void) {
   failures += super_calls != 2u || cpu.reg[kX86pEax] != 0u ||
               cpu.reg[kX86pEsp] != STACK + 4u;
 
-  cutscene_script_audio_snapshot(&snapshot);
+  x2::native::cutscene_script_audio_snapshot(&snapshot);
   failures += snapshot.ordinary_commands != 2u ||
               snapshot.silent_commands != 1u ||
               snapshot.last_context != OWNED_CONTEXT;

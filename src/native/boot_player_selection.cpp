@@ -8,6 +8,10 @@
 #include <stdint.h>
 #include <stdio.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   EXE_PREFERRED = 0x00400000u,
   PAD_MANAGER_RVA = 0x00151ed0u,
@@ -16,7 +20,7 @@ enum {
   LOCAL_PLAYER_COUNT = 4u
 };
 
-static uint32_t mapped_exe_base(void) {
+uint32_t mapped_exe_base(void) {
   const X86Module *module;
   for (module = x86_modules(); module; module = module->next)
     if (module->preferred == EXE_PREFERRED && *module->base)
@@ -24,7 +28,9 @@ static uint32_t mapped_exe_base(void) {
   return 0u;
 }
 
-int x2_boot_player_select_primary(CPU *source, unsigned primary_player) {
+} // namespace
+
+int boot_player_select_primary(CPU *source, unsigned primary_player) {
   CPU call;
   uint32_t base;
   uint32_t manager;
@@ -62,3 +68,5 @@ int x2_boot_player_select_primary(CPU *source, unsigned primary_player) {
                primary_player + 1u);
   return 1;
 }
+
+} // namespace x2::native

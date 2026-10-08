@@ -9,13 +9,18 @@
 
 #define SPLASH_REFUSAL_WINDOW 16u
 
-static struct {
+namespace x2::native {
+namespace {
+
+struct {
   int pending;
   unsigned window;
   unsigned long traced;
 } g_splash;
 
-void x2_boot_splash_trace(uint32_t command) {
+} // namespace
+
+void boot_splash_trace(std::uint32_t command) {
   if (!x2_config_override_get(kX2ConfigBootCmdTrace) || !command)
     return;
   if (g_splash.traced >= 40u)
@@ -28,12 +33,12 @@ void x2_boot_splash_trace(uint32_t command) {
                  "further commands untraced.\n");
 }
 
-void x2_boot_splash_arm(void) {
+void boot_splash_arm() {
   g_splash.pending = 1;
   g_splash.window = SPLASH_REFUSAL_WINDOW;
 }
 
-int x2_boot_splash_refuse(uint32_t command) {
+int boot_splash_refuse(std::uint32_t command) {
   if (!g_splash.pending)
     return 0;
   if (command &&
@@ -54,3 +59,5 @@ int x2_boot_splash_refuse(uint32_t command) {
   }
   return 0;
 }
+
+} // namespace x2::native

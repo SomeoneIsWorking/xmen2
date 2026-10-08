@@ -228,7 +228,7 @@ int main(void) {
   build_graph();
   WR32(CURRENT_CONTEXT, prior);
   cpu = fresh_cpu();
-  result = behaved_context_run(&cpu, CONTEXT);
+  result = x2::native::behaved_context_run(&cpu, CONTEXT);
   check(result == NODE_5,
         "suspension did not return the exact pending-node value");
   check(RD32(CONTEXT) == NODE_5,
@@ -241,7 +241,7 @@ int main(void) {
   check(releases == 3u,
         "first command batch did not release every pooled result");
 
-  result = behaved_context_run(&cpu, CONTEXT);
+  result = x2::native::behaved_context_run(&cpu, CONTEXT);
   check(result == 1u && RD32(CONTEXT) == 0u,
         "resumed context did not complete from its pending node");
   check(handler_true_calls == 3u && releases == 4u,

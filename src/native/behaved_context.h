@@ -1,16 +1,17 @@
-#ifndef X2_BEHAVED_CONTEXT_H
-#define X2_BEHAVED_CONTEXT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* Run one BehavEd context until it completes or an authored command suspends
  * it. The return value matches 004d8b30, including the pending-node high bits.
  */
-uint32_t behaved_context_run(struct X86pCpu *cpu, uint32_t context);
+std::uint32_t behaved_context_run(struct X86pCpu *cpu, std::uint32_t context);
 
 /* Native thiscall replacement for XMen2.exe 004d8b30. */
-void x2_override_004d8b30(struct X86pCpu *cpu);
+void override_004d8b30(struct X86pCpu *cpu);
 
-#endif
+} // namespace x2::native

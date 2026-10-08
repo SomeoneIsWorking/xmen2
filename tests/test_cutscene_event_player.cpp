@@ -9,6 +9,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+using x2::native::cutscene_event_player_captured_owner;
+using x2::native::cutscene_event_player_executing_owned;
+using x2::native::cutscene_event_player_insertion_faults;
+using x2::native::cutscene_event_player_next_owned;
+using x2::native::cutscene_event_player_step_owned_slot;
+using x2::native::cutscene_event_player_unwatch_insertions;
+using x2::native::cutscene_event_player_watch_insertions;
+using x2::native::cutscene_event_player_window_begin;
+using x2::native::cutscene_event_player_window_claim_new;
+using x2::native::CutsceneEventOwnershipWindow;
+using x2::native::CutsceneEventPlayerStep;
+using x2::native::kCapacity;
+
 enum {
   ARENA_BASE = 0x33000000u,
   ARENA_SIZE = 0x00400000u,
@@ -128,8 +141,7 @@ static int queue_event(uint32_t slot, float deadline) {
   uint32_t index;
   Pair pair = {float_bits(deadline), slot};
 
-  if (slot >= CUTSCENE_EVENT_PLAYER_CAPACITY ||
-      count >= CUTSCENE_EVENT_PLAYER_CAPACITY ||
+  if (slot >= kCapacity || count >= kCapacity ||
       (RD32(bitmap_address(LIVE_BITS, slot)) & slot_bit(slot)) != 0u)
     return 0;
   mark_slot(slot);
@@ -184,7 +196,7 @@ void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
     uint32_t distance = cpu->reg[kX86pEcx] - OWNER;
     uint32_t slot = distance / CALLBACK_STRIDE;
     CHECK(cpu->reg[kX86pEcx] >= OWNER && distance % CALLBACK_STRIDE == 0u &&
-              slot < CUTSCENE_EVENT_PLAYER_CAPACITY,
+              slot < kCapacity,
           "callback executor received an invalid record");
     callback_was_owned = cutscene_event_player_executing_owned();
     note('E');
@@ -194,7 +206,7 @@ void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
     }
   } else if (target == FN_SLOT_FREE) {
     uint32_t slot = RD32(cpu->reg[kX86pEsp]);
-    CHECK(cpu->reg[kX86pEcx] == OWNER && slot < CUTSCENE_EVENT_PLAYER_CAPACITY,
+    CHECK(cpu->reg[kX86pEcx] == OWNER && slot < kCapacity,
           "slot free received the wrong owner or slot");
     release_slot(slot);
     note('F');
@@ -370,7 +382,7 @@ static void test_window_claim_selection_and_followup(void) {
   cascade_to = 8u;
   cascade_deadline = 2.0f;
   CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 5u) ==
-            CUTSCENE_EVENT_PLAYER_STEP_RAN,
+            CutsceneEventPlayerStep::Ran,
         "exact owned callback step refused");
   CHECK(!strcmp(calls, "EF"),
         "exact step did not execute then free its callback");
@@ -381,13 +393,13 @@ static void test_window_claim_selection_and_followup(void) {
   CHECK(cutscene_event_player_next_owned(&window, &slot) == 1 && slot == 4u,
         "entity callback child displaced the remaining script-posted event");
   CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 8u) ==
-            CUTSCENE_EVENT_PLAYER_STEP_REFUSED,
+            CutsceneEventPlayerStep::Refused,
         "entity callback child incorrectly inherited cutscene ownership");
   CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 9u) ==
-            CUTSCENE_EVENT_PLAYER_STEP_REFUSED,
+            CutsceneEventPlayerStep::Refused,
         "window allowed an originally queued foreign callback");
   CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 6u) ==
-            CUTSCENE_EVENT_PLAYER_STEP_REFUSED,
+            CutsceneEventPlayerStep::Refused,
         "window allowed an insertion rejected by the owner predicate");
   cutscene_event_player_unwatch_insertions(&window);
 }
@@ -398,7 +410,7 @@ static int pairs_equal(Pair left, Pair right) {
 
 static void check_remaining_pairs(const Pair *before, uint32_t before_count,
                                   Pair removed) {
-  uint8_t matched[CUTSCENE_EVENT_PLAYER_CAPACITY] = {0};
+  uint8_t matched[kCapacity] = {0};
   uint32_t after_count = RD32(OWNER + HEAP_COUNT);
   uint32_t index, other;
   CHECK(after_count + 1u == before_count,
@@ -442,7 +454,7 @@ static void test_arbitrary_heap_removal(void) {
     before[index] = read_pair(index);
   removed = before[4];
   CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 4u) ==
-            CUTSCENE_EVENT_PLAYER_STEP_RAN,
+            CutsceneEventPlayerStep::Ran,
         "arbitrary owned slot did not execute");
   CHECK(read_pair(1u).deadline_bits == float_bits(4.0f),
         "last replacement did not repair upward");
@@ -466,7 +478,7 @@ static void test_arbitrary_heap_removal(void) {
       before[index] = read_pair(index);
     removed = before[1];
     CHECK(cutscene_event_player_step_owned_slot(&cpu, &window, 1u) ==
-              CUTSCENE_EVENT_PLAYER_STEP_RAN,
+              CutsceneEventPlayerStep::Ran,
           "downward arbitrary owned slot did not execute");
     CHECK(read_pair(1u).deadline_bits == float_bits(4.0f),
           "last replacement did not repair downward");
@@ -487,7 +499,7 @@ static void test_corrupt_insertion_refusal(void) {
   CHECK(cutscene_event_player_watch_insertions(&window, owns_current_insertion,
                                                NULL) == 1,
         "could not watch corrupt insertion fixture");
-  WR32(OWNER + HEAP_COUNT, CUTSCENE_EVENT_PLAYER_CAPACITY + 1u);
+  WR32(OWNER + HEAP_COUNT, kCapacity + 1u);
   memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
   before_super = super_calls;
   invoke_insert(20u, 1.0f);
@@ -518,7 +530,7 @@ static void test_capacity_and_corruption_refusal(void) {
   uint32_t index;
 
   reset_owner();
-  for (index = 0; index < CUTSCENE_EVENT_PLAYER_CAPACITY; ++index)
+  for (index = 0; index < kCapacity; ++index)
     CHECK(queue_event(index, (float)index),
           "evidenced callback capacity rejected a valid slot");
   CHECK(!queue_event(0u, 2000.0f),
@@ -529,7 +541,7 @@ static void test_capacity_and_corruption_refusal(void) {
 
   reset_owner();
   capture_owner();
-  WR32(OWNER + HEAP_COUNT, CUTSCENE_EVENT_PLAYER_CAPACITY + 1u);
+  WR32(OWNER + HEAP_COUNT, kCapacity + 1u);
   memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
   CHECK(cutscene_event_player_window_begin(&window) == -1,
         "oversized heap was not refused");
