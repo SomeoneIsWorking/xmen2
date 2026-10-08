@@ -132,7 +132,10 @@ height that makes the cap stand 1.25 times the capitals. At the right edge
 over the whole span: the cap as a three-slice frame whose straight middle
 stretches, and the lettered name centred on it, narrowed only if it would not
 fit. The stock letters were drawn over a darkened, luminance-inverted cap
-before this, which vanished on a dark panel.
+before this, which vanished on a dark panel. Each slice's U span runs between its outer texel
+centres: the middle is a 4-texel strip stretched across the label, and
+sampled to its cell edge it blends in the transparent atlas gap, which drew a
+dark band inside each end of the cap.
 
 ## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
 
