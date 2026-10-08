@@ -315,7 +315,7 @@ FmvPlayer *fmv_open(const char *path, const X2FmvAudioSink *sink, char *error,
     fmv_close(player);
     return NULL;
   }
-  if (!x2_fmv_codec_policy(
+  if (!fmv_codec_policy(
           player->format->iformat->name,
           avcodec_get_name(player->format->streams[player->video_stream]
                                ->codecpar->codec_id),

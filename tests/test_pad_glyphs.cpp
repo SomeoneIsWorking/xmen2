@@ -3,6 +3,7 @@
 #include "pad_glyph_codes.h"
 #include "pad_glyphs.h"
 #include "prompt_glyphs.h"
+#include "prompt_labels.h"
 #include "runtime_cvars.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -102,7 +103,6 @@ __thread uint32_t g_fsbase, g_gsbase;
 
 void x2_override_006281f0(CPU *c);
 void x2_override_006294b0(CPU *c);
-void x2_override_00619e30(CPU *c);
 
 /* Build a label from `name` and return what the override left in the buffer. */
 static const char *label_after(const char *name) {
@@ -116,7 +116,7 @@ static const char *label_after(const char *name) {
   WR32(stack, 0xfeedfaceu);
   WR32(stack + 4u, 7u); /* the action id; the stub ignores it */
   c.reg[kX86pEsp] = stack;
-  x2_override_00619e30(&c);
+  x2::native::override_00619e30(&c);
   return guest_memory_as<const char>(c.reg[kX86pEax]);
 }
 

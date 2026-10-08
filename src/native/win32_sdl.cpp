@@ -213,7 +213,7 @@ void imp_USER32_SetWindowLongA(CPU *C) {
     old = g_gwl[i];
     g_gwl[i] = A(2);
     if (i == 1)
-      x2_win32_events_set_wndproc(g_gwl[i]);
+      x2::native::win32_events_set_wndproc(g_gwl[i]);
   }
   ret_std(C, old, 3);
 }
@@ -343,7 +343,7 @@ void imp_USER32_ScreenToClient(CPU *C) {
   }
   x = (int32_t)RD32(p);
   y = (int32_t)RD32(p + 4u);
-  if (!x2_win32_events_screen_to_client(&x, &y)) {
+  if (!x2::native::win32_events_screen_to_client(&x, &y)) {
     ret_std(C, 0, 2);
     return;
   }
@@ -441,15 +441,15 @@ int win32_sdl_dialog(const char *title, const char *text,
   box.message = text;
   box.numbuttons = n;
   box.buttons = btn;
-  x2_win32_events_modal(1);
+  x2::native::win32_events_modal(1);
   if (!SDL_ShowMessageBox(&box, &chosen)) {
-    x2_win32_events_modal(0);
+    x2::native::win32_events_modal(0);
     x2_log_error("    SDL could not show it (%s). Answering the "
                  "fallback (%d) rather than blocking.\n",
                  SDL_GetError(), fallback);
     return fallback;
   }
-  x2_win32_events_modal(0);
+  x2::native::win32_events_modal(0);
   x2_log_error("    -> answered %d\n", chosen);
   return chosen;
 }
@@ -536,13 +536,14 @@ void imp_USER32_RegisterClassA(CPU *C) {
      which ignores it here. The WndProc in the struct is NOT dropped silently
      -- it is remembered, because the message path will need it. */
   uint32_t wc = A(0);
-  x2_win32_events_register_wndproc(RD32(wc + 4u)); /* WNDCLASSA.lpfnWndProc */
+  x2::native::win32_events_register_wndproc(
+      RD32(wc + 4u)); /* WNDCLASSA.lpfnWndProc */
   ret_std(C, 1, 1);
 }
 
 void win32_sdl_hide_windows(int hide) {
   g_hide_windows = hide;
-  x2_win32_events_hide_window(hide);
+  x2::native::win32_events_hide_window(hide);
 }
 /* Asked by anything that must behave headlessly without owning the flag --
    the audio device is the first, since a run with no window is a run nobody
@@ -550,8 +551,8 @@ void win32_sdl_hide_windows(int hide) {
 int win32_sdl_windows_hidden(void) { return g_hide_windows; }
 
 void imp_USER32_UnregisterClassA(CPU *C) {
-  x2_win32_events_register_wndproc(0);
-  x2_win32_events_set_wndproc(0);
+  x2::native::win32_events_register_wndproc(0);
+  x2::native::win32_events_set_wndproc(0);
   ret_std(C, 1, 2);
 }
 
@@ -590,9 +591,9 @@ void imp_USER32_CreateWindowExA(CPU *C) {
     return;
   }
   g_win_live = 1;
-  g_gwl[1] = x2_win32_events_registered_wndproc();
-  x2_win32_events_set_wndproc(g_gwl[1]);
-  x2_win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
+  g_gwl[1] = x2::native::win32_events_registered_wndproc();
+  x2::native::win32_events_set_wndproc(g_gwl[1]);
+  x2::native::win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
   if (!g_hide_windows &&
       !x2_window_settings_apply(g_win, settings, why, (int)sizeof why))
     x2_log_error("SETTINGS: could not apply requested presentation "
@@ -632,7 +633,7 @@ void imp_USER32_DestroyWindow(CPU *C) {
      valid. This is also the order gpu_selftest uses. */
   x2_ui_gpu_shutdown();
   gpu_device_attach_window(NULL);
-  x2_win32_events_window(NULL, 0, 0);
+  x2::native::win32_events_window(NULL, 0, 0);
   SDL_DestroyWindow(g_win);
   g_win = NULL;
   g_win_live = 0;
@@ -655,7 +656,7 @@ void imp_USER32_ShowWindow(CPU *C) {
                  hidden ? "hide" : "show", SDL_GetError());
     abort();
   }
-  x2_win32_events_hide_window(hidden);
+  x2::native::win32_events_hide_window(hidden);
   ret_std(C, 1, 2);
 }
 
@@ -728,7 +729,7 @@ void imp_USER32_ClientToScreen(CPU *C) {
   }
   x = (int32_t)RD32(p);
   y = (int32_t)RD32(p + 4u);
-  if (!x2_win32_events_client_to_screen(&x, &y)) {
+  if (!x2::native::win32_events_client_to_screen(&x, &y)) {
     ret_std(C, 0, 2);
     return;
   }
@@ -745,14 +746,15 @@ void imp_USER32_ShowCursor(CPU *C) {
      collapsed to SDL's boolean. */
   /* The game draws its own cursor in retail content. Keep USER32's counter
      semantics, while win32_events arbitrates the one physical OS cursor. */
-  ret_std(C, (uint32_t)x2_win32_events_guest_show_cursor(A(0) != 0u), 1);
+  ret_std(C, (uint32_t)x2::native::win32_events_guest_show_cursor(A(0) != 0u),
+          1);
 }
 
 void imp_USER32_GetCursorPos(CPU *C) {
   uint32_t p = A(0);
   int32_t x, y;
 
-  if (!p || !x2_win32_events_get_cursor_pos(&x, &y)) {
+  if (!p || !x2::native::win32_events_get_cursor_pos(&x, &y)) {
     ret_std(C, 0, 1);
     return;
   }
@@ -762,9 +764,10 @@ void imp_USER32_GetCursorPos(CPU *C) {
 }
 
 void imp_USER32_SetCursorPos(CPU *C) {
-  ret_std(
-      C, (uint32_t)x2_win32_events_set_cursor_pos((int32_t)A(0), (int32_t)A(1)),
-      2);
+  ret_std(C,
+          (uint32_t)x2::native::win32_events_set_cursor_pos((int32_t)A(0),
+                                                            (int32_t)A(1)),
+          2);
 }
 
 void imp_USER32_ClipCursor(CPU *C) {

@@ -50,19 +50,19 @@ int pe_map_at(const char *path, uint32_t want, PeImage *out) {
 
 int pe_map(const char *path, PeImage *out) {
   unsigned char *f;
-  X2FileMap file_map;
+  x2::native::FileMap file_map;
   int i;
   uint32_t pe, nsec, opt, base, imgsize, hdrsize, prefbase;
 
   memset(out, 0, sizeof *out);
-  if (x2_file_map_readonly(path, &file_map) != 0) {
+  if (x2::native::file_map_readonly(path, &file_map) != 0) {
     x2_log_error("pe_map: cannot open %s: %s\n", path, strerror(errno));
     return -1;
   }
   f = static_cast<unsigned char *>(file_map.address);
   if (file_map.size < 0x40) {
     x2_log_error("pe_map: %s is not a file with a DOS header\n", path);
-    x2_file_unmap(&file_map);
+    x2::native::file_unmap(&file_map);
     return -1;
   }
   if (f[0] != 'M' || f[1] != 'Z') {
@@ -150,14 +150,14 @@ int pe_map(const char *path, PeImage *out) {
                  "applied\n",
                  path, (uint32_t)prefbase, base, n);
   }
-  x2_file_unmap(&file_map);
+  x2::native::file_unmap(&file_map);
   out->base = base;
   out->preferred = (uint32_t)prefbase;
   out->size = imgsize;
   out->nsections = (int)nsec;
   return 0;
 fail:
-  x2_file_unmap(&file_map);
+  x2::native::file_unmap(&file_map);
   return -1;
 }
 

@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <sys/stat.h>
 
+namespace x2::config {
+
 namespace {
 
 bool is_separator(char c) {
@@ -30,7 +32,7 @@ char *first_component(char *work) {
 
 } // namespace
 
-int x2_directory_create(const char *path) {
+int directory_create(const char *path) {
   char work[512];
 
   if (!path || !path[0]) {
@@ -52,3 +54,5 @@ int x2_directory_create(const char *path) {
   }
   return mkdir(work, 0775) == 0 || errno == EEXIST;
 }
+
+} // namespace x2::config

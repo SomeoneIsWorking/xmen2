@@ -1609,7 +1609,7 @@ int main(int argc, char **argv) {
   }
   /* The fault reporter, proved by faulting -- no install, no engine. */
   if (options.fault_selftest)
-    return x2_fault_selftest();
+    return x2::fault::fault_selftest();
   if (options.fault_selftest_child >= 0)
     return x2::fault::selftest_child(options.fault_selftest_child);
   if (vkselftest)

@@ -14,6 +14,10 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   EXE_PREFERRED = 0x00400000u,
   FN_INPUT_MANAGER = 0x001d8920u,
@@ -393,7 +397,9 @@ static void x2_override_0049f010(CPU *C) {
   C->reg[kX86pEsp] += 4u;
 }
 
-size_t x2_load_game_menu_runtime_report(char *out, size_t capacity) {
+} // namespace
+
+size_t load_game_menu_runtime_report(char *out, size_t capacity) {
   int written;
   long selected = g_active && g_window.selected < g_plan.count
                       ? (long)g_window.selected
@@ -416,8 +422,14 @@ size_t x2_load_game_menu_runtime_report(char *out, size_t capacity) {
   return (size_t)written;
 }
 
+namespace {
+
 __attribute__((constructor)) static void x2_load_game_menu_register(void) {
   x86_register_override("XMen2.exe", 0x004b0d20u, x2_override_004b0d20);
   x86_register_override("XMen2.exe", 0x005e9d30u, x2_override_005e9d30);
   x86_register_override("XMen2.exe", 0x0049f010u, x2_override_0049f010);
 }
+
+} // namespace
+
+} // namespace x2::native

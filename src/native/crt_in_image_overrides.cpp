@@ -25,14 +25,22 @@
 #include "x86rt_native.h"
 #include "x87crt.h"
 
-int x2_crt_ftol2_leaf(CPU *C) {
+namespace x2::native {
+
+int crt_ftol2_leaf(CPU *C) {
   x87_crt_ftol(C);
   return 1;
 }
 
-void x2_crt_ftol2(CPU *C) { (void)x2_crt_ftol2_leaf(C); }
+void crt_ftol2(CPU *C) { (void)crt_ftol2_leaf(C); }
+
+namespace {
 
 __attribute__((constructor)) static void crt_in_image_overrides_register(void) {
-  x86_register_override("XMen2.exe", 0x0067217cu, x2_crt_ftol2);
-  x86_register_override_leaf("XMen2.exe", 0x0067217cu, x2_crt_ftol2_leaf);
+  x86_register_override("XMen2.exe", 0x0067217cu, crt_ftol2);
+  x86_register_override_leaf("XMen2.exe", 0x0067217cu, crt_ftol2_leaf);
 }
+
+} // namespace
+
+} // namespace x2::native

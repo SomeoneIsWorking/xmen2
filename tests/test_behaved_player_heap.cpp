@@ -195,7 +195,8 @@ static void test_read_only_selection(void) {
 
   set_heap(deadlines, slots, 5u);
   memcpy(before, guest_memory_const_pointer(scheduler()), sizeof before);
-  CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == 1,
+  CHECK(x2::native::behaved_player_next_owned(&cpu, owns_mask, &mask,
+                                              &selected) == 1,
         "read-only selection refused a valid heap");
   CHECK(selected == context(1u),
         "read-only selection did not choose the earliest owned context");
@@ -218,8 +219,8 @@ static void test_arbitrary_remove_bubbles_up(void) {
   selected = before[4];
   calls[0] = '\0';
   call_count = 0;
-  CHECK(behaved_player_step_context(&cpu, context(4u)) ==
-            BEHAVED_PLAYER_STEP_RAN,
+  CHECK(x2::native::behaved_player_step_context(&cpu, context(4u)) ==
+            x2::native::BehavedPlayerStep::Ran,
         "exact-context step did not run the selected context");
   CHECK(!strcmp(calls, "MRS"),
         "yielding context did not follow manager/run/slot-release order");
@@ -240,8 +241,8 @@ static void test_arbitrary_remove_bubbles_down(void) {
     guest_memory_try_read(scheduler() + HEAP_OFFSET + index * 8u,
                           &before[index], sizeof before[index]);
   selected = before[1];
-  CHECK(behaved_player_step_context(&cpu, context(1u)) ==
-            BEHAVED_PLAYER_STEP_RAN,
+  CHECK(x2::native::behaved_player_step_context(&cpu, context(1u)) ==
+            x2::native::BehavedPlayerStep::Ran,
         "downward arbitrary removal did not run");
   CHECK(RD32(scheduler() + HEAP_OFFSET + 8u) == float_bits(4.0f),
         "arbitrary removal did not bubble a replacement downward");
@@ -257,8 +258,8 @@ static void test_completion_order(void) {
   runner_completed[7] = 1u;
   calls[0] = '\0';
   call_count = 0;
-  CHECK(behaved_player_step_context(&cpu, context(7u)) ==
-            BEHAVED_PLAYER_STEP_COMPLETED,
+  CHECK(x2::native::behaved_player_step_context(&cpu, context(7u)) ==
+            x2::native::BehavedPlayerStep::Completed,
         "completed context was not reported complete");
   CHECK(!strcmp(calls, "MRCMFS"),
         "completion did not run cleanup/pool/slot release in retail order");
@@ -308,19 +309,22 @@ static void test_corruption_refuses_without_mutation(void) {
   set_heap(deadlines, slots, 1u);
   WR32(scheduler() + HEAP_COUNT, 31u);
   memcpy(before, guest_memory_const_pointer(scheduler()), sizeof before);
-  CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == -1,
+  CHECK(x2::native::behaved_player_next_owned(&cpu, owns_mask, &mask,
+                                              &selected) == -1,
         "oversized heap count was not refused");
   CHECK(!memcmp(before, guest_memory_const_pointer(scheduler()), sizeof before),
         "count refusal changed scheduler bytes");
 
   set_heap(deadlines, slots, 1u);
   WR32(scheduler() + HEAP_OFFSET + 4u, 30u);
-  CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == -1,
+  CHECK(x2::native::behaved_player_next_owned(&cpu, owns_mask, &mask,
+                                              &selected) == -1,
         "out-of-range scheduler slot was not refused");
 
   set_heap(deadlines, slots, 1u);
   WR32(scheduler(), context(0u) + 1u);
-  CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == -1,
+  CHECK(x2::native::behaved_player_next_owned(&cpu, owns_mask, &mask,
+                                              &selected) == -1,
         "misaligned context pointer was not refused");
 }
 

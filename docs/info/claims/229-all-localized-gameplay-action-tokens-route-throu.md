@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-21
 tags: input,pad,glyphs,prompts,re
-depends: src/native/pad_glyphs.cpp#x2_override_00619e30, src/native/pad_glyphs.cpp#x2_override_006281f0
+depends: src/native/pad_glyphs.cpp#override_00619e30, src/native/pad_glyphs.cpp#x2_override_006281f0
 reconfirmed: 2026-08-21
 verified_at: 2026-08-21 01:35:10
 ---

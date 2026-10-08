@@ -23,7 +23,7 @@ static unsigned failures;
 
 static void ftol2_run(CPU *c, int as_leaf) {
   if (!as_leaf) {
-    x2_crt_ftol2(c);
+    x2::native::crt_ftol2(c);
     return;
   }
   const x86_override_leaf_fn leaf = native_stubs_leaf("XMen2.exe", 0x0067217cu);

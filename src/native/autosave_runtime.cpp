@@ -45,7 +45,7 @@ x2::save::AutosavePolicy g_policy;
 
 uint32_t g_exe;
 
-X2CampaignSnapshot *g_snapshot;
+x2::native::CampaignSnapshot *g_snapshot;
 
 uint32_t g_last_manager_mode;
 
@@ -78,8 +78,8 @@ uint32_t exe_base(void) {
 
 int serialize_snapshot(const CPU *source) {
   if (!g_snapshot)
-    g_snapshot = x2_campaign_snapshot_create();
-  return x2_campaign_snapshot_capture(g_snapshot, source);
+    g_snapshot = x2::native::campaign_snapshot_create();
+  return x2::native::campaign_snapshot_capture(g_snapshot, source);
 }
 
 int publish_snapshot(const CPU *source) {
@@ -93,8 +93,8 @@ int publish_snapshot(const CPU *source) {
   }
   if (!x2_autosave_header_from_payload(
           guest_memory_as<const unsigned char>(
-              x2_campaign_snapshot_address(g_snapshot)),
-          X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES, header)) {
+              x2::native::campaign_snapshot_address(g_snapshot)),
+          x2::native::kCampaignSnapshotPayloadBytes, header)) {
     g_last_result = AUTOSAVE_LAST_HEADER_FAILED;
     return 0;
   }
@@ -105,8 +105,9 @@ int publish_snapshot(const CPU *source) {
   }
   if (!x2_autosave_storage_publish(
           directory, header,
-          guest_memory_const_pointer(x2_campaign_snapshot_address(g_snapshot)),
-          X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES, X2_AUTOSAVE_FAULT_NONE)) {
+          guest_memory_const_pointer(
+              x2::native::campaign_snapshot_address(g_snapshot)),
+          x2::native::kCampaignSnapshotPayloadBytes, X2_AUTOSAVE_FAULT_NONE)) {
     g_last_errno = errno;
     g_last_result = AUTOSAVE_LAST_PUBLISH_FAILED;
     return 0;

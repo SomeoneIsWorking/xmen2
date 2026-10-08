@@ -31,30 +31,30 @@ namespace {
 
 constexpr int kFatalSignals[] = {SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGTRAP};
 
-X2FaultKind kind_of(int sig) {
+x2::fault::FaultKind kind_of(int sig) {
   switch (sig) {
   case SIGILL:
-    return X2_FAULT_ILL;
+    return x2::fault::FaultKind::Ill;
   case SIGFPE:
-    return X2_FAULT_FPE;
+    return x2::fault::FaultKind::Fpe;
   case SIGBUS:
-    return X2_FAULT_BUS;
+    return x2::fault::FaultKind::Bus;
   case SIGTRAP:
-    return X2_FAULT_TRAP;
+    return x2::fault::FaultKind::Trap;
   default:
-    return X2_FAULT_SEGV;
+    return x2::fault::FaultKind::Segv;
   }
 }
 
-int signal_of(X2FaultKind kind) {
+int signal_of(x2::fault::FaultKind kind) {
   switch (kind) {
-  case X2_FAULT_ILL:
+  case x2::fault::FaultKind::Ill:
     return SIGILL;
-  case X2_FAULT_FPE:
+  case x2::fault::FaultKind::Fpe:
     return SIGFPE;
-  case X2_FAULT_BUS:
+  case x2::fault::FaultKind::Bus:
     return SIGBUS;
-  case X2_FAULT_TRAP:
+  case x2::fault::FaultKind::Trap:
     return SIGTRAP;
   default:
     return SIGSEGV;
@@ -119,10 +119,10 @@ uintptr_t context_pc(const void *context) {
 }
 
 void on_fatal_signal(int sig, siginfo_t *si, void *uc) {
-  const X2Fault fault = {
+  const x2::fault::Fault fault = {
       kind_of(sig), fault_meaning(sig, si->si_code), sig,
       si->si_code,  (uintptr_t)si->si_addr,          context_pc(uc)};
-  fault_report(&fault);
+  x2::fault::fault_report(&fault);
 }
 
 constexpr char kInterruptedMessage[] =
@@ -210,8 +210,8 @@ bool install_handlers() {
   return installed;
 }
 
-void trigger(X2FaultKind kind, bool genuine) {
-  if (genuine && kind == X2_FAULT_ILL) {
+void trigger(FaultKind kind, bool genuine) {
+  if (genuine && kind == FaultKind::Ill) {
 #if defined(__aarch64__)
     __asm__ __volatile__(".inst 0");
 #elif defined(__i386__) || defined(__x86_64__)

@@ -19,7 +19,9 @@
 
 #define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
-static SDL_Window *g_window;
+namespace {
+
+SDL_Window *g_window;
 static uint32_t g_hwnd;
 static uint32_t g_registered_wndproc;
 static uint32_t g_wndproc;
@@ -65,7 +67,11 @@ static void apply_cursor_policy(void) {
   }
 }
 
-void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
+} // namespace
+
+namespace x2::native {
+
+void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   if (!window) {
     x2_touch_runtime_cancel();
     x2_win32_pointer_window(NULL);
@@ -91,47 +97,49 @@ void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   apply_cursor_policy();
 }
 
-void x2_win32_events_hide_window(int hidden) {
+void win32_events_hide_window(int hidden) {
   g_hidden = hidden != 0;
   x2_win32_mouse_window_state(&g_mouse, hidden, g_mouse.window_focused,
                               g_mouse.pointer_inside);
   apply_cursor_policy();
 }
 
-void x2_win32_events_register_wndproc(uint32_t wndproc) {
+void win32_events_register_wndproc(uint32_t wndproc) {
   g_registered_wndproc = wndproc;
 }
 
-uint32_t x2_win32_events_registered_wndproc(void) {
-  return g_registered_wndproc;
-}
+uint32_t win32_events_registered_wndproc() { return g_registered_wndproc; }
 
-void x2_win32_events_set_wndproc(uint32_t wndproc) { g_wndproc = wndproc; }
+void win32_events_set_wndproc(uint32_t wndproc) { g_wndproc = wndproc; }
 
-void x2_win32_events_modal(int visible) {
+void win32_events_modal(int visible) {
   x2_win32_mouse_modal(&g_mouse, visible);
   apply_cursor_policy();
 }
 
-int x2_win32_events_guest_show_cursor(int show) {
+int win32_events_guest_show_cursor(int show) {
   return x2_win32_mouse_guest_show_cursor(&g_mouse, show);
 }
 
-int x2_win32_events_client_to_screen(int32_t *x, int32_t *y) {
+int win32_events_client_to_screen(int32_t *x, int32_t *y) {
   return x2_win32_pointer_client_to_screen(x, y);
 }
 
-int x2_win32_events_screen_to_client(int32_t *x, int32_t *y) {
+int win32_events_screen_to_client(int32_t *x, int32_t *y) {
   return x2_win32_pointer_screen_to_client(x, y);
 }
 
-int x2_win32_events_get_cursor_pos(int32_t *x, int32_t *y) {
+int win32_events_get_cursor_pos(int32_t *x, int32_t *y) {
   return x2_win32_pointer_get_cursor_pos(x, y);
 }
 
-int x2_win32_events_set_cursor_pos(int32_t x, int32_t y) {
+int win32_events_set_cursor_pos(int32_t x, int32_t y) {
   return x2_win32_pointer_set_cursor_pos(x, y);
 }
+
+} // namespace x2::native
+
+namespace {
 
 static void put_msg(uint32_t p, const X2Win32Message *message) {
   if (!p)
@@ -248,6 +256,8 @@ static void pump_sdl(void) {
   x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
   apply_cursor_policy();
 }
+
+} // namespace
 
 void imp_USER32_PeekMessageA(CPU *C) {
   X2Win32Message message;

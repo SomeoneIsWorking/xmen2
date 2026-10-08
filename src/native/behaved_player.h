@@ -1,29 +1,25 @@
-#ifndef X2_BEHAVED_PLAYER_H
-#define X2_BEHAVED_PLAYER_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-typedef int (*BehavedPlayerOwnsContext)(uint32_t context, void *opaque);
+namespace x2::native {
 
-typedef enum BehavedPlayerStep {
-  BEHAVED_PLAYER_STEP_REFUSED = -1,
-  BEHAVED_PLAYER_STEP_NONE = 0,
-  BEHAVED_PLAYER_STEP_RAN = 1,
-  BEHAVED_PLAYER_STEP_COMPLETED = 2
-} BehavedPlayerStep;
+using BehavedPlayerOwnsContext = int (*)(std::uint32_t context, void *opaque);
+
+enum class BehavedPlayerStep { Refused = -1, None = 0, Ran = 1, Completed = 2 };
 
 /* Read-only selection. Returns -1 for corrupt/unreadable scheduler state,
  * zero when no accepted context is scheduled, and one with `context` filled
  * for the minimum-deadline accepted entry. */
 int behaved_player_next_owned(struct X86pCpu *cpu,
                               BehavedPlayerOwnsContext owns, void *opaque,
-                              uint32_t *context);
+                              std::uint32_t *context);
 
 /* Resume exactly this scheduled context, independent of its deadline. */
 BehavedPlayerStep behaved_player_step_context(struct X86pCpu *cpu,
-                                              uint32_t context);
+                                              std::uint32_t context);
 
 /* Resume the earliest scheduled BehavEd context accepted by `owns`, without
  * consulting or changing its guest deadline. Exactly one context is resumed;
@@ -33,6 +29,6 @@ BehavedPlayerStep behaved_player_step_owned(struct X86pCpu *cpu,
                                             void *opaque);
 
 /* Native thiscall replacement for XMen2.exe FUN_004d9640. */
-void x2_override_004d9640(struct X86pCpu *cpu);
+void override_004d9640(struct X86pCpu *cpu);
 
-#endif
+} // namespace x2::native

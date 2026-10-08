@@ -1,23 +1,26 @@
-#ifndef X2_PROMPT_LABELS_H
-#define X2_PROMPT_LABELS_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-enum PromptLabelStyle {
-  PROMPT_LABEL_UNCHANGED = 0,
-  PROMPT_LABEL_PAD_GLYPH,
-  PROMPT_LABEL_KEYCAP
-};
+struct X86pCpu;
+
+namespace x2::native {
+
+enum class PromptLabelStyle { Unchanged, PadGlyph, Keycap };
 
 /* Restyle one complete game label. Returns unchanged when output is too small.
  */
-enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
-                                           uint8_t *output, size_t capacity);
+PromptLabelStyle prompt_label_rewrite(const std::uint8_t *input,
+                                      std::uint8_t *output,
+                                      std::size_t capacity);
 /* The one guest buffer the composed label is published through, or 0 before
    the first composition. Exposed so the token resolver's probe can tell the
    port's own bytes from the game's. */
-uint32_t x2_prompt_label_buffer(void);
-void prompt_labels_report(void);
+std::uint32_t prompt_label_buffer();
+void prompt_labels_report();
 
-#endif /* X2_PROMPT_LABELS_H */
+/* Native replacement for XMen2.exe FUN_00619e30, the action label composer. */
+void override_00619e30(struct X86pCpu *cpu);
+
+} // namespace x2::native

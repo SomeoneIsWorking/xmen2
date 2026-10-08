@@ -6,15 +6,17 @@
 #include <emscripten.h>
 #endif
 
-int x2_host_touch_devices(void) {
+namespace x2::native {
+
+int host_touch_devices() {
   int count = 0;
   SDL_TouchID *const devices = SDL_GetTouchDevices(&count);
   SDL_free(devices);
   return count;
 }
 
-int x2_host_touch_capable(void) {
-  if (x2_host_touch_devices() > 0) {
+int host_touch_capable() {
+  if (host_touch_devices() > 0) {
     return 1;
   }
 #ifdef __EMSCRIPTEN__
@@ -39,3 +41,5 @@ int x2_host_touch_capable(void) {
   return 0;
 #endif
 }
+
+} // namespace x2::native

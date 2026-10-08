@@ -51,47 +51,47 @@ static void reset_mock(void) {
 }
 
 int main(void) {
-  X2ControlScreenshot shot = {0};
+  x2::native::ControlScreenshot shot = {0};
   const unsigned char *png;
   size_t bytes;
   char why[96];
 
   reset_mock();
   request_ok = 0;
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_FAILED);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotFailed);
   CHECK(strstr(why, "no GPU") != NULL);
   CHECK(requests == 1 && !shot.armed);
 
   reset_mock();
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_PENDING);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotPending);
   CHECK(shot.armed && requests == 1);
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_PENDING);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotPending);
   CHECK(requests == 1 && discards == 0);
   capture_status = 1;
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_READY);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotReady);
   CHECK(!shot.armed && discards == 1);
-  png = x2_control_screenshot_png(&shot, &bytes);
+  png = x2::native::control_screenshot_png(&shot, &bytes);
   CHECK(png != NULL && bytes > 24);
   CHECK(!memcmp(png, "\x89PNG\r\n\x1a\n", 8));
   CHECK(png[16] == 0 && png[17] == 0 && png[18] == 0 && png[19] == 2);
   CHECK(png[20] == 0 && png[21] == 0 && png[22] == 0 && png[23] == 1);
 
   reset_mock();
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_PENDING);
-  x2_control_screenshot_abandon(&shot);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotPending);
+  x2::native::control_screenshot_abandon(&shot);
   CHECK(!shot.armed && discards == 1);
 
   reset_mock();
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_PENDING);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotPending);
   capture_status = -1;
-  CHECK(x2_control_screenshot_poll(&shot, why, sizeof why) ==
-        X2_CONTROL_SCREENSHOT_FAILED);
+  CHECK(x2::native::control_screenshot_poll(&shot, why, sizeof why) ==
+        x2::native::kControlScreenshotFailed);
   CHECK(strstr(why, "copy failed") != NULL && discards == 1);
 
   printf("control screenshot: %d checks, %d failure(s)\n", checks, failures);

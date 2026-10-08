@@ -41,8 +41,8 @@ int g_host_capable = -1;
  */
 void prepare_for_host() {
   const unsigned mode = x2_settings_store()->touch_controls;
-  g_host_devices = x2_host_touch_devices();
-  g_host_capable = x2_host_touch_capable();
+  g_host_devices = x2::native::host_touch_devices();
+  g_host_capable = x2::native::host_touch_capable();
   if (mode == X2_TOUCH_CONTROLS_OFF) {
     return;
   }

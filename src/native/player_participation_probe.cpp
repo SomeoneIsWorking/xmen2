@@ -7,6 +7,10 @@
 
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 #define EXE_PREFERRED 0x00400000u
 #define PARTICIPATION_SINGLETON_RVA (0x0048de40u - EXE_PREFERRED)
 #define PARTICIPATION_ACTIVE 0x10u
@@ -108,7 +112,9 @@ static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,
   }
 }
 
-size_t x2_player_participation_probe_report(CPU *cpu, char *out, size_t size) {
+} // namespace
+
+size_t player_participation_probe_report(CPU *cpu, char *out, size_t size) {
   uint32_t base, manager;
   unsigned player, count = 0, mask = 0;
   size_t at = 0;
@@ -138,3 +144,5 @@ size_t x2_player_participation_probe_report(CPU *cpu, char *out, size_t size) {
   report_pad_players(cpu, base, out, size, &at);
   return at;
 }
+
+} // namespace x2::native

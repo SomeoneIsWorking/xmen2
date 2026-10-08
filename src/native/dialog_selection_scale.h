@@ -1,6 +1,7 @@
-#ifndef X2_DIALOG_SELECTION_SCALE_H
-#define X2_DIALOG_SELECTION_SCALE_H
+#pragma once
 
-void x2_dialog_selection_scale_report(void);
+namespace x2::native {
 
-#endif /* X2_DIALOG_SELECTION_SCALE_H */
+void dialog_selection_scale_report();
+
+} // namespace x2::native

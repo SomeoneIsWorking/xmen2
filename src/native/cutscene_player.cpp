@@ -254,7 +254,8 @@ static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
   }
   if (conversation == CONVERSATION_PLAYER_UNREADABLE)
     return -1;
-  available = behaved_player_next_owned(cpu, owns_context, NULL, &selected);
+  available =
+      x2::native::behaved_player_next_owned(cpu, owns_context, NULL, &selected);
   if (available > 0)
     *fiber = selected;
   return available;
@@ -263,7 +264,7 @@ static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
 static X2CutsceneFiberStep
 step_owned_fiber(void *context, X2CutsceneSequence sequence,
                  X2CutsceneFiber fiber, X2CutsceneConversation *conversation) {
-  BehavedPlayerStep step;
+  x2::native::BehavedPlayerStep step;
   CPU *cpu = static_cast<CPU *>(context);
 
   if (!g_player.active || sequence != g_player.sequence)
@@ -293,18 +294,18 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
       return X2_CUTSCENE_FIBER_CHOICE;
     return X2_CUTSCENE_FIBER_NO_PROGRESS;
   }
-  step = behaved_player_step_context(cpu, (uint32_t)fiber);
+  step = x2::native::behaved_player_step_context(cpu, (uint32_t)fiber);
   g_player.behaved_steps++;
   if (!claim_events())
     return X2_CUTSCENE_FIBER_ERROR;
   switch (step) {
-  case BEHAVED_PLAYER_STEP_RAN:
+  case x2::native::BehavedPlayerStep::Ran:
     return X2_CUTSCENE_FIBER_ADVANCED;
-  case BEHAVED_PLAYER_STEP_COMPLETED:
+  case x2::native::BehavedPlayerStep::Completed:
     return X2_CUTSCENE_FIBER_COMPLETED;
-  case BEHAVED_PLAYER_STEP_NONE:
+  case x2::native::BehavedPlayerStep::None:
     return X2_CUTSCENE_FIBER_NO_PROGRESS;
-  case BEHAVED_PLAYER_STEP_REFUSED:
+  case x2::native::BehavedPlayerStep::Refused:
   default:
     return X2_CUTSCENE_FIBER_ERROR;
   }

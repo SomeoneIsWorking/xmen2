@@ -41,7 +41,7 @@ static int publish(int running) {
   /* Per process: concurrent runs each rename their own record into place. */
   snprintf(next, sizeof next, "%s/live.json.%ld.new", g_directory,
            (long)getpid());
-  if (!x2_directory_create(g_directory))
+  if (!x2::config::directory_create(g_directory))
     return 0;
   file = fopen(next, "w");
   if (!file)

@@ -11,7 +11,7 @@ verified_at: 2026-08-26 23:22:15
 
 ## Claim
 
-The port's composed prompt labels DO reach the exe's glyph loop FUN_005ee780, as wide strings carrying codepoints 0x0090..0x0093 in exactly the shape prompt_labels.cpp builds. The chain is: x2_override_00619e30 composes the narrow label -> token resolver FUN_004bd720 returns that pointer to its caller -> FUN_005ef2e0 (markup -> wide line buffers) widens it with a plain MOVZX AX,BL at 0x005ef7b3, so the bytes zero-extend unchanged -> FUN_005ee780 walks it. The wide string is FUN_005ee780's FIRST STACK ARGUMENT (entry_esp+4), not EDX. This means step 1 of the docs/RE/text.md renderer plan is sound: an override on FUN_005ee780 can cheaply test each wide string for the port's codepoints and super-call unchanged for every ordinary one.
+The port's composed prompt labels DO reach the exe's glyph loop FUN_005ee780, as wide strings carrying codepoints 0x0090..0x0093 in exactly the shape prompt_labels.cpp builds. The chain is: override_00619e30 composes the narrow label -> token resolver FUN_004bd720 returns that pointer to its caller -> FUN_005ef2e0 (markup -> wide line buffers) widens it with a plain MOVZX AX,BL at 0x005ef7b3, so the bytes zero-extend unchanged -> FUN_005ee780 walks it. The wide string is FUN_005ee780's FIRST STACK ARGUMENT (entry_esp+4), not EDX. This means step 1 of the docs/RE/text.md renderer plan is sound: an override on FUN_005ee780 can cheaply test each wide string for the port's codepoints and super-call unchanged for every ordinary one.
 
 ## Evidence
 
