@@ -15,8 +15,10 @@
 #define LUMA_SAMPLES 4096u
 #define NONBLACK_CHANNEL 24u
 
-void x2_present_luma_stats(const unsigned char *bgra, uint32_t width,
-                           uint32_t height, X2PresentLumaStats *out) {
+namespace x2::gpu {
+
+void present_luma_stats(const unsigned char *bgra, uint32_t width,
+                        uint32_t height, PresentLumaStats *out) {
   uint64_t pixels, stride, i;
   uint64_t luma_sum = 0;
 
@@ -48,6 +50,8 @@ void x2_present_luma_stats(const unsigned char *bgra, uint32_t width,
     out->mean_luma = (double)luma_sum / (double)out->sampled;
 }
 
+} // namespace x2::gpu
+
 #ifdef X2_WITH_SDL
 /* The frame driver needs the capture owner, which needs SDL. */
 
@@ -62,11 +66,13 @@ void x2_present_luma_stats(const unsigned char *bgra, uint32_t width,
    machine, and the probe says so rather than going quiet. */
 #define LUMA_STALL_PRESENTS 120ul
 
-static double pct_nonblack(const X2PresentLumaStats *s) {
+namespace x2::gpu {
+
+static double pct_nonblack(const PresentLumaStats *s) {
   return s->sampled ? 100.0 * (double)s->nonblack / (double)s->sampled : 0.0;
 }
 
-void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
+void present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
   static unsigned long presents;
   static long every = -1;
   static int outstanding; /* requested, not yet harvested */
@@ -76,8 +82,8 @@ void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
   static uint32_t scene_capacity;
   static char failure[192];
   const unsigned char *bgra;
-  X2PresentLumaStats composed;
-  X2PresentLumaStats scene;
+  PresentLumaStats composed;
+  PresentLumaStats scene;
   SDL_GPUTexture *scene_texture;
   uint32_t width, height;
   uint32_t scene_w = 0, scene_h = 0;
@@ -105,7 +111,7 @@ void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
        that for one and silenced itself on the first present. */
     rc = gpu_capture_result(&bgra, &width, &height, failure, sizeof failure);
     if (rc == 1) {
-      x2_present_luma_stats(bgra, width, height, &composed);
+      present_luma_stats(bgra, width, height, &composed);
       scene.mean_luma = 0.0;
       scene.max_channel = 0;
       scene.sampled = 0;
@@ -131,7 +137,7 @@ void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
         else
           scene_state = "no-buffer";
         if (scene_state[0] == 'r' && scene_state[1] == 'e')
-          x2_present_luma_stats(scene_buf, scene_w, scene_h, &scene);
+          present_luma_stats(scene_buf, scene_w, scene_h, &scene);
       }
       x2_log_info("[LUMA] present %lu: composed mean %.1f max %u nonblack "
                   "%.1f%% | scene %s mean %.1f max %u nonblack %.1f%% "
@@ -172,4 +178,6 @@ void x2_present_luma_frame(SDL_GPUDevice *device, unsigned long draws) {
     }
   }
 }
+
+} // namespace x2::gpu
 #endif

@@ -146,8 +146,9 @@ int main() {
   auto old_install = complete_install("Old/Sub", valid_executable("old"));
   old_install.emplace_back("Old/stale.txt", "stale");
   write_archive(archive, old_install);
-  if (!x2_install_archive_prepare(archive.string().c_str(), executable,
-                                  sizeof executable, reason, sizeof reason) ||
+  if (!x2::native::install_archive_prepare(archive.string().c_str(), executable,
+                                           sizeof executable, reason,
+                                           sizeof reason) ||
       !contains_marker(executable, "old")) {
     std::cerr << "initial archive preparation failed: " << reason << "\n";
     return 1;
@@ -162,8 +163,9 @@ int main() {
   }
 
   write_archive(archive, complete_install("New/Deep", valid_executable("new")));
-  if (!x2_install_archive_prepare(archive.string().c_str(), executable,
-                                  sizeof executable, reason, sizeof reason) ||
+  if (!x2::native::install_archive_prepare(archive.string().c_str(), executable,
+                                           sizeof executable, reason,
+                                           sizeof reason) ||
       !contains_marker(executable, "new") ||
       std::filesystem::exists(accepted_root / "Old/stale.txt")) {
     std::cerr << "replacement did not atomically discard stale files: "
@@ -175,7 +177,7 @@ int main() {
   const std::filesystem::path staged_destination =
       root / "staging/.x2-prepared";
   std::filesystem::create_directories(staged_destination.parent_path());
-  if (!x2_install_archive_prepare_to(
+  if (!x2::native::install_archive_prepare_to(
           archive.string().c_str(), staged_destination.string().c_str(),
           executable, sizeof executable, reason, sizeof reason) ||
       !std::filesystem::path(executable)
@@ -198,7 +200,7 @@ int main() {
     sample.total = total;
     sample.calls++;
   };
-  if (!x2_install_archive_extract_unpublished(
+  if (!x2::native::install_archive_extract_unpublished(
           archive.string().c_str(), unpublished.string().c_str(), executable,
           sizeof executable, reason, sizeof reason, on_progress, &progress) ||
       !std::filesystem::path(executable)
@@ -211,7 +213,7 @@ int main() {
     std::cerr << "unpublished extraction failed: " << reason << "\n";
     return 1;
   }
-  if (x2_install_archive_extract_unpublished(
+  if (x2::native::install_archive_extract_unpublished(
           archive.string().c_str(), unpublished.string().c_str(), executable,
           sizeof executable, reason, sizeof reason, nullptr, nullptr) ||
       !contains_marker(unpublished / "New/Deep/XMen2.exe", "new")) {
@@ -221,8 +223,9 @@ int main() {
   }
 
   write_archive(archive, {{"Broken/XMen2.exe", "invalid"}});
-  if (x2_install_archive_prepare(archive.string().c_str(), executable,
-                                 sizeof executable, reason, sizeof reason) ||
+  if (x2::native::install_archive_prepare(archive.string().c_str(), executable,
+                                          sizeof executable, reason,
+                                          sizeof reason) ||
       !contains_marker(replacement, "new") ||
       std::filesystem::exists(accepted_root.string() + ".preparing")) {
     std::cerr << "invalid replacement damaged the accepted install: " << reason

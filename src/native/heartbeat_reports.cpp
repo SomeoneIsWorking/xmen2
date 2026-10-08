@@ -43,7 +43,7 @@ void heartbeat_subsystem_reports(void) {
   /* And the movie the audio belongs to: a title waiting for a cutscene to
      report itself finished waits without a timeout, so which side stopped --
      the guest asking or this port answering -- has to be on the line. */
-  x2_movie_beat_report();
+  x2::native::movie_beat_report();
   d3d8_vs_beat_report();
 }
 

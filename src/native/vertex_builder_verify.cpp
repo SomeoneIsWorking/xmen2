@@ -15,6 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 enum {
   SELF_CAP = 0x0cu,
   SELF_C14 = 0x14u,
@@ -145,3 +147,5 @@ void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self) {
     abort();
   }
 }
+
+} // namespace x2::native

@@ -14,6 +14,8 @@
 
 #include <stdint.h>
 
+namespace x2::native {
+
 /* Descriptor (arg1) and `this` field offsets, from the retail disassembly. */
 enum {
   DESC_TYPE = 0x04,  /* == 2 selects the colour path */
@@ -79,7 +81,7 @@ static void update_flags(uint32_t self, uint32_t flags) {
   WR8(self + SELF_LOCK, (uint8_t)(lock - 1u));
 }
 
-void x2_override_10046ce0(CPU *C) {
+void override_10046ce0(CPU *C) {
   const uint32_t self = C->reg[kX86pEcx];
   const uint32_t desc = RD32(C->reg[kX86pEsp] + 4u);
   const uint32_t flags = RD32(C->reg[kX86pEsp] + 8u);
@@ -97,5 +99,7 @@ void x2_override_10046ce0(CPU *C) {
 }
 
 __attribute__((constructor)) static void vertex_color_swizzle_register(void) {
-  x86_register_override("libIGGfx.dll", 0x10046ce0u, x2_override_10046ce0);
+  x86_register_override("libIGGfx.dll", 0x10046ce0u, override_10046ce0);
 }
+
+} // namespace x2::native

@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace x2::native {
+
 typedef struct {
   int32_t window_x;
   int32_t window_y;
@@ -19,7 +21,7 @@ typedef struct {
 
 static SDL_Window *g_window;
 
-void x2_win32_pointer_window(SDL_Window *window) { g_window = window; }
+void win32_pointer_window(SDL_Window *window) { g_window = window; }
 
 static void mouse_geometry(MouseGeometry *geometry) {
   const X2Settings *settings = x2_settings_store();
@@ -63,7 +65,7 @@ static int32_t coordinate_add(int32_t coordinate, int64_t offset,
   return (int32_t)result;
 }
 
-int x2_win32_pointer_client_to_screen(int32_t *x, int32_t *y) {
+int win32_pointer_client_to_screen(int32_t *x, int32_t *y) {
   MouseGeometry geometry;
 
   if (!x || !y)
@@ -74,7 +76,7 @@ int x2_win32_pointer_client_to_screen(int32_t *x, int32_t *y) {
   return 1;
 }
 
-int x2_win32_pointer_screen_to_client(int32_t *x, int32_t *y) {
+int win32_pointer_screen_to_client(int32_t *x, int32_t *y) {
   MouseGeometry geometry;
 
   if (!x || !y)
@@ -114,7 +116,7 @@ static void map_point(float host_x, float host_y, int32_t *client_x,
  * X server request on X11, and on a host with no global position (the dummy
  * driver) a point that disagreed with the message stream outright.
  */
-int x2_win32_pointer_get_cursor_pos(int32_t *x, int32_t *y) {
+int win32_pointer_get_cursor_pos(int32_t *x, int32_t *y) {
   float host_x, host_y;
   int32_t client_x, client_y;
 
@@ -125,7 +127,7 @@ int x2_win32_pointer_get_cursor_pos(int32_t *x, int32_t *y) {
   return 1;
 }
 
-int x2_win32_pointer_set_cursor_pos(int32_t x, int32_t y) {
+int win32_pointer_set_cursor_pos(int32_t x, int32_t y) {
   MouseGeometry geometry;
   int32_t host_x, host_y;
 
@@ -177,9 +179,9 @@ static void require_queued(int queued, const char *kind) {
   abort();
 }
 
-void x2_win32_pointer_translate_mouse(const SDL_Event *event,
-                                      x2::native::Win32Mouse *mouse,
-                                      uint32_t hwnd) {
+void win32_pointer_translate_mouse(const SDL_Event *event,
+                                   x2::native::Win32Mouse *mouse,
+                                   uint32_t hwnd) {
   int32_t client_x, client_y, screen_x, screen_y;
   int queued;
 
@@ -219,9 +221,9 @@ void x2_win32_pointer_translate_mouse(const SDL_Event *event,
   require_queued(queued, "mouse event");
 }
 
-void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
-                                      x2::native::Win32Mouse *mouse,
-                                      uint32_t hwnd) {
+void win32_pointer_translate_touch(const X2TouchPointer *pointer,
+                                   x2::native::Win32Mouse *mouse,
+                                   uint32_t hwnd) {
   int32_t client_x, client_y, screen_x, screen_y;
   int queued;
 
@@ -232,7 +234,7 @@ void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
     client_y = (int32_t)pointer->y;
     screen_x = client_x;
     screen_y = client_y;
-    x2_win32_pointer_client_to_screen(&screen_x, &screen_y);
+    win32_pointer_client_to_screen(&screen_x, &screen_y);
   } else {
     map_point(pointer->x, pointer->y, &client_x, &client_y, &screen_x,
               &screen_y);
@@ -247,3 +249,5 @@ void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
         pointer->time_ms, modifiers());
   require_queued(queued, "touch pointer");
 }
+
+} // namespace x2::native

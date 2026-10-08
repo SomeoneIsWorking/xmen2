@@ -118,7 +118,7 @@ const char *visual_class(const X2TouchVisual &visual) {
 /* The game's icon for a power button, from the hero's own atlas. */
 std::string power_source(const X2TouchVisual &visual) {
   IgbTextureRenderInterface *textures = igb_texture_interface();
-  const char *atlas = x2_power_slots_atlas();
+  const char *atlas = x2::native::power_slots_atlas();
   if (visual.power_icon < 0 || !textures || !atlas[0]) {
     return {};
   }

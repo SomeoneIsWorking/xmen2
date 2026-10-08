@@ -86,7 +86,7 @@ static int keycap_glyphs_available(void) {
 PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
                                       size_t capacity) {
   size_t length, name_length, i;
-  uint16_t run[X2_KEYCAP_NAME_MAX + 2u];
+  uint16_t run[x2::native::kKeycapNameMax + 2u];
 
   if (!input || !output || !capacity)
     return PromptLabelStyle::Unchanged;
@@ -104,7 +104,7 @@ PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
   if (!keycap_glyphs_available())
     return PromptLabelStyle::Unchanged;
   name_length = length - 2u;
-  if (name_length > X2_KEYCAP_NAME_MAX ||
+  if (name_length > x2::native::kKeycapNameMax ||
       (name_length == 3u && memcmp(input + 1u, "???", 3u) == 0))
     return PromptLabelStyle::Unchanged;
   run[0] = X2_KEYCAP_GLYPH_LEFT;
@@ -114,7 +114,7 @@ PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
   run[name_length + 1u] = X2_KEYCAP_GLYPH_RIGHT;
   /* Composed only as a run the drawer will take, and lettered now, so a key
      that cannot be drawn whole is never composed. */
-  if (x2_keycap_run_length(run, (unsigned)name_length + 2u, 0u) !=
+  if (x2::native::keycap_run_length(run, (unsigned)name_length + 2u, 0u) !=
           name_length + 2u ||
       !x2_keycap_label_art(run + 1u, (unsigned)name_length))
     return PromptLabelStyle::Unchanged;

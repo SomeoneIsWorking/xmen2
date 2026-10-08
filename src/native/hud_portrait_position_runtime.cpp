@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 enum {
   PORTRAIT_POSITION = 0x005a1650u,
   PLAYER_MANAGER = 0x0048de40u,
@@ -19,20 +21,20 @@ enum {
   PLAYER_COUNT_VMETHOD = 4u
 };
 
-static X2HudPortraitMap g_mapper;
+static HudPortraitMap g_mapper;
 static void *g_mapper_context;
 static unsigned long g_calls;
 static unsigned long g_native_calls;
 static unsigned long g_verified;
 static unsigned long g_mismatches;
 
-void x2_hud_portrait_position_mapper(X2HudPortraitMap mapper, void *context) {
+void hud_portrait_position_mapper(HudPortraitMap mapper, void *context) {
   g_mapper = mapper;
   g_mapper_context = context;
 }
 
-static X2HudPortraitAnchor read_anchor(uint32_t address) {
-  X2HudPortraitAnchor result;
+static HudPortraitAnchor read_anchor(uint32_t address) {
+  HudPortraitAnchor result;
   for (unsigned axis = 0; axis < 3; ++axis)
     result.xyz[axis] = RDF32(address + ANCHOR_POSITION + axis * 4u);
   result.scale = RDF32(address + ANCHOR_SCALE);
@@ -60,10 +62,10 @@ static void portrait_position(CPU *cpu) {
     for (unsigned axis = 0; axis < 3; ++axis)
       output[axis] = RDF32(output_address + axis * 4u);
   } else {
-    const X2HudPortraitAnchor local = read_anchor(portrait);
-    const X2HudPortraitAnchor parent =
+    const HudPortraitAnchor local = read_anchor(portrait);
+    const HudPortraitAnchor parent =
         read_anchor(RD32(portrait + PORTRAIT_PARENT));
-    x2_hud_portrait_position(&parent, &local, output);
+    hud_portrait_position(&parent, &local, output);
     ++g_native_calls;
     if (lucent_cvar_flag("hud.verify", 0)) {
       CPU original = *cpu;
@@ -94,7 +96,7 @@ static void portrait_position(CPU *cpu) {
     WRF32(output_address + axis * 4u, output[axis]);
 }
 
-void x2_hud_portrait_position_report(void) {
+void hud_portrait_position_report(void) {
   lucent_log_info("hud",
                   "portrait positions: %lu native of %lu calls; "
                   "%lu original comparisons, %lu mismatches",
@@ -104,3 +106,5 @@ void x2_hud_portrait_position_report(void) {
 __attribute__((constructor)) static void register_portrait_position(void) {
   x86_register_override("XMen2.exe", PORTRAIT_POSITION, portrait_position);
 }
+
+} // namespace x2::native

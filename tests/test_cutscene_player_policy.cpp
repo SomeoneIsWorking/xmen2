@@ -113,24 +113,26 @@ static void record(Fixture *fixture, const char *event) {
     fixture->events[fixture->event_count++] = event;
 }
 
-static int active_sequence(void *context, X2CutsceneSequence *sequence) {
+static int active_sequence(void *context,
+                           x2::native::CutsceneSequence *sequence) {
   Fixture *fixture = static_cast<Fixture *>(context);
   (void)fixture;
   *sequence = 0x2002u;
   return 1;
 }
 
-static X2CutsceneControlState control_state(void *context,
-                                            X2CutsceneSequence sequence) {
+static x2::native::CutsceneControlState
+control_state(void *context, x2::native::CutsceneSequence sequence) {
   Fixture *fixture = static_cast<Fixture *>(context);
   if (sequence != 0x2002u)
-    return X2_CUTSCENE_CONTROL_UNREADABLE;
-  return fixture->controls_released ? X2_CUTSCENE_CONTROL_RELEASED
-                                    : X2_CUTSCENE_CONTROL_LOCKED;
+    return x2::native::CutsceneControlState::Unreadable;
+  return fixture->controls_released ? x2::native::CutsceneControlState::Released
+                                    : x2::native::CutsceneControlState::Locked;
 }
 
-static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
-                            X2CutsceneFiber *fiber) {
+static int next_owned_fiber(void *context,
+                            x2::native::CutsceneSequence sequence,
+                            x2::native::CutsceneFiber *fiber) {
   Fixture *fixture = static_cast<Fixture *>(context);
   size_t i;
   if (sequence != 0x2002u)
@@ -164,9 +166,10 @@ static const TestCommand *commands_for(size_t fiber, size_t *count) {
   }
 }
 
-static X2CutsceneFiberStep
-step_owned_fiber(void *context, X2CutsceneSequence sequence,
-                 X2CutsceneFiber handle, X2CutsceneConversation *conversation) {
+static x2::native::CutsceneFiberStep
+step_owned_fiber(void *context, x2::native::CutsceneSequence sequence,
+                 x2::native::CutsceneFiber handle,
+                 x2::native::CutsceneConversation *conversation) {
   static const char *const command_events[] = {
       "camera_owned",
       "wait_intro",
@@ -193,25 +196,25 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
 
   if (sequence != 0x2002u || handle >= FIBER_COUNT ||
       !fixture->fibers[handle].owned)
-    return X2_CUTSCENE_FIBER_ERROR;
+    return x2::native::CutsceneFiberStep::Error;
   fiber = &fixture->fibers[handle];
   fiber->runs++;
 
   if (fixture->mode == TEST_NO_PROGRESS)
-    return X2_CUTSCENE_FIBER_NO_PROGRESS;
+    return x2::native::CutsceneFiberStep::NoProgress;
   if (fixture->mode == TEST_RUNAWAY)
-    return X2_CUTSCENE_FIBER_ADVANCED;
+    return x2::native::CutsceneFiberStep::Advanced;
 
   commands = commands_for(handle, &count);
   if (!commands || fiber->cursor >= count)
-    return X2_CUTSCENE_FIBER_ERROR;
+    return x2::native::CutsceneFiberStep::Error;
   command = commands[fiber->cursor];
   if (command == COMMAND_CONVERSATION_0020 ||
       command == COMMAND_CONVERSATION_0020B) {
     *conversation = command == COMMAND_CONVERSATION_0020 ? 0x20u : 0x20bu;
     return fixture->mode == TEST_CHOICE
-               ? X2_CUTSCENE_FIBER_CHOICE
-               : X2_CUTSCENE_FIBER_DETERMINISTIC_CONVERSATION;
+               ? x2::native::CutsceneFiberStep::Choice
+               : x2::native::CutsceneFiberStep::DeterministicConversation;
   }
 
   record(fixture, command_events[command]);
@@ -221,16 +224,17 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
     fiber->active = 0;
     if (command == COMMAND_SPAWN_COMPLETE)
       fixture->fibers[WALK_FIBER].active = 1;
-    return X2_CUTSCENE_FIBER_COMPLETED;
+    return x2::native::CutsceneFiberStep::Completed;
   }
   if (command == COMMAND_CONTROL_RELEASE)
     fixture->controls_released = 1;
-  return X2_CUTSCENE_FIBER_ADVANCED;
+  return x2::native::CutsceneFiberStep::Advanced;
 }
 
 static int
-play_deterministic_conversation(void *context, X2CutsceneSequence sequence,
-                                X2CutsceneConversation conversation) {
+play_deterministic_conversation(void *context,
+                                x2::native::CutsceneSequence sequence,
+                                x2::native::CutsceneConversation conversation) {
   Fixture *fixture = static_cast<Fixture *>(context);
   TestFiber *fiber;
   if (sequence != 0x2002u)
@@ -250,7 +254,7 @@ play_deterministic_conversation(void *context, X2CutsceneSequence sequence,
   return 1;
 }
 
-static const X2CutscenePlayerOps operations = {
+static const x2::native::CutscenePlayerOps operations = {
     active_sequence,
     control_state,
     next_owned_fiber,
@@ -268,7 +272,7 @@ static void test_complete_sequence(void) {
   };
   Fixture fixture;
   TestFiber foreign_before;
-  X2CutscenePlayerPolicy policy = {0};
+  x2::native::CutscenePlayerPolicy policy = {0};
   uint32_t clock_before;
   uint64_t frame_before, world_before;
   size_t i;
@@ -279,8 +283,8 @@ static void test_complete_sequence(void) {
   frame_before = fixture.frame_number;
   world_before = fixture.world_updates;
 
-  CHECK(x2_cutscene_player_finish(&policy, &operations, &fixture) ==
-        X2_CUTSCENE_PLAYER_COMPLETED);
+  CHECK(x2::native::cutscene_player_finish(&policy, &operations, &fixture) ==
+        x2::native::CutscenePlayerResult::Completed);
   CHECK(policy.requests == 1u);
   CHECK(policy.invocations == 1u);
   CHECK(policy.completed == 1u);
@@ -302,12 +306,12 @@ static void test_complete_sequence(void) {
 
 static void test_refusals(void) {
   Fixture fixture;
-  X2CutscenePlayerPolicy policy;
+  x2::native::CutscenePlayerPolicy policy;
 
   fixture_init(&fixture, TEST_CHOICE);
   memset(&policy, 0, sizeof policy);
-  CHECK(x2_cutscene_player_finish(&policy, &operations, &fixture) ==
-        X2_CUTSCENE_PLAYER_BLOCKED_CHOICE);
+  CHECK(x2::native::cutscene_player_finish(&policy, &operations, &fixture) ==
+        x2::native::CutscenePlayerResult::BlockedChoice);
   CHECK(policy.requests == 1u && policy.invocations == 1u);
   CHECK(policy.blocked_choices == 1u);
   CHECK(policy.conversation_payloads == 0u);
@@ -315,8 +319,8 @@ static void test_refusals(void) {
 
   fixture_init(&fixture, TEST_NO_PROGRESS);
   memset(&policy, 0, sizeof policy);
-  CHECK(x2_cutscene_player_finish(&policy, &operations, &fixture) ==
-        X2_CUTSCENE_PLAYER_NO_PROGRESS);
+  CHECK(x2::native::cutscene_player_finish(&policy, &operations, &fixture) ==
+        x2::native::CutscenePlayerResult::NoProgress);
   CHECK(policy.requests == 1u && policy.invocations == 1u);
   CHECK(policy.no_progress == 1u);
   CHECK(fixture.fibers[ROOT_FIBER].runs == 1u);
@@ -324,8 +328,8 @@ static void test_refusals(void) {
   fixture_init(&fixture, TEST_RUNAWAY);
   memset(&policy, 0, sizeof policy);
   policy.step_limit = 3u;
-  CHECK(x2_cutscene_player_finish(&policy, &operations, &fixture) ==
-        X2_CUTSCENE_PLAYER_RUNAWAY);
+  CHECK(x2::native::cutscene_player_finish(&policy, &operations, &fixture) ==
+        x2::native::CutscenePlayerResult::Runaway);
   CHECK(policy.requests == 1u && policy.invocations == 1u);
   CHECK(policy.runaways == 1u);
   CHECK(policy.authored_steps == 3u);
@@ -333,11 +337,11 @@ static void test_refusals(void) {
 }
 
 static void test_context_inheritance(void) {
-  CHECK(!x2_cutscene_player_inherits_context(0, 1, 1, 1));
-  CHECK(!x2_cutscene_player_inherits_context(1, 0, 0, 0));
-  CHECK(x2_cutscene_player_inherits_context(1, 1, 0, 0));
-  CHECK(x2_cutscene_player_inherits_context(1, 0, 1, 0));
-  CHECK(x2_cutscene_player_inherits_context(1, 0, 0, 1));
+  CHECK(!x2::native::cutscene_player_inherits_context(0, 1, 1, 1));
+  CHECK(!x2::native::cutscene_player_inherits_context(1, 0, 0, 0));
+  CHECK(x2::native::cutscene_player_inherits_context(1, 1, 0, 0));
+  CHECK(x2::native::cutscene_player_inherits_context(1, 0, 1, 0));
+  CHECK(x2::native::cutscene_player_inherits_context(1, 0, 0, 1));
 }
 
 int main(void) {

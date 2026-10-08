@@ -94,7 +94,7 @@ static int run_application(int argc, char **argv) {
   char executable[4096];
   const bool selected =
       importing
-          ? x2_install_archive_extract_unpublished(
+          ? x2::native::install_archive_extract_unpublished(
                 selection, "/opfs/install", executable, sizeof(executable),
                 reason, sizeof(reason), report_unpack_progress, nullptr) &&
                 x2::native::install_picker_directory_from_executable(

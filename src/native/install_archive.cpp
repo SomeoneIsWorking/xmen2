@@ -17,7 +17,7 @@ namespace {
  * not Lucent defaults: other ports retain the library's conservative archive
  * limits. The headroom accepts a complete legal install in a ZIP while still
  * bounding direct and one-level-nested archive input. */
-constexpr lucent::zip::ExtractionLimits x2_install_archive_limits{
+constexpr lucent::zip::ExtractionLimits kInstallLimits{
     .max_archive_bytes = 4ULL * 1024ULL * 1024ULL * 1024ULL,
     .max_extracted_bytes = 4ULL * 1024ULL * 1024ULL * 1024ULL,
     .max_entry_bytes = 256ULL * 1024ULL * 1024ULL,
@@ -39,8 +39,8 @@ bool validate_prepared_executable(const std::filesystem::path &prepared,
                                   char *executable,
                                   unsigned executable_capacity, char *reason,
                                   unsigned reason_capacity) {
-  if (!x2_install_validate_executable(prepared.string().c_str(), reason,
-                                      reason_capacity))
+  if (!x2::native::install_validate_executable(prepared.string().c_str(),
+                                               reason, reason_capacity))
     return false;
   const std::filesystem::path relative = prepared.lexically_relative(preparing);
   if (relative.empty() || relative.is_absolute() ||
@@ -134,11 +134,12 @@ bool accept_preparation(const std::filesystem::path &preparing,
 
 } // namespace
 
-int x2_install_archive_prepare_to(const char *archive,
-                                  const char *destination_text,
-                                  char *executable,
-                                  unsigned executable_capacity, char *reason,
-                                  unsigned reason_capacity) {
+namespace x2::native {
+
+int install_archive_prepare_to(const char *archive,
+                               const char *destination_text, char *executable,
+                               unsigned executable_capacity, char *reason,
+                               unsigned reason_capacity) {
   if (!archive || !*archive || !destination_text || !*destination_text ||
       !executable || executable_capacity < 2 || !reason || reason_capacity < 2)
     return 0;
@@ -159,7 +160,7 @@ int x2_install_archive_prepare_to(const char *archive,
   std::filesystem::path prepared_executable;
   if (!lucent::zip::extract_install(archive, preparing, "XMen2.exe",
                                     prepared_executable, error,
-                                    x2_install_archive_limits)) {
+                                    kInstallLimits)) {
     std::string cleanup_error;
     clean_tree(preparing, cleanup_error);
     if (!cleanup_error.empty())
@@ -189,10 +190,10 @@ int x2_install_archive_prepare_to(const char *archive,
   return 1;
 }
 
-int x2_install_archive_extract_unpublished(
+int install_archive_extract_unpublished(
     const char *archive, const char *destination_text, char *executable,
     unsigned executable_capacity, char *reason, unsigned reason_capacity,
-    x2_install_archive_progress progress, void *progress_context) {
+    InstallArchiveProgress progress, void *progress_context) {
   if (!archive || !*archive || !destination_text || !*destination_text ||
       !executable || executable_capacity < 2 || !reason || reason_capacity < 2)
     return 0;
@@ -210,7 +211,7 @@ int x2_install_archive_extract_unpublished(
     };
   if (!lucent::zip::extract_install_unpublished(
           archive, destination, "XMen2.exe", prepared_executable, error,
-          x2_install_archive_limits, on_progress)) {
+          kInstallLimits, on_progress)) {
     std::snprintf(reason, reason_capacity, "That ZIP could not be used: %s",
                   error.c_str());
     return 0;
@@ -231,9 +232,9 @@ int x2_install_archive_extract_unpublished(
   return 1;
 }
 
-int x2_install_archive_prepare(const char *archive, char *executable,
-                               unsigned executable_capacity, char *reason,
-                               unsigned reason_capacity) {
+int install_archive_prepare(const char *archive, char *executable,
+                            unsigned executable_capacity, char *reason,
+                            unsigned reason_capacity) {
   const char *base = x2_config_directory();
   if (!base || !x2_config_directory_ensure()) {
     std::snprintf(reason, reason_capacity,
@@ -242,7 +243,9 @@ int x2_install_archive_prepare(const char *archive, char *executable,
   }
   const std::filesystem::path destination =
       std::filesystem::path(base) / "xmen2-install";
-  return x2_install_archive_prepare_to(archive, destination.string().c_str(),
-                                       executable, executable_capacity, reason,
-                                       reason_capacity);
+  return install_archive_prepare_to(archive, destination.string().c_str(),
+                                    executable, executable_capacity, reason,
+                                    reason_capacity);
 }
+
+} // namespace x2::native

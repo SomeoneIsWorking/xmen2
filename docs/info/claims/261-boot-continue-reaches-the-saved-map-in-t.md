@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: continue,boot,save,conversation,splash
-depends: src/native/continue_runtime.cpp#x2_continue_boot_dispatch, src/native/continue_runtime.cpp#x2_override_004b1280, src/native/startup.cpp#x2_override_00402ba0, src/native/boot_player_selection.cpp#boot_player_select_primary
+depends: src/native/continue_runtime.cpp#continue_boot_dispatch, src/native/continue_runtime.cpp#x2_override_004b1280, src/native/startup.cpp#x2_override_00402ba0, src/native/boot_player_selection.cpp#boot_player_select_primary
 ---
 
 ## Claim
@@ -22,7 +22,7 @@ touches the retail chain itself:
   stamp is marked long past BEFORE the retail body runs, so the phase's own
   comparison -- unchanged, its constant unread -- passes on the first tick.
 - the intro command the phase then issues is intercepted, and
-  `x2_continue_boot_dispatch` runs the authoritative retail mode-3 chain
+  `continue_boot_dispatch` runs the authoritative retail mode-3 chain
   right there (catalog leaf pickup, save-manager mode 3, header/device/file
   selection, state 0x1c, exact-leaf redirect). The boot's intro phase has
   already run `resetgame` and the save-manager init by then, so the chain

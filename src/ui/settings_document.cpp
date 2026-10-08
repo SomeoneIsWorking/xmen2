@@ -244,9 +244,9 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     X2Settings *settings = x2_settings_store();
     X2Settings before = *settings;
     char why[256];
-    x2_live_resolution_select_next(settings);
-    bool applied = x2_live_resolution_apply(host_window, settings, &before, why,
-                                            sizeof why);
+    x2::presentation::live_resolution_select_next(settings);
+    bool applied = x2::presentation::live_resolution_apply(
+        host_window, settings, &before, why, sizeof why);
     rebuild();
     set_status(why);
     if (!applied)

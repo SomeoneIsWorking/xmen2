@@ -136,7 +136,8 @@ static FontOriginal g_overflow;
 static unsigned g_tracked_count;
 static unsigned long g_untracked;
 
-float x2_ui_text_scale(void) {
+namespace x2::native {
+float ui_text_scale(void) {
   const X2Settings *settings = x2_settings_store();
   const char *forced = lucent_cvar_text("text_scale");
   float configured = settings->text_scale;
@@ -155,6 +156,7 @@ float x2_ui_text_scale(void) {
   scale = (float)settings->height / (float)X2_RETAIL_1080P_HEIGHT;
   return scale;
 }
+} // namespace x2::native
 
 static const char *scale_source(void) {
   if (lucent_cvar_text("text_scale")[0])
@@ -257,8 +259,9 @@ static void scale_font_record(const FontOriginal *slot, float k) {
  * memory are not reloaded by that change, so without this the text keeps the
  * size the boot resolution asked for.
  */
-int x2_ui_text_scale_reapply(void) {
-  const float k = x2_ui_text_scale();
+namespace x2::native {
+int ui_text_scale_reapply(void) {
+  const float k = ui_text_scale();
   unsigned i;
 
   if (!g_tracked_count || (g_applied >= 0.0f && k == g_applied))
@@ -278,6 +281,7 @@ int x2_ui_text_scale_reapply(void) {
   g_applied = k;
   return (int)g_tracked_count;
 }
+} // namespace x2::native
 
 /*
  * FUN_00596af0(this = font table, const char *name, int index) fills
@@ -291,7 +295,7 @@ static void x2_override_font_loader(CPU *C) {
   const FontOriginal *slot;
   float k;
 
-  k = x2_ui_text_scale();
+  k = x2::native::ui_text_scale();
 
   x86_guest_body(C, "XMen2.exe", 0x00596af0u);
   if (!table || !C->reg[kX86pEax])
@@ -335,14 +339,15 @@ static void x2_override_font_tier(CPU *C) {
   C->reg[kX86pEax] = 1u;
 }
 
-void x2_ui_text_scale_report(void) {
+namespace x2::native {
+void ui_text_scale_report(void) {
   /* Every denominator: "0 fonts scaled" has three different causes -- the
      scale was 1, the loader never ran, or it ran and every font was empty
      -- and they must not print the same line. */
   x2_log_error("UI TEXT: scale %.3f (%s); %lu font(s) scaled, %lu drawing "
                "glyph(s), %lu font(s) that had none.\n",
-               g_applied < 0.0f ? x2_ui_text_scale() : g_applied,
-               scale_source(), g_fonts, g_glyphs, g_zero);
+               g_applied < 0.0f ? ui_text_scale() : g_applied, scale_source(),
+               g_fonts, g_glyphs, g_zero);
   x2_log_error("UI TEXT: the HD font set was asked for %lu time(s); the "
                "retail answer would have been the PC set %lu time(s).\n",
                g_tier_asked, g_tier_forced);
@@ -352,6 +357,7 @@ void x2_ui_text_scale_report(void) {
                  "loaded at.\n",
                  g_untracked, TRACKED_FONTS);
 }
+} // namespace x2::native
 
 __attribute__((constructor)) static void
 x2_ui_text_scale_register_overrides(void) {

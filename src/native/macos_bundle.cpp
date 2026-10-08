@@ -36,11 +36,12 @@
 
 #define BUNDLE_PATH 4096
 
+namespace x2::native {
+
 /* `.../Foo.app/Contents/MacOS/foo` -> `.../Foo.app`, or 0 when the executable
    is not inside a bundle at all. Purely textual so it can be tested without a
    bundle on disk; the caller checks what it found before publishing. */
-int x2_macos_bundle_root(const char *executable, char *root,
-                         unsigned capacity) {
+int macos_bundle_root(const char *executable, char *root, unsigned capacity) {
   static const char k_suffix[] = "/Contents/MacOS/";
   const char *at;
   const char *found = NULL;
@@ -97,12 +98,12 @@ static void publish_file(const char *path, X2ConfigOverride variable,
 }
 #endif
 
-int x2_macos_bundle_init(const char *executable) {
+int macos_bundle_init(const char *executable) {
 #if defined(__APPLE__)
   char root[BUNDLE_PATH];
   char path[BUNDLE_PATH];
 
-  if (!x2_macos_bundle_root(executable, root, sizeof root))
+  if (!macos_bundle_root(executable, root, sizeof root))
     return 0;
 
   snprintf(path, sizeof path, "%s/Contents/Resources/ui", root);
@@ -138,3 +139,5 @@ int x2_macos_bundle_init(const char *executable) {
   return 0;
 #endif
 }
+
+} // namespace x2::native

@@ -47,7 +47,7 @@ static void cursor_agrees(SDL_Window *window, float x, float y,
   SDL_PumpEvents();
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_MOUSE_MOTION) {
-      x2_win32_pointer_translate_mouse(&event, &mouse, 1u);
+      x2::native::win32_pointer_translate_mouse(&event, &mouse, 1u);
       moved = 1;
     }
   }
@@ -55,7 +55,7 @@ static void cursor_agrees(SDL_Window *window, float x, float y,
   check(x2::native::win32_message_take(&mouse, 0u, 0u, 0u, 1, &message) &&
             message.message == x2::native::kWmMouseMove,
         "the warp was translated into WM_MOUSEMOVE");
-  check(x2_win32_pointer_get_cursor_pos(&cursor_x, &cursor_y),
+  check(x2::native::win32_pointer_get_cursor_pos(&cursor_x, &cursor_y),
         "GetCursorPos answers");
   if (cursor_x != message.screen_x || cursor_y != message.screen_y) {
     fprintf(stderr, "  %s: message (%d,%d), GetCursorPos (%d,%d)\n", what,
@@ -79,7 +79,7 @@ int main(void) {
   }
   x2_settings_store()->width = 1280;
   x2_settings_store()->height = 720;
-  x2_win32_pointer_window(window);
+  x2::native::win32_pointer_window(window);
 
   cursor_agrees(window, 320.0f, 240.0f,
                 "a warp to the window centre moved the cursor");
@@ -95,10 +95,10 @@ int main(void) {
     int32_t screen_x = 1100;
     int32_t screen_y = 650;
 
-    check(x2_win32_pointer_client_to_screen(&screen_x, &screen_y),
+    check(x2::native::win32_pointer_client_to_screen(&screen_x, &screen_y),
           "the window has an origin");
     memset(&mouse, 0, sizeof mouse);
-    x2_win32_pointer_translate_touch(&pointer, &mouse, 1u);
+    x2::native::win32_pointer_translate_touch(&pointer, &mouse, 1u);
     check(x2::native::win32_message_take(&mouse, 0u, x2::native::kWmLButtonDown,
                                          x2::native::kWmLButtonUp, 1,
                                          &message) &&

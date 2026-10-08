@@ -34,6 +34,7 @@
 #include "stick_axis_override.h"
 #include "threads.h"
 #include "touch_hud_runtime.h"
+#include "ui_text_scale.h"
 #include "ui_transform.h"
 #include "x2_log.h"
 #include "x86_engine.h"
@@ -51,14 +52,13 @@ void x2_interrupt_reports(int killed) {
   extern void dinput_device_report(void);
   extern void pad_glyphs_report(void);
   extern void dialog_prompts_report(void);
-  extern void x2_ui_text_scale_report(void);
   x2_texture_probe_report();
-  x2_prompt_draw_report();
+  x2::native::prompt_draw_report();
   x2_keycap_labels_report();
   x2_prompt_glyph_metrics_report();
   x2::native::prompt_quads_report();
   x2_prompt_glyph_batch_report();
-  x2_prompt_tokens_report();
+  x2::native::prompt_tokens_report();
   x2_ui_transform_report();
   gpu_prompt_glyphs_report();
   {
@@ -82,14 +82,14 @@ void x2_interrupt_reports(int killed) {
   k32_critsec_report();
   /* Input reports were registered with atexit, but clean frame-limit stops
      use _exit. Print them here so successful runs retain their denominators. */
-  x2_ui_text_scale_report();
+  x2::native::ui_text_scale_report();
   x2::native::dialog_selection_scale_report();
   x2::native::touch_hud_report();
   x2_touch_runtime_report("");
   dinput_device_report();
   dinput_pad_report();
   x2::native::stick_axis_report();
-  x2_alchemy_controller_report();
+  x2::input::alchemy_controller_report();
   input_record_report();
   live_session_stop();
   pad_glyphs_report();
@@ -97,7 +97,7 @@ void x2_interrupt_reports(int killed) {
   {
     extern void dsound_report(void);
     dsound_report();
-    x2_movie_report();
+    x2::native::movie_report();
   }
   {
     extern void k32_asset_report(void), ws2_report(void);

@@ -1,8 +1,9 @@
 /* Prompt glyphs at the text renderer -- see prompt_glyph_draw.cpp. */
-#ifndef X2_PROMPT_GLYPH_DRAW_H
-#define X2_PROMPT_GLYPH_DRAW_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* Does the retail glyph loop draw a quad for this wide character?
  *
@@ -12,11 +13,11 @@
  * owner that walks a string alongside the emitter asks THIS, because two
  * copies of the rule drift apart and a drifted cursor intercepts the wrong
  * glyph. */
-int x2_glyph_loop_emits_quad(uint16_t c);
+int glyph_loop_emits_quad(uint16_t c);
 
 /* The shutdown lines, with denominators: the string census, then quads
  * intercepted vs emitted and every refusal by reason. A run in which no text
  * drew must not read like a run in which prompts drew without them. */
-void x2_prompt_draw_report(void);
+void prompt_draw_report(void);
 
-#endif /* X2_PROMPT_GLYPH_DRAW_H */
+} // namespace x2::native

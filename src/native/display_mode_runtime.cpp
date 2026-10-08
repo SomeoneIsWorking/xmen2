@@ -87,8 +87,9 @@ static void write_float(uint32_t address, float value) {
   memcpy(guest_memory_pointer(address), &value, sizeof value);
 }
 
-int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
-                                  int whyn) {
+namespace x2::native {
+int display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
+                               int whyn) {
   uint32_t exe = executable_base();
   uint32_t display, old_width, old_height;
   float old_aspect, old_layout_aspect, x_per_pixel, y_per_pixel;
@@ -144,6 +145,7 @@ int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
              (double)aspect);
   return 1;
 }
+} // namespace x2::native
 
 static uint32_t build_registry_context(const CPU *source, uint32_t exe) {
   CPU call = *source;

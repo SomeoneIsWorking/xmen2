@@ -22,6 +22,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace x2::native {
+
 enum {
   DESC_TYPE = 0x04,
   DESC_START = 0x08,
@@ -135,3 +137,5 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
   free(native);
   free(v->before);
 }
+
+} // namespace x2::native

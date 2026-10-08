@@ -393,7 +393,7 @@ void hud_draw_report() {
                   g_total[2], g_groups[3], g_total[3], g_sprites,
                   g_sprite_calls, g_texts, g_text_calls, g_matrices,
                   g_matrix_calls);
-  x2_hud_portrait_position_report();
+  x2::native::hud_portrait_position_report();
 }
 
 } // namespace x2::native
@@ -406,5 +406,5 @@ __attribute__((constructor)) static void register_hud(void) {
   x86_register_override("XMen2.exe", TEXT_SUBMIT, text_submit);
   x86_register_override("XMen2.exe", SCENE_MATRIX, scene_matrix);
   x86_register_override("XMen2.exe", MOUSE_OVERLAY_DRAW, mouse_overlay_draw);
-  x2_hud_portrait_position_mapper(capture_portrait, NULL);
+  x2::native::hud_portrait_position_mapper(capture_portrait, NULL);
 }

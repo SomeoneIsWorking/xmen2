@@ -1,9 +1,10 @@
-#ifndef X2_VERTEX_BUILDER_H
-#define X2_VERTEX_BUILDER_H
+#pragma once
 
 #include "x86rt.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /*
  * XMen2.exe!0x005840a0 -- CDxImmediateBuilder::addVertex(pos, uv, col)
@@ -17,17 +18,17 @@
  * __thiscall void(const igVec3f *pos, const igVec2f *uv, uint32_t col), ret
  * 0xc.
  */
-void x2_override_005840a0(CPU *C);
+void override_005840a0(CPU *C);
 /* Its JIT leaf (override_leaf.h): the same append, declined while the
    differential gate is on. */
-int x2_vertex_builder_leaf(CPU *C);
+int vertex_builder_leaf(CPU *C);
 
 /*
  * `gfx.vtx_builder_verify` differential gate (vertex_builder_verify.cpp).
  * When enabled, snapshots builder state before the native append, re-runs
  * the guest body, and aborts on any disagreement.
  */
-typedef struct VtxBuilderVerify {
+struct VtxBuilderVerify {
   uint32_t self;
   uint32_t orig_count;
   uint32_t orig_dst_pos;
@@ -37,7 +38,7 @@ typedef struct VtxBuilderVerify {
   uint8_t col_before[4];
   uint8_t uv_before[8];
   int active;
-} VtxBuilderVerify;
+};
 
 /* Whether `gfx.vtx_builder_verify` is on: the leaf declines then, since the
    check runs the guest body. */
@@ -45,4 +46,4 @@ int vtx_builder_verifying(void);
 void vtx_builder_verify_begin(VtxBuilderVerify *v, uint32_t self);
 void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self);
 
-#endif
+} // namespace x2::native

@@ -199,7 +199,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
                  "and menu; dispatching the retail save chain for "
                  "%s directly.\n",
                  x2::native::boot_mode_runtime_continue_leaf());
-    if (x2_continue_boot_dispatch(C)) {
+    if (x2::native::continue_boot_dispatch(C)) {
       C->reg[kX86pEax] = 1u;
       C->reg[kX86pEsp] += 8u;
       return 1;

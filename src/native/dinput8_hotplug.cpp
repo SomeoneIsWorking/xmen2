@@ -56,7 +56,7 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
   if (!C)
     return;
   dinput_pad_refresh();
-  x2_alchemy_controller_sync_inventory();
+  x2::input::alchemy_controller_sync_inventory();
   x2_player_input_sync(C);
   dinput8_check_controller_table();
   generation = dinput_pad_generation();

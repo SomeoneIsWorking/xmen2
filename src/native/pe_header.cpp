@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 static int refuse(char *reason, unsigned capacity, const char *message) {
   if (reason && capacity)
     snprintf(reason, capacity, "%s", message);
@@ -24,8 +26,8 @@ static int read_at(FILE *file, long offset, void *destination, size_t size) {
          fread(destination, 1, size, file) == size;
 }
 
-int x2_pe32_validate_file(const char *path, char *reason,
-                          unsigned reason_capacity) {
+int pe32_validate_file(const char *path, char *reason,
+                       unsigned reason_capacity) {
   FILE *file;
   unsigned char dos[64], header[24], optional_magic[2];
   long file_size;
@@ -79,3 +81,5 @@ int x2_pe32_validate_file(const char *path, char *reason,
     return refuse(reason, reason_capacity, "Executable is not a PE32 image.");
   return 1;
 }
+
+} // namespace x2::native

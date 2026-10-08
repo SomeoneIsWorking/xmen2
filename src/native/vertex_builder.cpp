@@ -12,6 +12,8 @@
 #include <stdint.h>
 #include <string.h>
 
+namespace x2::native {
+
 enum {
   SELF_CAP = 0x0cu,
   SELF_C14 = 0x14u,
@@ -98,7 +100,7 @@ static void append(CPU *C) {
   }
 }
 
-void x2_override_005840a0(CPU *C) {
+void override_005840a0(CPU *C) {
   const uint32_t self = C->reg[kX86pEcx];
   VtxBuilderVerify v;
   vtx_builder_verify_begin(&v, self);
@@ -107,7 +109,7 @@ void x2_override_005840a0(CPU *C) {
   C->reg[kX86pEsp] += 16u; /* ret $0xc: pop return address and 3 dword args */
 }
 
-int x2_vertex_builder_leaf(CPU *C) {
+int vertex_builder_leaf(CPU *C) {
   if (vtx_builder_verifying())
     return 0;
   append(C);
@@ -116,6 +118,8 @@ int x2_vertex_builder_leaf(CPU *C) {
 }
 
 __attribute__((constructor)) static void vertex_builder_register(void) {
-  x86_register_override("XMen2.exe", 0x005840a0u, x2_override_005840a0);
-  x86_register_override_leaf("XMen2.exe", 0x005840a0u, x2_vertex_builder_leaf);
+  x86_register_override("XMen2.exe", 0x005840a0u, override_005840a0);
+  x86_register_override_leaf("XMen2.exe", 0x005840a0u, vertex_builder_leaf);
 }
+
+} // namespace x2::native

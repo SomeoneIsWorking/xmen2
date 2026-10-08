@@ -404,7 +404,7 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
        armed. See gpu_present_luma.h for why only this path answers "does the
        screen show anything". */
 #ifdef X2_WITH_SDL
-    x2_present_luma_frame(g_gpu, gpu_frame_draws_so_far());
+    x2::gpu::present_luma_frame(g_gpu, gpu_frame_draws_so_far());
 #endif
     if (path) {
       static int said;
