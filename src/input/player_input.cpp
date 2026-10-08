@@ -31,7 +31,7 @@ static int g_last_controller_slot[INPUT_PLAYERS] = {-2, -2, -2, -2};
 static int g_last_keyboard[INPUT_PLAYERS] = {-2, -2, -2, -2};
 static int g_last_source_gamepad[INPUT_PLAYERS];
 static unsigned char g_last_keyboard_state[256];
-static X2PlayerParticipationPolicy g_participation;
+static x2::input::PlayerParticipationPolicy g_participation;
 static int g_have_participation;
 
 #define PAUSE_ROW 17u
@@ -126,15 +126,15 @@ static uint8_t eligibility_mask(const X2Settings *settings,
 
 static void sync_participation(CPU *cpu, const X2Settings *settings,
                                const int keyboard[INPUT_PLAYERS]) {
-  X2PlayerParticipationTransition transition;
+  x2::input::PlayerParticipationTransition transition;
   uint8_t eligible;
   if (!g_have_participation) {
-    x2_player_participation_policy_init(&g_participation);
+    x2::input::player_participation_policy_init(&g_participation);
     g_have_participation = 1;
   }
   eligible = eligibility_mask(settings, keyboard);
-  x2_player_participation_policy_configure(&g_participation, eligible);
-  transition = x2_player_participation_policy_consume(&g_participation);
+  x2::input::player_participation_policy_configure(&g_participation, eligible);
+  transition = x2::input::player_participation_policy_consume(&g_participation);
   x2::native::player_participation_apply(cpu, transition.join,
                                          transition.leave);
   x2::native::player_participation_enforce_eligibility(cpu, eligible);
@@ -204,7 +204,8 @@ void x2_player_input_sync(CPU *cpu) {
   for (player = 0; player < INPUT_PLAYERS; player++) {
     if (g_have_last && (g_last_pad[player] != pad[player] ||
                         g_last_keyboard[player] != keyboard[player]))
-      x2_player_participation_policy_note_start(&g_participation, player, 0);
+      x2::input::player_participation_policy_note_start(&g_participation,
+                                                        player, 0);
     publish_player(cpu, settings, player, keyboard[player],
                    controller_slot[player]);
     if (pad[player] >= 0 && keyboard[player] < 0)
@@ -267,7 +268,8 @@ void x2_player_input_note_keyboard_state(const unsigned char *state,
           code >= bytes || code >= 256u)
         continue;
       if (!(state[code] & 0x80u)) {
-        x2_player_participation_policy_note_start(&g_participation, player, 0);
+        x2::input::player_participation_policy_note_start(&g_participation,
+                                                          player, 0);
         continue;
       }
       if (g_last_keyboard_state[code] & 0x80u)
@@ -283,7 +285,8 @@ void x2_player_input_note_keyboard_state(const unsigned char *state,
         }
       }
       if (!ambiguous)
-        x2_player_participation_policy_note_start(&g_participation, player, 1);
+        x2::input::player_participation_policy_note_start(&g_participation,
+                                                          player, 1);
     }
   }
   memcpy(g_last_keyboard_state, state,
@@ -314,7 +317,8 @@ void x2_player_input_note_gamepad_state(int pad, const unsigned char *state,
   down = (state[DI_JOYSTATE_BUTTONS + button] & 0x80u) != 0;
   for (player = 0; player < INPUT_PLAYERS; player++)
     if (g_have_last && g_last_pad[player] == pad)
-      x2_player_participation_policy_note_start(&g_participation, player, down);
+      x2::input::player_participation_policy_note_start(&g_participation,
+                                                        player, down);
 }
 
 int x2_player_input_pad_is_active_source(int pad) {

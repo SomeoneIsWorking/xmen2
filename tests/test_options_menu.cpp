@@ -96,20 +96,20 @@ int main(void) {
                         options_menu_stubs_singleton_calls() == 1,
                     "a repeated registrar duplicated the port commands");
 
-  x2_settings_overlay_hide();
+  x2::ui::settings_overlay_hide();
   memset(&C, 0, sizeof C);
   C.reg[kX86pEax] = 0x76543210u;
   C.reg[kX86pEsp] = stack + 0xfe0u;
   WR32(C.reg[kX86pEsp], 0xabcdef02u);
   options_menu_stubs_callback_function()(&C);
-  failures += check(x2_settings_overlay_visible(),
+  failures += check(x2::ui::settings_overlay_visible(),
                     "the `port_settings` callback did not show its UI");
   failures += check(C.reg[kX86pEsp] == stack + 0xfe4u,
                     "the `port_settings` callback did not reproduce RET");
   failures += check(C.reg[kX86pEax] == 0x76543210u,
                     "the void port callback invented a return value");
-  x2_settings_overlay_hide();
-  failures += check(!x2_settings_overlay_visible(),
+  x2::ui::settings_overlay_hide();
+  failures += check(!x2::ui::settings_overlay_visible(),
                     "closing Port Settings did not release guest input");
 
   printf("options menu ownership: %d of 19 checks passed\n", 19 - failures);

@@ -1,29 +1,30 @@
-#ifndef X2_AUTOSAVE_STORAGE_H
-#define X2_AUTOSAVE_STORAGE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-#define X2_AUTOSAVE_LEAF "autosave.save"
-#define X2_SAVE_HEADER_BYTES 128u
+namespace x2::save {
 
-typedef enum {
-  X2_AUTOSAVE_FAULT_NONE = 0,
-  X2_AUTOSAVE_FAULT_AFTER_HEADER,
-  X2_AUTOSAVE_FAULT_AFTER_LENGTH,
-  X2_AUTOSAVE_FAULT_AFTER_PAYLOAD,
-  X2_AUTOSAVE_FAULT_AFTER_FILE_SYNC,
-  X2_AUTOSAVE_FAULT_BEFORE_RENAME
-} X2AutosaveStorageFault;
+inline constexpr char kAutosaveLeaf[] = "autosave.save";
+inline constexpr unsigned kSaveHeaderBytes = 128u;
+
+enum class AutosaveStorageFault : int {
+  None = 0,
+  AfterHeader,
+  AfterLength,
+  AfterPayload,
+  AfterFileSync,
+  BeforeRename
+};
 
 /* Publish one retail-compatible save image transactionally. The temporary
    file is created in directory, completely written and fsynced, then renamed
    over autosave.save and the directory is fsynced (on Windows a write-through
    MoveFileEx replaces it instead). Every failure before the
    rename leaves the previous autosave untouched. `fault` is a deterministic
-   test seam; production passes X2_AUTOSAVE_FAULT_NONE. */
-int x2_autosave_storage_publish(const char *directory, const void *header,
-                                const void *payload, size_t payload_size,
-                                X2AutosaveStorageFault fault);
+   test seam; production passes AutosaveStorageFault::None. */
+int autosave_storage_publish(const char *directory, const void *header,
+                             const void *payload, size_t payload_size,
+                             AutosaveStorageFault fault);
 
-#endif
+} // namespace x2::save

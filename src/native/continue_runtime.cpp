@@ -60,7 +60,7 @@ static uint32_t g_join_command;
 static uint32_t g_join_text;
 static uint32_t g_original_command[x2::save::kMainMenuRows];
 static int g_original_commands_ready;
-static char g_latest_leaf[X2_SAVE_LEAF_CAPACITY];
+static char g_latest_leaf[x2::save::kSaveLeafCapacity];
 static int g_strings_ready;
 static int g_latest_ready;
 static int g_continue_command_armed;
@@ -201,7 +201,7 @@ static void set_text(const CPU *source, uint32_t menu, unsigned row,
 static int catalog_for_show(void) {
   const char *boot_leaf = x2::native::boot_mode_runtime_continue_leaf();
   const char *directory;
-  X2SaveCandidate latest;
+  x2::save::SaveCandidate latest;
   int result;
 
   if (boot_leaf) {
@@ -210,7 +210,7 @@ static int catalog_for_show(void) {
     return 1;
   }
   directory = x2_retail_save_directory();
-  result = directory ? x2_save_catalog_latest(directory, &latest) : -1;
+  result = directory ? x2::save::save_catalog_latest(directory, &latest) : -1;
   if (result == 1) {
     memcpy(g_latest_leaf, latest.leaf, sizeof g_latest_leaf);
     g_latest_ready = 1;

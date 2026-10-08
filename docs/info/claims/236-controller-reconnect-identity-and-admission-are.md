@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: input,controller,hotswap,identity,tests
-depends: src/input/controller_instance.cpp#x2_controller_instance_resolve, src/input/controller_hotplug.cpp#controller_hotplug_needs_admission, src/native/dinput_pad.cpp#dinput_pad_for_persistent_id, tests/test_dinput_pad.cpp#main
+depends: src/input/controller_instance.cpp#controller_instance_resolve, src/input/controller_hotplug.cpp#controller_hotplug_needs_admission, src/native/dinput_pad.cpp#dinput_pad_for_persistent_id, tests/test_dinput_pad.cpp#main
 reconfirmed: 2026-08-22
 verified_at: 2026-08-22 13:39:08
 ---

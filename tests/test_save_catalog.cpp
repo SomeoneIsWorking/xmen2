@@ -105,14 +105,14 @@ static void set_mtime(const char *leaf, int64_t seconds, long nanoseconds) {
 #endif
 }
 
-static X2SaveCandidate latest(void) {
-  X2SaveCandidate candidate;
-  CHECK(x2_save_catalog_latest(test_dir, &candidate) == 1);
+static x2::save::SaveCandidate latest(void) {
+  x2::save::SaveCandidate candidate;
+  CHECK(x2::save::save_catalog_latest(test_dir, &candidate) == 1);
   return candidate;
 }
 
 static void test_exact_regular_leaves(void) {
-  X2SaveCandidate candidate;
+  x2::save::SaveCandidate candidate;
   char path[256];
 
   write_file("saveslot0.save.new", "partial");
@@ -128,12 +128,12 @@ static void test_exact_regular_leaves(void) {
   CHECK(symlink("other.save", path) == 0);
 #endif
 
-  CHECK(x2_save_catalog_latest(test_dir, &candidate) == 0);
+  CHECK(x2::save::save_catalog_latest(test_dir, &candidate) == 0);
   clear_test_dir();
 }
 
 static void test_sparse_slots_and_nanoseconds(void) {
-  X2SaveCandidate candidate;
+  x2::save::SaveCandidate candidate;
 
   write_file("saveslot0.save", "slot zero");
   write_file("saveslot4.save", "slot four");
@@ -151,7 +151,7 @@ static void test_sparse_slots_and_nanoseconds(void) {
 }
 
 static void test_equal_time_tie_is_by_leaf(void) {
-  X2SaveCandidate candidate;
+  x2::save::SaveCandidate candidate;
 
   write_file("autosave.save", "auto");
   write_file("saveslot2.save", "two");
@@ -166,7 +166,7 @@ static void test_equal_time_tie_is_by_leaf(void) {
 }
 
 static void test_newest_corrupt_file_is_opaque(void) {
-  X2SaveCandidate candidate;
+  x2::save::SaveCandidate candidate;
 
   write_file("saveslot3.save", "plausible old save");
   write_file("autosave.save", "not a valid game save");
@@ -179,7 +179,7 @@ static void test_newest_corrupt_file_is_opaque(void) {
 }
 
 int main(void) {
-  X2SaveCandidate candidate;
+  x2::save::SaveCandidate candidate;
   char missing[256];
 
   if (mkdir("scratch", 0700) != 0 && errno != EEXIST)
@@ -188,13 +188,13 @@ int main(void) {
     return 2;
   atexit(cleanup);
 
-  CHECK(x2_save_catalog_latest(NULL, &candidate) == -1);
-  CHECK(x2_save_catalog_latest(test_dir, NULL) == -1);
+  CHECK(x2::save::save_catalog_latest(NULL, &candidate) == -1);
+  CHECK(x2::save::save_catalog_latest(test_dir, NULL) == -1);
   snprintf(missing, sizeof missing, "%s/first-run", test_dir);
-  CHECK(x2_save_catalog_latest(missing, &candidate) == 0);
+  CHECK(x2::save::save_catalog_latest(missing, &candidate) == 0);
   write_file("not-a-directory", "opaque");
   path_for(missing, sizeof missing, "not-a-directory");
-  CHECK(x2_save_catalog_latest(missing, &candidate) == -1);
+  CHECK(x2::save::save_catalog_latest(missing, &candidate) == -1);
   clear_test_dir();
   test_exact_regular_leaves();
   test_sparse_slots_and_nanoseconds();

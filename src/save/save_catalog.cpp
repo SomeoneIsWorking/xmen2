@@ -77,15 +77,17 @@ static int mtime_ns(const struct stat *st, int64_t *out) {
 }
 #endif
 
-static int is_newer(const X2SaveCandidate *candidate,
-                    const X2SaveCandidate *current) {
+namespace x2::save {
+
+static int is_newer(const SaveCandidate *candidate,
+                    const SaveCandidate *current) {
   if (candidate->mtime_ns != current->mtime_ns)
     return candidate->mtime_ns > current->mtime_ns;
   return strcmp(candidate->leaf, current->leaf) > 0;
 }
 
-int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out) {
-  X2SaveCandidate candidate;
+int save_catalog_latest(const char *directory, SaveCandidate *out) {
+  SaveCandidate candidate;
   struct dirent *entry;
   DIR *dir;
   int directory_fd;
@@ -153,3 +155,5 @@ int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out) {
     return result;
   return found;
 }
+
+} // namespace x2::save

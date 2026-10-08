@@ -44,9 +44,10 @@ int main(void) {
   CHECK(fputs("opaque", save) >= 0);
   CHECK(fclose(save) == 0);
 
-  decision = x2::native::boot_mode_runtime_prepare(X2_BOOT_CONTINUE, directory);
-  CHECK(decision->requested == X2_BOOT_CONTINUE);
-  CHECK(decision->effective == X2_BOOT_CONTINUE);
+  decision = x2::native::boot_mode_runtime_prepare(
+      x2::config::BootMode::Continue, directory);
+  CHECK(decision->requested == x2::config::BootMode::Continue);
+  CHECK(decision->effective == x2::config::BootMode::Continue);
   CHECK(!decision->fell_back_to_menu);
   CHECK(!x2::native::boot_mode_runtime_catalog_failed());
   CHECK(x2::native::boot_mode_runtime_continue_leaf() != NULL);

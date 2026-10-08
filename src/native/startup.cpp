@@ -164,14 +164,14 @@ static uint32_t mapped_exe_base(void) {
 
 static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
   const x2::native::BootModeDecision *decision;
-  X2BootMode requested;
+  x2::config::BootMode requested;
   if (!command || !x2::native::boot_mode_is_intro_command(
                       guest_memory_as<const char>(command)))
     return 0;
   requested = x2_settings_store()->boot_mode;
   decision = x2::native::boot_mode_runtime_prepare(requested,
                                                    x2_retail_save_directory());
-  if (decision->effective == X2_BOOT_NORMAL)
+  if (decision->effective == x2::config::BootMode::Normal)
     return 0;
   if (!exe_base) {
     x2_log_error("BOOT MODE: the executable is not mapped; preserving "
@@ -186,7 +186,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
     else
       x2_log_error("BOOT MODE: Continue was requested but no valid "
                    "save exists; opening the retail main menu.\n");
-  } else if (decision->effective == X2_BOOT_CONTINUE) {
+  } else if (decision->effective == x2::config::BootMode::Continue) {
     /* Direct dispatch. The boot's intro phase has already executed its
        subsystem init and `resetgame` by the time the intro command
        fires, so the retail save chain runs from the pristine state
@@ -276,7 +276,7 @@ void x2_override_0055beb0(CPU *C) {
     if (boot_to_host_mode(C, s, exe_base)) {
       x2::native::boot_splash_arm();
       x2::presentation::boot_blackout_arm(
-          x2_boot_mode_name(x2_settings_store()->boot_mode));
+          x2::config::boot_mode_name(x2_settings_store()->boot_mode));
       return;
     }
   }
@@ -344,7 +344,7 @@ void x2_override_00402ba0(CPU *C) {
   static const float long_past = -1.0e9f;
   static int reported;
   uint32_t phase = C->reg[kX86pEcx];
-  X2BootMode mode = x2_settings_store()->boot_mode;
+  x2::config::BootMode mode = x2_settings_store()->boot_mode;
   uint32_t bits;
   float was;
 
@@ -352,7 +352,8 @@ void x2_override_00402ba0(CPU *C) {
      spoke when it acted would be indistinguishable, in a log, from one that
      was never reached -- and "the splash was skipped" is exactly the claim
      a silent negative would let through. */
-  if (phase && (mode == X2_BOOT_CONTINUE || mode == X2_BOOT_MENU)) {
+  if (phase && (mode == x2::config::BootMode::Continue ||
+                mode == x2::config::BootMode::Menu)) {
     bits = RD32(phase + 0x24u);
     memcpy(&was, &bits, sizeof was);
     memcpy(&bits, &long_past, sizeof bits);
@@ -363,13 +364,14 @@ void x2_override_00402ba0(CPU *C) {
                    "%.1f, so the phase's own wait is already past on "
                    "its first tick and the intro command dispatches "
                    "the %s boot path immediately.\n",
-                   (double)was, (double)long_past, x2_boot_mode_name(mode));
+                   (double)was, (double)long_past,
+                   x2::config::boot_mode_name(mode));
     }
   } else if (!reported) {
     reported = 1;
     x2_log_error("BOOT SPLASH: retail splash wait left intact (boot "
                  "mode %s, phase %s).\n",
-                 x2_boot_mode_name(mode), phase ? "present" : "NULL");
+                 x2::config::boot_mode_name(mode), phase ? "present" : "NULL");
   }
   x86_guest_body(C, "XMen2.exe", 0x00402ba0u);
 }

@@ -23,7 +23,7 @@ int main(void) {
   unsigned i;
 
   memset(state, 0x80, sizeof state);
-  CHECK(x2_joystick_write_neutral(state, sizeof state, -1000, 2000));
+  CHECK(x2::input::joystick_write_neutral(state, sizeof state, -1000, 2000));
   for (i = 0; i < 8u; i++)
     CHECK(word(state, i * 4u) == 500u);
   for (i = 0; i < 4u; i++)
@@ -32,7 +32,7 @@ int main(void) {
     CHECK(state[i] == 0u);
 
   memset(state, 0x80, sizeof state);
-  CHECK(!x2_joystick_write_neutral(state, 100u, -1000, 1000));
+  CHECK(!x2::input::joystick_write_neutral(state, 100u, -1000, 1000));
   for (i = 0; i < 100u; i++)
     CHECK(state[i] == 0u);
 

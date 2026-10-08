@@ -107,8 +107,8 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
   }
   if (x2_ui_captures_input()) {
     if (device->kind == DINPUT_DEV_JOYSTICK)
-      x2_joystick_write_neutral(guest_memory_pointer(out), bytes,
-                                device->axis_lo, device->axis_hi);
+      x2::input::joystick_write_neutral(guest_memory_pointer(out), bytes,
+                                        device->axis_lo, device->axis_hi);
     else
       memset(guest_memory_pointer(out), 0, bytes);
     record_state(device, out, bytes);

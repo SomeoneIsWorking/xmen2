@@ -22,7 +22,8 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
      hold at startup, which is "nothing pressed" forever. */
   dinput_pad_refresh_state();
 
-  if (!x2_joystick_write_neutral(guest_memory_pointer(out), size, lo, hi)) {
+  if (!x2::input::joystick_write_neutral(guest_memory_pointer(out), size, lo,
+                                         hi)) {
     x2_log_error("DINPUT8: a %u-byte joystick state is smaller than the "
                  "176 bytes DIJOYSTATE2 needs for axes, POVs and "
                  "buttons. Nothing is written.\n",

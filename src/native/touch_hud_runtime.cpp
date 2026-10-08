@@ -16,13 +16,17 @@ static void hud_draw(CPU *cpu) {
     x2::native::hud_draw_report();
 }
 
-void x2_touch_hud_report(void) {
+namespace x2::native {
+
+void touch_hud_report(void) {
   lucent_log_info("hud", "%lu visible party draws; control gate %s",
                   g_root_calls,
                   x2_gameplay_control_name(
                       (int)x2_gameplay_control_state(guest_clock_now_s())));
-  x2::native::hud_draw_report();
+  hud_draw_report();
 }
+
+} // namespace x2::native
 
 __attribute__((constructor)) static void register_hud_draw(void) {
   x86_register_override("XMen2.exe", 0x005a43d0u, hud_draw);

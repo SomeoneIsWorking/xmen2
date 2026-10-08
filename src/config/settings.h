@@ -61,7 +61,7 @@ typedef struct {
   /* Multiplier on every glyph the engine loads. 0 means AUTO: hold the
      share of the screen the text has at 800x600. See ui_text_scale.cpp. */
   float text_scale;
-  X2BootMode boot_mode;
+  x2::config::BootMode boot_mode;
   /* Whether the on-screen touch pad and the mobile HUD placement it comes
      with are allowed on screen. AUTO is the default everywhere: neither the
      host platform nor a saved preference knows whether the player has a

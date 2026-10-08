@@ -1,5 +1,4 @@
-#ifndef X2_PAD_STICK_DEAD_ZONE_H
-#define X2_PAD_STICK_DEAD_ZONE_H
+#pragma once
 
 /*
  * One physical thumbstick's dead zone, over the stick as a VECTOR.
@@ -18,29 +17,30 @@
  * controller this game's mapping was written for -- was specified against.
  */
 
-#include <math.h>
+#include <cmath>
 
-#define X2_PAD_LEFT_STICK_DEAD_ZONE (7849.0f / 32767.0f)
-#define X2_PAD_RIGHT_STICK_DEAD_ZONE (8689.0f / 32767.0f)
+namespace x2::native {
 
-typedef struct X2PadStick {
+inline constexpr float kPadLeftStickDeadZone = 7849.0f / 32767.0f;
+inline constexpr float kPadRightStickDeadZone = 8689.0f / 32767.0f;
+
+struct PadStick {
   float x;
   float y;
-} X2PadStick;
+};
 
 /* `x`/`y` in [-1, 1]; the result has the same direction, its length rescaled
    from (dead_zone, 1] to (0, 1] and clamped to the unit circle. */
-static inline X2PadStick x2_pad_stick_dead_zone(float x, float y,
-                                                float dead_zone) {
-  const X2PadStick centred = {0.0f, 0.0f};
-  const float length = hypotf(x, y);
+inline PadStick pad_stick_dead_zone(float x, float y, float dead_zone) {
+  const PadStick centred = {0.0f, 0.0f};
+  const float length = std::hypot(x, y);
   if (!(length > dead_zone) || !(dead_zone < 1.0f)) {
     return centred;
   }
-  const float reach = fminf(length, 1.0f);
+  const float reach = std::fmin(length, 1.0f);
   const float scale = (reach - dead_zone) / (1.0f - dead_zone) / length;
-  const X2PadStick result = {x * scale, y * scale};
+  const PadStick result = {x * scale, y * scale};
   return result;
 }
 
-#endif
+} // namespace x2::native

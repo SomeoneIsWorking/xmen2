@@ -83,7 +83,7 @@ int serialize_snapshot(const CPU *source) {
 }
 
 int publish_snapshot(const CPU *source) {
-  unsigned char header[X2_SAVE_HEADER_BYTES];
+  unsigned char header[x2::save::kSaveHeaderBytes];
   const char *directory;
 
   g_last_errno = 0;
@@ -103,11 +103,12 @@ int publish_snapshot(const CPU *source) {
     g_last_result = AUTOSAVE_LAST_DIRECTORY_FAILED;
     return 0;
   }
-  if (!x2_autosave_storage_publish(
+  if (!x2::save::autosave_storage_publish(
           directory, header,
           guest_memory_const_pointer(
               x2::native::campaign_snapshot_address(g_snapshot)),
-          x2::native::kCampaignSnapshotPayloadBytes, X2_AUTOSAVE_FAULT_NONE)) {
+          x2::native::kCampaignSnapshotPayloadBytes,
+          x2::save::AutosaveStorageFault::None)) {
     g_last_errno = errno;
     g_last_result = AUTOSAVE_LAST_PUBLISH_FAILED;
     return 0;

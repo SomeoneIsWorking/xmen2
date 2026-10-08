@@ -12,7 +12,7 @@ updated: 2026-08-27
 ## Root cause
 
 The autosave and the retail Load Game screen use two different catalogs.
-`x2_autosave_storage_publish` commits the transactional result as
+`x2::save::autosave_storage_publish` commits the transactional result as
 `autosave.save`; `src/save/save_catalog.cpp` includes that leaf, which is why the
 native Continue path can load it. The retail scanner at XMen2.exe `0x0055f2f0`
 never consults that catalog: it hardcodes `saveslot*.save`, parses the digit

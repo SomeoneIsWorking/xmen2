@@ -1,10 +1,11 @@
-#ifndef X2_BOOT_MODE_H
-#define X2_BOOT_MODE_H
+#pragma once
 
-typedef enum { X2_BOOT_NORMAL = 0, X2_BOOT_MENU, X2_BOOT_CONTINUE } X2BootMode;
+namespace x2::config {
 
-const char *x2_boot_mode_name(X2BootMode mode);
-const char *x2_boot_mode_label(X2BootMode mode);
-int x2_boot_mode_parse(const char *text, X2BootMode *mode);
+enum class BootMode : int { Normal = 0, Menu, Continue };
 
-#endif
+const char *boot_mode_name(BootMode mode);
+const char *boot_mode_label(BootMode mode);
+int boot_mode_parse(const char *text, BootMode *mode);
+
+} // namespace x2::config

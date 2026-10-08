@@ -2,8 +2,10 @@
 
 #include <string.h>
 
-int x2_joystick_write_neutral(void *state, size_t size, int32_t axis_lo,
-                              int32_t axis_hi) {
+namespace x2::input {
+
+int joystick_write_neutral(void *state, size_t size, int32_t axis_lo,
+                           int32_t axis_hi) {
   unsigned char *bytes = static_cast<unsigned char *>(state);
   int32_t midpoint = axis_lo + (axis_hi - axis_lo) / 2;
   unsigned i;
@@ -21,3 +23,5 @@ int x2_joystick_write_neutral(void *state, size_t size, int32_t axis_lo,
   }
   return 1;
 }
+
+} // namespace x2::input

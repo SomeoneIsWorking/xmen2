@@ -29,7 +29,7 @@ dinput_device_registry_find_controller(const unsigned char guid[16]) {
   size_t i;
   for (i = 0; i < count; i++)
     if (devices[i]->kind == DINPUT_DEV_JOYSTICK &&
-        x2_controller_instance_matches(&devices[i]->controller, guid))
+        x2::input::controller_instance_matches(&devices[i]->controller, guid))
       return devices[i];
   return NULL;
 }
