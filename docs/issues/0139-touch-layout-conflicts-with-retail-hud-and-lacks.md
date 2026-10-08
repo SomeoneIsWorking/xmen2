@@ -174,7 +174,7 @@ The scene-graph structure under CHud is recovered and documented in
    and `005a1ab0` (portrait presenter) under their retail conditions.
 2. **Scoped submission transformation.** `src/native/hud_draw_runtime.cpp`
    intercepts those four entries and activates a scoped affine transform
-   (`x2_hud_fit` in `src/presentation/hud_layout.cpp`). During an active scope,
+   (`x2::presentation::hud_fit` in `src/presentation/hud_layout.cpp`). During an active scope,
    2D sprite submissions (`0059a140`), 2D text submissions (`005f11b0`), and
    3D scene node matrices (`00570970`) are scaled and translated into their
    layout slot without fracturing element hierarchies or modifying assets.

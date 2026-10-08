@@ -1,9 +1,10 @@
-#ifndef X2_UI_RESOURCES_H
-#define X2_UI_RESOURCES_H
+#pragma once
+
+namespace x2::ui {
 
 /* Resolve a packaged UI resource without baking a build-tree path into the
  * release. X2_UI_RESOURCE_DIR is supplied by AppRun; the CMake build
  * directory remains the developer fallback. */
-const char *x2_ui_resource_path(const char *name);
+const char *ui_resource_path(const char *name);
 
-#endif /* X2_UI_RESOURCES_H */
+} // namespace x2::ui

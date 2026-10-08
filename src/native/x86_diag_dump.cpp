@@ -21,9 +21,9 @@ void x86_diag_dump(void) {
    * a stalled run, "tid N is suspended and nobody resumed it", was silent.
    */
   /* The thread and critical-section reports are NOT printed here: they moved
-     to x2_interrupt_reports, which runs on every ending rather than only on
-     the ones that dump the ring. Printing them in both places would double
-     every number on a killed run. */
+     to x2::native::interrupt_reports, which runs on every ending rather than
+     only on the ones that dump the ring. Printing them in both places would
+     double every number on a killed run. */
   /* The multimedia timers, for the same reason: a stall whose cause is "the
      callback that would have ended this wait has never run" is invisible
      unless the fire count is printed where the stall is. */

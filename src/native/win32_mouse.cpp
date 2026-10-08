@@ -111,12 +111,12 @@ int win32_mouse_map_point(int32_t x, int32_t y, uint32_t window_width,
                           uint32_t window_height, uint32_t game_width,
                           uint32_t game_height, int32_t *game_x,
                           int32_t *game_y) {
-  X2AspectRect fitted;
+  x2::presentation::AspectRect fitted;
 
   if (!game_x || !game_y || game_width > (uint32_t)INT16_MAX + 1u ||
       game_height > (uint32_t)INT16_MAX + 1u ||
-      !x2_aspect_fit(window_width, window_height, game_width, game_height,
-                     &fitted))
+      !x2::presentation::aspect_fit(window_width, window_height, game_width,
+                                    game_height, &fitted))
     return 0;
   *game_x = map_axis(x, fitted.x, fitted.width, game_width);
   *game_y = map_axis(y, fitted.y, fitted.height, game_height);
@@ -127,14 +127,14 @@ int win32_mouse_unmap_point(int32_t game_x, int32_t game_y,
                             uint32_t window_width, uint32_t window_height,
                             uint32_t game_width, uint32_t game_height,
                             int32_t *x, int32_t *y) {
-  X2AspectRect fitted;
+  x2::presentation::AspectRect fitted;
 
   if (!x || !y || window_width > (uint32_t)INT32_MAX ||
       window_height > (uint32_t)INT32_MAX ||
       game_width > (uint32_t)INT16_MAX + 1u ||
       game_height > (uint32_t)INT16_MAX + 1u ||
-      !x2_aspect_fit(window_width, window_height, game_width, game_height,
-                     &fitted))
+      !x2::presentation::aspect_fit(window_width, window_height, game_width,
+                                    game_height, &fitted))
     return 0;
   *x = unmap_axis(game_x, fitted.x, fitted.width, game_width);
   *y = unmap_axis(game_y, fitted.y, fitted.height, game_height);

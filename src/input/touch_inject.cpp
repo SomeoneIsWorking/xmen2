@@ -6,16 +6,18 @@
 
 #include <SDL3/SDL.h>
 
-int x2_touch_inject(int64_t contact_id, float x, float y, X2TouchPhase phase) {
+namespace x2::input {
+
+int touch_inject(int64_t contact_id, float x, float y, TouchPhase phase) {
   SDL_Event event{};
   switch (phase) {
-  case X2_TOUCH_PHASE_DOWN:
+  case TouchPhase::Down:
     event.type = SDL_EVENT_FINGER_DOWN;
     break;
-  case X2_TOUCH_PHASE_MOTION:
+  case TouchPhase::Motion:
     event.type = SDL_EVENT_FINGER_MOTION;
     break;
-  case X2_TOUCH_PHASE_UP:
+  case TouchPhase::Up:
     event.type = SDL_EVENT_FINGER_UP;
     break;
   default:
@@ -35,3 +37,5 @@ int x2_touch_inject(int64_t contact_id, float x, float y, X2TouchPhase phase) {
   }
   return x2_touch_runtime_event(&event);
 }
+
+} // namespace x2::input

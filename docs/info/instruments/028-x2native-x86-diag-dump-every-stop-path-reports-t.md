@@ -20,4 +20,4 @@ active guest-call frame and printed the final 96 of 356 title/host crossings.
 ## Known failure modes
 
 It deliberately does not print clean-exit subsystem reports; those are owned by
-`x2_interrupt_reports`, so an interrupted run does not duplicate counters.
+`x2::native::interrupt_reports`, so an interrupted run does not duplicate counters.

@@ -1,5 +1,6 @@
-#ifndef X2_TOUCH_CENSUS_H
-#define X2_TOUCH_CENSUS_H
+#pragma once
+
+namespace x2::input {
 
 /* WHAT DID TOUCH ACTUALLY DO THIS RUN?
  *
@@ -14,7 +15,7 @@
  * that routes the contacts. A run in which nothing happened says WHICH
  * nothing it was rather than printing a row of zeroes.
  */
-typedef struct X2TouchCensus {
+struct TouchCensus {
   unsigned long contacts_down;
   unsigned long contacts_moved;
   unsigned long contacts_up;
@@ -75,14 +76,14 @@ typedef struct X2TouchCensus {
   unsigned long cancelled_window_gone;
   unsigned long cancelled_source_changed;
   unsigned long cancelled_window_changed;
-} X2TouchCensus;
+};
 
 /* The live counts, for the runtime to add to. One set of numbers is reported
    and asserted, so the text and a test can never disagree about them. */
-X2TouchCensus *x2_touch_census(void);
+TouchCensus *touch_census(void);
 
 /* Copies them out. Null is ignored. */
-void x2_touch_census_read(X2TouchCensus *out);
+void touch_census_read(TouchCensus *out);
 
 /* `has_window` is the only fact the runtime holds privately; the control
    mode, the source verdict and the gameplay gate are read from their own
@@ -96,7 +97,7 @@ void x2_touch_census_read(X2TouchCensus *out);
 /* `touch_devices` is what the host reported, or -1 if it was never asked:
    a run with no contacts means something different on a host with no
    touchscreen than on one with three. */
-void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
-                            int touch_capable);
+void touch_census_report(const char *tag, int has_window, int touch_devices,
+                         int touch_capable);
 
-#endif /* X2_TOUCH_CENSUS_H */
+} // namespace x2::input

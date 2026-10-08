@@ -15,7 +15,8 @@ RetailScenePlane::from_viewport(float aspect, float scale_x, float scale_z,
       !std::isfinite(scale_x) || !std::isfinite(scale_z)) {
     return std::nullopt;
   }
-  const X2HudSpace space = x2_hud_space(aspect, scale_x, scale_z);
+  const x2::presentation::HudSpace space =
+      x2::presentation::hud_space(aspect, scale_x, scale_z);
   if (!(space.width >= 1.0F) || !(space.height >= 1.0F)) {
     return std::nullopt;
   }

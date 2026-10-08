@@ -21,7 +21,9 @@
 
 /* No settings file: the store starts from defaults and this test sets the
    one field pair it depends on. */
-const char *x2_save_dir(void) { return X2_TEST_WIN32_POINTER_ROOT; }
+namespace x2::native {
+const char *save_dir(void) { return X2_TEST_WIN32_POINTER_ROOT; }
+} // namespace x2::native
 
 static int g_failures;
 

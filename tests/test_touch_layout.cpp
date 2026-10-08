@@ -75,7 +75,7 @@ static int hud_here(const X2LayoutViewport *viewport, unsigned scale_percent,
   settings.vitals_scale_percent = scale_percent;
   settings.potions_scale_percent = scale_percent;
   settings.portraits_scale_percent = scale_percent;
-  return x2_hud_layout_build(*viewport, &settings, -1.0f, out);
+  return x2::presentation::hud_layout_build(*viewport, &settings, -1.0f, out);
 }
 
 static const unsigned kHudScales[] = {X2_HUD_SCALE_MIN, 100, X2_HUD_SCALE_MAX};

@@ -632,7 +632,7 @@ void imp_USER32_DestroyWindow(CPU *C) {
      then destroys its Vulkan device with live semaphores and its instance
      with a live VkSurfaceKHR. Release the claim while both owners are still
      valid. This is also the order gpu_selftest uses. */
-  x2_ui_gpu_shutdown();
+  x2::ui::ui_gpu_shutdown();
   gpu_device_attach_window(NULL);
   x2::native::win32_events_window(NULL, 0, 0);
   SDL_DestroyWindow(g_win);

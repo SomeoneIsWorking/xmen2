@@ -331,7 +331,7 @@ So a mouse already reaches a menu row through exactly one call —
 ## The scene plane, and the two mappings into it
 
 The scene plane is the viewport singleton `FUN_005f6df0` at `00a0a138`, vtable
-`006a3a9c` (see [HUD](hud.md)). `x2_hud_space` already reconstructs it:
+`006a3a9c` (see [HUD](hud.md)). `x2::presentation::hud_space` already reconstructs it:
 `width = scaleX(+0x48) * aspect(+0x10) * 384`, `height = scaleZ(+0x4c) * 384`,
 `left = 256 - width/2`, `top = 192 + height/2`.
 

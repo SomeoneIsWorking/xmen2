@@ -57,7 +57,9 @@
  * stored touch_controls value or a stored controller reservation would decide
  * what it observes -- the reservation especially, since the player-one claim
  * below is exactly what it is checking. */
-const char *x2_save_dir(void) { return X2_TEST_TOUCH_RUNTIME_ROOT; }
+namespace x2::native {
+const char *save_dir(void) { return X2_TEST_TOUCH_RUNTIME_ROOT; }
+} // namespace x2::native
 
 namespace {
 
@@ -331,7 +333,8 @@ int main() {
   /*
    * A RELEASE FOR A FINGER THAT NEVER ARRIVED.
    *
-   * Sent through x2_touch_inject -- the same injector the control channel's
+   * Sent through x2::input::touch_inject -- the same injector the control
+   * channel's
    * `/touch?phase=up` and the real host pump both take -- with an id no down
    * has ever used. The camera swipe covers the middle of the playfield, so a
    * release handled as an arrival is inside a live zone: it published
@@ -343,16 +346,16 @@ int main() {
    * `census` is read here and asserted at the end of the run, where the
    * instrument section already reads it.
    */
-  X2TouchCensus orphan_release{};
-  x2_touch_census_read(&orphan_release);
+  x2::input::TouchCensus orphan_release{};
+  x2::input::touch_census_read(&orphan_release);
   const unsigned long orphan_zones_before = orphan_release.zone_presses;
   const unsigned long orphan_axes_before = orphan_release.axes_published;
-  check(x2_touch_inject(4242, empty_x / static_cast<float>(width),
-                        empty_y / static_cast<float>(height),
-                        X2_TOUCH_PHASE_UP) == 0,
+  check(x2::input::touch_inject(4242, empty_x / static_cast<float>(width),
+                                empty_y / static_cast<float>(height),
+                                x2::input::TouchPhase::Up) == 0,
         "an up for a finger this run never saw is refused, not routed",
         "a release of nothing is not a contact");
-  x2_touch_census_read(&orphan_release);
+  x2::input::touch_census_read(&orphan_release);
   check(orphan_release.zone_presses == orphan_zones_before,
         "and it publishes no zone action from a contact that never began",
         std::to_string(orphan_release.zone_presses - orphan_zones_before) +
@@ -385,7 +388,7 @@ int main() {
             std::to_string(static_cast<int>(jump_y)));
   check(button_down(pad, "y"), "Jump reaches the pad the game reads",
         "gamepad button y is down");
-  check(x2_transient_controller_has_assignment(0) != 0,
+  check(x2::input::transient_controller_has_assignment(0) != 0,
         "the touch pad is claimed by player one despite the stale reservation",
         "the reserved controller is not here, so it holds nothing");
 
@@ -571,8 +574,8 @@ int main() {
   /* THE INSTRUMENT. On a phone and in a browser this report is the only
    * account of the feature anyone gets, so it is asserted here against the run
    * this test just performed rather than trusted to be right. */
-  X2TouchCensus census{};
-  x2_touch_census_read(&census);
+  x2::input::TouchCensus census{};
+  x2::input::touch_census_read(&census);
   const unsigned long seen = census.contacts_down + census.contacts_moved +
                              census.contacts_up + census.contacts_canceled;
   check(seen > 0, "the census counted the contacts this test sent",
@@ -613,7 +616,7 @@ int main() {
   while (x2_touch_runtime_take_pointer(&pointer)) {
   }
   send_finger(SDL_EVENT_FINGER_DOWN, 6, jump_x, jump_y, width, height);
-  x2_touch_census_read(&census);
+  x2::input::touch_census_read(&census);
   check(census.pointer_events == pointer_before + 1,
         "a contact with no control drawn becomes the retail pointer",
         std::to_string(census.pointer_events) + " pointer event(s)");
@@ -633,7 +636,7 @@ int main() {
   /* A second finger must not take retail's one mouse button off the first. */
   const unsigned long refused_before = census.pointer_refused;
   send_finger(SDL_EVENT_FINGER_DOWN, 7, jump_x + 4.0F, jump_y, width, height);
-  x2_touch_census_read(&census);
+  x2::input::touch_census_read(&census);
   check(census.pointer_refused == refused_before + 1,
         "a second finger does not take the one mouse button off the first",
         std::to_string(census.pointer_refused) + " refused");

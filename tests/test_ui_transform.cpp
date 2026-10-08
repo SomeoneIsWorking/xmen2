@@ -43,7 +43,8 @@ static void guest_body_1003ec10(CPU *C) {
 
   /* The wrapper must have invalidated the selector before it enters the
      original body, even when the previous set was complete. */
-  pre_super_publish = x2_ui_transform_current(C->reg[kX86pEcx], ignored);
+  pre_super_publish =
+      x2::native::ui_transform_current(C->reg[kX86pEcx], ignored);
 
   if (!matrix_readable) {
     WR32(OUTPUT_REF, UNMAPPED_MATRIX);
@@ -67,7 +68,7 @@ static void capture(CPU *cpu, uint32_t context, uint32_t selector,
   cpu->reg[kX86pEcx] = context;
   super_diagonal = diagonal;
   pre_super_publish = -1;
-  x2_ui_transform_compute_matrix(cpu);
+  x2::native::ui_transform_compute_matrix(cpu);
 }
 
 static int diagonal_is(const float matrix[16], float diagonal) {
@@ -102,39 +103,42 @@ int main(void) {
   capture(&cpu, context_a, TEST_PROJECTION, 2.0f);
   capture(&cpu, context_a, TEST_WORLD, 3.0f);
   capture(&cpu, context_a, TEST_VIEW, 5.0f);
-  check(x2_ui_transform_current(context_a, mvp) && diagonal_is(mvp, 30.0f),
+  check(x2::native::ui_transform_current(context_a, mvp) &&
+            diagonal_is(mvp, 30.0f),
         "one context publishes its complete world/view/projection product");
 
   matrix_readable = 0;
   capture(&cpu, context_a, TEST_PROJECTION, 7.0f);
   check(pre_super_publish == 0,
         "a selector is invalid before the original compute body runs");
-  check(!x2_ui_transform_current(context_a, mvp),
+  check(!x2::native::ui_transform_current(context_a, mvp),
         "an unreadable replacement cannot leave the stale selector valid");
   matrix_readable = 1;
 
   capture(&cpu, context_a, TEST_PROJECTION, 7.0f);
-  check(x2_ui_transform_current(context_a, mvp) && diagonal_is(mvp, 105.0f),
+  check(x2::native::ui_transform_current(context_a, mvp) &&
+            diagonal_is(mvp, 105.0f),
         "a readable replacement restores the same context's complete set");
 
   mutate_super_context = 1;
   capture(&cpu, context_b, TEST_PROJECTION, 11.0f);
   mutate_super_context = 0;
-  check(!x2_ui_transform_current(context_a, mvp) &&
-            !x2_ui_transform_current(context_b, mvp),
+  check(!x2::native::ui_transform_current(context_a, mvp) &&
+            !x2::native::ui_transform_current(context_b, mvp),
         "changing visual context clears every matrix from the prior one");
 
   capture(&cpu, context_b, TEST_WORLD, 13.0f);
   capture(&cpu, context_b, TEST_VIEW, 17.0f);
-  check(x2_ui_transform_current(context_b, mvp) && diagonal_is(mvp, 2431.0f),
+  check(x2::native::ui_transform_current(context_b, mvp) &&
+            diagonal_is(mvp, 2431.0f),
         "the context key is captured before the super-call mutates ECX");
 
   capture(&cpu, context_a, 99u, 1.0f);
-  check(!x2_ui_transform_current(context_b, mvp),
+  check(!x2::native::ui_transform_current(context_b, mvp),
         "even an untracked selector on another context prevents mixing");
 
   printf("  the report reads:\n");
-  x2_ui_transform_report();
+  x2::native::ui_transform_report();
   printf("\ntest_ui_transform: %d failure(s)\n", failures);
   return failures ? 1 : 0;
 }

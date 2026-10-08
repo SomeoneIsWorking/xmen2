@@ -157,15 +157,17 @@ void control_route_touch(x2::native::Socket fd, const char *query) {
     /* A tap is two events. A caller that sent only the press would leave a
        finger down on the screen for the rest of the run, so the default sends
        both and says which half failed if one does. */
-    outcome = control_command_touch(at_x, at_y, X2_TOUCH_PHASE_DOWN, reason,
-                                    sizeof reason);
+    outcome = control_command_touch(
+        at_x, at_y, static_cast<int>(x2::input::TouchPhase::Down), reason,
+        sizeof reason);
     if (!delivered(fd, outcome, reason,
                    "the guest did not pump within 5s, so the press was NOT "
                    "delivered\n")) {
       return;
     }
-    outcome = control_command_touch(at_x, at_y, X2_TOUCH_PHASE_UP, reason,
-                                    sizeof reason);
+    outcome = control_command_touch(at_x, at_y,
+                                    static_cast<int>(x2::input::TouchPhase::Up),
+                                    reason, sizeof reason);
     if (outcome <= 0) {
       control_reply_text(fd, 409, "Conflict",
                          "the press was routed but the RELEASE was not, so a "

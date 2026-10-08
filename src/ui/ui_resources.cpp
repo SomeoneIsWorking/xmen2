@@ -4,14 +4,16 @@
 
 #include <cstdio>
 
+namespace x2::ui {
+
 #ifndef X2_UI_RESOURCE_DIR
 #define X2_UI_RESOURCE_DIR "."
 #endif
 
-const char *x2_ui_resource_path(const char *name) {
+const char *ui_resource_path(const char *name) {
   static char path[4096];
 #if defined(__ANDROID__)
-  const char *directory = x2_config_directory();
+  const char *directory = x2::config::config_directory();
   if (!directory || !directory[0])
     return "";
   std::snprintf(path, sizeof path, "%s/ui/%s", directory, name ? name : "");
@@ -24,3 +26,5 @@ const char *x2_ui_resource_path(const char *name) {
   return path;
 #endif
 }
+
+} // namespace x2::ui

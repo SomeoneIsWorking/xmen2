@@ -84,9 +84,9 @@ int install_picker_directory_from_executable(const char *path, char *directory,
 namespace {
 
 int preference_path(char *path, size_t capacity) {
-  const char *base = x2_config_directory();
+  const char *base = x2::config::config_directory();
   int written;
-  if (!base || !x2_config_directory_ensure())
+  if (!base || !x2::config::config_directory_ensure())
     return 0;
   written = snprintf(path, capacity, "%s/install-path.txt", base);
   return written > 0 && (size_t)written < capacity;

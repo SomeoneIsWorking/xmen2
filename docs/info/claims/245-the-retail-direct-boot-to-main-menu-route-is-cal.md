@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: boot,menu,re
-depends: src/native/boot_menu_transition.cpp#x2_boot_menu_open
+depends: src/native/boot_menu_transition.cpp#x2::native::boot_menu_open
 ---
 
 ## Claim

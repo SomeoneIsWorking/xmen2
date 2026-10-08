@@ -210,7 +210,7 @@ int main(void) {
      into the subsystem. Without it the override is inert by design and the
      whole test would pass while measuring nothing. */
   x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
-  x2_runtime_config_init(0, NULL);
+  x2::config::runtime_config_init(0, NULL);
 
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(GUEST_PAGE, 0x1000,
@@ -364,7 +364,7 @@ int main(void) {
                                         'c',
                                         'k'};
     static const uint16_t esc[] = {'E', 'S', 'C'};
-    const struct x2_keycap_art *art = x2_keycap_label_art(esc, 3u);
+    const struct x2_keycap_art *art = x2::native::keycap_label_art(esc, 3u);
     struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
     CPU cpu;
     unsigned i, count, collapsed = 0, stock = 0;

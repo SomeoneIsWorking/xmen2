@@ -205,7 +205,7 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
   fmv_mask = call0(cpu, input_manager, VT_FMV_ACTION_MASK, &fmv_readable);
   cinematic_mask =
       call0(cpu, input_manager, VT_CINEMATIC_MASK, &cinematic_readable);
-  ui_capture = x2_ui_captures_input();
+  ui_capture = x2::ui::ui_captures_input();
 
   append(out, size, &at, "cutscene skip input boundary -- player %u\n",
          player + 1u);

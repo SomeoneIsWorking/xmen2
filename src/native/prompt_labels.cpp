@@ -116,7 +116,7 @@ PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
      that cannot be drawn whole is never composed. */
   if (x2::native::keycap_run_length(run, (unsigned)name_length + 2u, 0u) !=
           name_length + 2u ||
-      !x2_keycap_label_art(run + 1u, (unsigned)name_length))
+      !x2::native::keycap_label_art(run + 1u, (unsigned)name_length))
     return PromptLabelStyle::Unchanged;
   if (name_length + 3u > capacity)
     return PromptLabelStyle::Unchanged;

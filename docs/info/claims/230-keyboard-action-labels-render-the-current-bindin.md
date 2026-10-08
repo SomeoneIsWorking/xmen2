@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-21
 tags: input,prompts,keyboard
-depends: src/native/prompt_labels.cpp#prompt_label_rewrite, src/native/prompt_glyph_metrics.cpp#x2_prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.cpp#gpu_prompt_glyphs_render
+depends: src/native/prompt_labels.cpp#prompt_label_rewrite, src/native/prompt_glyph_metrics.cpp#x2::native::prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.cpp#gpu_prompt_glyphs_render
 reconfirmed: 2026-08-26
 verified_at: 2026-08-26 23:22:14
 ---

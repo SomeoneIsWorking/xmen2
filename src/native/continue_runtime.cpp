@@ -209,7 +209,7 @@ static int catalog_for_show(void) {
     g_latest_ready = 1;
     return 1;
   }
-  directory = x2_retail_save_directory();
+  directory = x2::save::retail_save_directory();
   result = directory ? x2::save::save_catalog_latest(directory, &latest) : -1;
   if (result == 1) {
     memcpy(g_latest_leaf, latest.leaf, sizeof g_latest_leaf);

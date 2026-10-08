@@ -1,5 +1,4 @@
-#ifndef X2_TOUCH_SOURCE_H
-#define X2_TOUCH_SOURCE_H
+#pragma once
 
 /*
  * WHICH KIND OF DEVICE IS THE PLAYER USING RIGHT NOW?
@@ -17,16 +16,18 @@
 
 union SDL_Event;
 
+namespace x2::input {
+
 /* Classify one host event. Events from every other device kind are ignored,
    not counted as not-touch: a controller being plugged in is not the player
    picking it up. */
-void x2_touch_source_note(const union SDL_Event *event);
+void touch_source_note(const union SDL_Event *event);
 /* Tell this owner which SDL joystick id belongs to the port's own on-screen
    pad, so its events are not read as a controller the player plugged in. 0
    means there is no such pad. */
-void x2_touch_source_set_own_pad(unsigned int joystick_id);
-int x2_touch_source_is_touch(void);
+void touch_source_set_own_pad(unsigned int joystick_id);
+int touch_source_is_touch(void);
 /* Tests and a re-entered window own no history. */
-void x2_touch_source_reset(void);
+void touch_source_reset(void);
 
-#endif /* X2_TOUCH_SOURCE_H */
+} // namespace x2::input

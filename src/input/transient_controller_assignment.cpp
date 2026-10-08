@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::input {
+
 #define TRANSIENT_PLAYERS 4
 
 typedef struct {
@@ -16,7 +18,7 @@ typedef struct {
 
 static TransientAssignment g_assignment[TRANSIENT_PLAYERS];
 
-int x2_transient_controller_assign(int pad, unsigned player) {
+int transient_controller_assign(int pad, unsigned player) {
   unsigned char guid[16];
   TransientAssignment displaced;
   const char *id;
@@ -42,7 +44,7 @@ int x2_transient_controller_assign(int pad, unsigned player) {
   return 1;
 }
 
-int x2_transient_controller_move(unsigned from, unsigned to) {
+int transient_controller_move(unsigned from, unsigned to) {
   if (from >= TRANSIENT_PLAYERS || to >= TRANSIENT_PLAYERS ||
       !g_assignment[from].assigned || g_assignment[to].assigned)
     return 0;
@@ -51,23 +53,23 @@ int x2_transient_controller_move(unsigned from, unsigned to) {
   return 1;
 }
 
-void x2_transient_controller_clear_player(unsigned player) {
+void transient_controller_clear_player(unsigned player) {
   if (player < TRANSIENT_PLAYERS)
     memset(&g_assignment[player], 0, sizeof g_assignment[player]);
 }
 
-int x2_transient_controller_has_assignment(unsigned player) {
+int transient_controller_has_assignment(unsigned player) {
   return player < TRANSIENT_PLAYERS && g_assignment[player].assigned;
 }
 
-int x2_transient_controller_resolve(unsigned player) {
-  return x2_transient_controller_has_assignment(player)
+int transient_controller_resolve(unsigned player) {
+  return transient_controller_has_assignment(player)
              ? x2::input::controller_instance_resolve(
                    &g_assignment[player].instance)
              : -1;
 }
 
-int x2_transient_controller_player_for_pad(int pad) {
+int transient_controller_player_for_pad(int pad) {
   unsigned char guid[16];
   unsigned player;
   if (!dinput_pad_instance_guid(pad, guid))
@@ -80,12 +82,13 @@ int x2_transient_controller_player_for_pad(int pad) {
   return -1;
 }
 
-const char *x2_transient_controller_id(unsigned player) {
-  return x2_transient_controller_has_assignment(player)
-             ? g_assignment[player].id
-             : NULL;
+const char *transient_controller_id(unsigned player) {
+  return transient_controller_has_assignment(player) ? g_assignment[player].id
+                                                     : NULL;
 }
 
-void x2_transient_controller_reset(void) {
+void transient_controller_reset(void) {
   memset(g_assignment, 0, sizeof g_assignment);
 }
+
+} // namespace x2::input

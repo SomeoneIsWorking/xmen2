@@ -23,6 +23,8 @@
 #include "guest_body.h"
 #include <stdio.h>
 
+namespace x2::native {
+
 static unsigned g_nonindexed_depth;
 static uint32_t g_nonindexed_primitives;
 static uint32_t g_nonindexed_start;
@@ -32,7 +34,7 @@ static unsigned long g_with_prompts, g_drawn;
 static unsigned long g_transform_refused, g_gpu_refused;
 static unsigned long g_unreadable_count, g_unreadable_array;
 
-void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
+void prompt_glyph_batch_draw_nonindexed(CPU *C) {
   g_calls++;
   g_nonindexed_depth++;
   /* drawNonIndexed(type, primitiveCount, startVertex), RET 0xc. CHECKED,
@@ -60,7 +62,7 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
  * primitiveCount + 2 vertices from startVertex -- and the rest wait for their
  * own draws (issue #184).
  */
-void x2_prompt_glyph_batch_update_context_state(CPU *C) {
+void prompt_glyph_batch_update_context_state(CPU *C) {
   struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
@@ -83,7 +85,7 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   if (!count)
     return;
   g_with_prompts++;
-  if (!x2_ui_transform_current(context, mvp))
+  if (!x2::native::ui_transform_current(context, mvp))
     g_transform_refused += count;
   else if (!gpu_prompt_glyphs_render(quads, count, mvp))
     g_gpu_refused += count;
@@ -93,12 +95,12 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
 
 __attribute__((constructor)) static void x2_prompt_glyph_batch_register(void) {
   x86_register_override("libIGGfx.dll", 0x100352d0u,
-                        x2_prompt_glyph_batch_draw_nonindexed);
+                        prompt_glyph_batch_draw_nonindexed);
   x86_register_override("libIGGfx.dll", 0x10034e60u,
-                        x2_prompt_glyph_batch_update_context_state);
+                        prompt_glyph_batch_update_context_state);
 }
 
-void x2_prompt_glyph_batch_report(void) {
+void prompt_glyph_batch_report(void) {
   x2_log_info("  Alchemy non-indexed text boundary: %lu draw call(s), %lu "
               "state finalizer call(s) total and %lu nested in this boundary; "
               "%lu nested finalizer(s) carried prompt quads; %lu glyph quad(s) "
@@ -120,3 +122,5 @@ void x2_prompt_glyph_batch_report(void) {
     x2_log_info("        ZERO calls at libIGGfx.dll 0x100352d0 -- the "
                 "engine's non-indexed draw boundary was not reached.\n");
 }
+
+} // namespace x2::native

@@ -1,5 +1,6 @@
-#ifndef X2_DISPLAY_GEOMETRY_H
-#define X2_DISPLAY_GEOMETRY_H
+#pragma once
+
+namespace x2::presentation {
 
 /*
  * The primary display's size in PIXELS, or 0 when SDL cannot say.
@@ -24,6 +25,6 @@
  * SDL_GetWindowSize in the same space, and a desktop rect in pixels beside a
  * window rect in points is a comparison the guest would get wrong.
  */
-int x2_display_pixel_size(unsigned *width, unsigned *height);
+int display_pixel_size(unsigned *width, unsigned *height);
 
-#endif /* X2_DISPLAY_GEOMETRY_H */
+} // namespace x2::presentation

@@ -171,7 +171,7 @@ const char *win_path(const char *input) {
      slash, and every relative name resolve against the read-only install. */
   if ((input[0] == X2_SAVE_DRIVE || input[0] == X2_SAVE_DRIVE + 32) &&
       input[1] == ':') {
-    root = x2_save_dir();
+    root = x2::native::save_dir();
     tail = input + 2;
     while (*tail == '\\' || *tail == '/')
       tail++;

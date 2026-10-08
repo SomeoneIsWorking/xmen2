@@ -57,7 +57,7 @@ stay at zero -- never see it.
 
 The on-screen controls publish through an SDL virtual joystick, and SDL
 announces every button and axis they set as an ordinary joystick and gamepad
-event. `x2_touch_source_note` read those as a controller arriving, flipped the
+event. `x2::input::touch_source_note` read those as a controller arriving, flipped the
 source away from touch, and `x2_touch_runtime_cancel` let go of every held
 zone -- so the release arrived as a cancellation, took the press back instead
 of completing it, and never waited for a reader.

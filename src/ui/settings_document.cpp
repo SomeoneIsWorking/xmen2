@@ -59,11 +59,11 @@ void assignment_cell(std::ostringstream &rml, const char *kind, size_t row,
 
 /* A session pad displaced from `seat` takes the seat its displacer left. */
 void relocate_session_pad(unsigned seat, int vacated) {
-  if (!x2_transient_controller_has_assignment(seat))
+  if (!x2::input::transient_controller_has_assignment(seat))
     return;
   if (vacated < 0 || (unsigned)vacated == seat ||
-      !x2_transient_controller_move(seat, (unsigned)vacated))
-    x2_transient_controller_clear_player(seat);
+      !x2::input::transient_controller_move(seat, (unsigned)vacated))
+    x2::input::transient_controller_clear_player(seat);
 }
 
 void wire(const char *id, const char *event) {
@@ -119,7 +119,8 @@ void rebuild() {
         assignment_cell(
             rml, "kb", p, owner,
             settings->keyboard_player[p] == owner &&
-                !(owner > 0 && x2_transient_controller_has_assignment(owner)));
+                !(owner > 0 &&
+                  x2::input::transient_controller_has_assignment(owner)));
       rml << "</div>";
     }
     for (size_t i = 0; i < visible_controllers.size(); i++) {
@@ -307,9 +308,11 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     if (controller.transient_assignment || !controller.stable_identity) {
       int owner = (int)owner_index - 1;
       if (owner < 0 && controller.owner >= 0)
-        x2_transient_controller_clear_player((unsigned)controller.owner);
+        x2::input::transient_controller_clear_player(
+            (unsigned)controller.owner);
       else if (owner < 0 || controller.pad < 0 ||
-               !x2_transient_controller_assign(controller.pad, (unsigned)owner))
+               !x2::input::transient_controller_assign(controller.pad,
+                                                       (unsigned)owner))
         return;
       rebuild();
       set_status(owner < 0 ? "Cleared session assignment"
@@ -399,7 +402,7 @@ bool settings_document_load(Rml::Context *context, SDL_Window *window) {
 </window></body></rml>)RML";
   host_window = window;
   document = context->LoadDocumentFromMemory(
-      shell, x2_ui_resource_path("settings.rml"));
+      shell, x2::ui::ui_resource_path("settings.rml"));
   if (!document)
     return false;
   document->Show();

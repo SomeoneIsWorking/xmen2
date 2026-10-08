@@ -95,8 +95,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
       o->fault_selftest = 1;
     else if (strncmp(argv[i], "--fault-selftest-child=", 23) == 0)
       o->fault_selftest_child = atoi(argv[i] + 23);
-    /* Runtime CVar overrides are consumed by x2_runtime_config_init, which
-       re-scans argv. Recognise the token (and its value form) here so the
+    /* Runtime CVar overrides are consumed by x2::config::runtime_config_init,
+       which re-scans argv. Recognise the token (and its value form) here so the
        unknown-option guard below does not reject it. */
     else if (strcmp(argv[i], "--env") == 0) {
       if (i + 1 >= argc || !apply_env_override(argv[i + 1]))

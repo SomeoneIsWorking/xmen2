@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-22
 tags: boot,menu,rmlui
-depends: src/native/boot_menu_transition.cpp#x2_boot_menu_open
+depends: src/native/boot_menu_transition.cpp#x2::native::boot_menu_open
 falsified_on: 2026-08-22
 ---
 
@@ -18,7 +18,7 @@ Ghidra `FindStringRefs` on `mainMenuExit` decompiled FUN_0049fb20 as: get the
 console singleton, invoke vtable `+0x18` with the executable string
 `mainmenuexit`, `XOR EAX,EAX`, plain `RET`. An independent decode of the
 authenticated XMen2.exe bytes shows the same 20-byte body and `RET` with no
-stack-pop immediate. `x2_boot_menu_open` calls this exact handler with zero
+stack-pop immediate. `x2::native::boot_menu_open` calls this exact handler with zero
 callback argument bytes; `startup.cpp` uses it only for the exact `intro_normal`
 console command, retaining retail main-menu initialization.
 

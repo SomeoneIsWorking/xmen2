@@ -72,8 +72,8 @@ int main(void) {
   fails += check(o.selftest && !o.run && !o.d3d8,
                  "a diagnostic was replaced by the default product");
   /* --set NAME=VALUE (and --set=NAME=VALUE) is consumed later by
-     x2_runtime_config_init; the option parser must accept it and its value
-     without mistaking either for the install directory. */
+     x2::config::runtime_config_init; the option parser must accept it and its
+     value without mistaking either for the install directory. */
   fails += check(x2native_options_parse(4, set_pair, &o) == 0 &&
                      !o.install_dir && o.run && o.d3d8 && !o.window,
                  "--set NAME=VALUE was rejected or ate the --no-window flag");

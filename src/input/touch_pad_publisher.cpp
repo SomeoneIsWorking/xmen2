@@ -109,7 +109,7 @@ void PadPublisher::publish_button(const ActionEvent &event) {
 }
 
 void PadPublisher::release(const char *button, bool withdrawn) {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   /* A cancelled press is taken back, not completed, so it does not wait for
      the game to read it. */
   if (withdrawn ? dinput_pad_virtual_release_now(button)
@@ -140,7 +140,7 @@ void PadPublisher::release(const char *button, bool withdrawn) {
 }
 
 void PadPublisher::press(const char *button, float value) {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   char reason[256];
   if (dinput_pad_virtual_set(button, value, -1.0, reason, sizeof reason)) {
     census.buttons_published++;
@@ -171,7 +171,7 @@ void PadPublisher::publish_axis(std::span<const ActionEvent> events,
                                 const char *name, TouchAction negative,
                                 TouchAction positive) {
   const auto value = touch_axis_value(events, negative, positive);
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   char reason[256];
   if (!value) {
     return;

@@ -31,7 +31,9 @@
 /* The host directory behind that drive, created on first use. Empty (never
    NULL) if it could not be created -- which is reported at the point of
    failure, not here. */
-const char *x2_save_dir(void);
+namespace x2::native {
+const char *save_dir(void);
+} // namespace x2::native
 
 void shell32_install(void);
 void shell32_report(void);

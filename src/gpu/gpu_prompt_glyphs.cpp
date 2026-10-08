@@ -60,8 +60,9 @@ static int ensure_resources(void) {
     gpu_texture_destroy(g_atlas);
     g_atlas = 0;
   }
-  g_labels = gpu_texture_create(X2_KEYCAP_LABEL_SHEET_W,
-                                X2_KEYCAP_LABEL_SHEET_H, GPU_FMT_RGBA8, 1);
+  g_labels =
+      gpu_texture_create(x2::native::kKeycapLabelSheetW,
+                         x2::native::kKeycapLabelSheetH, GPU_FMT_RGBA8, 1);
   g_vertices = gpu_buffer_create(GPU_BUF_VERTEX,
                                  x2::native::kPromptQuadsMax * 6u *
                                      (uint32_t)sizeof(struct PromptVertex));
@@ -77,12 +78,12 @@ static int ensure_resources(void) {
 /* Upload the key label sheet if a label was lettered since the last one. */
 static int labels_current(void) {
   uint64_t generation;
-  const uint8_t *sheet = x2_keycap_label_sheet(&generation);
+  const uint8_t *sheet = x2::native::keycap_label_sheet(&generation);
   if (generation == g_labels_uploaded)
     return 1;
   if (!gpu_texture_upload(g_labels, 0, sheet,
-                          X2_KEYCAP_LABEL_SHEET_W * X2_KEYCAP_LABEL_SHEET_H *
-                              4u))
+                          x2::native::kKeycapLabelSheetW *
+                              x2::native::kKeycapLabelSheetH * 4u))
     return 0;
   g_labels_uploaded = generation;
   return 1;

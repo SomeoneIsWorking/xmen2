@@ -1,11 +1,12 @@
-#ifndef X2_BOOT_MENU_TRANSITION_H
-#define X2_BOOT_MENU_TRANSITION_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-/* Invoke the exact retail handler at the end of menus/intro_normal.py. */
-int x2_boot_menu_open(const struct X86pCpu *source, uint32_t exe_base);
+namespace x2::native {
 
-#endif
+/* Invoke the exact retail handler at the end of menus/intro_normal.py. */
+int boot_menu_open(const struct X86pCpu *source, uint32_t exe_base);
+
+} // namespace x2::native

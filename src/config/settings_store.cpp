@@ -17,7 +17,7 @@ void x2_settings_store_init(void) {
     return;
   g_ready = 1;
   x2_settings_defaults(&g_settings);
-  dir = x2_save_dir();
+  dir = x2::native::save_dir();
   if (!dir || !dir[0]) {
     x2_log_error("SETTINGS: save directory is unavailable; defaults "
                  "are active but changes cannot be persisted.\n");

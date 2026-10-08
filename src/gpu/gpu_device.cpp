@@ -42,7 +42,6 @@
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdlib.h>
-#include <string.h>
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
@@ -149,7 +148,7 @@ void gpu_device_destroy(void) {
 #ifdef X2_WITH_SDL
   /* RmlUi owns pipelines, buffers and textures on this device. Its backend
      must release them before the device and before the claimed window. */
-  x2_ui_gpu_shutdown();
+  x2::ui::ui_gpu_shutdown();
   gpu_prompt_glyphs_shutdown();
   /* Buffers, textures and pipelines belong to the device, so they go before
      it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
@@ -563,9 +562,10 @@ void gpu_frame_end(void) {
   /* A headless run draws the overlays into its own target, so its captures
      show what a windowed run presents. */
   if (!g_offscreen)
-    x2_ui_render(g_gpu, g_cmd, final_output, g_output_w, g_output_h, g_win);
+    x2::ui::ui_render(g_gpu, g_cmd, final_output, g_output_w, g_output_h,
+                      g_win);
   else if (gpu_headless_active())
-    x2_ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
+    x2::ui::ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
   /* Boot presentation policy: withhold the retail boot's branding (legal
      loading backdrop, splash art) by presenting black until the
      destination map is up; see src/presentation/boot_blackout.cpp. */

@@ -64,8 +64,8 @@ static void x2_dialog_selection_transform(CPU *C) {
     uint32_t translation = RD32(C->reg[kX86pEsp] + 4u);
     float supplied_y = stack_float(C->reg[kX86pEsp] + 16u);
     float supplied_z = stack_float(C->reg[kX86pEsp] + 20u);
-    float retail = x2_dialog_selection_retail_scale(height);
-    float extended = x2_dialog_selection_scale(height);
+    float retail = x2::native::dialog_selection_retail_scale(height);
+    float extended = x2::native::dialog_selection_scale(height);
 
     g_selected++;
     if (height && fabsf(supplied_y - retail) < 0.00001f &&
@@ -73,9 +73,10 @@ static void x2_dialog_selection_transform(CPU *C) {
         stack_float(translation + 4u) == SELECTION_TRANSLATION_DEPTH) {
       write_stack_float(C->reg[kX86pEsp] + 16u, extended);
       write_stack_float(C->reg[kX86pEsp] + 20u, extended);
-      write_stack_float(translation + 8u,
-                        stack_float(translation + 8u) +
-                            x2_dialog_selection_offset_correction(height));
+      write_stack_float(
+          translation + 8u,
+          stack_float(translation + 8u) +
+              x2::native::dialog_selection_offset_correction(height));
       if (extended != supplied_y)
         g_corrected++;
     } else {

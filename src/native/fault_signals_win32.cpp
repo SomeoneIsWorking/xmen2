@@ -135,8 +135,8 @@ BOOL WINAPI on_console_stop(DWORD event) {
     return FALSE;
   }
   (void)write(2, kInterruptedMessage, sizeof kInterruptedMessage - 1);
-  if (heartbeat_running()) {
-    x2_report_now = 1;
+  if (x2::native::heartbeat_running()) {
+    x2::native::report_now = 1;
     Sleep(10000);
     _exit(4);
   }

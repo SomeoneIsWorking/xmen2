@@ -1,16 +1,12 @@
-#ifndef X2_TOUCH_INJECT_H
-#define X2_TOUCH_INJECT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::input {
 
 /* Contact phases, for the injector below. They are the SDL finger events by
    another name, kept separate so a caller needs no SDL headers. */
-typedef enum {
-  X2_TOUCH_PHASE_DOWN,
-  X2_TOUCH_PHASE_MOTION,
-  X2_TOUCH_PHASE_UP,
-  X2_TOUCH_PHASE_CANCEL
-} X2TouchPhase;
+enum class TouchPhase : int { Down, Motion, Up, Cancel };
 
 /*
  * Drive a contact as if the host had reported one, at a position normalized
@@ -22,6 +18,6 @@ typedef enum {
  * real host event takes, so what it exercises is the shipping path and not a
  * second copy of it. Returns what the routing returned.
  */
-int x2_touch_inject(int64_t contact_id, float x, float y, X2TouchPhase phase);
+int touch_inject(int64_t contact_id, float x, float y, TouchPhase phase);
 
-#endif /* X2_TOUCH_INJECT_H */
+} // namespace x2::input

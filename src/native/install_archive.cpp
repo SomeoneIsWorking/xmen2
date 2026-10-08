@@ -235,8 +235,8 @@ int install_archive_extract_unpublished(
 int install_archive_prepare(const char *archive, char *executable,
                             unsigned executable_capacity, char *reason,
                             unsigned reason_capacity) {
-  const char *base = x2_config_directory();
-  if (!base || !x2_config_directory_ensure()) {
+  const char *base = x2::config::config_directory();
+  if (!base || !x2::config::config_directory_ensure()) {
     std::snprintf(reason, reason_capacity,
                   "The user configuration directory could not be created.");
     return 0;
