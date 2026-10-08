@@ -87,15 +87,17 @@ int main(void) {
      neither a collision nor overwritten -- #184. */
   retail = glyph(font, 0x99u);
   WR16(retail + GL_WIDTH, 6u);
-  x2_prompt_glyph_publish_metrics(font);
+  x2::native::prompt_glyph_publish_metrics(font);
   check(RD16(retail + GL_WIDTH) == 6u && RD16(retail + GL_ADVANCE) == 0u &&
-            !x2_prompt_glyph_cell(0x99u) && !x2_prompt_glyph_cell(0x8Cu) &&
-            !x2_prompt_glyph_cell(0x9Cu),
+            !x2::native::prompt_glyph_cell(0x99u) &&
+            !x2::native::prompt_glyph_cell(0x8Cu) &&
+            !x2::native::prompt_glyph_cell(0x9Cu),
         "retail-font bytes inside the run carry no port cell");
   check(X2_KEYCAP_GLYPH_LEFT != 0x99u && X2_KEYCAP_GLYPH_LEFT != 0x9Cu &&
             X2_PAD_GLYPH_DPAD_UP != 0x8Cu && X2_KEYCAP_GLYPH_RIGHT != 0x99u &&
-            X2_KEYCAP_GLYPH_RIGHT != 0x9Cu && x2_prompt_glyph_cell(0x8Du) &&
-            x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT),
+            X2_KEYCAP_GLYPH_RIGHT != 0x9Cu &&
+            x2::native::prompt_glyph_cell(0x8Du) &&
+            x2::native::prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT),
         "the codepoint assignment skips the retail bytes");
 
   face_b = glyph(font, X2_PROMPT_GLYPH_FIRST + 1u);
@@ -113,14 +115,14 @@ int main(void) {
             RD32(occupied + GL_BASELINE) == 5u,
         "an occupied shipped codepoint is not overwritten");
   check(!x2_prompt_glyph_available(X2_PROMPT_GLYPH_FIRST) &&
-            !x2_prompt_glyph_cell(X2_PROMPT_GLYPH_FIRST),
+            !x2::native::prompt_glyph_cell(X2_PROMPT_GLYPH_FIRST),
         "an occupied codepoint becomes globally unavailable to native art");
 
   /* Discovery in one font governs all later fonts. Publishing metrics into
      a later blank record would make the same byte mean native art in one
      font and foreign retail art in another. */
   stock_glyph(later_font, 'A', 18u, 17);
-  x2_prompt_glyph_publish_metrics(later_font);
+  x2::native::prompt_glyph_publish_metrics(later_font);
   check(RD16(glyph(later_font, X2_PROMPT_GLYPH_FIRST) + GL_WIDTH) == 0u,
         "a globally unavailable codepoint is not published in later fonts");
   /* Each font sizes its prompts from its own capitals: half-height capitals
@@ -129,7 +131,7 @@ int main(void) {
         "a font with smaller capitals publishes proportionally smaller art");
 
   edge = glyph(font, X2_KEYCAP_GLYPH_LEFT);
-  key_h = 2 * x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT)->design_h;
+  key_h = 2 * x2::native::prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT)->design_h;
   check(key_h > 36 && RD16(edge + GL_WIDTH) == 10u &&
             (int)RD16(edge + GL_HEIGHT) == key_h &&
             (int16_t)RD16(edge + GL_ADVANCE) == 8 &&
@@ -137,7 +139,7 @@ int main(void) {
         "a keycap edge stands taller than the capitals, centred on them");
 
   WR16(glyph(empty_font, X2_PROMPT_GLYPH_LAST) + GL_WIDTH, 9u);
-  x2_prompt_glyph_publish_metrics(empty_font);
+  x2::native::prompt_glyph_publish_metrics(empty_font);
   empty_cell = glyph(empty_font, X2_PROMPT_GLYPH_FIRST + 1u);
   check(RD16(empty_cell + GL_WIDTH) == 0u &&
             RD32(empty_cell + GL_BASELINE) == 0u,
@@ -146,7 +148,7 @@ int main(void) {
         "occupancy is authoritative even in a font without a baseline");
 
   printf("  the report reads:\n");
-  x2_prompt_glyph_metrics_report();
+  x2::native::prompt_glyph_metrics_report();
   printf("\ntest_prompt_glyph_metrics: %d failure(s)\n", failures);
   return failures ? 1 : 0;
 }

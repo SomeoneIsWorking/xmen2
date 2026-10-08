@@ -98,7 +98,7 @@ int publish_snapshot(const CPU *source) {
     g_last_result = AUTOSAVE_LAST_HEADER_FAILED;
     return 0;
   }
-  directory = x2_retail_save_directory();
+  directory = x2::save::retail_save_directory();
   if (!directory) {
     g_last_result = AUTOSAVE_LAST_DIRECTORY_FAILED;
     return 0;

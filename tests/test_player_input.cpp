@@ -4,6 +4,7 @@
 #include "input_binding_sets.h"
 #include "input_bindings.h"
 #include "settings_store.h"
+#include "transient_controller_assignment.h"
 #include "x86rt.h"
 #include "xbox_defaults.h"
 
@@ -45,12 +46,13 @@ int dinput_pad_for_persistent_id(const char *id) {
 int dinput8_controller_slot_for_host_pad(int pad) {
   return pad >= 0 && pad < DINPUT_PAD_MAX ? controller_slots[pad] : -1;
 }
-int x2_transient_controller_has_assignment(unsigned player) {
+int x2::input::transient_controller_has_assignment(unsigned player) {
   return player < INPUT_PLAYERS && transient_pad[player] != -2;
 }
-int x2_transient_controller_resolve(unsigned player) {
-  return x2_transient_controller_has_assignment(player) ? transient_pad[player]
-                                                        : -1;
+int x2::input::transient_controller_resolve(unsigned player) {
+  return x2::input::transient_controller_has_assignment(player)
+             ? transient_pad[player]
+             : -1;
 }
 uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn) {
   (void)why;

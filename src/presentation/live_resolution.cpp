@@ -22,10 +22,11 @@ void live_resolution_select_next(X2Settings *settings) {
      which is what the game shipped with and what the stored default already
      is. Refusing to change resolution because SDL has no display would strand
      the setting. */
-  x2_display_pixel_size(&display_w, &display_h);
-  height = x2_resolution_next_height(settings->height, display_h);
-  settings->width =
-      (uint16_t)x2_resolution_width_for(height, display_w, display_h);
+  x2::presentation::display_pixel_size(&display_w, &display_h);
+  height =
+      x2::presentation::resolution_next_height(settings->height, display_h);
+  settings->width = (uint16_t)x2::presentation::resolution_width_for(
+      height, display_w, display_h);
   settings->height = (uint16_t)height;
 }
 

@@ -12,14 +12,15 @@ static int checks;
     checks++;                                                                  \
   } while (0)
 
-static X2AspectRect fit(uint32_t ow, uint32_t oh, uint32_t iw, uint32_t ih) {
-  X2AspectRect rect;
-  CHECK(x2_aspect_fit(ow, oh, iw, ih, &rect));
+static x2::presentation::AspectRect fit(uint32_t ow, uint32_t oh, uint32_t iw,
+                                        uint32_t ih) {
+  x2::presentation::AspectRect rect;
+  CHECK(x2::presentation::aspect_fit(ow, oh, iw, ih, &rect));
   return rect;
 }
 
 int main(void) {
-  X2AspectRect rect;
+  x2::presentation::AspectRect rect;
 
   rect = fit(1280, 720, 800, 600);
   CHECK(rect.x == 160 && rect.y == 0);
@@ -46,12 +47,12 @@ int main(void) {
   CHECK(rect.x * 2u + rect.width <= 1001);
   CHECK(rect.y * 2u + rect.height <= 701);
 
-  CHECK(!x2_aspect_fit(0, 720, 800, 600, &rect));
-  CHECK(!x2_aspect_fit(1280, 0, 800, 600, &rect));
-  CHECK(!x2_aspect_fit(1280, 720, 0, 600, &rect));
-  CHECK(!x2_aspect_fit(1280, 720, 800, 0, &rect));
-  CHECK(!x2_aspect_fit(1280, 720, 800, 600, NULL));
-  CHECK(!x2_aspect_fit(1, 1, UINT32_MAX, 1, &rect));
+  CHECK(!x2::presentation::aspect_fit(0, 720, 800, 600, &rect));
+  CHECK(!x2::presentation::aspect_fit(1280, 0, 800, 600, &rect));
+  CHECK(!x2::presentation::aspect_fit(1280, 720, 0, 600, &rect));
+  CHECK(!x2::presentation::aspect_fit(1280, 720, 800, 0, &rect));
+  CHECK(!x2::presentation::aspect_fit(1280, 720, 800, 600, NULL));
+  CHECK(!x2::presentation::aspect_fit(1, 1, UINT32_MAX, 1, &rect));
 
   printf("test_aspect_fit: %d checks passed\n", checks);
   return 0;

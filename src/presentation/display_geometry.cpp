@@ -4,7 +4,9 @@
 #include <SDL3/SDL.h>
 #endif
 
-int x2_display_pixel_size(unsigned *width, unsigned *height) {
+namespace x2::presentation {
+
+int display_pixel_size(unsigned *width, unsigned *height) {
 #ifdef X2_WITH_SDL
   if (width && height && SDL_WasInit(SDL_INIT_VIDEO)) {
     SDL_DisplayID display = SDL_GetPrimaryDisplay();
@@ -23,3 +25,5 @@ int x2_display_pixel_size(unsigned *width, unsigned *height) {
 #endif
   return 0;
 }
+
+} // namespace x2::presentation

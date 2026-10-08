@@ -11,6 +11,8 @@
 
 #include <string.h>
 
+namespace x2::native {
+
 #define KEY_FONT_FILE "NotoSans-Bold-keys.ttf"
 #define MAX_LABELS 64u
 /* One sheet row is one cap: the label keeps the cap's full height. */
@@ -26,7 +28,7 @@ struct Label {
 static FT_Library g_library;
 static FT_Face g_face;
 static int g_font_state; /* 0 unopened, 1 open, -1 refused */
-static uint8_t g_sheet[X2_KEYCAP_LABEL_SHEET_W * X2_KEYCAP_LABEL_SHEET_H * 4u];
+static uint8_t g_sheet[kKeycapLabelSheetW * kKeycapLabelSheetH * 4u];
 static uint64_t g_generation;
 static struct Label g_labels[MAX_LABELS];
 static unsigned g_count, g_pen_x, g_pen_y;
@@ -38,7 +40,7 @@ static int open_font(void) {
     return g_font_state > 0;
   }
   g_font_state = -1;
-  path = x2_ui_resource_path(KEY_FONT_FILE);
+  path = x2::ui::ui_resource_path(KEY_FONT_FILE);
   if (FT_Init_FreeType(&g_library)) {
     x2_log_error("KEY LABELS: FreeType could not start; keyboard prompts "
                  "stay the game's [NAME] text.\n");
@@ -98,11 +100,11 @@ static void blit(const FT_Bitmap *bitmap, long x, long y) {
       const long px = x + (long)col, py = y + (long)row;
       const uint8_t coverage = bitmap->buffer[row * bitmap->pitch + col];
       uint8_t *out;
-      if (px < 0 || py < 0 || px >= (long)X2_KEYCAP_LABEL_SHEET_W ||
-          py >= (long)X2_KEYCAP_LABEL_SHEET_H || !coverage) {
+      if (px < 0 || py < 0 || px >= (long)kKeycapLabelSheetW ||
+          py >= (long)kKeycapLabelSheetH || !coverage) {
         continue;
       }
-      out = &g_sheet[((size_t)py * X2_KEYCAP_LABEL_SHEET_W + (size_t)px) * 4u];
+      out = &g_sheet[((size_t)py * kKeycapLabelSheetW + (size_t)px) * 4u];
       out[0] = (uint8_t)(X2_KEYCAP_INK >> 16);
       out[1] = (uint8_t)(X2_KEYCAP_INK >> 8);
       out[2] = (uint8_t)X2_KEYCAP_INK;
@@ -140,14 +142,14 @@ static int letter(const uint16_t *name, unsigned length, unsigned x0,
 
 /* A cell `width` pixels wide, on the current row or the next; 0 when full. */
 static int place(unsigned width, unsigned *x, unsigned *y) {
-  if (width > X2_KEYCAP_LABEL_SHEET_W) {
+  if (width > kKeycapLabelSheetW) {
     return 0;
   }
-  if (g_pen_x + width > X2_KEYCAP_LABEL_SHEET_W) {
+  if (g_pen_x + width > kKeycapLabelSheetW) {
     g_pen_x = 0;
     g_pen_y += ROW_H + GAP;
   }
-  if (g_pen_y + ROW_H > X2_KEYCAP_LABEL_SHEET_H) {
+  if (g_pen_y + ROW_H > kKeycapLabelSheetH) {
     return 0;
   }
   *x = g_pen_x;
@@ -156,8 +158,8 @@ static int place(unsigned width, unsigned *x, unsigned *y) {
   return 1;
 }
 
-const struct x2_keycap_art *x2_keycap_label_art(const uint16_t *name,
-                                                unsigned length) {
+const struct x2_keycap_art *keycap_label_art(const uint16_t *name,
+                                             unsigned length) {
   const struct Label *known;
   struct Label *label;
   unsigned x, y, width;
@@ -195,10 +197,10 @@ const struct x2_keycap_art *x2_keycap_label_art(const uint16_t *name,
   label = &g_labels[g_count++];
   memcpy(label->name, name, length * sizeof *name);
   label->length = length;
-  label->art.u0 = (float)x / (float)X2_KEYCAP_LABEL_SHEET_W;
-  label->art.u1 = (float)(x + width) / (float)X2_KEYCAP_LABEL_SHEET_W;
-  label->art.v0 = 1.0f - (float)(y + ROW_H) / (float)X2_KEYCAP_LABEL_SHEET_H;
-  label->art.v1 = 1.0f - (float)y / (float)X2_KEYCAP_LABEL_SHEET_H;
+  label->art.u0 = (float)x / (float)kKeycapLabelSheetW;
+  label->art.u1 = (float)(x + width) / (float)kKeycapLabelSheetW;
+  label->art.v0 = 1.0f - (float)(y + ROW_H) / (float)kKeycapLabelSheetH;
+  label->art.v1 = 1.0f - (float)y / (float)kKeycapLabelSheetH;
   label->art.design_w = (float)width / (float)X2_PROMPT_SUPERSAMPLE;
   label->art.sheet = X2_KEYCAP_SHEET_LABELS;
   g_generation++;
@@ -206,16 +208,18 @@ const struct x2_keycap_art *x2_keycap_label_art(const uint16_t *name,
   return &label->art;
 }
 
-const uint8_t *x2_keycap_label_sheet(uint64_t *generation) {
+const uint8_t *keycap_label_sheet(uint64_t *generation) {
   if (generation) {
     *generation = g_generation;
   }
   return g_sheet;
 }
 
-void x2_keycap_labels_report(void) {
+void keycap_labels_report(void) {
   x2_log_info("  Key labels: %lu binding name(s) lettered in the shared key "
               "typeface (%u cached); %lu refused because the typeface was "
               "unavailable, %lu because the sheet was full\n",
               g_lettered, g_count, g_refused_font, g_refused_full);
 }
+
+} // namespace x2::native

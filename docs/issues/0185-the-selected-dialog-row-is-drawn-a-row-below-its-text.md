@@ -39,7 +39,7 @@ about a row at 2160.
 
 ## Resolution
 
-`x2_dialog_selection_offset_correction` (pure policy, unit-tested) returns
+`x2::native::dialog_selection_offset_correction` (pure policy, unit-tested) returns
 `7.0 * (scale - retail_scale)`; the override adds it to the translation's
 third component, and only after checking the vector's recovered `-720.0`
 middle component alongside the existing scale-formula match.

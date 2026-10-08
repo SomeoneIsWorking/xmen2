@@ -188,14 +188,14 @@ int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
     x2_guest_environment_set("X2_PROMPT_GLYPHS", "0");
     x2_guest_environment_set("X2_PAD_GLYPHS", nullptr);
-    x2_runtime_config_init(0, NULL);
+    x2::config::runtime_config_init(0, NULL);
     ok = check_call(3, 0x15, 0, 1);
     printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
   }
 
   x2_guest_environment_set("X2_PROMPT_GLYPHS", "1");
-  x2_runtime_config_init(0, NULL);
+  x2::config::runtime_config_init(0, NULL);
   ok = check_call(3, 0x15, 0x80, 0) && /* A */
        check_call(3, 5, 0x86, 0) &&    /* Z+ = LT */
        check_call(3, 6, 0x87, 0) &&    /* Z- = RT */

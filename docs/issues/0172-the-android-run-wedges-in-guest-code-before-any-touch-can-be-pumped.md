@@ -43,7 +43,7 @@ reached the port. SDL is pumped only from `imp_USER32_PeekMessageA` /
 calls from its message loop. A guest that never leaves a spin never calls
 either, so every finger event stays in SDL's queue.
 
-Touch activation is already platform-neutral: `x2_touch_source_note`
+Touch activation is already platform-neutral: `x2::input::touch_source_note`
 (`src/input/touch_source.cpp`) sets the source to touch on the first
 `SDL_EVENT_FINGER_*` and there is no `__ANDROID__` or `__EMSCRIPTEN__`
 conditional anywhere in `src/input/`. The same code publishes to the pad in a

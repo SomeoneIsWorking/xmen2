@@ -35,12 +35,12 @@ typedef struct {
   unsigned group;
   uint32_t portrait;
   int position_seen;
-  X2HudTransform transform;
+  x2::presentation::HudTransform transform;
 } HudScope;
 
 static HudScope g_scope;
 static X2LayoutViewport g_viewport;
-static X2HudSpace g_space, g_retail_space;
+static x2::presentation::HudSpace g_space, g_retail_space;
 static X2HudPlacement g_layout;
 /* What was drawn since the last publication, published whole each frame. */
 static X2HudRegions g_regions;
@@ -68,13 +68,14 @@ static void write_floats(uint32_t address, const float *values,
 static int prepare_space(void) {
   if (!x2_touch_runtime_viewport(&g_viewport))
     return 0;
-  g_retail_space = x2_hud_space((float)RDF32(VIEWPORT + 0x10u),
-                                (float)RDF32(VIEWPORT + 0x48u),
-                                (float)RDF32(VIEWPORT + 0x4cu));
+  g_retail_space = x2::presentation::hud_space((float)RDF32(VIEWPORT + 0x10u),
+                                               (float)RDF32(VIEWPORT + 0x48u),
+                                               (float)RDF32(VIEWPORT + 0x4cu));
   const X2Settings *settings = x2_settings_store();
-  X2AspectRect frame;
-  if (!x2_aspect_fit((uint32_t)g_viewport.width, (uint32_t)g_viewport.height,
-                     settings->width, settings->height, &frame))
+  x2::presentation::AspectRect frame;
+  if (!x2::presentation::aspect_fit((uint32_t)g_viewport.width,
+                                    (uint32_t)g_viewport.height,
+                                    settings->width, settings->height, &frame))
     return 0;
   g_space = g_retail_space;
   float pixel_x = g_space.width / (float)frame.width;
@@ -97,20 +98,21 @@ static int prepare_space(void) {
    placement is published so the touch zones lay out around it. */
 static int prepare(void) {
   const X2Settings *settings = x2_settings_store();
-  const int mobile =
-      prepare_space() &&
-      x2_hud_layout_mobile(&settings->hud, x2_touch_runtime_active()) &&
-      x2_hud_layout_build(g_viewport, &settings->hud, g_menu_row_top,
-                          &g_layout);
+  const int mobile = prepare_space() &&
+                     x2::presentation::hud_layout_mobile(
+                         &settings->hud, x2_touch_runtime_active()) &&
+                     x2::presentation::hud_layout_build(
+                         g_viewport, &settings->hud, g_menu_row_top, &g_layout);
   x2_touch_runtime_hud_placement(mobile ? &g_layout : NULL);
   return mobile;
 }
 
-static void placement(unsigned group, X2HudSpace source, X2Rect target) {
+static void placement(unsigned group, x2::presentation::HudSpace source,
+                      X2Rect target) {
   g_scope.active = 1;
   g_scope.group = group;
-  g_scope.transform =
-      x2_hud_fit(g_space, g_viewport.width, g_viewport.height, source, target);
+  g_scope.transform = x2::presentation::hud_fit(
+      g_space, g_viewport.width, g_viewport.height, source, target);
 
   if (lucent_cvar_flag("hud.trace", 0) && !(g_trace_mask & (1u << group))) {
     g_trace_mask |= 1u << group;
@@ -131,7 +133,9 @@ static void capture_portrait(void *context, uint32_t portrait, float xyz[3]) {
   if (slot >= 4)
     return;
   if (g_scope.active) {
-    placement(3, (X2HudSpace){xyz[0] - 40.0f, xyz[2] + 40.0f, 80.0f, 80.0f},
+    placement(3,
+              x2::presentation::HudSpace{xyz[0] - 40.0f, xyz[2] + 40.0f, 80.0f,
+                                         80.0f},
               g_layout.portraits[slot]);
   }
 }
@@ -149,8 +153,9 @@ void hud_party_draw(CPU *cpu) {
   if (prepare()) {
     uint32_t self = cpu->reg[kX86pEcx];
     placement(0,
-              (X2HudSpace){(float)RDF32(self + 8u) - 24.0f,
-                           (float)RDF32(self + 16u) + 24.0f, 48.0f, 48.0f},
+              x2::presentation::HudSpace{(float)RDF32(self + 8u) - 24.0f,
+                                         (float)RDF32(self + 16u) + 24.0f,
+                                         48.0f, 48.0f},
               g_layout.selector);
   }
   g_groups[0] += (unsigned)g_scope.active;
@@ -168,7 +173,8 @@ static void vitals_draw(CPU *cpu) {
     float xyz[3];
     read_floats(pos, xyz, 3);
     float left = xyz[0] >= 256.0f ? xyz[0] - 131.0f : xyz[0];
-    placement(1, (X2HudSpace){left, xyz[2] + 11.8f, 131.0f, 24.0f},
+    placement(1,
+              x2::presentation::HudSpace{left, xyz[2] + 11.8f, 131.0f, 24.0f},
               g_layout.vitals);
   }
   ++g_total[1];
@@ -187,9 +193,10 @@ static void vitals_draw(CPU *cpu) {
  */
 enum { POTION_ENERGY_ICON_TOP = 182, POTION_ENERGY_COUNT_Z = 172 };
 
-static X2HudTransform potion_fit(X2HudSpace source, X2Rect target) {
-  return x2_hud_fit(g_space, g_viewport.width, g_viewport.height, source,
-                    target);
+static x2::presentation::HudTransform
+potion_fit(x2::presentation::HudSpace source, X2Rect target) {
+  return x2::presentation::hud_fit(g_space, g_viewport.width, g_viewport.height,
+                                   source, target);
 }
 
 static unsigned potion_of_icon(float top) {
@@ -213,7 +220,7 @@ static void inventory_draw(CPU *cpu) {
     const X2Rect rings = {g_layout.potions[0].left, g_layout.potions[0].top,
                           g_layout.potions[X2_HUD_POTIONS - 1].right,
                           g_layout.potions[X2_HUD_POTIONS - 1].bottom};
-    placement(2, (X2HudSpace){left, 202.0f, 60.0f, 40.0f}, rings);
+    placement(2, x2::presentation::HudSpace{left, 202.0f, 60.0f, 40.0f}, rings);
   }
   ++g_total[2];
   g_groups[2] += (unsigned)g_scope.active;
@@ -223,9 +230,10 @@ static void inventory_draw(CPU *cpu) {
     const uint32_t centers[] = {POTION_CENTER, 0x00a0a118u};
     for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
       read_floats(centers[i], xyz, 3);
-      x2_hud_transform_point(
-          potion_fit((X2HudSpace){xyz[0] - 10.0f, xyz[2] + 10.0f, 20.0f, 20.0f},
-                     x2_hud_potion_icon(g_layout.potions[i])),
+      x2::presentation::hud_transform_point(
+          potion_fit(x2::presentation::HudSpace{xyz[0] - 10.0f, xyz[2] + 10.0f,
+                                                20.0f, 20.0f},
+                     x2::presentation::hud_potion_icon(g_layout.potions[i])),
           xyz);
       write_floats(centers[i], xyz, 3);
       g_regions.potions[i] = g_layout.potions[i];
@@ -249,9 +257,9 @@ enum { MENU_ICON_LEFT = 0x00a0a10cu, MENU_ICON_RIGHT = 0x00a0a124u };
 
 static X2Rect menu_icon_region(uint32_t corner, float size) {
   const float half = size * 0.5f;
-  return x2_hud_output_rect(g_space, g_viewport.width, g_viewport.height,
-                            (float)RDF32(corner) + half,
-                            (float)RDF32(corner + 8u) - half, half);
+  return x2::presentation::hud_output_rect(
+      g_space, g_viewport.width, g_viewport.height, (float)RDF32(corner) + half,
+      (float)RDF32(corner + 8u) - half, half);
 }
 
 static void mouse_overlay_draw(CPU *cpu) {
@@ -282,15 +290,16 @@ static void portrait_draw(CPU *cpu) {
     uint32_t address = PORTRAIT_CENTERS + slot * 12u;
     read_floats(address, xyz, 3);
     if (g_scope.active) {
-      x2_hud_transform_point(g_scope.transform, xyz);
+      x2::presentation::hud_transform_point(g_scope.transform, xyz);
       write_floats(address, xyz, 3);
     }
     if (RD8(portrait + 0x18u)) {
       g_regions.portraits[slot] =
           g_scope.active
               ? g_layout.portraits[slot]
-              : x2_hud_output_rect(g_space, g_viewport.width, g_viewport.height,
-                                   xyz[0], xyz[2], 20.0f);
+              : x2::presentation::hud_output_rect(g_space, g_viewport.width,
+                                                  g_viewport.height, xyz[0],
+                                                  xyz[2], 20.0f);
       g_regions.portrait_mask |= 1u << slot;
     } else {
       g_regions.portrait_mask &= ~(1u << slot);
@@ -311,14 +320,15 @@ static void sprite_submit(CPU *cpu) {
   read_floats(position, old_position, 3);
   read_floats(size, old_size, 2);
   memcpy(point, old_position, sizeof point);
-  const X2HudTransform transform =
+  const x2::presentation::HudTransform transform =
       g_scope.group == 2
-          ? potion_fit((X2HudSpace){old_position[0], old_position[2],
-                                    old_size[0], old_size[1]},
-                       x2_hud_potion_icon(
+          ? potion_fit(x2::presentation::HudSpace{old_position[0],
+                                                  old_position[2], old_size[0],
+                                                  old_size[1]},
+                       x2::presentation::hud_potion_icon(
                            g_layout.potions[potion_of_icon(old_position[2])]))
           : g_scope.transform;
-  x2_hud_transform_point(transform, point);
+  x2::presentation::hud_transform_point(transform, point);
   for (unsigned i = 0; i < 2; ++i)
     dimensions[i] = old_size[i] * transform.scale;
   write_floats(position, point, 3);
@@ -346,13 +356,13 @@ static void text_submit(CPU *cpu) {
     original[i] = RD32(args + i * 4u);
   float xyz[3] = {(float)(int32_t)original[0], 0, (float)(int32_t)original[1]};
   /* A potion's count: its own 16-unit line, fitted into the ring's badge. */
-  const X2HudTransform transform =
+  const x2::presentation::HudTransform transform =
       g_scope.group == 2
-          ? potion_fit(
-                (X2HudSpace){xyz[0], xyz[2], 16.0f, 16.0f},
-                x2_hud_potion_count(g_layout.potions[potion_of_count(xyz[2])]))
+          ? potion_fit(x2::presentation::HudSpace{xyz[0], xyz[2], 16.0f, 16.0f},
+                       x2::presentation::hud_potion_count(
+                           g_layout.potions[potion_of_count(xyz[2])]))
           : g_scope.transform;
-  x2_hud_transform_point(transform, xyz);
+  x2::presentation::hud_transform_point(transform, xyz);
   WR32(args, (uint32_t)(int32_t)lroundf(xyz[0]));
   WR32(args + 4u, (uint32_t)(int32_t)lroundf(xyz[2]));
   for (unsigned i = 2; i < 4; ++i)
@@ -375,7 +385,7 @@ static void scene_matrix(CPU *cpu) {
   float original[16], matrix[16];
   read_floats(address, original, 16);
   memcpy(matrix, original, sizeof matrix);
-  x2_hud_transform_matrix(g_scope.transform, matrix);
+  x2::presentation::hud_transform_matrix(g_scope.transform, matrix);
   write_floats(address, matrix, 16);
   x86_guest_body(cpu, "XMen2.exe", SCENE_MATRIX);
   write_floats(address, original, 16);

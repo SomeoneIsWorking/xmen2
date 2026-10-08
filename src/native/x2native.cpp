@@ -1503,13 +1503,13 @@ int main(int argc, char **argv) {
   if (x2native_options_uses_project_env(&options) &&
       x2::native::load_project_env(argv[0]) < 0)
     return 2;
-  x2::diagnostics::Startup::begin(x2_config_directory());
+  x2::diagnostics::Startup::begin(x2::config::config_directory());
   if (!sdl_host_setup(options.window))
     return 1;
   /* Runtime CVars (engine selection, JIT knobs): compiled default < the
      x2native-runtime.conf file < environment X2_* < --set. Must precede the
      engine setup below, which reads the resolved `engine` value. */
-  x2_runtime_config_init(argc, argv);
+  x2::config::runtime_config_init(argc, argv);
   /* setjmp/longjmp crosses live guest-call frames. How many times
      it actually resumed is the difference between the mechanism working and
      the run merely getting further. */
@@ -1552,12 +1552,12 @@ int main(int argc, char **argv) {
     const int control_port = control_start(options.control);
 #endif
     /* A package's recordings live with its user data, not its cwd. */
-    if (options.appimage && x2_config_directory_ensure()) {
+    if (options.appimage && x2::config::config_directory_ensure()) {
       char artifacts[512];
-      snprintf(artifacts, sizeof artifacts, "%s/recordings",
-               x2_config_directory());
+      const char *config = x2::config::config_directory();
+      snprintf(artifacts, sizeof artifacts, "%s/recordings", config);
       input_record_set_directory(artifacts);
-      snprintf(artifacts, sizeof artifacts, "%s/run", x2_config_directory());
+      snprintf(artifacts, sizeof artifacts, "%s/run", config);
       live_session_set_directory(artifacts);
     }
     if (lucent_cvar_text("live.directory")[0] != '\0') {
@@ -1723,7 +1723,7 @@ int main(int argc, char **argv) {
      modules, because LoadLibraryA may only hand back a handle for a module
      this host actually implements, and that answer comes from the export
      registry. */
-  /* NOT atexit: see x2_interrupt_reports, which calls it on every ending. */
+  /* NOT atexit: see interrupt_reports, which calls it on every ending. */
   shell32_install();
   advapi32_install();
   atexit(advapi32_report);
@@ -1748,7 +1748,7 @@ int main(int argc, char **argv) {
     atexit(gdi32_report);
   }
   /*
-   * Registered here AND called from x2_interrupt_reports, because neither
+   * Registered here AND called from interrupt_reports, because neither
    * path covers every ending: atexit misses the clean frame-limit stop
    * (which leaves through _exit) and the interrupt reports miss a run that
    * returns normally, like --selftest. Both call the same functions and each
@@ -1954,7 +1954,7 @@ int main(int argc, char **argv) {
          over it would only add lines to a log that is already speaking.
          From the entry point on, the guest owns the thread and silence
          becomes ambiguous. */
-      heartbeat_start();
+      x2::native::heartbeat_start();
       guest_quantum_from_env();
       {
         /* The probe is a registered knob, so a host with no environment

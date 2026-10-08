@@ -14,7 +14,7 @@ int main(void) {
 #else
   setenv("XDG_CONFIG_HOME", "/x2-config-test", 1);
 #endif
-  const char *path = x2_config_directory();
+  const char *path = x2::config::config_directory();
   if (!path || !path[0]) {
     fprintf(stderr, "config directory was not resolved: %s\n",
             path ? path : "(null)");

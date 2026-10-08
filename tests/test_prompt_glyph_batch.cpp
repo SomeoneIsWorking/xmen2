@@ -2,6 +2,7 @@
    the real prompt-quad store underneath it. */
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_quads.h"
+#include "ui_transform.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -37,7 +38,7 @@ static void check(int condition, const char *what) {
   }
 }
 
-int x2_ui_transform_current(uint32_t context, float mvp[16]) {
+int x2::native::ui_transform_current(uint32_t context, float mvp[16]) {
   unsigned i;
   note('T');
   transform_calls++;
@@ -69,7 +70,7 @@ int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
 static void guest_body_100352d0(CPU *C) {
   super_calls++;
   if (super_runs_finalizer)
-    x2_prompt_glyph_batch_update_context_state(C);
+    x2::native::prompt_glyph_batch_update_context_state(C);
   note('D'); /* The original body submits to D3D after its finalizer. */
 }
 
@@ -113,7 +114,7 @@ static void draw(uint32_t start, unsigned glyphs, CPU *cpu) {
   draw_start = start;
   draw_primitives = primitives_for(glyphs);
   cpu->reg[kX86pEcx] = CONTEXT;
-  x2_prompt_glyph_batch_draw_nonindexed(cpu);
+  x2::native::prompt_glyph_batch_draw_nonindexed(cpu);
 }
 
 static void reset_case(uint32_t primitives) {
@@ -245,7 +246,7 @@ int main(void) {
   reset_case(0);
   put(ARRAY_TEXT, glyph(0), 3u, 0x81u);
   cpu.reg[kX86pEcx] = CONTEXT;
-  x2_prompt_glyph_batch_update_context_state(&cpu);
+  x2::native::prompt_glyph_batch_update_context_state(&cpu);
   check(!strcmp(events, "U") && transform_calls == 0 && gpu_calls == 0 &&
             pending() == 3u,
         "the finalizer alone never mistakes an indexed draw for text");
@@ -261,7 +262,7 @@ int main(void) {
   check(pending() == 0u, "a new frame drops every undrawn quad");
 
   printf("  the report reads:\n");
-  x2_prompt_glyph_batch_report();
+  x2::native::prompt_glyph_batch_report();
   x2::native::prompt_quads_report();
   printf("\ntest_prompt_glyph_batch: %d failure(s)\n", failures);
   return failures ? 1 : 0;

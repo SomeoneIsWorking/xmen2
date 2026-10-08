@@ -18,7 +18,9 @@ void expect(bool ok, const char *what) {
 
 } // namespace
 
-const char *x2_save_dir(void) { return "."; }
+namespace x2::native {
+const char *save_dir(void) { return "."; }
+} // namespace x2::native
 
 void x86_native_export(const char *, const char *, void (*)(X86pCpu *)) {}
 

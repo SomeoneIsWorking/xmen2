@@ -11,10 +11,10 @@ std::vector<ControllerAssignmentRow>
 controller_assignment_rows(const X2Settings &settings) {
   std::vector<ControllerAssignmentRow> rows;
   for (unsigned player = 0; player < X2_SETTINGS_PLAYERS; player++) {
-    const char *id = x2_transient_controller_id(player);
+    const char *id = x2::input::transient_controller_id(player);
     if (!id)
       continue;
-    int pad = x2_transient_controller_resolve(player);
+    int pad = x2::input::transient_controller_resolve(player);
     const char *name = pad >= 0 ? dinput_pad_name(pad) : nullptr;
     rows.push_back({id,
                     name
@@ -32,7 +32,7 @@ controller_assignment_rows(const X2Settings &settings) {
     if (existing != rows.end())
       continue; /* transient overlay wins */
     int owner = settings.controller[i].player;
-    if (owner >= 0 && x2_transient_controller_has_assignment(owner))
+    if (owner >= 0 && x2::input::transient_controller_has_assignment(owner))
       owner = -2;
     rows.push_back(
         {id, "Disconnected: " + std::string(id), true, false, -1, owner});
@@ -49,7 +49,8 @@ controller_assignment_rows(const X2Settings &settings) {
       bool stable = dinput_pad_persistent_id_is_stable(pad);
       rows.push_back(
           {id, stable ? name : std::string(name) + " (session only; not saved)",
-           stable, false, pad, x2_transient_controller_player_for_pad(pad)});
+           stable, false, pad,
+           x2::input::transient_controller_player_for_pad(pad)});
     } else {
       found->name = found->transient_assignment
                         ? std::string(name) + " (session assignment; not saved)"

@@ -15,7 +15,9 @@ static int checks;
     checks++;                                                                  \
   } while (0)
 
-const char *x2_save_dir(void) { return X2_TEST_BOOT_STORAGE_ROOT; }
+namespace x2::native {
+const char *save_dir(void) { return X2_TEST_BOOT_STORAGE_ROOT; }
+} // namespace x2::native
 
 static void ensure_directory(const char *path) {
   CHECK(mkdir(path, 0700) == 0 || errno == EEXIST);
@@ -34,7 +36,7 @@ int main(void) {
   snprintf(path, sizeof path, "%s/Activision/X-Men Legends 2",
            X2_TEST_BOOT_STORAGE_ROOT);
   ensure_directory(path);
-  directory = x2_retail_save_directory();
+  directory = x2::save::retail_save_directory();
   CHECK(directory != NULL);
   ensure_directory(directory);
   snprintf(save_path, sizeof save_path, "%s/saveslot2.save", directory);

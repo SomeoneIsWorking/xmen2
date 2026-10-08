@@ -93,7 +93,7 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
         &g_mouse, hidden, (flags & SDL_WINDOW_INPUT_FOCUS) != 0u,
         (flags & SDL_WINDOW_MOUSE_FOCUS) != 0u);
   }
-  x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+  x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
 }
 
@@ -218,12 +218,12 @@ static void pump_sdl(void) {
     x2_touch_runtime_lifecycle_event(&event);
     drain_touch_pointer();
 
-    if (x2_ui_handle_event(&event)) {
-      if (x2_ui_captures_input()) {
+    if (x2::ui::ui_handle_event(&event)) {
+      if (x2::ui::ui_captures_input()) {
         x2_touch_runtime_cancel();
         drain_touch_pointer();
       }
-      x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+      x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
       apply_cursor_policy();
       continue;
     }
@@ -235,7 +235,7 @@ static void pump_sdl(void) {
     if (touch_handled) {
       continue;
     }
-    x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+    x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
 
     if (event.type == SDL_EVENT_MOUSE_MOTION ||
         event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
@@ -253,7 +253,7 @@ static void pump_sdl(void) {
     apply_cursor_policy();
   }
 
-  x2::native::win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
+  x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
 }
 

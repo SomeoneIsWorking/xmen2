@@ -28,7 +28,9 @@ static char storage_root[] = "scratch/autosave-storage-XXXXXX";
     }                                                                          \
   } while (0)
 
-const char *x2_save_dir(void) { return storage_root; }
+namespace x2::native {
+const char *save_dir(void) { return storage_root; }
+} // namespace x2::native
 
 static void ensure_directory(const char *path) {
   CHECK(mkdir(path, 0700) == 0 || errno == EEXIST);
@@ -81,7 +83,7 @@ int main(void) {
   snprintf(parent, sizeof parent, "%s/Activision/X-Men Legends 2",
            storage_root);
   ensure_directory(parent);
-  directory = x2_retail_save_directory();
+  directory = x2::save::retail_save_directory();
   CHECK(directory != NULL);
   ensure_directory(directory);
   snprintf(leaf, sizeof leaf, "%s/%s", directory, x2::save::kAutosaveLeaf);

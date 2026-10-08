@@ -10,19 +10,21 @@
 
 #include <lucent/log_c.h>
 
+namespace x2::input {
+
 namespace {
-X2TouchCensus g_census;
+TouchCensus g_census;
 } // namespace
 
-X2TouchCensus *x2_touch_census(void) { return &g_census; }
+TouchCensus *touch_census(void) { return &g_census; }
 
-void x2_touch_census_read(X2TouchCensus *out) {
+void touch_census_read(TouchCensus *out) {
   if (out)
     *out = g_census;
 }
 
-void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
-                            int touch_capable) {
+void touch_census_report(const char *tag, int has_window, int touch_devices,
+                         int touch_capable) {
   const char *const prefix = tag ? tag : "";
   const unsigned long contacts_seen =
       g_census.contacts_down + g_census.contacts_moved + g_census.contacts_up +
@@ -50,7 +52,8 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
         "source says %s, gate %s, %s, and this host reports %d touch "
         "device(s) and %s produce touch. Nothing was dropped; nothing "
         "arrived",
-        prefix, mode_name, x2_touch_source_is_touch() ? "touch" : "not touch",
+        prefix, mode_name,
+        x2::input::touch_source_is_touch() ? "touch" : "not touch",
         x2_gameplay_control_name(
             (int)x2_gameplay_control_state(guest_clock_now_s())),
         has_window ? "a window was present" : "there was NO window",
@@ -73,7 +76,7 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
           : (has_window ? "a window was present, so the no-window cause does "
                           "not explain them"
                         : "there was no window to route them into"),
-      mode_name, x2_touch_source_is_touch() ? "touch" : "not touch",
+      mode_name, x2::input::touch_source_is_touch() ? "touch" : "not touch",
       x2_gameplay_control_name(
           (int)x2_gameplay_control_state(guest_clock_now_s())));
   /*
@@ -163,3 +166,5 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
                           "gameplay in this run");
   }
 }
+
+} // namespace x2::input

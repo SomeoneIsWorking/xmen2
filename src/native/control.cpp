@@ -128,12 +128,12 @@ void control_pump(CPU *cpu, double now) {
       g_pad_refused++;
   } else if (cmd == CMD_ASSIGNMENT) {
     if (g_cmd_value < 0.0) {
-      x2_transient_controller_clear_player(g_cmd_controller);
+      x2::input::transient_controller_clear_player(g_cmd_controller);
       g_cmd_ok = 1;
       snprintf(g_cmd_why, sizeof g_cmd_why, "session assignment cleared");
     } else {
-      g_cmd_ok =
-          x2_transient_controller_assign((int)g_cmd_value, g_cmd_controller);
+      g_cmd_ok = x2::input::transient_controller_assign((int)g_cmd_value,
+                                                        g_cmd_controller);
       snprintf(g_cmd_why, sizeof g_cmd_why, "%s",
                g_cmd_ok ? "session assignment applied"
                         : "that live pad cannot be assigned to that player");
@@ -142,8 +142,9 @@ void control_pump(CPU *cpu, double now) {
     /* Goes through the runtime's own injector, which takes the same
        note-source and routing calls the host event pump takes. A separate
        copy here could only agree with the shipping path by luck. */
-    g_cmd_ok = x2_touch_inject(1, (float)g_cmd_x, (float)g_cmd_y,
-                               (X2TouchPhase)g_cmd_phase);
+    g_cmd_ok = x2::input::touch_inject(
+        1, (float)g_cmd_x, (float)g_cmd_y,
+        static_cast<x2::input::TouchPhase>(g_cmd_phase));
     /* What the contact then did is the touch census's account. */
     snprintf(g_cmd_why, sizeof g_cmd_why,
              g_cmd_ok ? "the contact was routed"

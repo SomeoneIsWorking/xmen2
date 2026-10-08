@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 enum { UI_PROJECTION = 0, UI_WORLD = 1, UI_VIEW = 14 };
 
 static float g_projection[16], g_world[16], g_view[16];
@@ -52,7 +54,7 @@ static void select_context(uint32_t context) {
   g_context_selections++;
 }
 
-void x2_ui_transform_compute_matrix(CPU *C) {
+void ui_transform_compute_matrix(CPU *C) {
   uint32_t context = C->reg[kX86pEcx];
   uint32_t which = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t output_ref = RD32(C->reg[kX86pEsp] + 8u);
@@ -90,10 +92,10 @@ void x2_ui_transform_compute_matrix(CPU *C) {
 
 __attribute__((constructor)) static void x2_ui_transform_register(void) {
   x86_register_override("libIGGfx.dll", 0x1003ec10u,
-                        x2_ui_transform_compute_matrix);
+                        ui_transform_compute_matrix);
 }
 
-int x2_ui_transform_current(uint32_t context, float mvp[16]) {
+int ui_transform_current(uint32_t context, float mvp[16]) {
   float world_view[16];
   if (!mvp)
     return 0;
@@ -109,7 +111,7 @@ int x2_ui_transform_current(uint32_t context, float mvp[16]) {
   return 1;
 }
 
-void x2_ui_transform_report(void) {
+void ui_transform_report(void) {
   x2_log_info("  Engine UI transform: %lu computeMatrix_Dx call(s), %lu "
               "visual-context cache selection(s), %lu "
               "world/view/projection capture(s), %lu "
@@ -122,3 +124,5 @@ void x2_ui_transform_report(void) {
                 " -- native text-plane placement is refused\n",
                 !!(g_valid & 1u), !!(g_valid & 2u), !!(g_valid & 4u));
 }
+
+} // namespace x2::native

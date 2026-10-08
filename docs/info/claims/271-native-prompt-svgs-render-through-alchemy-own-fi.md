@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: graphics,svg,prompts,libIGGfx
-depends: src/native/prompt_glyph_draw.cpp#x2_override_005ee780, src/native/prompt_glyph_draw.cpp#x2_override_005ee400, src/native/prompt_glyph_batch.cpp#x2_prompt_glyph_batch_draw_nonindexed, src/native/prompt_glyph_batch.cpp#x2_prompt_glyph_batch_update_context_state, src/native/ui_transform.cpp#x2_ui_transform_compute_matrix, src/native/prompt_glyph_metrics.cpp#x2_prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.cpp#gpu_prompt_glyphs_render, tools/render_prompt_glyphs.py#emit_header, tools/prepare_native_assets.py#prepare
+depends: src/native/prompt_glyph_draw.cpp#x2_override_005ee780, src/native/prompt_glyph_draw.cpp#x2_override_005ee400, src/native/prompt_glyph_batch.cpp#x2::native::prompt_glyph_batch_draw_nonindexed, src/native/prompt_glyph_batch.cpp#x2::native::prompt_glyph_batch_update_context_state, src/native/ui_transform.cpp#x2::native::ui_transform_compute_matrix, src/native/prompt_glyph_metrics.cpp#x2::native::prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.cpp#gpu_prompt_glyphs_render, tools/render_prompt_glyphs.py#emit_header, tools/prepare_native_assets.py#prepare
 reconfirmed: 2026-08-26
 verified_at: 2026-08-26 23:22:15
 ---

@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+namespace x2::config {
+
 namespace {
 
 /* off: x86port re-translates every block instead of caching -- the
@@ -299,7 +301,7 @@ void report_unknown_name(const std::string &name) {
 
 } // namespace
 
-void x2_runtime_config_init(int argc, char **argv) {
+void runtime_config_init(int argc, char **argv) {
   lucent::cvar::set_prefix("X2_");
   lucent::cvar::register_var(g_hud_verify);
   lucent::cvar::register_var(g_hud_trace);
@@ -357,15 +359,15 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_write_watch);
 
   const std::string path =
-      std::string(x2_config_directory()) + "/x2native-runtime.conf";
+      std::string(x2::config::config_directory()) + "/x2native-runtime.conf";
   lucent::cvar::load_file(path.c_str());
 
   int refused = 0;
   for (int i = 1; i < argc; i++) {
     if (std::strcmp(argv[i], "--set") == 0 && i + 1 < argc) {
-      refused += !x2_runtime_config_apply_set_token(argv[++i]);
+      refused += !runtime_config_apply_set_token(argv[++i]);
     } else if (std::strncmp(argv[i], "--set=", 6) == 0) {
-      refused += !x2_runtime_config_apply_set_token(argv[i] + 6);
+      refused += !runtime_config_apply_set_token(argv[i] + 6);
     }
   }
   /* Every bad name is named first, then the launch stops: a maintainer who
@@ -375,7 +377,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   }
 }
 
-int x2_runtime_config_apply_set_token(const char *token) {
+int runtime_config_apply_set_token(const char *token) {
   const char *eq = token != nullptr ? std::strchr(token, '=') : nullptr;
   if (eq == nullptr || eq == token) {
     lucent_log_error("config", "--set expects NAME=VALUE, got '%s'",
@@ -390,3 +392,5 @@ int x2_runtime_config_apply_set_token(const char *token) {
   lucent::cvar::set_arg(name, eq + 1);
   return 1;
 }
+
+} // namespace x2::config

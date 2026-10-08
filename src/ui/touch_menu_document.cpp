@@ -169,7 +169,7 @@ std::string markup(const input::TouchMenuState &state, Scale scale) {
 } // namespace
 
 bool TouchMenuDocument::load(Rml::Context *context) {
-  const std::string base = x2_ui_resource_path("touch_menu.rml");
+  const std::string base = x2::ui::ui_resource_path("touch_menu.rml");
   const std::string shell =
       "<rml><head><title>Touch Menu</title><link type='text/rcss' "
       "href='touch_menu.rcss' /></head><body id='tm-root'></body></rml>";

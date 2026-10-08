@@ -156,9 +156,9 @@ void interrupted(int sig) {
   /* The reports are stdio, so the heartbeat thread runs them from ordinary
      context; the alarm is the backstop if it never gets there. */
   signal(SIGALRM, SIG_DFL);
-  if (heartbeat_running()) {
+  if (x2::native::heartbeat_running()) {
     alarm(10);
-    x2_report_now = 1;
+    x2::native::report_now = 1;
     return;
   }
   alarm(5);

@@ -182,7 +182,7 @@ static void retain(const struct x2::native::PromptQuad *quads, unsigned count) {
 }
 
 static void intercept_glyph(CPU *C, uint16_t c) {
-  const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(c);
+  const struct x2_prompt_cell *cell = x2::native::prompt_glyph_cell(c);
   struct x2::native::PromptQuad q;
   float corners[4];
 
@@ -229,7 +229,7 @@ static void intercept_keycap(CPU *C, uint16_t c) {
     for (i = 0; i < length && i < x2::native::kKeycapNameMax; i++) {
       name[i] = RD16(g_cursor_string + (g_cap.name_at + i) * 2u);
     }
-    art = x2_keycap_label_art(name, length);
+    art = x2::native::keycap_label_art(name, length);
     if (!art) {
       x2_log_error("PROMPT DRAW: a keycap run the plan accepted has no "
                    "label art at draw time; the cursor model is wrong.\n");
@@ -281,9 +281,9 @@ static struct PromptStringPlan plan_string(uint32_t s) {
       continue;
     if (c == X2_KEYCAP_GLYPH_LEFT) {
       const unsigned run = x2::native::keycap_run_length(wide, n, i);
-      if (!run || !x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT) ||
-          !x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT) ||
-          !x2_keycap_label_art(wide + i + 1u, run - 2u)) {
+      if (!run || !x2::native::prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT) ||
+          !x2::native::prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT) ||
+          !x2::native::keycap_label_art(wide + i + 1u, run - 2u)) {
         plan.unavailable = 1;
         continue;
       }
@@ -292,7 +292,7 @@ static struct PromptStringPlan plan_string(uint32_t s) {
     } else if (c == X2_KEYCAP_GLYPH_RIGHT) {
       if (i != key_end)
         plan.unavailable = 1; /* an edge that closes no key */
-    } else if (!x2_prompt_glyph_cell(c)) {
+    } else if (!x2::native::prompt_glyph_cell(c)) {
       plan.unavailable = 1;
     } else {
       plan.native++;

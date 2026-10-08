@@ -2,13 +2,15 @@
 
 #include <math.h>
 
-int x2_hud_layout_mobile(const X2HudSettings *settings, int touch_enabled) {
+namespace x2::presentation {
+
+int hud_layout_mobile(const X2HudSettings *settings, int touch_enabled) {
   return settings->layout == X2_HUD_LAYOUT_MOBILE ||
          (settings->layout == X2_HUD_LAYOUT_AUTO && touch_enabled);
 }
 
-int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
-                        float row_top, X2HudPlacement *out) {
+int hud_layout_build(X2LayoutViewport v, const X2HudSettings *s, float row_top,
+                     X2HudPlacement *out) {
   X2Rect validated[kX2SlotCount];
   if (!out || !x2_hud_settings_valid(s) || !x2_layout_build(v, NULL, validated))
     return 0;
@@ -51,43 +53,43 @@ int x2_hud_layout_build(X2LayoutViewport v, const X2HudSettings *s,
   return 1;
 }
 
-X2Rect x2_hud_potion_icon(X2Rect ring) {
+X2Rect hud_potion_icon(X2Rect ring) {
   float inset = (ring.right - ring.left) * 0.16f;
   return (X2Rect){ring.left + inset, ring.top + inset, ring.right - inset,
                   ring.bottom - inset};
 }
 
-X2Rect x2_hud_potion_count(X2Rect ring) {
+X2Rect hud_potion_count(X2Rect ring) {
   float size = (ring.right - ring.left) * 0.36f;
   return (X2Rect){ring.right - size, ring.bottom - size, ring.right,
                   ring.bottom};
 }
 
-X2HudSpace x2_hud_space(float aspect, float scale_x, float scale_z) {
+HudSpace hud_space(float aspect, float scale_x, float scale_z) {
   float width = scale_x * aspect * 384.0f;
   float height = scale_z * 384.0f;
-  return (X2HudSpace){256.0f - width * 0.5f, 192.0f + height * 0.5f, width,
-                      height};
+  return (HudSpace){256.0f - width * 0.5f, 192.0f + height * 0.5f, width,
+                    height};
 }
 
-X2HudTransform x2_hud_fit(X2HudSpace space, float width, float height,
-                          X2HudSpace source, X2Rect target) {
+HudTransform hud_fit(HudSpace space, float width, float height, HudSpace source,
+                     X2Rect target) {
   float target_width = (target.right - target.left) * space.width / width;
   float target_height = (target.bottom - target.top) * space.height / height;
   float scale =
       fminf(target_width / source.width, target_height / source.height);
   float left = space.left + target.left * space.width / width;
   float top = space.top - target.top * space.height / height;
-  return (X2HudTransform){scale, left - source.left * scale,
-                          top - source.top * scale};
+  return (HudTransform){scale, left - source.left * scale,
+                        top - source.top * scale};
 }
 
-void x2_hud_transform_point(X2HudTransform t, float xyz[3]) {
+void hud_transform_point(HudTransform t, float xyz[3]) {
   xyz[0] = xyz[0] * t.scale + t.x;
   xyz[2] = xyz[2] * t.scale + t.z;
 }
 
-void x2_hud_transform_matrix(X2HudTransform t, float matrix[16]) {
+void hud_transform_matrix(HudTransform t, float matrix[16]) {
   /* Alchemy row vectors. Apply the screen-plane affine AFTER the model pose;
      preserve Y (depth), its basis and all homogeneous components. */
   for (unsigned row = 0; row < 4; ++row) {
@@ -97,10 +99,12 @@ void x2_hud_transform_matrix(X2HudTransform t, float matrix[16]) {
   }
 }
 
-X2Rect x2_hud_output_rect(X2HudSpace s, float width, float height, float x,
-                          float z, float radius) {
+X2Rect hud_output_rect(HudSpace s, float width, float height, float x, float z,
+                       float radius) {
   return (X2Rect){(x - radius - s.left) * width / s.width,
                   (s.top - z - radius) * height / s.height,
                   (x + radius - s.left) * width / s.width,
                   (s.top - z + radius) * height / s.height};
 }
+
+} // namespace x2::presentation

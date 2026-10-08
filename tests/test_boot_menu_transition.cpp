@@ -30,10 +30,10 @@ int main(void) {
   source.reg[kX86pEcx] = 0x23456789u;
   source.reg[kX86pEsp] = 0x00102000u;
 
-  CHECK(!x2_boot_menu_open(NULL, 0x08000000u));
-  CHECK(!x2_boot_menu_open(&source, 0));
+  CHECK(!x2::native::boot_menu_open(NULL, 0x08000000u));
+  CHECK(!x2::native::boot_menu_open(&source, 0));
   CHECK(calls == 0);
-  CHECK(x2_boot_menu_open(&source, 0x08000000u));
+  CHECK(x2::native::boot_menu_open(&source, 0x08000000u));
   CHECK(calls == 1);
   /* 0x0049fb00 executes `mainmenuexit 1`; unlike the adjacent no-argument
      callback, the retail handler takes its direct reset/load-menu branch. */

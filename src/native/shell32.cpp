@@ -22,7 +22,7 @@
  * guest paths against the install -- so a POSIX path handed to the guest would
  * come back as $GAME_PC_DIR + the whole thing. It gets a path on a VIRTUAL
  * DRIVE instead, and win_path knows that one letter maps to the save directory
- * rather than to the install. See x2_save_dir() and win_path().
+ * rather than to the install. See x2::native::save_dir() and win_path().
  */
 #include "../config/config_directory.h"
 #include "guest_memory.h"
@@ -78,21 +78,22 @@ static int make_directories(const char *path) {
   }
 }
 
-const char *x2_save_dir(void) {
+namespace x2::native {
+const char *save_dir(void) {
   const char *env;
   const char *default_dir;
   if (g_ready)
     return g_dir;
   g_ready = 1;
   env = x2_config_override_get(kX2ConfigSaveDir);
-  default_dir = x2_config_directory();
+  default_dir = x2::config::config_directory();
   if (env && *env) {
     snprintf(g_dir, sizeof g_dir, "%s", env);
     if (g_dir[0] && !make_directories(g_dir))
       g_dir[0] = 0;
   } else if (default_dir) {
     snprintf(g_dir, sizeof g_dir, "%s", default_dir);
-    if (g_dir[0] && !x2_config_directory_ensure())
+    if (g_dir[0] && !x2::config::config_directory_ensure())
       g_dir[0] = 0;
   } else {
     g_dir[0] = 0;
@@ -111,6 +112,7 @@ const char *x2_save_dir(void) {
   }
   return g_dir;
 }
+} // namespace x2::native
 
 /*
  * SHGetFolderPathA(hwndOwner, nFolder, hToken, dwFlags, pszPath)
@@ -119,7 +121,7 @@ const char *x2_save_dir(void) {
  */
 static void imp_SHELL32_SHGetFolderPathA(CPU *C) {
   uint32_t folder = A(1) & CSIDL_MASK, out = A(4);
-  const char *dir = x2_save_dir();
+  const char *dir = x2::native::save_dir();
 
   if (!out) {
     ret_std(C, E_FAIL_HR, 5);

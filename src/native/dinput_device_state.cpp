@@ -105,7 +105,7 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
     dinput_pad_virtual_tick(frame);
     dinput8_hotplug_pump(cpu);
   }
-  if (x2_ui_captures_input()) {
+  if (x2::ui::ui_captures_input()) {
     if (device->kind == DINPUT_DEV_JOYSTICK)
       x2::input::joystick_write_neutral(guest_memory_pointer(out), bytes,
                                         device->axis_lo, device->axis_hi);

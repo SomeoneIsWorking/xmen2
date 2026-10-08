@@ -1,5 +1,6 @@
 #include "live_resolution.h"
 
+#include "display_geometry.h"
 #include "resolution_ladder.h"
 
 #include <stdio.h>
@@ -42,7 +43,7 @@ static void check(int condition, const char *expression, int line) {
 /* The display query is the seam the ladder derives width from. Stubbing it
    here is what lets one test state every aspect ratio a player can have;
    display_w == 0 stands for "SDL cannot say". */
-int x2_display_pixel_size(unsigned *width, unsigned *height) {
+int x2::presentation::display_pixel_size(unsigned *width, unsigned *height) {
   if (!display_w || !display_h)
     return 0;
   *width = display_w;
@@ -190,7 +191,7 @@ int main(void) {
   settings.height = 720;
   x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1280 && settings.height == 720);
-  CHECK(x2_resolution_width_for(1080, 1366, 768) == 1920);
+  CHECK(x2::presentation::resolution_width_for(1080, 1366, 768) == 1920);
 
   /* No display: 16:9, because refusing to change resolution would strand the
      setting. */
@@ -210,9 +211,10 @@ int main(void) {
 
   {
     char label[16];
-    CHECK(x2_resolution_label(1080, label, sizeof label) == 5 &&
+    CHECK(x2::presentation::resolution_label(1080, label, sizeof label) == 5 &&
           strcmp(label, "1080p") == 0);
-    CHECK(x2_resolution_label(1080, label, 4) == 0 && label[0] == '\0');
+    CHECK(x2::presentation::resolution_label(1080, label, 4) == 0 &&
+          label[0] == '\0');
   }
 
   reset_calls();

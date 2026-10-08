@@ -163,7 +163,7 @@ TouchRuntime runtime;
 bool TouchRuntime::active() {
   const unsigned mode = x2_settings_store()->touch_controls;
   return mode == X2_TOUCH_CONTROLS_ALWAYS ||
-         (mode == X2_TOUCH_CONTROLS_AUTO && x2_touch_source_is_touch());
+         (mode == X2_TOUCH_CONTROLS_AUTO && x2::input::touch_source_is_touch());
 }
 
 bool TouchRuntime::overlay_visible() const {
@@ -198,7 +198,7 @@ void TouchRuntime::deliver(std::span<const TouchMenuDelivery> deliveries) {
   for (const TouchMenuDelivery &delivery : deliveries) {
     if (delivery.kind == TouchMenuDelivery::Kind::click) {
       pointer_.click_client(delivery.at.x, delivery.at.y);
-      x2_touch_census()->touch_menu_clicks++;
+      x2::input::touch_census()->touch_menu_clicks++;
       continue;
     }
     ActionEvent press;
@@ -219,7 +219,7 @@ void TouchRuntime::deliver(std::span<const TouchMenuDelivery> deliveries) {
       continue;
     }
     const std::array<ActionEvent, 2> tap{press, release};
-    x2_touch_census()->touch_menu_pad_taps++;
+    x2::input::touch_census()->touch_menu_pad_taps++;
     publish(tap);
   }
 }
@@ -235,7 +235,7 @@ void TouchRuntime::route_to_touch_menu(const SDL_TouchFingerEvent &finger) {
                           {finger.x * static_cast<float>(width),
                            finger.y * static_cast<float>(height)},
                           phase_of(finger.type), SDL_GetTicks());
-  x2_touch_census()->touch_menu_contacts++;
+  x2::input::touch_census()->touch_menu_contacts++;
   deliver(owed);
 }
 
@@ -314,7 +314,7 @@ bool TouchRuntime::viewport(X2LayoutViewport &out) const {
 }
 
 void TouchRuntime::count_contact(Uint32 event_type) const {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   switch (event_type) {
   case SDL_EVENT_FINGER_DOWN:
     census.contacts_down++;
@@ -358,7 +358,7 @@ bool TouchRuntime::route_to_menu(const SDL_TouchFingerEvent &finger) {
          id == finger.fingerID ? phase : lucent::touch::Phase::moved});
   }
   const auto actions = menu_.route(live);
-  x2_touch_census()->zone_presses += actions.size();
+  x2::input::touch_census()->zone_presses += actions.size();
   publish(actions);
   if (!contact.active) {
     menu_contacts_.erase(finger.fingerID);
@@ -393,7 +393,7 @@ bool TouchRuntime::skip_button(X2Rect &rect, bool &held) const {
 }
 
 bool TouchRuntime::route_to_pointer(const SDL_Event &event) {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   int width = 0;
   int height = 0;
   if (!window_size(width, height)) {
@@ -412,7 +412,7 @@ bool TouchRuntime::route_to_pointer(const SDL_Event &event) {
 }
 
 bool TouchRuntime::route_to_controls(const SDL_Event &event) {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   int width = 0;
   int height = 0;
   if (!window_size(width, height)) {
@@ -460,7 +460,7 @@ bool TouchRuntime::handle(const SDL_Event &event) {
   }
   if (!window_) {
     if (finger) {
-      x2_touch_census()->ignored_no_window++;
+      x2::input::touch_census()->ignored_no_window++;
     }
     return false;
   }
@@ -472,7 +472,7 @@ bool TouchRuntime::handle(const SDL_Event &event) {
       release_menu();
     }
     if (pointer_.release_if_held()) {
-      x2_touch_census()->pointer_events++;
+      x2::input::touch_census()->pointer_events++;
     }
     if (!finger) {
       return false;
@@ -506,7 +506,7 @@ bool TouchRuntime::handle(const SDL_Event &event) {
   /* Gameplay has begun under a held menu tap: retail's button must not be
      left down at a position nothing will press again. */
   if (pointer_.release_if_held()) {
-    x2_touch_census()->pointer_events++;
+    x2::input::touch_census()->pointer_events++;
   }
   if (!finger) {
     return false;
@@ -530,9 +530,9 @@ void TouchRuntime::handle_lifecycle(const SDL_Event &event) {
 }
 
 void TouchRuntime::note_source(const SDL_Event &event) {
-  const bool was_touch = x2_touch_source_is_touch() != 0;
-  x2_touch_source_note(&event);
-  if (was_touch && !x2_touch_source_is_touch()) {
+  const bool was_touch = x2::input::touch_source_is_touch() != 0;
+  x2::input::touch_source_note(&event);
+  if (was_touch && !x2::input::touch_source_is_touch()) {
     /* Whatever was under a finger is not held any more: the zones that were
        down would otherwise stay down with the overlay gone. */
     cancel(X2_TOUCH_CANCEL_SOURCE_CHANGED);
@@ -540,7 +540,7 @@ void TouchRuntime::note_source(const SDL_Event &event) {
 }
 
 void TouchRuntime::cancel(X2TouchCancelCause cause) {
-  X2TouchCensus &census = *x2_touch_census();
+  x2::input::TouchCensus &census = *x2::input::touch_census();
   switch (cause) {
   case X2_TOUCH_CANCEL_OVERLAY_HIDDEN:
     census.cancelled_overlay_hidden++;
@@ -723,7 +723,7 @@ int x2_touch_runtime_has_visuals(void) {
 }
 
 void x2_touch_runtime_report(const char *tag) {
-  x2_touch_census_report(tag, x2::input::runtime.has_window() ? 1 : 0,
-                         x2::input::touch_pad::host_devices(),
-                         x2::input::touch_pad::host_capable());
+  x2::input::touch_census_report(tag, x2::input::runtime.has_window() ? 1 : 0,
+                                 x2::input::touch_pad::host_devices(),
+                                 x2::input::touch_pad::host_capable());
 }

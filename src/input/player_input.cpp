@@ -63,8 +63,8 @@ static void resolve_pads(const X2Settings *settings, int out[INPUT_PLAYERS]) {
      over persisted reservations even while disconnected, so slot reuse or
      a different stored controller cannot make the player roam. */
   for (player = 0; player < INPUT_PLAYERS; player++) {
-    if (x2_transient_controller_has_assignment(player)) {
-      pad = x2_transient_controller_resolve(player);
+    if (x2::input::transient_controller_has_assignment(player)) {
+      pad = x2::input::transient_controller_resolve(player);
       if (pad >= 0 && !claimed[pad]) {
         out[player] = pad;
         claimed[pad] = 1;
@@ -73,7 +73,7 @@ static void resolve_pads(const X2Settings *settings, int out[INPUT_PLAYERS]) {
   }
   for (player = 0; player < INPUT_PLAYERS; player++) {
     const char *id = x2_settings_player_controller(settings, player);
-    if (x2_transient_controller_has_assignment(player))
+    if (x2::input::transient_controller_has_assignment(player))
       continue;
     if (!id)
       continue;
@@ -118,7 +118,7 @@ static uint8_t eligibility_mask(const X2Settings *settings,
   unsigned player;
   for (player = 0; player < INPUT_PLAYERS; player++)
     if (keyboard[player] >= 0 ||
-        x2_transient_controller_has_assignment(player) ||
+        x2::input::transient_controller_has_assignment(player) ||
         x2_settings_player_controller(settings, player))
       eligible |= (uint8_t)(1u << player);
   return eligible;
@@ -189,7 +189,7 @@ void x2_player_input_sync(CPU *cpu) {
         pad[player] < 0 ? -1
                         : dinput8_controller_slot_for_host_pad(pad[player]);
     keyboard[player] = x2_settings_player_keyboard(settings, player);
-    if (player > 0u && x2_transient_controller_has_assignment(player))
+    if (player > 0u && x2::input::transient_controller_has_assignment(player))
       keyboard[player] = -1;
   }
   changed = !g_have_last || memcmp(&g_last, settings, sizeof g_last) != 0 ||

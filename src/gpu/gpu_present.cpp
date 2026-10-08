@@ -151,11 +151,11 @@ int gpu_present_composite(SDL_GPUCommandBuffer *command_buffer,
                           SDL_GPUTexture *output, uint32_t output_width,
                           uint32_t output_height) {
   SDL_GPUBlitInfo info;
-  X2AspectRect destination;
+  x2::presentation::AspectRect destination;
 
   if (!command_buffer || !output || !g_scene ||
-      !x2_aspect_fit(output_width, output_height, g_scene_width, g_scene_height,
-                     &destination)) {
+      !x2::presentation::aspect_fit(output_width, output_height, g_scene_width,
+                                    g_scene_height, &destination)) {
     x2_log_error("gpu present: refusing to composite logical %ux%u "
                  "into output %ux%u; a texture or valid size is "
                  "missing.\n",

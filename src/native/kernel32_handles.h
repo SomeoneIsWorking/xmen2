@@ -66,4 +66,6 @@ void kernel32_wait_counts(unsigned long *sleeps, unsigned long long *asked_ms,
                           unsigned long long *slept_ms,
                           unsigned long *worst_oversleep_ms);
 void k32_set_last_error(uint32_t error);
+/* PulseEvent totals: pulses sent, and pulses lost for want of a waiter. */
+void kernel32_pulse_counts(unsigned long *sent, unsigned long *lost);
 #endif

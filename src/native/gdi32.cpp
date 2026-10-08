@@ -75,10 +75,10 @@ static int desktop(int *w, int *h, int *bpp, int *hz) {
     unsigned pw = 0, ph = 0;
     SDL_DisplayID d = SDL_GetPrimaryDisplay();
     const SDL_DisplayMode *m = d ? SDL_GetDesktopDisplayMode(d) : NULL;
-    /* HORZRES/VERTRES mean pixels; x2_display_pixel_size owns that
-       conversion. Colour depth and refresh come from the same mode but have
-       no such subtlety, so they stay here. */
-    if (m && x2_display_pixel_size(&pw, &ph)) {
+    /* HORZRES/VERTRES mean pixels; x2::presentation::display_pixel_size owns
+       that conversion. Colour depth and refresh come from the same mode but
+       have no such subtlety, so they stay here. */
+    if (m && x2::presentation::display_pixel_size(&pw, &ph)) {
       const SDL_PixelFormatDetails *pf = SDL_GetPixelFormatDetails(m->format);
       *w = (int)pw;
       *h = (int)ph;

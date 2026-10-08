@@ -47,6 +47,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 /* The exe's font record, from FUN_00596af0 -- same field map as
    ui_text_scale.cpp, which owns the authority for these offsets. */
 #define GLYPH_FIRST 0x18u
@@ -62,7 +64,7 @@ static unsigned long g_records, g_cells_published;
 static unsigned long g_records_occupied;
 static unsigned long g_records_without_caps;
 
-const struct x2_prompt_cell *x2_prompt_glyph_cell(uint16_t codepoint) {
+const struct x2_prompt_cell *prompt_glyph_cell(uint16_t codepoint) {
   unsigned index;
   if (codepoint < X2_PROMPT_GLYPH_FIRST || codepoint > X2_PROMPT_GLYPH_LAST)
     return NULL;
@@ -138,7 +140,7 @@ static int font_caps(uint32_t font_record, FontCaps *caps) {
                    &caps->baseline);
 }
 
-void x2_prompt_glyph_publish_metrics(uint32_t font_record) {
+void prompt_glyph_publish_metrics(uint32_t font_record) {
   uint16_t code;
   unsigned published = 0, occupied = 0;
   char named[(X2_PROMPT_GLYPH_LAST - X2_PROMPT_GLYPH_FIRST + 1u) * 5u + 1u];
@@ -185,7 +187,7 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record) {
     /* The occupancy pass above already marked every retail-owned byte. */
     if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT))
       continue;
-    const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(code);
+    const struct x2_prompt_cell *cell = prompt_glyph_cell(code);
     if (!cell)
       continue;
     const int16_t height = scaled(cell->design_h, scale);
@@ -207,7 +209,7 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record) {
                caps.baseline);
 }
 
-void x2_prompt_glyph_metrics_report(void) {
+void prompt_glyph_metrics_report(void) {
   x2_log_info(
       "  Prompt metrics: %lu cell(s) published over %lu font record(s)"
       "; %lu had no evidenced capitals and baseline, %lu had a codepoint "
@@ -218,3 +220,5 @@ void x2_prompt_glyph_metrics_report(void) {
                 "codepoints have NO metrics and every label will pile up in "
                 "one column.\n");
 }
+
+} // namespace x2::native

@@ -68,26 +68,27 @@ int main() {
 
   char program[] = "test_runtime_cvars";
   char *argv[] = {program, nullptr};
-  x2_runtime_config_init(1, argv);
+  x2::config::runtime_config_init(1, argv);
 
-  check(x2_runtime_config_apply_set_token("jit.watchn=7") != 0,
+  check(x2::config::runtime_config_apply_set_token("jit.watchn=7") != 0,
         "a registered name is accepted");
   check(lucent_cvar_number("jit.watchn", 0) == 7,
         "and the value it carried is the one the run reads");
 
   check(lucent_cvar_flag("lan.presence", 0) != 0,
         "LAN presence is on unless a run turns it off");
-  check(x2_runtime_config_apply_set_token("lan.presence=0") != 0 &&
+  check(x2::config::runtime_config_apply_set_token("lan.presence=0") != 0 &&
             lucent_cvar_flag("lan.presence", 1) == 0,
         "a run can turn LAN presence off");
 
-  check(x2_runtime_config_apply_set_token("input.touch_controls=2") == 0,
+  check(x2::config::runtime_config_apply_set_token("input.touch_controls=2") ==
+            0,
         "a player-settings key belongs to the other system and is refused");
-  check(x2_runtime_config_apply_set_token("jit.wtachn=7") == 0,
+  check(x2::config::runtime_config_apply_set_token("jit.wtachn=7") == 0,
         "a transposed name is refused rather than stashed");
-  check(x2_runtime_config_apply_set_token("jit.watchn") == 0,
+  check(x2::config::runtime_config_apply_set_token("jit.watchn") == 0,
         "a token with no value is refused");
-  check(x2_runtime_config_apply_set_token("=7") == 0,
+  check(x2::config::runtime_config_apply_set_token("=7") == 0,
         "a token with no name is refused");
 
   /* The refusals must not have moved anything: a name nothing answers to

@@ -15,7 +15,9 @@
 
 static int g_save_notes;
 
-const char *x2_save_dir(void) { return X2_TEST_WIN_PATH_ROOT "/saves"; }
+namespace x2::native {
+const char *save_dir(void) { return X2_TEST_WIN_PATH_ROOT "/saves"; }
+} // namespace x2::native
 
 namespace x2::save {
 void save_trace_asset_open(const char *guest_path, int succeeded) {
@@ -40,7 +42,7 @@ int main(void) {
   /* win_path reads the `files` trace CVar; registering the runtime set is
      what makes this test exercise the shipping resolver rather than a
      variant with the trace compiled out. */
-  x2_runtime_config_init(0, NULL);
+  x2::config::runtime_config_init(0, NULL);
   unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
   unlink(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
   rmdir(X2_TEST_WIN_PATH_ROOT "/Data");

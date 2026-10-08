@@ -104,7 +104,7 @@ static int nmodes(void) {
  */
 static void current_desktop(uint32_t *w, uint32_t *h) {
   unsigned pw = 0, ph = 0;
-  if (x2_display_pixel_size(&pw, &ph)) {
+  if (x2::presentation::display_pixel_size(&pw, &ph)) {
     *w = pw;
     *h = ph;
     return;

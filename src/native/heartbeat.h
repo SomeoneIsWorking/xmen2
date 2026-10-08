@@ -21,10 +21,11 @@
  *
  * X2_HEARTBEAT=<seconds>   period; 0 disables it. Default 5.
  */
-#ifndef X2_HEARTBEAT_H
-#define X2_HEARTBEAT_H
+#pragma once
 
-#include <signal.h> /* sig_atomic_t, for the interrupt flag below */
+#include <csignal> /* sig_atomic_t, for the interrupt flag below */
+
+namespace x2::native {
 
 /* Starts the thread. Announces itself (or that it is disabled) on stderr, so a
    run with no [HB] lines cannot be mistaken for a run that produced none. */
@@ -36,11 +37,11 @@ int heartbeat_running(void);
 /* Set by the signal handler; the thread prints the reports and exits. */
 /* 0 idle, 1 a signal asked for the reports, 2 the frame limit did. The
    difference decides whether the boundary ring is dumped -- see
-   x2_interrupt_reports. */
-extern volatile sig_atomic_t x2_report_now;
+   interrupt_reports. */
+extern volatile sig_atomic_t report_now;
 
 /* Everything a normal exit would print, callable from ordinary context.
    Defined in x2native.cpp, which is what knows the full list. */
-void x2_interrupt_reports(int killed);
+void interrupt_reports(int killed);
 
-#endif /* X2_HEARTBEAT_H */
+} // namespace x2::native

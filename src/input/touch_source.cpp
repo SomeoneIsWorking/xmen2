@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 
+namespace x2::input {
+
 /* Half of SDL's signed axis range: past this the player moved the stick and
    is not merely resting a thumb on it, or letting a pad in a drawer drift. */
 #define PAD_AXIS_INTENT 16384
@@ -20,7 +22,7 @@ static int g_touch;
    same finger. */
 static unsigned int g_own_pad;
 
-void x2_touch_source_set_own_pad(unsigned int joystick_id) {
+void touch_source_set_own_pad(unsigned int joystick_id) {
   g_own_pad = joystick_id;
 }
 
@@ -28,7 +30,7 @@ static int is_our_own_pad(SDL_JoystickID which) {
   return g_own_pad != 0u && (unsigned int)which == g_own_pad;
 }
 
-void x2_touch_source_note(const union SDL_Event *event) {
+void touch_source_note(const union SDL_Event *event) {
   if (!event)
     return;
   switch (event->type) {
@@ -83,9 +85,11 @@ void x2_touch_source_note(const union SDL_Event *event) {
   g_touch = 0;
 }
 
-int x2_touch_source_is_touch(void) { return g_touch; }
+int touch_source_is_touch(void) { return g_touch; }
 
-void x2_touch_source_reset(void) {
+void touch_source_reset(void) {
   g_touch = 0;
   g_own_pad = 0;
 }
+
+} // namespace x2::input

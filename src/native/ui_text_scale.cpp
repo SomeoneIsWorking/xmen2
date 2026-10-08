@@ -272,7 +272,7 @@ int ui_text_scale_reapply(void) {
        just overwritten from the origin, so they are republished here from
        the rescaled record, in the same order as at load. */
     if (x2_prompt_glyphs_enabled())
-      x2_prompt_glyph_publish_metrics(g_tracked[i].at);
+      x2::native::prompt_glyph_publish_metrics(g_tracked[i].at);
   }
   x2_log_error("UI TEXT: output is %ux%u now; %u loaded font(s) re-derived "
                "from %.3f to %.3f (%s).\n",
@@ -312,7 +312,7 @@ static void x2_override_font_loader(CPU *C) {
      rather than scaled twice. Unconditional on k, since the port's glyphs
      need metrics even when the text scale is 1.0. */
   if (x2_prompt_glyphs_enabled())
-    x2_prompt_glyph_publish_metrics(slot->at);
+    x2::native::prompt_glyph_publish_metrics(slot->at);
 }
 
 /*

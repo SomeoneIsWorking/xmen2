@@ -98,10 +98,10 @@ namespace {
 void fit_display(X2Settings *settings) {
   unsigned display_w = 0, display_h = 0;
 
-  if (!x2_display_pixel_size(&display_w, &display_h))
+  if (!x2::presentation::display_pixel_size(&display_w, &display_h))
     return;
-  settings->width =
-      (uint16_t)x2_resolution_width_for(settings->height, display_w, display_h);
+  settings->width = (uint16_t)x2::presentation::resolution_width_for(
+      settings->height, display_w, display_h);
 }
 
 } // namespace

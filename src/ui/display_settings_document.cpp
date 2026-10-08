@@ -21,8 +21,8 @@ std::string display_settings_document_rml(const X2Settings &settings) {
   std::ostringstream rml;
   char resolution_label[16];
 
-  x2_resolution_label(settings.height, resolution_label,
-                      sizeof resolution_label);
+  x2::presentation::resolution_label(settings.height, resolution_label,
+                                     sizeof resolution_label);
   /* The preset is the height; the width beside it is what the display's own
      aspect ratio made of it, and is shown because it is the number the player
      will recognise in a screenshot or a bug report. */

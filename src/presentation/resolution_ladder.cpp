@@ -2,11 +2,13 @@
 
 #include <stdio.h>
 
+namespace x2::presentation {
+
 static const unsigned kHeights[] = {720u, 1080u, 1440u, 2160u};
 static const size_t kHeightCount = sizeof kHeights / sizeof kHeights[0];
 
-unsigned x2_resolution_width_for(unsigned height, unsigned display_w,
-                                 unsigned display_h) {
+unsigned resolution_width_for(unsigned height, unsigned display_w,
+                              unsigned display_h) {
   unsigned width;
   if (!height)
     return 0;
@@ -22,7 +24,7 @@ unsigned x2_resolution_width_for(unsigned height, unsigned display_w,
   return width & ~1u;
 }
 
-unsigned x2_resolution_next_height(unsigned height, unsigned display_h) {
+unsigned resolution_next_height(unsigned height, unsigned display_h) {
   size_t i;
   for (i = 0; i < kHeightCount; i++) {
     if (kHeights[i] != height)
@@ -38,7 +40,7 @@ unsigned x2_resolution_next_height(unsigned height, unsigned display_h) {
   return kHeights[0];
 }
 
-size_t x2_resolution_label(unsigned height, char *buf, size_t size) {
+size_t resolution_label(unsigned height, char *buf, size_t size) {
   int n;
   if (!buf || !size)
     return 0;
@@ -49,3 +51,5 @@ size_t x2_resolution_label(unsigned height, char *buf, size_t size) {
   }
   return (size_t)n;
 }
+
+} // namespace x2::presentation

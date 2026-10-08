@@ -197,7 +197,7 @@ int x86_override_count(void);
  * lot is sampled a lot. This is the instrument that CAN name a load-window
  * hotspot -- the hotep hash cannot, because the level build dispatches ~460k
  * distinct entry points and a fixed hash refuses most of them. The report
- * prints at the end of the run through x2_interrupt_reports.
+ * prints at the end of the run through x2::native::interrupt_reports.
  */
 void x86_profiler_start(const char *arg);
 void x86_profiler_report(void);

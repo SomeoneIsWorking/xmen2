@@ -43,23 +43,32 @@
 #include <stdio.h>
 
 extern void x2_texture_probe_report(void);
+extern void d3d8_host_report(void);
+extern void guest_heap_report(void);
+extern void guest_thread_report(void);
+extern void k32_critsec_report(void);
+extern void dinput_device_report(void);
+extern void pad_glyphs_report(void);
+extern void dialog_prompts_report(void);
+extern void dsound_report(void);
+extern void k32_asset_report(void), ws2_report(void);
+extern void conversation_report(void);
+extern void script_trace_report(void);
+extern void x86_profiler_report(void);
+extern void shell32_report(void);
+extern void d3d8_vsconst_caller_report(void);
 
-void x2_interrupt_reports(int killed) {
-  extern void d3d8_host_report(void);
-  extern void guest_heap_report(void);
-  extern void guest_thread_report(void);
-  extern void k32_critsec_report(void);
-  extern void dinput_device_report(void);
-  extern void pad_glyphs_report(void);
-  extern void dialog_prompts_report(void);
+namespace x2::native {
+
+void interrupt_reports(int killed) {
   x2_texture_probe_report();
   x2::native::prompt_draw_report();
-  x2_keycap_labels_report();
-  x2_prompt_glyph_metrics_report();
+  x2::native::keycap_labels_report();
+  x2::native::prompt_glyph_metrics_report();
   x2::native::prompt_quads_report();
-  x2_prompt_glyph_batch_report();
+  x2::native::prompt_glyph_batch_report();
   x2::native::prompt_tokens_report();
-  x2_ui_transform_report();
+  x2::native::ui_transform_report();
   gpu_prompt_glyphs_report();
   {
     char blackout[256];
@@ -95,25 +104,20 @@ void x2_interrupt_reports(int killed) {
   pad_glyphs_report();
   dialog_prompts_report();
   {
-    extern void dsound_report(void);
     dsound_report();
     x2::native::movie_report();
   }
   {
-    extern void k32_asset_report(void), ws2_report(void);
     k32_asset_report();
     ws2_report();
   }
   {
-    extern void conversation_report(void);
     conversation_report();
   }
   {
-    extern void script_trace_report(void);
     script_trace_report();
   }
   {
-    extern void x86_profiler_report(void);
     x86_profiler_report();
   }
   /* shell32's save-path report was registered with atexit, and the clean
@@ -121,11 +125,9 @@ void x2_interrupt_reports(int killed) {
      that reach gameplay it had never printed once. Same defect the input
      reports had; same fix. */
   {
-    extern void shell32_report(void);
     shell32_report();
   }
   {
-    extern void d3d8_vsconst_caller_report(void);
     d3d8_vsconst_caller_report();
   }
   x86_epcount_report();
@@ -135,3 +137,5 @@ void x2_interrupt_reports(int killed) {
     x2_log_info("  (the boundary ring is not dumped: this run stopped because "
                 "it reached X2_MAX_FRAMES, so there is no spin to locate.)\n");
 }
+
+} // namespace x2::native

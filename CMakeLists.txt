@@ -437,7 +437,7 @@ add_test(NAME pad_stick_dead_zone COMMAND test_pad_stick_dead_zone)
 add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
                # The injector, so the release-without-an-arrival case is driven
-               # through x2_touch_inject exactly as the control channel and the
+               # through x2::input::touch_inject exactly as the control channel and the
                # host pump are, rather than through a hand-built SDL event.
                src/input/touch_inject.cpp
                src/input/revive_prompt.cpp

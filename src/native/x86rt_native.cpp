@@ -9,6 +9,7 @@
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "heartbeat.h"
 #include "host_code_location.hpp"
 #include "host_imports.h"
 #include "module_name_memo.h"
@@ -288,8 +289,6 @@ void x86_overrides_resolve(void) {
 static FILE *g_sc_out;
 static int g_sc_armed;
 static unsigned long g_sc_records;
-extern volatile sig_atomic_t
-    x2_report_now; /* heartbeat: set when the run stops */
 
 /* The current guest body, written on every dispatch (guest body or import
    stub), read by the X2_PROFILE sampler thread. Declared here, at the top,
@@ -1146,8 +1145,8 @@ unsigned int x86_thunk_capacity(void) { return (unsigned int)THUNK_MAX; }
  * which is exactly what a sample is supposed to be.
  *
  * Armed by X2_PROFILE=<period-ms>; reports at the end of the run through
- * x2_interrupt_reports (never only at a crash). The histogram prints its
- * sample total as the denominator, so "0 samples" is distinguishable from
+ * interrupt_reports (never only at a crash). The histogram prints
+ * its sample total as the denominator, so "0 samples" is distinguishable from
  * "the probe never ran".
  */
 #define PROFILE_MAX 1024
@@ -1166,7 +1165,7 @@ static void *profiler_thread(void *arg) {
   for (;;) {
     while (nanosleep(&req, &req) != 0 && errno == EINTR)
       ;
-    if (x2_report_now)
+    if (x2::native::report_now)
       return NULL; /* let the heartbeat print the report */
     {
       uint32_t ep = g_sample_ep;

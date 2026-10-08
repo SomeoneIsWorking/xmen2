@@ -99,11 +99,11 @@ void ensure() {
     /* Everything SDL then announces about that pad is this port talking to
        itself; the source owner has to know that before it reads the first
        button event as a controller the player plugged in. */
-    x2_touch_source_set_own_pad(dinput_pad_virtual_joystick_id());
-    x2_touch_census()->pad_attached++;
+    x2::input::touch_source_set_own_pad(dinput_pad_virtual_joystick_id());
+    x2::input::touch_census()->pad_attached++;
     return;
   }
-  x2_touch_census()->pad_attach_refused++;
+  x2::input::touch_census()->pad_attach_refused++;
   x2_log_error("touch: no synthetic gamepad could be attached, so the "
                "on-screen controls cannot reach gameplay in this run\n");
 }
@@ -112,8 +112,8 @@ void claim_player_one() {
   static bool attempted = false;
   if (attempted)
     return;
-  if (x2_transient_controller_has_assignment(0)) {
-    x2_touch_census()->player_one_held_by_transient++;
+  if (x2::input::transient_controller_has_assignment(0)) {
+    x2::input::touch_census()->player_one_held_by_transient++;
     return;
   }
   /*
@@ -131,19 +131,19 @@ void claim_player_one() {
   const char *const reserved =
       x2_settings_player_controller(x2_settings_store(), 0);
   if (reserved && dinput_pad_for_persistent_id(reserved) >= 0) {
-    x2_touch_census()->player_one_held_by_setting++;
+    x2::input::touch_census()->player_one_held_by_setting++;
     return;
   }
   const int slot = dinput_pad_virtual_slot();
   if (slot < 0) {
-    x2_touch_census()->player_one_no_slot++;
+    x2::input::touch_census()->player_one_no_slot++;
     return; /* Not opened yet; try again on the next contact. */
   }
   attempted = true;
-  if (x2_transient_controller_assign(slot, 0)) {
-    x2_touch_census()->player_one_claimed++;
+  if (x2::input::transient_controller_assign(slot, 0)) {
+    x2::input::touch_census()->player_one_claimed++;
   } else {
-    x2_touch_census()->player_one_refused++;
+    x2::input::touch_census()->player_one_refused++;
     x2_log_error("touch: could not assign the touch pad (slot %d) "
                  "to player 1; touch will not reach gameplay\n",
                  slot);

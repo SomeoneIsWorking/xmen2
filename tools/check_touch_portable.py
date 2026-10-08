@@ -132,8 +132,8 @@ def offences(root: Path) -> tuple[list[str], list[str]]:
                 findings.append(
                     f"{name}:{number}: touch play is compiled per platform "
                     f"here ({found.group(0)}). Ask the device, not the build: "
-                    f"x2_touch_source_note() and input.touch_controls own that "
-                    f"answer. See docs/touch-play.md."
+                    f"x2::input::touch_source_note() and input.touch_controls "
+                    f"own that answer. See docs/touch-play.md."
                 )
     return findings, inspected
 

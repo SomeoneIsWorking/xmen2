@@ -169,8 +169,8 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
                       guest_memory_as<const char>(command)))
     return 0;
   requested = x2_settings_store()->boot_mode;
-  decision = x2::native::boot_mode_runtime_prepare(requested,
-                                                   x2_retail_save_directory());
+  decision = x2::native::boot_mode_runtime_prepare(
+      requested, x2::save::retail_save_directory());
   if (decision->effective == x2::config::BootMode::Normal)
     return 0;
   if (!exe_base) {
@@ -214,7 +214,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
      loads menu/main_back; the retained CMenuMain::Show intercept then
      supplies the title-screen player selection and dispatches the pending
      Continue synchronously, before any menu interaction. */
-  if (!x2_boot_menu_open(C, exe_base))
+  if (!x2::native::boot_menu_open(C, exe_base))
     return 0;
   C->reg[kX86pEax] = 1u;
   C->reg[kX86pEsp] += 8u;

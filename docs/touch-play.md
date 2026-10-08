@@ -206,7 +206,7 @@ it is drawn.
 The paid extraction revive (`gameplay.extraction_revive=paid`) draws one pill near the top
 centre while a hero is down beside a pad (`src/ui/extraction_revive_document.cpp`). A finger that
 lands on it is the prompt's (`x2::input::RevivePrompt`, ahead of the touch controls in the host
-pump and in `x2_touch_inject`), and its motion and lift never reach the stick or buttons. F3 and
+pump and in `x2::input::touch_inject`), and its motion and lift never reach the stick or buttons. F3 and
 the controller's LB take the same offer.
 
 Retail draws one cursor and has one button, so one contact owns it at a time:
@@ -274,12 +274,12 @@ row of menu icons the game's mouse overlay draws at the top centre: once the
 game reports where it drew them, the button takes the next place along that
 row at their size (`TouchControls::port_menu_rect`), and until then it waits
 just right of the centreline. The vitals and party portraits start at that
-row's top too (`x2_hud_layout_build`'s `row_top`), so the top band is one
+row's top too (`x2::presentation::hud_layout_build`'s `row_top`), so the top band is one
 line even on a phone whose reported safe area starts lower than where the
 game draws its own icons.
 
 The HUD's three slots in the touch layout are the HUD owner's own placement:
-`hud_draw_runtime.cpp` publishes `x2_hud_layout_build`'s result to the touch
+`hud_draw_runtime.cpp` publishes `x2::presentation::hud_layout_build`'s result to the touch
 runtime, and `x2_layout_build` copies it rather than computing rectangles of
 its own. The controls then fit around it: the stick shrinks to fit under the
 potions, and the port menu button shrinks to stop short of the portraits, or
@@ -414,7 +414,7 @@ evidence, not Android touchscreen or performance qualification. A headless
 A host with no touchscreen cannot press its own screen, so the control channel
 carries a contact: `/touch?x=&y=` (`tools/x2ctl.py touch 0.2,0.73`), with a
 whole tap by default and `&phase=down|motion|up|cancel` for one half of one.
-It goes through `x2_touch_inject`, which takes the same note-source and
+It goes through `x2::input::touch_inject`, which takes the same note-source and
 routing calls the host event pump takes — a second copy of that sequence
 could only agree with the shipping one by luck.
 

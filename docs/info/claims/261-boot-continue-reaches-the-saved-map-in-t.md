@@ -30,7 +30,7 @@ touches the retail chain itself:
   primary player, which the payload's party writes key off.
 
 The menu path is kept as the REFUSAL fallback only: anything the retail
-manager declines falls back to `x2_boot_menu_open` and says so.
+manager declines falls back to `x2::native::boot_menu_open` and says so.
 
 ## Evidence
 

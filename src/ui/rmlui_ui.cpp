@@ -27,6 +27,8 @@
 #include "ui_resources.h"
 #include "x2_log.h"
 
+namespace x2::ui {
+
 namespace {
 
 std::unique_ptr<SystemInterface_SDL> system_interface;
@@ -49,12 +51,13 @@ void sync_surface_metrics(SDL_Window *window, unsigned width, unsigned height) {
      expose the density only through SDL_GetWindowDisplayScale(). */
   constexpr unsigned design_width = 1280;
   constexpr unsigned design_height = 720;
-  X2AspectRect fitted{};
+  x2::presentation::AspectRect fitted{};
   float display_scale = SDL_GetWindowDisplayScale(window);
   if (!(display_scale > 0.0f))
     display_scale = 1.0f;
   float resolution_scale = 1.0f;
-  if (x2_aspect_fit(width, height, design_width, design_height, &fitted))
+  if (x2::presentation::aspect_fit(width, height, design_width, design_height,
+                                   &fitted))
     resolution_scale =
         static_cast<float>(fitted.height) / static_cast<float>(design_height);
   context->SetDimensions(Rml::Vector2i((int)width, (int)height));
@@ -118,7 +121,7 @@ void discard_partial_initialization() {
 /*
  * Say which step failed, once.
  *
- * x2_ui_render calls initialize every frame, so a failure here is retried
+ * ui_render calls initialize every frame, so a failure here is retried
  * forever. Three of its four exits used to return silently: the settings
  * overlay and the Android touch overlay simply never appeared, with nothing
  * in the log to say the attempt had even been made. Reporting once names the
@@ -147,10 +150,10 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
     system_interface.reset();
     return initialize_failed("Rml::Initialise");
   }
-  const char *regular = x2_ui_resource_path("LatoLatin-Regular.ttf");
+  const char *regular = x2::ui::ui_resource_path("LatoLatin-Regular.ttf");
   if (!Rml::LoadFontFace(regular))
     x2_log_error("RMLUI: could not load font %s\n", regular);
-  const char *bold = x2_ui_resource_path("LatoLatin-Bold.ttf");
+  const char *bold = x2::ui::ui_resource_path("LatoLatin-Bold.ttf");
   if (!Rml::LoadFontFace(bold))
     x2_log_error("RMLUI: could not load font %s\n", bold);
   context =
@@ -187,7 +190,7 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
 
 } // namespace
 
-int x2_ui_handle_event(SDL_Event *event) {
+int ui_handle_event(SDL_Event *event) {
   if (!event)
     return 0;
   /* F2 toggles this overlay from any state, so it sits ahead of both the
@@ -230,11 +233,11 @@ int x2_ui_handle_event(SDL_Event *event) {
   return 1;
 }
 
-int x2_ui_captures_input(void) { return x2::ui::settings_overlay_visible(); }
+int ui_captures_input(void) { return x2::ui::settings_overlay_visible(); }
 
-void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
-                  SDL_GPUTexture *swapchain, uint32_t width, uint32_t height,
-                  SDL_Window *window) {
+void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
+               SDL_GPUTexture *swapchain, uint32_t width, uint32_t height,
+               SDL_Window *window) {
   static bool environment_checked;
   if (!environment_checked) {
     const char *open = x2_config_override_get(kX2ConfigSettingsOpen);
@@ -292,7 +295,7 @@ void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   render_interface->EndFrame();
 }
 
-void x2_ui_gpu_shutdown(void) {
+void ui_gpu_shutdown(void) {
   if (!initialized)
     return;
   touch_menu_document.shutdown();
@@ -309,6 +312,8 @@ void x2_ui_gpu_shutdown(void) {
   initialized = false;
 }
 
-x2::ui::IgbTextureRenderInterface *x2::ui::igb_texture_interface() {
+IgbTextureRenderInterface *igb_texture_interface() {
   return render_interface.get();
 }
+
+} // namespace x2::ui

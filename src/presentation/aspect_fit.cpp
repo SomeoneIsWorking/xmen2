@@ -1,8 +1,9 @@
 #include "aspect_fit.h"
 
-int x2_aspect_fit(uint32_t outer_width, uint32_t outer_height,
-                  uint32_t inner_width, uint32_t inner_height,
-                  X2AspectRect *out) {
+namespace x2::presentation {
+
+int aspect_fit(uint32_t outer_width, uint32_t outer_height,
+               uint32_t inner_width, uint32_t inner_height, AspectRect *out) {
   uint64_t width, height;
 
   if (!out || !outer_width || !outer_height || !inner_width || !inner_height)
@@ -25,3 +26,5 @@ int x2_aspect_fit(uint32_t outer_width, uint32_t outer_height,
   out->height = (uint32_t)height;
   return 1;
 }
+
+} // namespace x2::presentation

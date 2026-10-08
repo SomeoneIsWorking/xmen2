@@ -189,7 +189,7 @@ static void path_join(char *out, size_t cap, const char *parent,
 static const char *store_path(void) {
   static char p[1024];
   if (!p[0])
-    snprintf(p, sizeof p, "%s/registry.txt", x2_save_dir());
+    snprintf(p, sizeof p, "%s/registry.txt", x2::native::save_dir());
   return p;
 }
 

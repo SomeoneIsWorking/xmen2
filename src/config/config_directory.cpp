@@ -3,10 +3,14 @@
 
 #include <lucent/platform_c.h>
 
-const char *x2_config_directory(void) {
+namespace x2::config {
+
+const char *config_directory(void) {
   return lucent_platform_user_data_directory("xmen2");
 }
 
-int x2_config_directory_ensure(void) {
+int config_directory_ensure(void) {
   return lucent_platform_ensure_user_data_directory("xmen2");
 }
+
+} // namespace x2::config

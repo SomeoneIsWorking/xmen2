@@ -9,6 +9,7 @@
 #include "threads_yield.h"
 
 #include "d3d8_device.h"
+#include "d3d8_drawcall.h"
 #include "d3d8_resource.h"
 #include "d3d8_vertex_shader.h"
 #include "gpu_device.h"
@@ -28,6 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+namespace x2::native {
 
 static double now_s(void) {
   struct timespec ts;
@@ -50,7 +53,7 @@ static double g_t0;
  * #34). This thread is ordinary context, so it can. The handler hands the job
  * over and arms an alarm in case this thread never gets there.
  */
-volatile sig_atomic_t x2_report_now;
+volatile sig_atomic_t report_now;
 
 /* Whether there is a thread to hand that job to. */
 static int g_running;
@@ -81,7 +84,7 @@ static void *heartbeat_thread(void *arg) {
     /* Slept in slices, not in one go: an interrupt has to be noticed in
        a quarter of a second, not at the end of a five-second period. */
     double slept = 0.0;
-    while (slept < g_period && !x2_report_now && !gpu_frame_limit_reached()) {
+    while (slept < g_period && !report_now && !gpu_frame_limit_reached()) {
       req.tv_sec = 0;
       req.tv_nsec = 250000000L;
       while (nanosleep(&req, &req) != 0 && errno == EINTR)
@@ -90,10 +93,10 @@ static void *heartbeat_thread(void *arg) {
     }
     /* 2 = a clean stop on the frame counter, 1 = a signal. Both take this
        path; only the second wants the ring. */
-    if (!x2_report_now && gpu_frame_limit_reached())
-      x2_report_now = 2;
-    if (x2_report_now) {
-      int killed = (x2_report_now == 1);
+    if (!report_now && gpu_frame_limit_reached())
+      report_now = 2;
+    if (report_now) {
+      int killed = (report_now == 1);
       x2_log_error(
           killed ? "\n[HB] interrupted -- the shutdown reports follow, "
                    "taken while the guest is STILL RUNNING, so every count "
@@ -101,7 +104,7 @@ static void *heartbeat_thread(void *arg) {
                  : "\n[HB] the frame limit was reached -- the shutdown "
                    "reports follow. The guest is still running, so every "
                    "count is a snapshot rather than a final total.\n");
-      x2_interrupt_reports(killed);
+      interrupt_reports(killed);
       _exit(killed ? 4 : 0);
     }
 
@@ -130,7 +133,6 @@ static void *heartbeat_thread(void *arg) {
        */
       static unsigned long p_ps, p_pl;
       unsigned long ps, pl;
-      extern void kernel32_pulse_counts(unsigned long *, unsigned long *);
       kernel32_pulse_counts(&ps, &pl);
       if (ps)
         x2_log_error("[HB]           PulseEvent %lu sent (+%lu), "
@@ -210,8 +212,6 @@ static void *heartbeat_thread(void *arg) {
            way, and only the split says which. Printed at zeroes too:
            "the probe was unarmed" must not read as "the guest cost
            nothing". */
-        extern void x86_probe_time_delta(unsigned long long *,
-                                         unsigned long long *);
         unsigned long long hn, gn;
         unsigned long long total;
         x86_probe_time_delta(&hn, &gn);
@@ -286,7 +286,6 @@ static void *heartbeat_thread(void *arg) {
          screen with the second flat is a backend that refused every
          draw, and only these two numbers side by side say which. */
       {
-        extern void d3d8_drawcall_multistage(unsigned long *, int *);
         static unsigned long p_ms;
         unsigned long ms;
         int most;
@@ -303,8 +302,6 @@ static void *heartbeat_thread(void *arg) {
         p_ms = ms;
       }
       {
-        extern void d3d8_drawcall_combiner_args(unsigned long *,
-                                                unsigned long *, uint32_t[4]);
         unsigned long dflt, other;
         uint32_t f[4];
         d3d8_drawcall_combiner_args(&dflt, &other, f);
@@ -427,3 +424,5 @@ void heartbeat_start(void) {
                "disable).\n",
                g_period, x86_crossings_what());
 }
+
+} // namespace x2::native

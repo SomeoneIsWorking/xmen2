@@ -1,4 +1,5 @@
 #include "controller_assignment_rows.hpp"
+#include "transient_controller_assignment.h"
 
 #include <cassert>
 #include <cstdio>
@@ -28,19 +29,19 @@ int dinput_pad_persistent_id_is_stable(int pad) {
   return pad >= 0 && pad < 2 && pad_stable[pad];
 }
 
-const char *x2_transient_controller_id(unsigned player) {
+const char *x2::input::transient_controller_id(unsigned player) {
   return player < 4 ? transient_id[player] : nullptr;
 }
 
-int x2_transient_controller_resolve(unsigned player) {
+int x2::input::transient_controller_resolve(unsigned player) {
   return player < 4 && transient_id[player] ? transient_pad[player] : -1;
 }
 
-int x2_transient_controller_has_assignment(unsigned player) {
+int x2::input::transient_controller_has_assignment(unsigned player) {
   return player < 4 && transient_id[player];
 }
 
-int x2_transient_controller_player_for_pad(int pad) {
+int x2::input::transient_controller_player_for_pad(int pad) {
   for (unsigned player = 0; player < 4; player++)
     if (transient_id[player] && transient_pad[player] == pad)
       return (int)player;

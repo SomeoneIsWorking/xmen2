@@ -139,7 +139,7 @@ std::string all_icon_sources() {
 }
 
 std::string resource(const std::string &relative) {
-  return x2_ui_resource_path(relative.c_str());
+  return x2::ui::ui_resource_path(relative.c_str());
 }
 
 void rebuild() {
