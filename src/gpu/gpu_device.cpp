@@ -98,7 +98,7 @@ int gpu_device_create(void) {
   x2_log_error("gpu: built without SDL; no GPU device can be made.\n");
   return 0;
 #else
-  X2Settings *settings = x2_settings_store();
+  x2::config::Settings *settings = x2::config::settings_store();
   gpu_frame_timing_report_install();
   gpu_shadow_configure(settings->dynamic_shadows, settings->shadow_resolution);
   if (g_gpu)
@@ -109,7 +109,7 @@ int gpu_device_create(void) {
   /* Debug mode enables backend validation, which inspects every draw,
      bind and upload. Keep it optional and report it with timing evidence. */
   {
-    const char *e = x2_config_override_get(kX2ConfigGpuDebug);
+    const char *e = config_override_get(x2::config::ConfigOverride::GpuDebug);
     int debug = e && *e && *e != '0';
     x2_log_info("gpu: GPU validation is %s (X2_GPU_DEBUG=%s). It inspects "
                 "EVERY draw; a timing measured with it on is not a timing of "
@@ -586,23 +586,13 @@ void gpu_frame_end(void) {
   g_frames_presented++;
   gpu_capture_frame(gpu_headless_active(), gpu_headless_frames(),
                     gpu_headless_width(), gpu_headless_height());
-  /*
-   * X2_MAX_FRAMES: stop cleanly after this many frames.
-   *
-   * This game never stops on its own, so every measured run has been ended
-   * by a timeout -- which means every run costs its whole timeout even when
-   * the thing being measured finished a minute earlier, and the reports come
-   * out of a signal handler. Ending on the game's OWN frame counter makes a
-   * run take as long as it needs and no longer, and makes two runs of the
-   * same script the same length.
-   *
-   * It goes through the same path a SIGTERM does (the heartbeat thread does
-   * the reports, because they are stdio), so nothing new has to be trusted.
-   */
+  /* X2_MAX_FRAMES: stop cleanly after this many presented frames, through
+     the path a SIGTERM takes (the heartbeat thread writes the reports). */
   {
     static long limit = -2;
     if (limit == -2) {
-      const char *e = x2_config_override_get(kX2ConfigMaxFrames);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::MaxFrames);
       limit = (e && *e) ? strtol(e, NULL, 0) : -1;
       if (limit > 0)
         x2_log_error("gpu: X2_MAX_FRAMES=%ld -- the run will stop "

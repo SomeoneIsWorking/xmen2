@@ -123,15 +123,17 @@ static int run_application(int argc, char **argv) {
         "Game files are ready, but the imported ZIP could not be removed.", 1);
     return 1;
   }
-  if (x2_config_override_set(kX2ConfigGamePcDir, directory, 1) != 0 ||
-      x2_config_override_set(kX2ConfigUiResourceDir, "/ui", 1) != 0) {
+  if (config_override_set(x2::config::ConfigOverride::GamePcDir, directory,
+                          1) != 0 ||
+      config_override_set(x2::config::ConfigOverride::UiResourceDir, "/ui",
+                          1) != 0) {
     report_setup(
         "The validated installation could not be published to the game.", 1);
     return 1;
   }
   if (gameplay_test &&
-      x2_config_override_set(kX2ConfigBootMap,
-                             x2::web::gameplay_test_map(argc, argv), 1) != 0) {
+      config_override_set(x2::config::ConfigOverride::BootMap,
+                          x2::web::gameplay_test_map(argc, argv), 1) != 0) {
     report_setup("The gameplay test map could not be selected.", 1);
     return 1;
   }

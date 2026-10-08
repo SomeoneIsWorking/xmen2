@@ -13,64 +13,72 @@
 #define X2_MIN_HEIGHT 480u
 #define X2_MAX_HEIGHT 4320u
 
-static void reason(char *why, int whyn, const char *text) {
+namespace x2::config {
+
+namespace {
+void reason(char *why, int whyn, const char *text) {
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "%s", text);
 }
+} // namespace
 
-const char *x2_window_mode_name(X2WindowMode mode) {
+const char *window_mode_name(WindowMode mode) {
   static const char *const NAME[] = {"windowed", "borderless", "fullscreen"};
-  return mode <= X2_WINDOW_FULLSCREEN ? NAME[mode] : "invalid";
+  const auto index = static_cast<unsigned>(mode);
+  return index <= static_cast<unsigned>(WindowMode::Fullscreen) ? NAME[index]
+                                                                : "invalid";
 }
 
-int x2_window_mode_parse(const char *text, X2WindowMode *mode) {
+int window_mode_parse(const char *text, WindowMode *mode) {
   int i;
-  for (i = X2_WINDOW_WINDOWED; i <= X2_WINDOW_FULLSCREEN; i++)
-    if (strcmp(text, x2_window_mode_name(static_cast<X2WindowMode>(i))) == 0) {
+  for (i = static_cast<int>(WindowMode::Windowed);
+       i <= static_cast<int>(WindowMode::Fullscreen); i++)
+    if (strcmp(text, window_mode_name(static_cast<WindowMode>(i))) == 0) {
       if (mode)
-        *mode = static_cast<X2WindowMode>(i);
+        *mode = static_cast<WindowMode>(i);
       return 1;
     }
   return 0;
 }
 
-const char *x2_touch_controls_label(unsigned mode) {
+const char *touch_controls_label(unsigned mode) {
   switch (mode) {
-  case X2_TOUCH_CONTROLS_OFF:
+  case kTouchControlsOff:
     return "Off";
-  case X2_TOUCH_CONTROLS_ALWAYS:
+  case kTouchControlsAlways:
     return "Always";
   default:
     return "Automatic";
   }
 }
 
-const char *x2_extraction_revive_name(X2ExtractionRevive mode) {
+const char *extraction_revive_name(ExtractionRevive mode) {
   switch (mode) {
-  case X2_EXTRACTION_REVIVE_FREE:
+  case ExtractionRevive::Free:
     return "free";
-  case X2_EXTRACTION_REVIVE_PAID:
+  case ExtractionRevive::Paid:
     return "paid";
   default:
     return "off";
   }
 }
 
-const char *x2_extraction_revive_label(X2ExtractionRevive mode) {
+const char *extraction_revive_label(ExtractionRevive mode) {
   switch (mode) {
-  case X2_EXTRACTION_REVIVE_FREE:
+  case ExtractionRevive::Free:
     return "Free full restore";
-  case X2_EXTRACTION_REVIVE_PAID:
+  case ExtractionRevive::Paid:
     return "Paid revive";
   default:
     return "Off";
   }
 }
 
-int x2_extraction_revive_parse(const char *text, X2ExtractionRevive *mode) {
-  for (int i = X2_EXTRACTION_REVIVE_OFF; i <= X2_EXTRACTION_REVIVE_PAID; i++) {
-    const auto candidate = static_cast<X2ExtractionRevive>(i);
-    if (strcmp(text, x2_extraction_revive_name(candidate)) == 0) {
+int extraction_revive_parse(const char *text, ExtractionRevive *mode) {
+  for (int i = static_cast<int>(ExtractionRevive::Off);
+       i <= static_cast<int>(ExtractionRevive::Paid); i++) {
+    const auto candidate = static_cast<ExtractionRevive>(i);
+    if (strcmp(text, extraction_revive_name(candidate)) == 0) {
       if (mode)
         *mode = candidate;
       return 1;
@@ -79,39 +87,40 @@ int x2_extraction_revive_parse(const char *text, X2ExtractionRevive *mode) {
   return 0;
 }
 
-void x2_keyboard_profile_restore_row(X2KeyboardProfile *profile, unsigned row) {
-  if (!profile || row >= X2_SETTINGS_ROWS)
+void keyboard_profile_restore_row(KeyboardProfile *profile, unsigned row) {
+  if (!profile || row >= kSettingsRows)
     return;
   profile->keyboard[row] = 0;
   profile->keyboard_set[row] = 0;
 }
 
-void x2_keyboard_profile_restore_all(X2KeyboardProfile *profile) {
+void keyboard_profile_restore_all(KeyboardProfile *profile) {
   if (profile)
     memset(profile, 0, sizeof *profile);
 }
 
-void x2_settings_defaults(X2Settings *settings) {
+void settings_defaults(Settings *settings) {
   unsigned i;
   memset(settings, 0, sizeof *settings);
   settings->width = 1280;
   settings->height = 720;
-  settings->window_mode = X2_WINDOW_WINDOWED;
+  settings->window_mode = WindowMode::Windowed;
   settings->dynamic_shadows = 1;
   settings->shadow_resolution = 2048;
   settings->text_scale = 0.0f; /* auto */
-  settings->boot_mode = x2::config::BootMode::Normal;
-  settings->touch_controls = X2_TOUCH_CONTROLS_AUTO;
-  settings->extraction_revive = X2_EXTRACTION_REVIVE_OFF;
+  settings->boot_mode = BootMode::Normal;
+  settings->touch_controls = kTouchControlsAuto;
+  settings->extraction_revive = ExtractionRevive::Off;
   x2_hud_settings_defaults(&settings->hud);
-  for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
-    settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-    settings->controller[i].player = X2_SETTINGS_UNASSIGNED;
+  for (i = 0; i < kSettingsKeyboardProfiles; i++)
+    settings->keyboard_player[i] = kSettingsUnassigned;
+  for (i = 0; i < kSettingsControllerAssignments; i++)
+    settings->controller[i].player = kSettingsUnassigned;
   settings->keyboard_player[0] = 0;
 }
 
-static char *trim(char *s) {
+namespace {
+char *trim(char *s) {
   char *end;
   while (isspace((unsigned char)*s))
     s++;
@@ -121,7 +130,7 @@ static char *trim(char *s) {
   return s;
 }
 
-static int number(const char *text, unsigned min, unsigned max, unsigned *out) {
+int number(const char *text, unsigned min, unsigned max, unsigned *out) {
   char *end;
   unsigned long value;
   errno = 0;
@@ -141,18 +150,18 @@ typedef enum {
 
 typedef struct {
   LegacyDevice device;
-  char id[X2_SETTINGS_DEVICE_ID];
+  char id[kSettingsDeviceId];
   unsigned profile;
 } LegacyPlayer;
 
 typedef struct {
-  X2Settings settings;
-  LegacyPlayer legacy_player[X2_SETTINGS_PLAYERS];
+  Settings settings;
+  LegacyPlayer legacy_player[kSettingsPlayers];
   int saw_legacy;
   int saw_grid;
 } ParseState;
 
-static int parse_legacy_device(LegacyPlayer *player, const char *value) {
+int parse_legacy_device(LegacyPlayer *player, const char *value) {
   if (strcmp(value, "none") == 0)
     player->device = LEGACY_NONE;
   else if (strcmp(value, "auto") == 0)
@@ -169,25 +178,24 @@ static int parse_legacy_device(LegacyPlayer *player, const char *value) {
   return 1;
 }
 
-static int parse_owner(const char *value, int8_t *owner) {
+int parse_owner(const char *value, int8_t *owner) {
   unsigned player;
   if (strcmp(value, "unassigned") == 0) {
-    *owner = X2_SETTINGS_UNASSIGNED;
+    *owner = kSettingsUnassigned;
     return 1;
   }
-  if (!number(value, 0, X2_SETTINGS_PLAYERS - 1, &player))
+  if (!number(value, 0, kSettingsPlayers - 1, &player))
     return 0;
   *owner = (int8_t)player;
   return 1;
 }
 
-static int parse_profile_binding(X2Settings *settings, const char *key,
-                                 const char *value) {
+int parse_profile_binding(Settings *settings, const char *key,
+                          const char *value) {
   unsigned profile, row, code;
   char tail;
   int n = sscanf(key, "input.profile%u.row%u%c", &profile, &row, &tail);
-  if (n != 2 || profile >= X2_SETTINGS_KEYBOARD_PROFILES ||
-      row >= X2_SETTINGS_ROWS)
+  if (n != 2 || profile >= kSettingsKeyboardProfiles || row >= kSettingsRows)
     return 0;
   if (!number(value, 0, 65535, &code))
     return 0;
@@ -196,8 +204,8 @@ static int parse_profile_binding(X2Settings *settings, const char *key,
   return 1;
 }
 
-static int parse_line(ParseState *state, char *line) {
-  X2Settings *settings = &state->settings;
+int parse_line(ParseState *state, char *line) {
+  Settings *settings = &state->settings;
   char *eq = strchr(line, '=');
   char *key, *value;
   unsigned player, n, profile, slot;
@@ -215,7 +223,7 @@ static int parse_line(ParseState *state, char *line) {
   if (strcmp(key, "video.height") == 0)
     return number(value, X2_MIN_HEIGHT, X2_MAX_HEIGHT, &settings->height);
   if (strcmp(key, "video.mode") == 0)
-    return x2_window_mode_parse(value, &settings->window_mode);
+    return window_mode_parse(value, &settings->window_mode);
   if (strcmp(key, "video.dynamic_shadows") == 0) {
     unsigned enabled;
     if (!number(value, 0, 1, &enabled))
@@ -246,12 +254,12 @@ static int parse_line(ParseState *state, char *line) {
     return 1;
   }
   if (strcmp(key, "boot.mode") == 0)
-    return x2::config::boot_mode_parse(value, &settings->boot_mode);
+    return boot_mode_parse(value, &settings->boot_mode);
   if (strcmp(key, "gameplay.extraction_revive") == 0)
-    return x2_extraction_revive_parse(value, &settings->extraction_revive);
+    return extraction_revive_parse(value, &settings->extraction_revive);
   if (strcmp(key, "input.touch_controls") == 0) {
     unsigned mode;
-    if (!number(value, X2_TOUCH_CONTROLS_OFF, X2_TOUCH_CONTROLS_ALWAYS, &mode))
+    if (!number(value, kTouchControlsOff, kTouchControlsAlways, &mode))
       return 0;
     settings->touch_controls = (uint8_t)mode;
     return 1;
@@ -260,7 +268,7 @@ static int parse_line(ParseState *state, char *line) {
     state->saw_grid = 1;
     return strcmp(value, "2") == 0;
   }
-  for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {
+  for (profile = 0; profile < kSettingsKeyboardProfiles; profile++) {
     snprintf(setting_key, sizeof setting_key, "input.keyboard%u.player",
              profile);
     if (strcmp(key, setting_key) == 0) {
@@ -268,10 +276,10 @@ static int parse_line(ParseState *state, char *line) {
       return parse_owner(value, &settings->keyboard_player[profile]);
     }
   }
-  for (slot = 0; slot < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; slot++) {
+  for (slot = 0; slot < kSettingsControllerAssignments; slot++) {
     snprintf(setting_key, sizeof setting_key, "input.controller%u.id", slot);
     if (strcmp(key, setting_key) == 0) {
-      if (strlen(value) >= X2_SETTINGS_DEVICE_ID)
+      if (strlen(value) >= kSettingsDeviceId)
         return 0;
       state->saw_grid = 1;
       snprintf(settings->controller[slot].id,
@@ -285,7 +293,7 @@ static int parse_line(ParseState *state, char *line) {
       return parse_owner(value, &settings->controller[slot].player);
     }
   }
-  for (player = 0; player < X2_SETTINGS_PLAYERS; player++) {
+  for (player = 0; player < kSettingsPlayers; player++) {
     snprintf(setting_key, sizeof setting_key, "input.player%u.device", player);
     if (strcmp(key, setting_key) == 0) {
       state->saw_legacy = 1;
@@ -293,7 +301,7 @@ static int parse_line(ParseState *state, char *line) {
     }
     snprintf(setting_key, sizeof setting_key, "input.player%u.profile", player);
     if (strcmp(key, setting_key) == 0) {
-      if (!number(value, 0, X2_SETTINGS_KEYBOARD_PROFILES - 1, &profile))
+      if (!number(value, 0, kSettingsKeyboardProfiles - 1, &profile))
         return 0;
       state->saw_legacy = 1;
       state->legacy_player[player].profile = profile;
@@ -306,88 +314,86 @@ static int parse_line(ParseState *state, char *line) {
   return 0;
 }
 
-static int settings_valid(const X2Settings *settings) {
+int settings_valid(const Settings *settings) {
   unsigned i, j;
   if (!x2_hud_settings_valid(&settings->hud))
     return 0;
-  if ((unsigned)settings->boot_mode >
-          (unsigned)x2::config::BootMode::Continue ||
-      settings->touch_controls > X2_TOUCH_CONTROLS_ALWAYS ||
-      (unsigned)settings->extraction_revive > X2_EXTRACTION_REVIVE_PAID)
+  if ((unsigned)settings->boot_mode > (unsigned)BootMode::Continue ||
+      settings->touch_controls > kTouchControlsAlways ||
+      (unsigned)settings->extraction_revive > (unsigned)ExtractionRevive::Paid)
     return 0;
   if (settings->dynamic_shadows > 1 || (settings->shadow_resolution != 512 &&
                                         settings->shadow_resolution != 1024 &&
                                         settings->shadow_resolution != 2048 &&
                                         settings->shadow_resolution != 4096))
     return 0;
-  for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++) {
+  for (i = 0; i < kSettingsKeyboardProfiles; i++) {
     int owner = settings->keyboard_player[i];
-    if (!x2::config::input_owner_valid(owner))
+    if (!input_owner_valid(owner))
       return 0;
-    for (j = i + 1; owner >= 0 && j < X2_SETTINGS_KEYBOARD_PROFILES; j++)
+    for (j = i + 1; owner >= 0 && j < kSettingsKeyboardProfiles; j++)
       if (settings->keyboard_player[j] == owner)
         return 0;
   }
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++) {
-    const X2ControllerAssignment *a = &settings->controller[i];
-    if (!x2::config::input_owner_valid(a->player) ||
-        (a->player >= 0 && !a->id[0]))
+  for (i = 0; i < kSettingsControllerAssignments; i++) {
+    const ControllerAssignment *a = &settings->controller[i];
+    if (!input_owner_valid(a->player) || (a->player >= 0 && !a->id[0]))
       return 0;
     if (!a->id[0])
       continue;
-    for (j = i + 1; j < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; j++)
+    for (j = i + 1; j < kSettingsControllerAssignments; j++)
       if (strcmp(a->id, settings->controller[j].id) == 0 ||
           (a->player >= 0 && a->player == settings->controller[j].player))
         return 0;
   }
-  return x2::config::input_assignments_valid(settings);
+  return input_assignments_valid(settings);
 }
 
-static int migrate_legacy(ParseState *state) {
-  X2KeyboardProfile original[X2_SETTINGS_KEYBOARD_PROFILES];
-  unsigned char reserved[X2_SETTINGS_KEYBOARD_PROFILES] = {0};
+int migrate_legacy(ParseState *state) {
+  KeyboardProfile original[kSettingsKeyboardProfiles];
+  unsigned char reserved[kSettingsKeyboardProfiles] = {0};
   unsigned i, profile;
-  X2Settings *settings = &state->settings;
+  Settings *settings = &state->settings;
   if (!state->saw_legacy)
     return 1;
   if (state->saw_grid)
     return 0;
   memcpy(original, settings->keyboard_profile, sizeof original);
-  for (i = 0; i < X2_SETTINGS_PLAYERS; i++) {
+  for (i = 0; i < kSettingsPlayers; i++) {
     LegacyPlayer *legacy = &state->legacy_player[i];
     if (legacy->device == LEGACY_AUTO || legacy->device == LEGACY_KEYBOARD)
       reserved[legacy->profile] = 1;
   }
-  for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
-    settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
+  for (i = 0; i < kSettingsKeyboardProfiles; i++)
+    settings->keyboard_player[i] = kSettingsUnassigned;
   memset(settings->controller, 0, sizeof settings->controller);
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-    settings->controller[i].player = X2_SETTINGS_UNASSIGNED;
-  for (i = 0; i < X2_SETTINGS_PLAYERS; i++) {
+  for (i = 0; i < kSettingsControllerAssignments; i++)
+    settings->controller[i].player = kSettingsUnassigned;
+  for (i = 0; i < kSettingsPlayers; i++) {
     LegacyPlayer *legacy = &state->legacy_player[i];
     if (legacy->device == LEGACY_AUTO || legacy->device == LEGACY_KEYBOARD) {
       profile = legacy->profile;
-      if (settings->keyboard_player[profile] != X2_SETTINGS_UNASSIGNED) {
-        for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++)
+      if (settings->keyboard_player[profile] != kSettingsUnassigned) {
+        for (profile = 0; profile < kSettingsKeyboardProfiles; profile++)
           if (!reserved[profile] &&
-              settings->keyboard_player[profile] == X2_SETTINGS_UNASSIGNED)
+              settings->keyboard_player[profile] == kSettingsUnassigned)
             break;
-        if (profile == X2_SETTINGS_KEYBOARD_PROFILES)
+        if (profile == kSettingsKeyboardProfiles)
           return 0;
         settings->keyboard_profile[profile] = original[legacy->profile];
       }
-      if (!x2_settings_assign_keyboard(settings, profile, (int)i))
+      if (!settings_assign_keyboard(settings, profile, (int)i))
         return 0;
     }
     if (legacy->device == LEGACY_GAMEPAD &&
-        !x2_settings_assign_controller(settings, legacy->id, (int)i))
+        !settings_assign_controller(settings, legacy->id, (int)i))
       return 0;
   }
   return 1;
 }
+} // namespace
 
-int x2_settings_load(X2Settings *settings, const char *path, char *why,
-                     int whyn) {
+int settings_load(Settings *settings, const char *path, char *why, int whyn) {
   ParseState parsed;
   FILE *file;
   char line[512];
@@ -395,9 +401,9 @@ int x2_settings_load(X2Settings *settings, const char *path, char *why,
 
   unsigned player;
   memset(&parsed, 0, sizeof parsed);
-  x2_settings_defaults(&parsed.settings);
+  settings_defaults(&parsed.settings);
   parsed.legacy_player[0].device = LEGACY_AUTO;
-  for (player = 0; player < X2_SETTINGS_PLAYERS; player++)
+  for (player = 0; player < kSettingsPlayers; player++)
     parsed.legacy_player[player].profile = player;
   file = fopen(path, "r");
   if (!file) {
@@ -450,8 +456,8 @@ int x2_settings_load(X2Settings *settings, const char *path, char *why,
   return 1;
 }
 
-int x2_settings_save(const X2Settings *settings, const char *path, char *why,
-                     int whyn) {
+int settings_save(const Settings *settings, const char *path, char *why,
+                  int whyn) {
   char pending[1200];
   FILE *file;
   unsigned slot, profile, row;
@@ -476,7 +482,7 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
   fprintf(file, "# x2native settings -- edited by the in-game RmlUi menu\n");
   fprintf(file, "video.width=%u\nvideo.height=%u\nvideo.mode=%s\n",
           settings->width, settings->height,
-          x2_window_mode_name(settings->window_mode));
+          window_mode_name(settings->window_mode));
   fprintf(file, "video.dynamic_shadows=%u\nvideo.shadow_resolution=%u\n",
           settings->dynamic_shadows, settings->shadow_resolution);
   fprintf(file, "ui.text_scale=%g\n", (double)settings->text_scale);
@@ -485,13 +491,12 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
     fclose(file);
     return 0;
   }
-  fprintf(file, "boot.mode=%s\n",
-          x2::config::boot_mode_name(settings->boot_mode));
+  fprintf(file, "boot.mode=%s\n", boot_mode_name(settings->boot_mode));
   fprintf(file, "gameplay.extraction_revive=%s\n",
-          x2_extraction_revive_name(settings->extraction_revive));
+          extraction_revive_name(settings->extraction_revive));
   fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);
   fprintf(file, "input.assignment_version=2\n");
-  for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {
+  for (profile = 0; profile < kSettingsKeyboardProfiles; profile++) {
     int owner = settings->keyboard_player[profile];
     fprintf(file, "input.keyboard%u.player=", profile);
     if (owner < 0)
@@ -499,8 +504,8 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
     else
       fprintf(file, "%d\n", owner);
   }
-  for (slot = 0; slot < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; slot++) {
-    const X2ControllerAssignment *assignment = &settings->controller[slot];
+  for (slot = 0; slot < kSettingsControllerAssignments; slot++) {
+    const ControllerAssignment *assignment = &settings->controller[slot];
     fprintf(file, "input.controller%u.id=%s\n", slot, assignment->id);
     fprintf(file, "input.controller%u.player=", slot);
     if (assignment->player < 0)
@@ -508,9 +513,9 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
     else
       fprintf(file, "%d\n", assignment->player);
   }
-  for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {
-    const X2KeyboardProfile *p = &settings->keyboard_profile[profile];
-    for (row = 0; row < X2_SETTINGS_ROWS; row++) {
+  for (profile = 0; profile < kSettingsKeyboardProfiles; profile++) {
+    const KeyboardProfile *p = &settings->keyboard_profile[profile];
+    for (row = 0; row < kSettingsRows; row++) {
       if (p->keyboard_set[row])
         fprintf(file, "input.profile%u.row%u=%u\n", profile, row,
                 p->keyboard[row]);
@@ -525,3 +530,5 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
   reason(why, whyn, "settings saved");
   return 1;
 }
+
+} // namespace x2::config

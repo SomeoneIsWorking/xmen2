@@ -33,7 +33,7 @@ enum { REASON_BYTES = 192 };
 /* Every zone the layout can draw. The cap bounds the reply buffer; it is not a
    filter, and a longer overlay would be a layout change, not a reason to hide
    controls. */
-#define X2_TOUCH_CONTROLS_MAX_LISTED kX2SlotCount
+#define X2_TOUCH_CONTROLS_MAX_LISTED x2::presentation::kSlotCount
 
 /*
  * One shape of answer for every route here.
@@ -249,13 +249,12 @@ void control_route_assignment(x2::native::Socket fd, const char *query) {
  * "the thumb is pushing" cannot be told apart from outside.
  */
 void control_route_controls(x2::native::Socket fd) {
-  X2TouchVisual visuals[X2_TOUCH_CONTROLS_MAX_LISTED];
-  size_t count =
-      x2_touch_runtime_visuals(visuals, X2_TOUCH_CONTROLS_MAX_LISTED);
+  x2::input::TouchVisual visuals[X2_TOUCH_CONTROLS_MAX_LISTED];
+  size_t count = touch_runtime_visuals(visuals, X2_TOUCH_CONTROLS_MAX_LISTED);
   size_t listed = count < X2_TOUCH_CONTROLS_MAX_LISTED
                       ? count
                       : X2_TOUCH_CONTROLS_MAX_LISTED;
-  X2LayoutViewport viewport;
+  x2::presentation::LayoutViewport viewport;
   char body[2048];
   size_t i;
   int at = 0;
@@ -265,9 +264,9 @@ void control_route_controls(x2::native::Socket fd) {
      than leaving "(none)" to mean any of them. */
   /* A cinematic hides the gameplay controls and draws only its Skip button,
      from its own document; the empty answer would hide it. */
-  X2Rect skip;
+  x2::presentation::Rect skip;
   int skip_held = 0;
-  if (!count && x2_touch_runtime_skip_button(&skip, &skip_held)) {
+  if (!count && x2::input::touch_runtime_skip_button(&skip, &skip_held)) {
     control_reply_text(
         fd, 200, "OK", "skip button %g,%g %gx%g%s\n", (double)skip.left,
         (double)skip.top, (double)(skip.right - skip.left),
@@ -283,28 +282,30 @@ void control_route_controls(x2::native::Socket fd) {
                        "Gameplay draws its controls and every other screen "
                        "the menu pad, both only in touch play; a cinematic "
                        "draws only its Skip button.\n",
-                       x2_touch_runtime_active() ? "ACTIVE" : "NOT active",
+                       x2::input::touch_runtime_active() ? "ACTIVE"
+                                                         : "NOT active",
                        x2_gameplay_control_name(
                            x2_gameplay_control_state(guest_clock_now_s())),
-                       x2_touch_runtime_overlay_visible()
+                       x2::input::touch_runtime_overlay_visible()
                            ? "visible, but it published no zone"
                            : "NOT visible");
     return;
   }
-  if (x2_touch_runtime_viewport(&viewport)) {
+  if (x2::input::touch_runtime_viewport(&viewport)) {
     at += snprintf(body + at, sizeof body - (size_t)at, "viewport %gx%g\n",
                    viewport.width, viewport.height);
   }
   for (i = 0; i < listed && at < (int)sizeof body; i++) {
-    const X2TouchVisual *visual = &visuals[i];
-    at += snprintf(body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g %s",
-                   visual->id,
-                   visual->kind == X2_TOUCH_VISUAL_STICK ? "stick" : "button",
-                   (double)visual->left, (double)visual->top,
-                   (double)(visual->right - visual->left),
-                   (double)(visual->bottom - visual->top),
-                   x2_touch_runtime_action_name(visual->action));
-    if (visual->kind == X2_TOUCH_VISUAL_STICK && at < (int)sizeof body) {
+    const x2::input::TouchVisual *visual = &visuals[i];
+    at += snprintf(
+        body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g %s", visual->id,
+        visual->kind == x2::input::TouchVisualKind::Stick ? "stick" : "button",
+        (double)visual->left, (double)visual->top,
+        (double)(visual->right - visual->left),
+        (double)(visual->bottom - visual->top),
+        x2::input::touch_runtime_action_name(visual->action));
+    if (visual->kind == x2::input::TouchVisualKind::Stick &&
+        at < (int)sizeof body) {
       at += snprintf(body + at, sizeof body - (size_t)at, " deflect %.3f,%.3f",
                      (double)visual->deflect_x, (double)visual->deflect_y);
     }

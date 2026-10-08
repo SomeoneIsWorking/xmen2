@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 /* ---- selftest ---------------------------------------------------------- */
 
 /*
@@ -20,20 +22,21 @@
  *
  * The seam this engine sits on is the product dispatch boundary:
  * `x86_dispatch_one` must enter the runtime JIT for ordinary guest code. On a
- * run that never exercises the boundary, x2_engine_report prints zeros -- and
+ * run that never exercises the boundary, engine_report prints zeros -- and
  * zeros from an engine that works and zeros from an engine whose boundary is
  * broken are the same two lines. Nothing downstream could tell them apart.
  *
  * So the engine executes a program of its own before the game starts. It is a
  * real guest program, written into guest memory, entered through the same
- * x2_engine_call the dispatcher uses, and checked for the register, flag and
+ * engine_call the dispatcher uses, and checked for the register, flag and
  * stack state it must produce. A failure here stops the run: a backend that
  * cannot run six instructions correctly must not be handed a function.
  */
 
 #define SELFTEST_PAGE 0x00070000u
 
-static int check(const char *what, uint32_t got, uint32_t want, int *failures) {
+namespace {
+int check(const char *what, uint32_t got, uint32_t want, int *failures) {
   if (got == want)
     return 1;
   x2_log_error("[ENGINE] selftest: %s is 0x%08x, expected 0x%08x\n", what, got,
@@ -41,8 +44,9 @@ static int check(const char *what, uint32_t got, uint32_t want, int *failures) {
   (*failures)++;
   return 0;
 }
+} // namespace
 
-int x2_engine_selftest(void) {
+int engine_selftest(void) {
   /*
    *   mov  eax, 0x0000002A
    *   add  eax, 8              -> 0x32
@@ -63,7 +67,7 @@ int x2_engine_selftest(void) {
   uint32_t stack;
   int failures = 0;
 
-  if (!x2_engine_active())
+  if (!engine_active())
     return 1; /* nothing selected: nothing to prove */
 
   if (guest_memory_map_fixed(SELFTEST_PAGE, 0x1000u,
@@ -78,7 +82,7 @@ int x2_engine_selftest(void) {
 
   /* A stack inside the same page, above the program.
      The CALLER pushes the return address -- that is the contract every real
-     caller of x2_engine_call meets (x86_guest_call_args writes 0xDEADBEEF
+     caller of engine_call meets (x86_guest_call_args writes 0xDEADBEEF
      there; a guest CALL wrote a real one) -- so the selftest
      meets it too, rather than being the one entry that does not. */
   stack = SELFTEST_PAGE + 0x800u;
@@ -89,8 +93,8 @@ int x2_engine_selftest(void) {
   cpu.reg[kX86pEax] = 0xDEADBEEFu;
   cpu.reg[kX86pEbx] = 0xDEADBEEFu;
 
-  if (!x2_engine_call(SELFTEST_PAGE, &cpu)) {
-    x2_log_error("[ENGINE] selftest: x2_engine_call declined its own "
+  if (!engine_call(SELFTEST_PAGE, &cpu)) {
+    x2_log_error("[ENGINE] selftest: engine_call declined its own "
                  "program while an engine is selected.\n");
     return 0;
   }
@@ -107,7 +111,7 @@ int x2_engine_selftest(void) {
   check("OF", (uint32_t)x86p_flag_of(&cpu.flags), 0u, &failures);
 
   /*
-   * Resuming a body mid-function (x2_engine_resume), for an override that
+   * Resuming a body mid-function (engine_resume), for an override that
    * replaces only a leading part of a retail function:
    *
    *   +0x100  push ebx            <- the part the override replaces
@@ -134,8 +138,8 @@ int x2_engine_selftest(void) {
     cpu_reset(&cpu);
     cpu.reg[kX86pEsp] = frame_esp - 4u;
     cpu.reg[kX86pEcx] = 0xDEADBEEFu;
-    if (!x2_engine_resume(SELFTEST_PAGE + 0x106u, &cpu, frame_esp)) {
-      x2_log_error("[ENGINE] selftest: x2_engine_resume declined its own "
+    if (!engine_resume(SELFTEST_PAGE + 0x106u, &cpu, frame_esp)) {
+      x2_log_error("[ENGINE] selftest: engine_resume declined its own "
                    "program while an engine is selected.\n");
       failures++;
     } else {
@@ -195,3 +199,5 @@ int x2_engine_selftest(void) {
   x2::native::engine_enter_service();
   return 1;
 }
+
+} // namespace x2::native

@@ -64,7 +64,7 @@ int windows_package_init_from(const char *executable) {
                  "package (%s); the settings overlay will not draw.\n",
                  path);
   } else {
-    x2_config_override_set(kX2ConfigUiResourceDir, path, 0);
+    config_override_set(x2::config::ConfigOverride::UiResourceDir, path, 0);
   }
   x2_log_error("windows package: running as the packaged product from %.*s\n",
                static_cast<int>(length), executable);

@@ -47,7 +47,7 @@ static void x2_probe_005972a0(CPU *C) {
 
 void x2_texture_probe_report(void) {
   unsigned i;
-  if (!x2_config_override_get(kX2ConfigTextureProbe))
+  if (!config_override_get(x2::config::ConfigOverride::TextureProbe))
     return;
   x2_log_error("TEXTURE PROBE: %lu getTexture call(s), %u distinct "
                "return-site(s)",
@@ -61,7 +61,7 @@ void x2_texture_probe_report(void) {
 }
 
 __attribute__((constructor)) static void x2_texture_probe_register(void) {
-  if (!x2_config_override_get(kX2ConfigTextureProbe))
+  if (!config_override_get(x2::config::ConfigOverride::TextureProbe))
     return;
   x2_log_error("TEXTURE PROBE: armed (X2_TEXTURE_PROBE); overriding "
                "XMen2.exe getTexture 0x005972a0\n");

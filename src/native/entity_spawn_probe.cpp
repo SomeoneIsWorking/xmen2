@@ -91,7 +91,7 @@ void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
   const char *value;
 
   if (g_mode < 0) {
-    value = x2_config_override_get(kX2ConfigSpawnCritter);
+    value = config_override_get(x2::config::ConfigOverride::SpawnCritter);
     g_mode = value && *value && strcmp(value, "0") != 0;
   }
   if (!g_mode || g_submitted || strcmp(script, DEADZONE_ENTRY) != 0)

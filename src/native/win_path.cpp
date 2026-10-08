@@ -161,7 +161,7 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
 
 const char *win_path(const char *input) {
   static char path[WIN_PATH_MAX];
-  const char *game = x2_config_override_get(kX2ConfigGamePcDir);
+  const char *game = config_override_get(x2::config::ConfigOverride::GamePcDir);
   const char *tail = input;
   const char *root = game;
   size_t index;
@@ -211,7 +211,8 @@ static int contains_case_insensitive(const char *haystack, const char *needle) {
 }
 
 int k32_file_gate_open(void) {
-  const char *wanted = x2_config_override_get(kX2ConfigShotAfterFile);
+  const char *wanted =
+      config_override_get(x2::config::ConfigOverride::ShotAfterFile);
   return !wanted || !*wanted || g_file_gate_hit;
 }
 
@@ -224,7 +225,8 @@ static void note_asset(const char *guest_path, int succeeded,
   if (!guest_path)
     return;
   if (!g_file_gate_hit) {
-    const char *wanted = x2_config_override_get(kX2ConfigShotAfterFile);
+    const char *wanted =
+        config_override_get(x2::config::ConfigOverride::ShotAfterFile);
     if (wanted && *wanted && contains_case_insensitive(guest_path, wanted)) {
       g_file_gate_hit = 1;
       x2_log_error("[FILE] X2_SHOT_AFTER_FILE=\"%s\" matched "
@@ -263,10 +265,10 @@ void k32_asset_report(void) {
   x2_log_info("         path components resolved from %lu cached directory "
               "listing(s): %lu from memory, %lu had to enumerate\n",
               enumerated, hits, misses);
-  if (x2_config_override_get(kX2ConfigAssets))
+  if (config_override_get(x2::config::ConfigOverride::Assets))
     x2_log_info(
         "         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
-        x2_config_override_get(kX2ConfigAssets), g_replaced,
+        config_override_get(x2::config::ConfigOverride::Assets), g_replaced,
         g_replaced ? ""
                    : ". NONE: nothing the game opened had a "
                      "counterpart there, so this run drew the "
@@ -281,7 +283,7 @@ void k32_asset_report(void) {
 
 static const char *asset_replacement(const char *guest_path) {
   static char path[1024];
-  const char *root = x2_config_override_get(kX2ConfigAssets);
+  const char *root = config_override_get(x2::config::ConfigOverride::Assets);
   char relative[512];
   size_t index;
   struct stat status;

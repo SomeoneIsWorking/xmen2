@@ -3,50 +3,51 @@
 #include <stdio.h>
 #include <string.h>
 
-static int player_has_keyboard(const X2Settings *settings, unsigned player) {
+namespace x2::config {
+
+namespace {
+int player_has_keyboard(const Settings *settings, unsigned player) {
   unsigned i;
-  for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
+  for (i = 0; i < kSettingsKeyboardProfiles; i++)
     if (settings->keyboard_player[i] == (int)player)
       return 1;
   return 0;
 }
 
-static int player_has_controller(const X2Settings *settings, unsigned player) {
+int player_has_controller(const Settings *settings, unsigned player) {
   unsigned i;
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
+  for (i = 0; i < kSettingsControllerAssignments; i++)
     if (settings->controller[i].player == (int)player)
       return 1;
   return 0;
 }
-
-namespace x2::config {
+} // namespace
 
 int input_owner_valid(int player) {
-  return player == X2_SETTINGS_UNASSIGNED ||
-         (player >= 0 && player < (int)X2_SETTINGS_PLAYERS);
+  return player == kSettingsUnassigned ||
+         (player >= 0 && player < (int)kSettingsPlayers);
 }
 
-int input_assignments_valid(const X2Settings *settings) {
+int input_assignments_valid(const Settings *settings) {
   unsigned player;
   if (!settings || (!player_has_keyboard(settings, 0u) &&
                     !player_has_controller(settings, 0u)))
     return 0;
-  for (player = 1; player < X2_SETTINGS_PLAYERS; player++)
+  for (player = 1; player < kSettingsPlayers; player++)
     if (player_has_keyboard(settings, player) &&
         player_has_controller(settings, player))
       return 0;
   return 1;
 }
 
-} // namespace x2::config
-
-static void clear_controller_slot(X2Settings *settings, unsigned slot) {
+namespace {
+void clear_controller_slot(Settings *settings, unsigned slot) {
   memset(&settings->controller[slot], 0, sizeof settings->controller[slot]);
-  settings->controller[slot].player = X2_SETTINGS_UNASSIGNED;
+  settings->controller[slot].player = kSettingsUnassigned;
 }
 
 /* P1 holds at most one device of each kind; P2-P4 hold one device. */
-static int seat_accepts(const X2Settings *settings, int seat, int keyboard) {
+int seat_accepts(const Settings *settings, int seat, int keyboard) {
   if (seat < 0)
     return 1;
   if (seat == 0)
@@ -56,45 +57,45 @@ static int seat_accepts(const X2Settings *settings, int seat, int keyboard) {
          !player_has_controller(settings, (unsigned)seat);
 }
 
-static int keyboard_at(const X2Settings *settings, int seat, int except) {
+int keyboard_at(const Settings *settings, int seat, int except) {
   unsigned i;
-  for (i = 0; seat >= 0 && i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
+  for (i = 0; seat >= 0 && i < kSettingsKeyboardProfiles; i++)
     if ((int)i != except && settings->keyboard_player[i] == seat)
       return (int)i;
   return -1;
 }
 
-static int controller_at(const X2Settings *settings, int seat, int except) {
+int controller_at(const Settings *settings, int seat, int except) {
   unsigned i;
-  for (i = 0; seat >= 0 && i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
+  for (i = 0; seat >= 0 && i < kSettingsControllerAssignments; i++)
     if ((int)i != except && settings->controller[i].player == seat)
       return (int)i;
   return -1;
 }
 
 /* The device a move displaces takes the seat the moved device left. */
-static void relocate_displaced(X2Settings *settings, int keyboard,
-                               int controller, int vacated) {
+void relocate_displaced(Settings *settings, int keyboard, int controller,
+                        int vacated) {
   if (keyboard >= 0) {
-    settings->keyboard_player[keyboard] = X2_SETTINGS_UNASSIGNED;
+    settings->keyboard_player[keyboard] = kSettingsUnassigned;
     if (seat_accepts(settings, vacated, 1))
       settings->keyboard_player[keyboard] = (int8_t)vacated;
   }
   if (controller >= 0) {
-    settings->controller[controller].player = X2_SETTINGS_UNASSIGNED;
+    settings->controller[controller].player = kSettingsUnassigned;
     if (vacated >= 0 && seat_accepts(settings, vacated, 0))
       settings->controller[controller].player = (int8_t)vacated;
     else
       clear_controller_slot(settings, (unsigned)controller);
   }
 }
+} // namespace
 
-int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
-                                int player) {
-  X2Settings changed;
+int settings_assign_keyboard(Settings *settings, unsigned profile, int player) {
+  Settings changed;
   int vacated, displaced_keyboard, displaced_controller;
-  if (!settings || profile >= X2_SETTINGS_KEYBOARD_PROFILES ||
-      !x2::config::input_owner_valid(player))
+  if (!settings || profile >= kSettingsKeyboardProfiles ||
+      !input_owner_valid(player))
     return 0;
   changed = *settings;
   vacated = changed.keyboard_player[profile];
@@ -104,43 +105,43 @@ int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
   if (vacated != player)
     relocate_displaced(&changed, displaced_keyboard, displaced_controller,
                        vacated);
-  if (!x2::config::input_assignments_valid(&changed))
+  if (!input_assignments_valid(&changed))
     return 0;
   *settings = changed;
   return 1;
 }
 
-static int controller_slot(const X2Settings *settings, const char *id) {
+namespace {
+int controller_slot(const Settings *settings, const char *id) {
   unsigned i;
   if (!id || !id[0])
     return -1;
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
+  for (i = 0; i < kSettingsControllerAssignments; i++)
     if (strcmp(settings->controller[i].id, id) == 0)
       return (int)i;
   return -1;
 }
 
-static int free_controller_slot(const X2Settings *settings) {
+int free_controller_slot(const Settings *settings) {
   unsigned i;
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
+  for (i = 0; i < kSettingsControllerAssignments; i++)
     if (!settings->controller[i].id[0] ||
-        settings->controller[i].player == X2_SETTINGS_UNASSIGNED)
+        settings->controller[i].player == kSettingsUnassigned)
       return (int)i;
   return -1;
 }
+} // namespace
 
-int x2_settings_assign_controller(X2Settings *settings, const char *id,
-                                  int player) {
-  X2Settings changed;
+int settings_assign_controller(Settings *settings, const char *id, int player) {
+  Settings changed;
   int slot, vacated, displaced_keyboard, displaced_controller;
-  if (!settings || !id || !id[0] || strlen(id) >= X2_SETTINGS_DEVICE_ID ||
-      !x2::config::input_owner_valid(player))
+  if (!settings || !id || !id[0] || strlen(id) >= kSettingsDeviceId ||
+      !input_owner_valid(player))
     return 0;
   changed = *settings;
   slot = controller_slot(&changed, id);
-  vacated =
-      slot >= 0 ? changed.controller[slot].player : X2_SETTINGS_UNASSIGNED;
-  if (player == X2_SETTINGS_UNASSIGNED) {
+  vacated = slot >= 0 ? changed.controller[slot].player : kSettingsUnassigned;
+  if (player == kSettingsUnassigned) {
     if (slot >= 0)
       clear_controller_slot(&changed, (unsigned)slot);
   } else {
@@ -163,34 +164,36 @@ int x2_settings_assign_controller(X2Settings *settings, const char *id,
       relocate_displaced(&changed, displaced_keyboard, displaced_controller,
                          vacated);
   }
-  if (!x2::config::input_assignments_valid(&changed))
+  if (!input_assignments_valid(&changed))
     return 0;
   *settings = changed;
   return 1;
 }
 
-int x2_settings_controller_player(const X2Settings *settings, const char *id) {
+int settings_controller_player(const Settings *settings, const char *id) {
   int slot = settings ? controller_slot(settings, id) : -1;
-  return slot >= 0 ? settings->controller[slot].player : X2_SETTINGS_UNASSIGNED;
+  return slot >= 0 ? settings->controller[slot].player : kSettingsUnassigned;
 }
 
-const char *x2_settings_player_controller(const X2Settings *settings,
-                                          unsigned player) {
+const char *settings_player_controller(const Settings *settings,
+                                       unsigned player) {
   unsigned i;
-  if (!settings || player >= X2_SETTINGS_PLAYERS)
+  if (!settings || player >= kSettingsPlayers)
     return NULL;
-  for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
+  for (i = 0; i < kSettingsControllerAssignments; i++)
     if (settings->controller[i].player == (int)player)
       return settings->controller[i].id;
   return NULL;
 }
 
-int x2_settings_player_keyboard(const X2Settings *settings, unsigned player) {
+int settings_player_keyboard(const Settings *settings, unsigned player) {
   unsigned i;
-  if (!settings || player >= X2_SETTINGS_PLAYERS)
+  if (!settings || player >= kSettingsPlayers)
     return -1;
-  for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
+  for (i = 0; i < kSettingsKeyboardProfiles; i++)
     if (settings->keyboard_player[i] == (int)player)
       return (int)i;
   return -1;
 }
+
+} // namespace x2::config

@@ -12,17 +12,17 @@ namespace {
    the document switches between the two layouts. */
 constexpr std::uint32_t kFirstMenuZone = 100;
 
-constexpr std::array<TouchAction, kX2MenuSlotCount> kSlotActions = {
-    TouchAction::MenuUp,
-    TouchAction::MenuDown,
-    TouchAction::MenuLeft,
-    TouchAction::MenuRight,
-    TouchAction::MenuA,
-    TouchAction::MenuB,
-    TouchAction::MenuX,
-    TouchAction::MenuY,
-    TouchAction::MenuLeftShoulder,
-    TouchAction::MenuRightShoulder};
+constexpr std::array<TouchAction, x2::presentation::kMenuSlotCount>
+    kSlotActions = {TouchAction::MenuUp,
+                    TouchAction::MenuDown,
+                    TouchAction::MenuLeft,
+                    TouchAction::MenuRight,
+                    TouchAction::MenuA,
+                    TouchAction::MenuB,
+                    TouchAction::MenuX,
+                    TouchAction::MenuY,
+                    TouchAction::MenuLeftShoulder,
+                    TouchAction::MenuRightShoulder};
 
 bool is_release(lucent::touch::Phase phase) {
   return phase == lucent::touch::Phase::ended ||
@@ -34,15 +34,16 @@ bool is_release(lucent::touch::Phase phase) {
 std::vector<ActionEvent> MenuControls::set_viewport(Viewport viewport) {
   auto released = cancel();
   zones_.clear();
-  const X2LayoutViewport layout{
+  const x2::presentation::LayoutViewport layout{
       viewport.width,           viewport.height,
       viewport.safe_area.left,  viewport.safe_area.top,
       viewport.safe_area.right, viewport.safe_area.bottom};
-  std::array<X2Rect, kX2MenuSlotCount> slots{};
+  std::array<x2::presentation::Rect, x2::presentation::kMenuSlotCount> slots{};
   std::vector<lucent::touch::Zone> router_zones;
-  if (x2_layout_build_menu(layout, slots.data())) {
-    for (std::uint32_t slot = 0; slot < kX2MenuSlotCount; ++slot) {
-      const X2Rect &r = slots[slot];
+  if (layout_build_menu(layout, slots.data())) {
+    for (std::uint32_t slot = 0; slot < x2::presentation::kMenuSlotCount;
+         ++slot) {
+      const x2::presentation::Rect &r = slots[slot];
       zones_.push_back(
           {{kFirstMenuZone + slot, r.left, r.top, r.right, r.bottom, 20},
            kSlotActions[slot],

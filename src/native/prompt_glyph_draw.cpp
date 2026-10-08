@@ -322,7 +322,7 @@ void x2_override_005ee780(CPU *C) {
   x2::native::prompt_string_census(s);
   /* The cursor is armed only for a string carrying our codepoints, so
      every other string's quads take the untouched path. */
-  if (x2_prompt_glyphs_enabled() && s &&
+  if (x2::native::prompt_glyphs_enabled() && s &&
       x2::native::string_has_prompt_glyph(s, x2::native::kPromptWalkMax)) {
     struct PromptStringPlan plan = plan_string(s);
     uint32_t batch = RD32(C->reg[kX86pEsp] + 8u);

@@ -33,14 +33,15 @@ static int set_exclusive_mode(SDL_Window *window, unsigned width,
 
 namespace x2::presentation {
 
-int window_settings_apply(SDL_Window *window, const X2Settings *settings,
-                          char *why, int whyn) {
+int window_settings_apply(SDL_Window *window,
+                          const x2::config::Settings *settings, char *why,
+                          int whyn) {
   if (!window || !settings) {
     if (why && whyn > 0)
       snprintf(why, (size_t)whyn, "window and settings are required");
     return 0;
   }
-  if (settings->window_mode == X2_WINDOW_WINDOWED) {
+  if (settings->window_mode == x2::config::WindowMode::Windowed) {
     if (!SDL_SetWindowFullscreen(window, false))
       return fail(why, whyn, "leaving fullscreen");
     if (!SDL_SetWindowFullscreenMode(window, NULL))
@@ -52,14 +53,14 @@ int window_settings_apply(SDL_Window *window, const X2Settings *settings,
       return fail(why, whyn, "setting the windowed resolution");
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED,
                           SDL_WINDOWPOS_CENTERED);
-  } else if (settings->window_mode == X2_WINDOW_BORDERLESS) {
+  } else if (settings->window_mode == x2::config::WindowMode::Borderless) {
     if (!SDL_SetWindowFullscreenMode(window, NULL))
       return fail(why, whyn, "selecting desktop fullscreen");
     if (!SDL_SetWindowBordered(window, false) ||
         !SDL_SetWindowResizable(window, false) ||
         !SDL_SetWindowFullscreen(window, true))
       return fail(why, whyn, "entering borderless fullscreen");
-  } else if (settings->window_mode == X2_WINDOW_FULLSCREEN) {
+  } else if (settings->window_mode == x2::config::WindowMode::Fullscreen) {
     if (!set_exclusive_mode(window, settings->width, settings->height)) {
       if (why && whyn > 0)
         snprintf(why, (size_t)whyn, "display has no %ux%u exclusive mode",
@@ -81,7 +82,7 @@ int window_settings_apply(SDL_Window *window, const X2Settings *settings,
   g_owns_geometry = 1;
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "%s %ux%u",
-             x2_window_mode_name(settings->window_mode), settings->width,
+             window_mode_name(settings->window_mode), settings->width,
              settings->height);
   return 1;
 }

@@ -77,8 +77,8 @@ static int pad_glyph_byte(uint8_t value) {
 }
 
 static int keycap_glyphs_available(void) {
-  return x2_prompt_glyph_available(X2_KEYCAP_GLYPH_LEFT) &&
-         x2_prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
+  return prompt_glyph_available(X2_KEYCAP_GLYPH_LEFT) &&
+         prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
 }
 
 } // namespace
@@ -93,7 +93,7 @@ PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
   length = strlen((const char *)input);
   if (length == 3u && input[0] == '[' && pad_glyph_byte(input[1]) &&
       input[2] == ']') {
-    if (capacity < 2u || !x2_prompt_glyph_available(input[1]))
+    if (capacity < 2u || !prompt_glyph_available(input[1]))
       return PromptLabelStyle::Unchanged;
     output[0] = input[1];
     output[1] = 0;
@@ -139,7 +139,7 @@ void override_00619e30(CPU *C) {
   note_caller(RD32(C->reg[kX86pEsp]));
   x86_guest_body(C, "XMen2.exe", 0x00619e30u);
   out = C->reg[kX86pEax];
-  if (!out || !x2_prompt_glyphs_enabled()) {
+  if (!out || !prompt_glyphs_enabled()) {
     g_unchanged++;
     return;
   }

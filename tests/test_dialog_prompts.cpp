@@ -34,10 +34,12 @@ static int asset_calls;
 static uint32_t expected_outer_esp;
 
 X86Module *x86_modules(void) { return &module; }
-int x2_player_input_uses_gamepad(unsigned player) {
+namespace x2::input {
+int player_input_uses_gamepad(unsigned player) {
   CHECK(player == 0);
   return player_uses_gamepad;
 }
+} // namespace x2::input
 
 static void guest_body_00629bf0(CPU *C) {
   super_calls++;

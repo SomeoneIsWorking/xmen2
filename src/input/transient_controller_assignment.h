@@ -4,7 +4,7 @@ namespace x2::input {
 
 /* Process-lifetime assignments for pads without a persistent serial/path.
    They bind the current live GUID, never an inventory slot, and are never
-   part of X2Settings serialization. Assigning to a held player moves the
+   part of Settings serialization. Assigning to a held player moves the
    displaced pad to the seat the assigned pad left. */
 int transient_controller_assign(int pad, unsigned player);
 /* Moves `from`'s session assignment to an unassigned `to`. */

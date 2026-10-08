@@ -135,7 +135,7 @@ void prompt_string_census(uint32_t s_guest) {
   if (!s_guest) {
     return;
   }
-  if (x2_prompt_glyphs_enabled() &&
+  if (prompt_glyphs_enabled() &&
       string_has_prompt_glyph(s_guest, kPromptWalkMax)) {
     g_with_prompts++;
     for (i = 0; i < kPromptWalkMax; i++) {
@@ -188,7 +188,7 @@ void prompt_string_census_report(void) {
   if (!g_strings) {
     x2_log_error("PROMPT DRAW: ZERO strings seen -- either nothing "
                  "drew text in this run or the override never armed.\n");
-  } else if (!x2_prompt_glyphs_enabled()) {
+  } else if (!prompt_glyphs_enabled()) {
     x2_log_error("PROMPT DRAW: native prompt glyphs were DISABLED for this "
                  "run (X2_PROMPT_GLYPHS=0), so no string could "
                  "have carried a prompt codepoint. This is not "

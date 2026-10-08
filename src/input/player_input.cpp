@@ -14,30 +14,33 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::input {
+
+namespace {
 typedef struct {
   uint32_t kind;
   uint32_t code;
 } Binding;
 
-_Static_assert(X2_SETTINGS_ROWS == INPUT_BINDING_ROWS,
+_Static_assert(x2::config::kSettingsRows == INPUT_BINDING_ROWS,
                "settings profiles must cover every shipping binding row");
 
-static Binding g_keyboard_base[INPUT_BINDING_ROWS];
-static X2Settings g_last;
-static int g_have_base;
-static int g_have_last;
-static int g_last_pad[INPUT_PLAYERS] = {-2, -2, -2, -2};
-static int g_last_controller_slot[INPUT_PLAYERS] = {-2, -2, -2, -2};
-static int g_last_keyboard[INPUT_PLAYERS] = {-2, -2, -2, -2};
-static int g_last_source_gamepad[INPUT_PLAYERS];
-static unsigned char g_last_keyboard_state[256];
-static x2::input::PlayerParticipationPolicy g_participation;
-static int g_have_participation;
+Binding g_keyboard_base[INPUT_BINDING_ROWS];
+x2::config::Settings g_last;
+int g_have_base;
+int g_have_last;
+int g_last_pad[INPUT_PLAYERS] = {-2, -2, -2, -2};
+int g_last_controller_slot[INPUT_PLAYERS] = {-2, -2, -2, -2};
+int g_last_keyboard[INPUT_PLAYERS] = {-2, -2, -2, -2};
+int g_last_source_gamepad[INPUT_PLAYERS];
+unsigned char g_last_keyboard_state[256];
+x2::input::PlayerParticipationPolicy g_participation;
+int g_have_participation;
 
 #define PAUSE_ROW 17u
 #define DI_JOYSTATE_BUTTONS 48u
 
-static int capture_keyboard_base(void) {
+int capture_keyboard_base(void) {
   unsigned row;
   char why[192];
   uint32_t object =
@@ -52,7 +55,8 @@ static int capture_keyboard_base(void) {
   return 1;
 }
 
-static void resolve_pads(const X2Settings *settings, int out[INPUT_PLAYERS]) {
+void resolve_pads(const x2::config::Settings *settings,
+                  int out[INPUT_PLAYERS]) {
   int claimed[DINPUT_PAD_MAX] = {0};
   unsigned player;
   int pad;
@@ -72,7 +76,7 @@ static void resolve_pads(const X2Settings *settings, int out[INPUT_PLAYERS]) {
     }
   }
   for (player = 0; player < INPUT_PLAYERS; player++) {
-    const char *id = x2_settings_player_controller(settings, player);
+    const char *id = settings_player_controller(settings, player);
     if (x2::input::transient_controller_has_assignment(player))
       continue;
     if (!id)
@@ -85,7 +89,7 @@ static void resolve_pads(const X2Settings *settings, int out[INPUT_PLAYERS]) {
   }
 }
 
-static uint32_t default_gamepad_code(unsigned row) {
+uint32_t default_gamepad_code(unsigned row) {
   const XboxDefaultBinding *defaults;
   size_t count, i;
   defaults = xbox_default_bindings(&count);
@@ -95,9 +99,9 @@ static uint32_t default_gamepad_code(unsigned row) {
   return 0;
 }
 
-static int keyboard_code(const X2Settings *settings, int profile_index,
-                         unsigned row, uint32_t *code) {
-  const X2KeyboardProfile *profile;
+int keyboard_code(const x2::config::Settings *settings, int profile_index,
+                  unsigned row, uint32_t *code) {
+  const x2::config::KeyboardProfile *profile;
   uint32_t kind;
 
   if (!settings || profile_index < 0 || row >= INPUT_BINDING_ROWS)
@@ -112,20 +116,20 @@ static int keyboard_code(const X2Settings *settings, int profile_index,
   return kind == 1u;
 }
 
-static uint8_t eligibility_mask(const X2Settings *settings,
-                                const int keyboard[INPUT_PLAYERS]) {
+uint8_t eligibility_mask(const x2::config::Settings *settings,
+                         const int keyboard[INPUT_PLAYERS]) {
   uint8_t eligible = 0;
   unsigned player;
   for (player = 0; player < INPUT_PLAYERS; player++)
     if (keyboard[player] >= 0 ||
         x2::input::transient_controller_has_assignment(player) ||
-        x2_settings_player_controller(settings, player))
+        settings_player_controller(settings, player))
       eligible |= (uint8_t)(1u << player);
   return eligible;
 }
 
-static void sync_participation(CPU *cpu, const X2Settings *settings,
-                               const int keyboard[INPUT_PLAYERS]) {
+void sync_participation(CPU *cpu, const x2::config::Settings *settings,
+                        const int keyboard[INPUT_PLAYERS]) {
   x2::input::PlayerParticipationTransition transition;
   uint8_t eligible;
   if (!g_have_participation) {
@@ -140,10 +144,10 @@ static void sync_participation(CPU *cpu, const X2Settings *settings,
   x2::native::player_participation_enforce_eligibility(cpu, eligible);
 }
 
-static void publish_player(CPU *cpu, const X2Settings *settings,
-                           unsigned player, int keyboard_profile,
-                           int controller_slot) {
-  const X2KeyboardProfile *profile =
+void publish_player(CPU *cpu, const x2::config::Settings *settings,
+                    unsigned player, int keyboard_profile,
+                    int controller_slot) {
+  const x2::config::KeyboardProfile *profile =
       keyboard_profile >= 0 ? &settings->keyboard_profile[keyboard_profile]
                             : NULL;
   unsigned row;
@@ -168,9 +172,10 @@ static void publish_player(CPU *cpu, const X2Settings *settings,
                                 pad_code ? pad_kind : 0u, pad_code);
   }
 }
+} // namespace
 
-void x2_player_input_sync(CPU *cpu) {
-  X2Settings *settings;
+void player_input_sync(CPU *cpu) {
+  x2::config::Settings *settings;
   int pad[INPUT_PLAYERS];
   int controller_slot[INPUT_PLAYERS];
   int keyboard[INPUT_PLAYERS];
@@ -182,13 +187,13 @@ void x2_player_input_sync(CPU *cpu) {
   dinput_pad_refresh();
   if (!g_have_base && !capture_keyboard_base())
     return;
-  settings = x2_settings_store();
+  settings = x2::config::settings_store();
   resolve_pads(settings, pad);
   for (player = 0; player < INPUT_PLAYERS; player++) {
     controller_slot[player] =
         pad[player] < 0 ? -1
                         : dinput8_controller_slot_for_host_pad(pad[player]);
-    keyboard[player] = x2_settings_player_keyboard(settings, player);
+    keyboard[player] = settings_player_keyboard(settings, player);
     if (player > 0u && x2::input::transient_controller_has_assignment(player))
       keyboard[player] = -1;
   }
@@ -227,14 +232,14 @@ void x2_player_input_sync(CPU *cpu) {
                controller_slot[1], controller_slot[2], controller_slot[3]);
 }
 
-int x2_player_input_uses_gamepad(unsigned player) {
+int player_input_uses_gamepad(unsigned player) {
   return g_have_last && player < INPUT_PLAYERS &&
          g_last_controller_slot[player] >= 0 &&
          (g_last_keyboard[player] < 0 || g_last_source_gamepad[player]);
 }
 
-void x2_player_input_note_keyboard_state(const unsigned char *state,
-                                         unsigned bytes) {
+void player_input_note_keyboard_state(const unsigned char *state,
+                                      unsigned bytes) {
   unsigned player;
   if (!state || !g_have_last)
     return;
@@ -244,7 +249,7 @@ void x2_player_input_note_keyboard_state(const unsigned char *state,
     if (profile_index < 0)
       continue;
     for (row = 0; row < INPUT_BINDING_ROWS; row++) {
-      const X2KeyboardProfile *profile =
+      const x2::config::KeyboardProfile *profile =
           &g_last.keyboard_profile[profile_index];
       uint32_t kind = g_keyboard_base[row].kind;
       uint32_t code = g_keyboard_base[row].code;
@@ -294,7 +299,7 @@ void x2_player_input_note_keyboard_state(const unsigned char *state,
                                               : sizeof g_last_keyboard_state);
 }
 
-void x2_player_input_note_gamepad_activity(int pad) {
+void player_input_note_gamepad_activity(int pad) {
   unsigned player;
   for (player = 0; player < INPUT_PLAYERS; player++)
     if (g_have_last && g_last_pad[player] == pad &&
@@ -302,8 +307,8 @@ void x2_player_input_note_gamepad_activity(int pad) {
       g_last_source_gamepad[player] = 1;
 }
 
-void x2_player_input_note_gamepad_state(int pad, const unsigned char *state,
-                                        unsigned bytes) {
+void player_input_note_gamepad_state(int pad, const unsigned char *state,
+                                     unsigned bytes) {
   uint32_t code = default_gamepad_code(PAUSE_ROW);
   unsigned button;
   unsigned player;
@@ -321,7 +326,7 @@ void x2_player_input_note_gamepad_state(int pad, const unsigned char *state,
                                                         player, down);
 }
 
-int x2_player_input_pad_is_active_source(int pad) {
+int player_input_pad_is_active_source(int pad) {
   unsigned player;
   for (player = 0; player < INPUT_PLAYERS; player++)
     if (g_have_last && g_last_pad[player] == pad &&
@@ -330,8 +335,8 @@ int x2_player_input_pad_is_active_source(int pad) {
   return 0;
 }
 
-int x2_player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
-                                          uint32_t *code) {
+int player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
+                                       uint32_t *code) {
   if (!g_have_base || row >= INPUT_BINDING_ROWS || !kind || !code)
     return 0;
   *kind = g_keyboard_base[row].kind;
@@ -339,6 +344,8 @@ int x2_player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
   return 1;
 }
 
-int x2_player_input_resolved_pad(unsigned player) {
+int player_input_resolved_pad(unsigned player) {
   return g_have_last && player < INPUT_PLAYERS ? g_last_pad[player] : -1;
 }
+
+} // namespace x2::input

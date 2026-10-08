@@ -31,7 +31,7 @@ void x86_diag_dump(void) {
     extern void winmm_report(void);
     winmm_report();
   }
-  x2_engine_where();
+  x2::native::engine_where();
   x86_peek_report();
   x86_ring_dump();
 }

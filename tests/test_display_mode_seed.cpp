@@ -18,8 +18,10 @@ static int checks;
     checks++;                                                                  \
   } while (0)
 
-static X2Settings g_settings_stub;
-X2Settings *x2_settings_store(void) { return &g_settings_stub; }
+static x2::config::Settings g_settings_stub;
+namespace x2::config {
+Settings *settings_store(void) { return &g_settings_stub; }
+} // namespace x2::config
 
 static char g_stored[32];
 static int g_has_stored;

@@ -76,7 +76,7 @@ TouchMenu::set_view(std::optional<TouchMenuView> view, std::uint64_t now_ms) {
   return owed;
 }
 
-void TouchMenu::set_viewport(const X2LayoutViewport &viewport) {
+void TouchMenu::set_viewport(const x2::presentation::LayoutViewport &viewport) {
   viewport_ = viewport;
   has_viewport_ = viewport.width > 0.0F && viewport.height > 0.0F;
   finger_.reset();

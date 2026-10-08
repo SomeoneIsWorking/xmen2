@@ -19,7 +19,8 @@ const char *ui_resource_path(const char *name) {
   std::snprintf(path, sizeof path, "%s/ui/%s", directory, name ? name : "");
   return path;
 #else
-  const char *directory = x2_config_override_get(kX2ConfigUiResourceDir);
+  const char *directory =
+      config_override_get(x2::config::ConfigOverride::UiResourceDir);
   if (!directory || !directory[0])
     directory = X2_UI_RESOURCE_DIR;
   std::snprintf(path, sizeof path, "%s/%s", directory, name ? name : "");

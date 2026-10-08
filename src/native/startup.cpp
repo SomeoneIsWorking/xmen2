@@ -168,7 +168,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
   if (!command || !x2::native::boot_mode_is_intro_command(
                       guest_memory_as<const char>(command)))
     return 0;
-  requested = x2_settings_store()->boot_mode;
+  requested = x2::config::settings_store()->boot_mode;
   decision = x2::native::boot_mode_runtime_prepare(
       requested, x2::save::retail_save_directory());
   if (decision->effective == x2::config::BootMode::Normal)
@@ -276,7 +276,7 @@ void x2_override_0055beb0(CPU *C) {
     if (boot_to_host_mode(C, s, exe_base)) {
       x2::native::boot_splash_arm();
       x2::presentation::boot_blackout_arm(
-          x2::config::boot_mode_name(x2_settings_store()->boot_mode));
+          x2::config::boot_mode_name(x2::config::settings_store()->boot_mode));
       return;
     }
   }
@@ -344,7 +344,7 @@ void x2_override_00402ba0(CPU *C) {
   static const float long_past = -1.0e9f;
   static int reported;
   uint32_t phase = C->reg[kX86pEcx];
-  x2::config::BootMode mode = x2_settings_store()->boot_mode;
+  x2::config::BootMode mode = x2::config::settings_store()->boot_mode;
   uint32_t bits;
   float was;
 

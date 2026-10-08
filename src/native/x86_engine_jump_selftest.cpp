@@ -72,7 +72,7 @@ int engine_jump_selftest(uint32_t page, uint32_t stack) {
   cpu_reset(&cpu);
   cpu.reg[kX86pEsp] = stack - 4;
   WR32(stack - 4, x2::native::kEngineReturnAddr);
-  int ok = x2_engine_call(page, &cpu) && cpu.reg[kX86pEax] == 0x12345678 &&
+  int ok = engine_call(page, &cpu) && cpu.reg[kX86pEax] == 0x12345678 &&
            cpu.reg[kX86pEsp] == stack;
   guest_free(env);
   x86_setjmp_reclaim();

@@ -85,7 +85,7 @@ const char *save_dir(void) {
   if (g_ready)
     return g_dir;
   g_ready = 1;
-  env = x2_config_override_get(kX2ConfigSaveDir);
+  env = config_override_get(x2::config::ConfigOverride::SaveDir);
   default_dir = x2::config::config_directory();
   if (env && *env) {
     snprintf(g_dir, sizeof g_dir, "%s", env);

@@ -1,5 +1,6 @@
 #include "environment.h"
 
+#include <cstddef>
 #include <iterator>
 #include <stdlib.h>
 #include <string.h>
@@ -7,6 +8,8 @@
 #if !defined(_WIN32)
 extern char **environ;
 #endif
+
+namespace x2::config {
 
 namespace {
 
@@ -33,7 +36,8 @@ char **environment_entries() { return environ; }
 
 } // namespace
 
-static const char *const k_override_names[] = {
+namespace {
+const char *const k_override_names[] = {
     "DISPLAY",
     "GAME_PC_DIR",
     "X2_ASSETS",
@@ -113,55 +117,61 @@ static const char *const k_override_names[] = {
 };
 /* Positional, so a name added out of step with the enum shifts every later one.
  */
-static_assert(std::size(k_override_names) == kX2ConfigOverrideCount);
+static_assert(std::size(k_override_names) ==
+              static_cast<std::size_t>(ConfigOverride::Count));
+} // namespace
 
-const char *x2_config_override_name(X2ConfigOverride variable) {
-  if (variable < 0 || variable >= kX2ConfigOverrideCount)
+const char *config_override_name(ConfigOverride variable) {
+  const auto index = static_cast<int>(variable);
+  if (index < 0 || index >= static_cast<int>(ConfigOverride::Count))
     return NULL;
-  return k_override_names[variable];
+  return k_override_names[index];
 }
 
-const char *x2_config_override_get(X2ConfigOverride variable) {
-  const char *name = x2_config_override_name(variable);
+const char *config_override_get(ConfigOverride variable) {
+  const char *name = config_override_name(variable);
   return name ? getenv(name) : NULL;
 }
 
-int x2_config_override_set(X2ConfigOverride variable, const char *value,
-                           int overwrite) {
-  const char *name = x2_config_override_name(variable);
+int config_override_set(ConfigOverride variable, const char *value,
+                        int overwrite) {
+  const char *name = config_override_name(variable);
   return name && value ? environment_set(name, value, overwrite) : -1;
 }
 
-int x2_config_override_unset(X2ConfigOverride variable) {
-  const char *name = x2_config_override_name(variable);
+int config_override_unset(ConfigOverride variable) {
+  const char *name = config_override_name(variable);
   return name ? environment_unset(name) : -1;
 }
 
-int x2_config_override_from_name(const char *name, X2ConfigOverride *variable) {
+int config_override_from_name(const char *name, ConfigOverride *variable) {
   if (!name || !variable)
     return 0;
-  for (int index = 0; index < kX2ConfigOverrideCount; ++index) {
+  for (int index = 0; index < static_cast<int>(ConfigOverride::Count);
+       ++index) {
     if (strcmp(name, k_override_names[index]) == 0) {
-      *variable = (X2ConfigOverride)index;
+      *variable = static_cast<ConfigOverride>(index);
       return 1;
     }
   }
   return 0;
 }
 
-const char *x2_guest_environment_get(const char *name) {
+const char *guest_environment_get(const char *name) {
   return name ? getenv(name) : NULL;
 }
 
-int x2_guest_environment_set(const char *name, const char *value) {
+int guest_environment_set(const char *name, const char *value) {
   if (!name || !name[0])
     return -1;
   return value ? environment_set(name, value, 1) : environment_unset(name);
 }
 
-void x2_guest_environment_visit(X2GuestEnvironmentVisitor visitor, void *user) {
+void guest_environment_visit(GuestEnvironmentVisitor visitor, void *user) {
   if (!visitor)
     return;
   for (char **entry = environment_entries(); entry && *entry; ++entry)
     visitor(*entry, user);
 }
+
+} // namespace x2::config

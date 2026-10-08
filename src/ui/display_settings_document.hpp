@@ -15,7 +15,7 @@ namespace x2::ui {
    HUD sizing document composed below them. The tab's change handling stays
    with the settings document, which owns the host window and the status line
    a failed resolution change has to report into. */
-std::string display_settings_document_rml(const X2Settings &settings);
+std::string display_settings_document_rml(const x2::config::Settings &settings);
 void display_settings_document_wire(Rml::ElementDocument &document,
                                     Rml::EventListener &listener);
 

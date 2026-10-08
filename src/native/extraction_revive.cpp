@@ -241,21 +241,22 @@ std::vector<Position> extraction_pad_positions(const GuestMemoryView &memory) {
 
 void ExtractionRevive::poll(CPU *cpu, double now) {
   input::RevivePrompt &prompt = input::revive_prompt();
-  const X2ExtractionRevive mode = x2_settings_store()->extraction_revive;
+  const x2::config::ExtractionRevive mode =
+      x2::config::settings_store()->extraction_revive;
   const bool active =
       cpu && x2_gameplay_control_state(guest_clock_now_s()) == kX2ControlActive;
-  if (mode != X2_EXTRACTION_REVIVE_PAID || !active) {
+  if (mode != x2::config::ExtractionRevive::Paid || !active) {
     prompt.withdraw();
   }
-  if (mode == X2_EXTRACTION_REVIVE_OFF) {
+  if (mode == x2::config::ExtractionRevive::Off) {
     inside_ = false;
     forget_getting_up();
   }
-  if (!active || mode == X2_EXTRACTION_REVIVE_OFF) {
+  if (!active || mode == x2::config::ExtractionRevive::Off) {
     return;
   }
   const bool requested =
-      mode == X2_EXTRACTION_REVIVE_PAID && prompt.take_request();
+      mode == x2::config::ExtractionRevive::Paid && prompt.take_request();
   if (!requested && now < next_scan_) {
     return;
   }
@@ -263,7 +264,7 @@ void ExtractionRevive::poll(CPU *cpu, double now) {
   const std::vector<Hero> party = read_party(*cpu);
   const bool near =
       near_a_pad(party, extraction_pad_positions(LiveGuestMemory()));
-  if (mode == X2_EXTRACTION_REVIVE_FREE) {
+  if (mode == x2::config::ExtractionRevive::Free) {
     if (near && !inside_) {
       for (const std::uint32_t actor : restore_party(*cpu)) {
         set_getting_up(actor, true);

@@ -217,7 +217,7 @@ split above is the one to trust.
    this one is dominated by `x86p_mem_write_bytes` at 27.58% -- so the shares
    are not a like-for-like before/after; the symbol's disappearance is the
    claim, and its only remaining callers are the cold fault reporter and
-   `x2_engine_where`.
+   `engine_where`.
 
    The next cost this names is `x86p_mem_write_bytes` plus `x86p_mem_write` and
    `x86p_string_execute`: a REP MOVS-heavy asset phase going through the

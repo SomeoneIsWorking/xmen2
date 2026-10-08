@@ -21,7 +21,7 @@ namespace {
 
 Rml::ElementDocument *document;
 Rml::Element *root;
-std::vector<X2TouchVisual> visuals;
+std::vector<x2::input::TouchVisual> visuals;
 bool document_visible;
 /* The image each button shows, so a hero swap that keeps the same number
    of powers still redraws them. */
@@ -102,8 +102,8 @@ bool ring_only(int action) {
 }
 
 /* The kind and the action decide the element's style. */
-const char *visual_class(const X2TouchVisual &visual) {
-  if (visual.kind == X2_TOUCH_VISUAL_STICK) {
+const char *visual_class(const x2::input::TouchVisual &visual) {
+  if (visual.kind == x2::input::TouchVisualKind::Stick) {
     return " stick";
   }
   if (ring_only(visual.action)) {
@@ -116,7 +116,7 @@ const char *visual_class(const X2TouchVisual &visual) {
 }
 
 /* The game's icon for a power button, from the hero's own atlas. */
-std::string power_source(const X2TouchVisual &visual) {
+std::string power_source(const x2::input::TouchVisual &visual) {
   IgbTextureRenderInterface *textures = igb_texture_interface();
   const char *atlas = x2::native::power_slots_atlas();
   if (visual.power_icon < 0 || !textures || !atlas[0]) {
@@ -125,7 +125,7 @@ std::string power_source(const X2TouchVisual &visual) {
   return textures->source_for(atlas, visual.power_icon);
 }
 
-std::string icon_source(const X2TouchVisual &visual) {
+std::string icon_source(const x2::input::TouchVisual &visual) {
   return visual.power_icon >= 0 ? power_source(visual)
                                 : action_art(visual.action);
 }
@@ -143,15 +143,15 @@ std::string resource(const std::string &relative) {
 }
 
 void rebuild() {
-  const size_t count = x2_touch_runtime_visuals(nullptr, 0);
+  const size_t count = x2::input::touch_runtime_visuals(nullptr, 0);
   visuals.resize(count);
-  x2_touch_runtime_visuals(visuals.data(), visuals.size());
+  touch_runtime_visuals(visuals.data(), visuals.size());
   icon_sources = all_icon_sources();
   std::ostringstream rml;
   for (const auto &visual : visuals) {
     rml << "<div id='touch-zone-" << visual.id << "' class='touch-zone"
         << visual_class(visual) << "'>";
-    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
+    if (visual.kind == x2::input::TouchVisualKind::Stick) {
       rml << "<div class='touch-stick-knob'></div>";
     } else {
       const std::string source = icon_source(visual);
@@ -179,7 +179,7 @@ void set_percent(Rml::Element *element, Rml::PropertyId property, float value) {
  * radius less its size, so full deflection puts it against the inside of
  * the ring rather than outside it.
  */
-void place_knob(Rml::Element *zone, const X2TouchVisual &visual) {
+void place_knob(Rml::Element *zone, const x2::input::TouchVisual &visual) {
   Rml::Element *knob = zone->GetChild(0);
   if (!knob) {
     return;
@@ -245,12 +245,12 @@ void touch_document_set_visible(bool visible) {
 void touch_document_update() {
   if (!document || !document_visible)
     return;
-  const size_t count = x2_touch_runtime_visuals(nullptr, 0);
+  const size_t count = x2::input::touch_runtime_visuals(nullptr, 0);
   if (count != visuals.size())
     rebuild();
   if (visuals.empty())
     return;
-  x2_touch_runtime_visuals(visuals.data(), visuals.size());
+  touch_runtime_visuals(visuals.data(), visuals.size());
   if (all_icon_sources() != icon_sources)
     rebuild();
 
@@ -271,7 +271,7 @@ void touch_document_update() {
     set_percent(element, Rml::PropertyId::Height,
                 (visual.bottom - visual.top) * 100.0F / height);
     element->SetClass("active", visual.active != 0);
-    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
+    if (visual.kind == x2::input::TouchVisualKind::Stick) {
       place_knob(element, visual);
     }
   }

@@ -416,7 +416,7 @@ in `src/d3d8/d3d8_leaf_methods.cpp` and the leaf-safe fast-path imports
 its timer pump can run guest callbacks). The vertex builder and
 `igMatrix44f::multiply` gained leaves. A per-thread guard in
 `override_leaf.cpp` aborts, naming the leaf, if one calls guest code
-(`x2_engine_call`), releases the guest lock (`guest_unlock`) or waits
+(`engine_call`), releases the guest lock (`guest_unlock`) or waits
 (`guest_cond_wait_ms`); `tests/test_override_leaf.cpp` proves it fires.
 
 In the same Dead Zone scene:

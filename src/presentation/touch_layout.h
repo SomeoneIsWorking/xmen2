@@ -1,7 +1,8 @@
-#ifndef X2_TOUCH_LAYOUT_H
-#define X2_TOUCH_LAYOUT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::presentation {
 
 /*
  * WHERE EVERYTHING GOES IN TOUCH MODE -- one authority, read by both owners.
@@ -24,96 +25,98 @@
  * between.
  */
 
-typedef struct X2Rect {
+struct Rect {
   float left;
   float top;
   float right;
   float bottom;
-} X2Rect;
+};
 
 /* The retail potion kinds, in the order CHud stacks them. */
-enum { X2_HUD_POTION_HEALTH = 0, X2_HUD_POTION_ENERGY = 1, X2_HUD_POTIONS = 2 };
+inline constexpr int kHudPotionHealth = 0;
+inline constexpr int kHudPotionEnergy = 1;
+inline constexpr int kHudPotions = 2;
 
 /* What the retail HUD drew this frame that a finger can press, in output
  * pixels; each mask bit says that entry was drawn. The potions are health,
  * then energy. The menu icons are the pause menu and team menu icons, in
  * that order, that the game's mouse overlay draws at the top centre and its
  * click handler acts on. */
-#define X2_HUD_MENU_ICONS 2
-typedef struct X2HudRegions {
-  X2Rect portraits[4];
+inline constexpr int kHudMenuIcons = 2;
+struct HudRegions {
+  Rect portraits[4];
   unsigned portrait_mask;
-  X2Rect potions[X2_HUD_POTIONS];
+  Rect potions[kHudPotions];
   unsigned potion_mask;
-  X2Rect menu_icons[X2_HUD_MENU_ICONS];
+  Rect menu_icons[kHudMenuIcons];
   unsigned menu_icon_mask;
-} X2HudRegions;
+};
 
 /* The output, and the region of it a player can actually reach: a phone's
    cutout and gesture bar are not drawable, and a control placed under one is
    invisible or steals the system gesture. */
-typedef struct X2LayoutViewport {
+struct LayoutViewport {
   float width;
   float height;
   float safe_left;
   float safe_top;
   float safe_right;
   float safe_bottom;
-} X2LayoutViewport;
+};
 
 /* Where the relocated retail HUD goes. The HUD owner (hud_layout.h) produces
    it; the control layout copies it and fits the controls around it. */
-typedef struct {
-  X2Rect vitals;
+struct HudPlacement {
+  Rect vitals;
   /* One ring per potion, side by side under the vitals: square, so a touch
      button's circle is inscribed in it. */
-  X2Rect potions[X2_HUD_POTIONS];
-  X2Rect portraits[4], selector;
-} X2HudPlacement;
+  Rect potions[kHudPotions];
+  Rect portraits[4], selector;
+};
 
 /*
  * Every placed thing, named. The order is the enumeration order and
- * kX2SlotCount is the denominator any exhaustive check counts against.
+ * kSlotCount is the denominator any exhaustive check counts against.
  *
  * The HUD slots are the retail elements this port MOVES; the control slots are
  * the ones it DRAWS. They share one enum because they share one rectangle
  * space and must not overlap -- a check that they do not is only possible if
  * one list holds both.
  */
-typedef enum X2LayoutSlot {
+enum LayoutSlot : int {
   /* Retail HUD, relocated. Vitals and potions to the top left, the party
      portraits to the top right, per the requested layout. */
-  kX2SlotVitals = 0,
-  kX2SlotPotions,
-  kX2SlotPortraits,
+  kSlotVitals = 0,
+  kSlotPotions,
+  kSlotPortraits,
   /* Port-drawn touch controls: movement bottom left, actions bottom right. */
-  kX2SlotStick,
-  kX2SlotLightAttack,
-  kX2SlotHeavyAttack,
-  kX2SlotUse,
-  kX2SlotJump,
+  kSlotStick,
+  kSlotLightAttack,
+  kSlotHeavyAttack,
+  kSlotUse,
+  kSlotJump,
   /* The hero's four RT powers, in the game's slot order (A, B, X, Y). A slot
      is always placed; whether it is DRAWN is the controls' decision, because
      it depends on which powers the hero has, not on the viewport. */
-  kX2SlotPower1,
-  kX2SlotPower2,
-  kX2SlotPower3,
-  kX2SlotPower4,
-  kX2SlotPortMenu,
-  kX2SlotCount /* MUST stay last */
-} X2LayoutSlot;
+  kSlotPower1,
+  kSlotPower2,
+  kSlotPower3,
+  kSlotPower4,
+  kSlotPortMenu,
+  kSlotCount /* MUST stay last */
+};
 
 /* Name of a slot, for traces and refusals. Never null, for every value below
-   kX2SlotCount. */
-const char *x2_layout_slot_name(int slot);
+   kSlotCount. */
+const char *layout_slot_name(int slot);
 
 /* True when the slot is a retail HUD element rather than a port-drawn control.
    The two are placed by different owners and the distinction is the layout's
    to state, not each caller's to rediscover from the enumerator's spelling. */
-int x2_layout_slot_is_hud(int slot);
+int layout_slot_is_hud(int slot);
 
 /*
- * Fill `out` with kX2SlotCount rectangles for this viewport.
+ * Fill `out` with kSlotCount rectangles for this viewport.
  *
  * The HUD slots are copied from `hud`, the HUD owner's placement, and the
  * controls are fitted to avoid it. A NULL `hud` leaves the HUD slots empty.
@@ -123,17 +126,16 @@ int x2_layout_slot_is_hud(int slot);
  * has no layout, which is a different fact from a layout of empty rectangles,
  * and the difference decides whether it should draw nothing or refuse.
  */
-int x2_layout_build(X2LayoutViewport viewport, const X2HudPlacement *hud,
-                    X2Rect *out);
+int layout_build(LayoutViewport viewport, const HudPlacement *hud, Rect *out);
 
 /*
  * Where a movement thumb may land: the lower-left of the screen, not just the
- * drawn ring. Wider than kX2SlotStick by design, so it is not a slot (slots
+ * drawn ring. Wider than kSlotStick by design, so it is not a slot (slots
  * never overlap). It stops at the centreline, at the leftmost action or power
  * button, and at the retail HUD's potions; its lower half holds the ring.
- * `slots` is a layout x2_layout_build produced for the same viewport.
+ * `slots` is a layout layout_build produced for the same viewport.
  */
-X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots);
+Rect layout_stick_reach(LayoutViewport viewport, const Rect *slots);
 
 /*
  * THE MENU PAD: what touch play draws on every screen that is not gameplay --
@@ -148,30 +150,30 @@ X2Rect x2_layout_stick_reach(X2LayoutViewport viewport, const X2Rect *slots);
  * it REPLACES the gameplay controls rather than sitting beside them: the two
  * are never drawn together, so overlapping them is not a collision.
  */
-typedef enum X2MenuSlot {
-  kX2MenuDpadUp = 0,
-  kX2MenuDpadDown,
-  kX2MenuDpadLeft,
-  kX2MenuDpadRight,
-  kX2MenuA,
-  kX2MenuB,
-  kX2MenuX,
-  kX2MenuY,
-  kX2MenuLeftShoulder,
-  kX2MenuRightShoulder,
-  kX2MenuSlotCount /* MUST stay last */
-} X2MenuSlot;
+enum MenuSlot : int {
+  kMenuDpadUp = 0,
+  kMenuDpadDown,
+  kMenuDpadLeft,
+  kMenuDpadRight,
+  kMenuA,
+  kMenuB,
+  kMenuX,
+  kMenuY,
+  kMenuLeftShoulder,
+  kMenuRightShoulder,
+  kMenuSlotCount /* MUST stay last */
+};
 
-const char *x2_menu_slot_name(int slot);
+const char *menu_slot_name(int slot);
 
-/* Fill `out` with kX2MenuSlotCount rectangles for this viewport, sized like
+/* Fill `out` with kMenuSlotCount rectangles for this viewport, sized like
    the gameplay buttons. Returns 0 without touching `out` for a viewport with
-   no usable area, exactly as x2_layout_build does. */
-int x2_layout_build_menu(X2LayoutViewport viewport, X2Rect *out);
+   no usable area, exactly as layout_build does. */
+int layout_build_menu(LayoutViewport viewport, Rect *out);
 
 /* Whether two placed rectangles overlap. Exposed because the invariant that
    the HUD and the controls do not sit on top of each other is worth asserting
    in a test at every aspect ratio, not just believing at one. */
-int x2_layout_rects_overlap(X2Rect a, X2Rect b);
+int layout_rects_overlap(Rect a, Rect b);
 
-#endif /* X2_TOUCH_LAYOUT_H */
+} // namespace x2::presentation

@@ -35,7 +35,7 @@ void heartbeat_subsystem_reports(void) {
      on every beat including the one where nothing was touched, because "no
      finger has landed yet" and "fingers landed and were dropped" are the two
      answers this feature has actually given on a device. */
-  x2_touch_runtime_report("[HB] ");
+  x2::input::touch_runtime_report("[HB] ");
   /* The audio device and the movie clock. A cutscene that never ends because
      its stream never reported itself finished is indistinguishable from a
      guest deadlock until these are on the line. */

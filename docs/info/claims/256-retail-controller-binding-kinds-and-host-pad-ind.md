@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-24
 tags: input,prompts,hotswap
-depends: src/native/dinput8_controller_slots.cpp#dinput8_controller_slot_for_host_pad, src/input/player_input.cpp#x2_player_input_sync, src/native/pad_glyphs.cpp#host_pad_for_kind, tests/test_dinput8_controller_slots.cpp#main
+depends: src/native/dinput8_controller_slots.cpp#dinput8_controller_slot_for_host_pad, src/input/player_input.cpp#player_input_sync, src/native/pad_glyphs.cpp#host_pad_for_kind, tests/test_dinput8_controller_slots.cpp#main
 ---
 
 ## Claim

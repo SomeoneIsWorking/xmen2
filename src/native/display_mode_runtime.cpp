@@ -194,13 +194,13 @@ static void reread_resolution(const CPU *source, uint32_t exe,
 }
 
 static void x2_override_display_settings_load(CPU *C) {
-  const X2Settings *settings;
+  const x2::config::Settings *settings;
   uint32_t exe;
   char expected[32];
 
   x86_guest_body(C, "XMen2.exe", 0x00619770u);
 
-  settings = x2_settings_store();
+  settings = x2::config::settings_store();
   if (!x2::presentation::display_mode_seed_format(
           settings->width, settings->height, expected, (int)sizeof expected) ||
       strlen(expected) >= RESOLUTION_CAPACITY)

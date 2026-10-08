@@ -83,9 +83,9 @@ static int file_exists(const char *path) {
 
 /* A missing piece is REPORTED, never quietly skipped: a bundle that lost its
    Vulkan driver in packaging otherwise looks like a machine without a GPU. */
-static void publish_file(const char *path, X2ConfigOverride variable,
+static void publish_file(const char *path, x2::config::ConfigOverride variable,
                          const char *what) {
-  const char *configured = x2_config_override_get(variable);
+  const char *configured = config_override_get(variable);
   if (!file_exists(path)) {
     x2_log_error("macos bundle: %s is MISSING from this bundle (%s); the "
                  "packaged app is incomplete.\n",
@@ -94,7 +94,7 @@ static void publish_file(const char *path, X2ConfigOverride variable,
   }
   if (configured && configured[0])
     return; /* the machine already chose one; the bundle does not argue */
-  x2_config_override_set(variable, path, 0);
+  config_override_set(variable, path, 0);
 }
 #endif
 
@@ -108,7 +108,7 @@ int macos_bundle_init(const char *executable) {
 
   snprintf(path, sizeof path, "%s/Contents/Resources/ui", root);
   if (directory_exists(path))
-    x2_config_override_set(kX2ConfigUiResourceDir, path, 0);
+    config_override_set(x2::config::ConfigOverride::UiResourceDir, path, 0);
   else
     x2_log_error("macos bundle: the UI resources are MISSING from this "
                  "bundle (%s); the settings overlay will not draw.\n",
@@ -119,9 +119,9 @@ int macos_bundle_init(const char *executable) {
      using, and the two never disagree because both are set from one file. */
   snprintf(path, sizeof path,
            "%s/Contents/Resources/vulkan/icd.d/MoltenVK_icd.json", root);
-  publish_file(path, kX2ConfigVulkanDriverFiles,
+  publish_file(path, x2::config::ConfigOverride::VulkanDriverFiles,
                "the MoltenVK driver manifest");
-  publish_file(path, kX2ConfigVulkanIcdFilenames,
+  publish_file(path, x2::config::ConfigOverride::VulkanIcdFilenames,
                "the MoltenVK driver manifest");
 
   snprintf(path, sizeof path, "%s/Contents/Frameworks/libvulkan.1.dylib", root);

@@ -381,7 +381,7 @@ static void *heartbeat_thread(void *arg) {
 }
 
 void heartbeat_start(void) {
-  const char *e = x2_config_override_get(kX2ConfigHeartbeat);
+  const char *e = config_override_get(x2::config::ConfigOverride::Heartbeat);
   pthread_t th;
   int rc;
 

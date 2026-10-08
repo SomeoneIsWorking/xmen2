@@ -49,14 +49,14 @@ public:
   bool release_if_held();
 
   // The oldest queued event, for the Win32 pump. False when there is none.
-  bool take(X2TouchPointer &out);
+  bool take(TouchPointer &out);
 
 private:
   void queue(lucent::touch::Point at, int button_change);
 
   PointerOwner owner_;
   lucent::touch::Point at_{};
-  std::deque<X2TouchPointer> pending_;
+  std::deque<TouchPointer> pending_;
 };
 
 } // namespace x2::input

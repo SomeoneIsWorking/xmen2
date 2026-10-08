@@ -75,7 +75,7 @@ void interrupt_reports(int killed) {
     x2::presentation::boot_blackout_report(blackout, sizeof blackout);
     x2_log_info("        %s", blackout);
   }
-  x2_engine_report();
+  engine_report();
   x86_override_leaves_report();
   d3d8_host_report();
   guest_heap_report();
@@ -94,7 +94,7 @@ void interrupt_reports(int killed) {
   x2::native::ui_text_scale_report();
   x2::native::dialog_selection_scale_report();
   x2::native::touch_hud_report();
-  x2_touch_runtime_report("");
+  x2::input::touch_runtime_report("");
   dinput_device_report();
   dinput_pad_report();
   x2::native::stick_axis_report();

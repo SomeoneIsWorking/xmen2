@@ -35,7 +35,7 @@ controller, as on the Xbox, so touch play now draws one on every screen that
 is not gameplay -- d-pad, A/B/X/Y, LB/RB -- through the same virtual pad as
 the gameplay controls, and the footers name that pad's buttons in the shared
 Xbox glyphs (`src/input/touch_menu_controls.cpp`,
-`x2_layout_build_menu`). The prompt rewrite, its action-label registry, the
+`layout_build_menu`). The prompt rewrite, its action-label registry, the
 keyboard injection it pressed through, `/prompts`, and the synthetic pad's
 exclusion from prompt naming are removed. A finger that begins off the pad is
 still the retail pointer. Touch-native menus that replace the retail ones are

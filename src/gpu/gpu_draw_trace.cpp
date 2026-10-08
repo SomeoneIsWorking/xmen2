@@ -228,7 +228,8 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
   FILE *destination;
 
   if (g_frame_dump.want == -2) {
-    const char *value = x2_config_override_get(kX2ConfigFrameDump);
+    const char *value =
+        config_override_get(x2::config::ConfigOverride::FrameDump);
     g_frame_dump.want = -1;
     if (value && *value) {
       if (!strncmp(value, "busy", 4)) {
@@ -331,7 +332,8 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
   }
 
   if (range_first == -2) {
-    const char *value = x2_config_override_get(kX2ConfigDrawRange);
+    const char *value =
+        config_override_get(x2::config::ConfigOverride::DrawRange);
     range_first = -1;
     if (value && *value) {
       const char *separator = strchr(value, ':');
@@ -351,7 +353,8 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
     return 0;
   }
   if (!texture_filter_init) {
-    const char *value = x2_config_override_get(kX2ConfigDrawTextures);
+    const char *value =
+        config_override_get(x2::config::ConfigOverride::DrawTextures);
     texture_filter_init = 1;
     if (value && *value) {
       char copy[256], *part, *save;

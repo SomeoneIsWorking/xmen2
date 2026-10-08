@@ -66,7 +66,7 @@ static void fifo_open_if_due(double now) {
   if (now < g_fifo_next_try)
     return;
   g_fifo_next_try = now + 1.0;
-  path = x2_config_override_get(kX2ConfigInputFifo);
+  path = config_override_get(x2::config::ConfigOverride::InputFifo);
   if (!path || !*path) {
     g_fifo_fd = -1;
     return;

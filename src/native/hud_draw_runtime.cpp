@@ -39,11 +39,11 @@ typedef struct {
 } HudScope;
 
 static HudScope g_scope;
-static X2LayoutViewport g_viewport;
+static x2::presentation::LayoutViewport g_viewport;
 static x2::presentation::HudSpace g_space, g_retail_space;
-static X2HudPlacement g_layout;
+static x2::presentation::HudPlacement g_layout;
 /* What was drawn since the last publication, published whole each frame. */
-static X2HudRegions g_regions;
+static x2::presentation::HudRegions g_regions;
 /* Where the game's mouse overlay last drew its menu-icon row, in output
    pixels; the relocated HUD's top row lines up with it. Negative until the
    overlay has drawn one. The overlay draws after the HUD, so a frame lines
@@ -66,12 +66,12 @@ static void write_floats(uint32_t address, const float *values,
 /* The HUD space mapped onto the output: the one mapping every published
    region and relocated group goes through. */
 static int prepare_space(void) {
-  if (!x2_touch_runtime_viewport(&g_viewport))
+  if (!x2::input::touch_runtime_viewport(&g_viewport))
     return 0;
   g_retail_space = x2::presentation::hud_space((float)RDF32(VIEWPORT + 0x10u),
                                                (float)RDF32(VIEWPORT + 0x48u),
                                                (float)RDF32(VIEWPORT + 0x4cu));
-  const X2Settings *settings = x2_settings_store();
+  const x2::config::Settings *settings = x2::config::settings_store();
   x2::presentation::AspectRect frame;
   if (!x2::presentation::aspect_fit((uint32_t)g_viewport.width,
                                     (uint32_t)g_viewport.height,
@@ -97,18 +97,18 @@ static int prepare_space(void) {
 /* That mapping, plus the mobile layout when it is the one in use; the
    placement is published so the touch zones lay out around it. */
 static int prepare(void) {
-  const X2Settings *settings = x2_settings_store();
+  const x2::config::Settings *settings = x2::config::settings_store();
   const int mobile = prepare_space() &&
                      x2::presentation::hud_layout_mobile(
-                         &settings->hud, x2_touch_runtime_active()) &&
+                         &settings->hud, x2::input::touch_runtime_active()) &&
                      x2::presentation::hud_layout_build(
                          g_viewport, &settings->hud, g_menu_row_top, &g_layout);
-  x2_touch_runtime_hud_placement(mobile ? &g_layout : NULL);
+  x2::input::touch_runtime_hud_placement(mobile ? &g_layout : NULL);
   return mobile;
 }
 
 static void placement(unsigned group, x2::presentation::HudSpace source,
-                      X2Rect target) {
+                      x2::presentation::Rect target) {
   g_scope.active = 1;
   g_scope.group = group;
   g_scope.transform = x2::presentation::hud_fit(
@@ -146,7 +146,7 @@ void hud_party_draw(CPU *cpu) {
   HudScope saved = g_scope;
   g_scope = (HudScope){0};
   ++g_total[0];
-  x2_touch_runtime_hud_regions(&g_regions);
+  x2::input::touch_runtime_hud_regions(&g_regions);
   g_regions.portrait_mask = 0;
   g_regions.potion_mask = 0;
   g_regions.menu_icon_mask = 0;
@@ -194,19 +194,21 @@ static void vitals_draw(CPU *cpu) {
 enum { POTION_ENERGY_ICON_TOP = 182, POTION_ENERGY_COUNT_Z = 172 };
 
 static x2::presentation::HudTransform
-potion_fit(x2::presentation::HudSpace source, X2Rect target) {
+potion_fit(x2::presentation::HudSpace source, x2::presentation::Rect target) {
   return x2::presentation::hud_fit(g_space, g_viewport.width, g_viewport.height,
                                    source, target);
 }
 
 static unsigned potion_of_icon(float top) {
-  return top > (float)POTION_ENERGY_ICON_TOP + 0.5f ? X2_HUD_POTION_HEALTH
-                                                    : X2_HUD_POTION_ENERGY;
+  return top > (float)POTION_ENERGY_ICON_TOP + 0.5f
+             ? x2::presentation::kHudPotionHealth
+             : x2::presentation::kHudPotionEnergy;
 }
 
 static unsigned potion_of_count(float z) {
-  return z > (float)POTION_ENERGY_COUNT_Z + 0.5f ? X2_HUD_POTION_HEALTH
-                                                 : X2_HUD_POTION_ENERGY;
+  return z > (float)POTION_ENERGY_COUNT_Z + 0.5f
+             ? x2::presentation::kHudPotionHealth
+             : x2::presentation::kHudPotionEnergy;
 }
 
 static void inventory_draw(CPU *cpu) {
@@ -217,9 +219,10 @@ static void inventory_draw(CPU *cpu) {
        or a count (a scene matrix) is placed by. */
     const float left = g_retail_space.left +
                        g_retail_space.width * (float)RDF32(VIEWPORT + 0x58u);
-    const X2Rect rings = {g_layout.potions[0].left, g_layout.potions[0].top,
-                          g_layout.potions[X2_HUD_POTIONS - 1].right,
-                          g_layout.potions[X2_HUD_POTIONS - 1].bottom};
+    const x2::presentation::Rect rings = {
+        g_layout.potions[0].left, g_layout.potions[0].top,
+        g_layout.potions[x2::presentation::kHudPotions - 1].right,
+        g_layout.potions[x2::presentation::kHudPotions - 1].bottom};
     placement(2, x2::presentation::HudSpace{left, 202.0f, 60.0f, 40.0f}, rings);
   }
   ++g_total[2];
@@ -228,7 +231,7 @@ static void inventory_draw(CPU *cpu) {
   if (g_scope.active) {
     float xyz[3];
     const uint32_t centers[] = {POTION_CENTER, 0x00a0a118u};
-    for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
+    for (unsigned i = 0; i < x2::presentation::kHudPotions; ++i) {
       read_floats(centers[i], xyz, 3);
       x2::presentation::hud_transform_point(
           potion_fit(x2::presentation::HudSpace{xyz[0] - 10.0f, xyz[2] + 10.0f,
@@ -238,7 +241,7 @@ static void inventory_draw(CPU *cpu) {
       write_floats(centers[i], xyz, 3);
       g_regions.potions[i] = g_layout.potions[i];
     }
-    g_regions.potion_mask = (1u << X2_HUD_POTIONS) - 1u;
+    g_regions.potion_mask = (1u << x2::presentation::kHudPotions) - 1u;
   }
   g_scope = saved;
 }
@@ -255,7 +258,7 @@ static void inventory_draw(CPU *cpu) {
  */
 enum { MENU_ICON_LEFT = 0x00a0a10cu, MENU_ICON_RIGHT = 0x00a0a124u };
 
-static X2Rect menu_icon_region(uint32_t corner, float size) {
+static x2::presentation::Rect menu_icon_region(uint32_t corner, float size) {
   const float half = size * 0.5f;
   return x2::presentation::hud_output_rect(
       g_space, g_viewport.width, g_viewport.height, (float)RDF32(corner) + half,
@@ -270,7 +273,7 @@ static void mouse_overlay_draw(CPU *cpu) {
   const float size = (float)RDF32(MENU_ICON_SIZE);
   g_regions.menu_icons[0] = menu_icon_region(MENU_ICON_LEFT, size);
   g_regions.menu_icons[1] = menu_icon_region(MENU_ICON_RIGHT, size);
-  g_regions.menu_icon_mask = (1u << X2_HUD_MENU_ICONS) - 1u;
+  g_regions.menu_icon_mask = (1u << x2::presentation::kHudMenuIcons) - 1u;
   g_menu_row_top =
       fminf(g_regions.menu_icons[0].top, g_regions.menu_icons[1].top);
 }

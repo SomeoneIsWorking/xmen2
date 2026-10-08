@@ -686,7 +686,8 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
     return;
   }
   {
-    const char *want = x2_config_override_get(kX2ConfigTextureLevels);
+    const char *want =
+        config_override_get(x2::config::ConfigOverride::TextureLevels);
     if (want && (*want == '*' || strtoul(want, NULL, 0) == r->gtex))
       x2_log_error("d3d8: texture %u uploaded face %u level %u of %u "
                    "(%ux%u, %u bytes)\n",

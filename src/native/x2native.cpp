@@ -1532,7 +1532,7 @@ int main(int argc, char **argv) {
      jit-common I001 exists to prevent. */
   {
     char why[256] = "";
-    if (!x2_engine_init(why, sizeof why)) {
+    if (!x2::native::engine_init(why, sizeof why)) {
       x2_log_error("x2native: %s\n", why);
       return 1;
     }
@@ -1630,7 +1630,7 @@ int main(int argc, char **argv) {
   }
 
   if (!dir)
-    dir = x2_config_override_get(kX2ConfigGamePcDir);
+    dir = config_override_get(x2::config::ConfigOverride::GamePcDir);
   if (!dir || !*dir) {
     x2_log_info("SKIP x2native: no install directory given and GAME_PC_DIR is "
                 "unset, so there is nothing to map. NOTHING was checked.\n");
@@ -1681,7 +1681,7 @@ int main(int argc, char **argv) {
      because half of what it checks is the predicate that decides when the
      engine hands an address back to this dispatcher, and that predicate has
      nothing to answer before the overrides are resolved. */
-  if (!x2_engine_selftest())
+  if (!x2::native::engine_selftest())
     return 1;
 
   /* Bind imports only once every module is mapped: a slot pointing into a
@@ -1964,10 +1964,8 @@ int main(int argc, char **argv) {
         snprintf(hotep, sizeof hotep, "%ld", lucent_cvar_number("hotep", 0));
         x86_hotep_arm(hotep);
       }
-      {
-        extern void x86_profiler_start(const char *);
-        x86_profiler_start(x2_config_override_get(kX2ConfigProfile));
-      }
+      x86_profiler_start(
+          config_override_get(x2::config::ConfigOverride::Profile));
       {
         /* Registered settings, not environment reads: a packaged Android app
            has no environment, and issue #172 needs these armed where the bug
@@ -1998,7 +1996,7 @@ int main(int argc, char **argv) {
          only where threads.cpp says. Taking it here rather than inside the
          dispatcher keeps it to one acquire for the whole run. */
       /* Not a call that returns: the game leaves through exit(). */
-      x2_engine_program_entry(entry);
+      x2::native::engine_program_entry(entry);
       guest_lock();
       x86_dispatch(&C, entry);
       guest_unlock();

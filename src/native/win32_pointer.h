@@ -5,7 +5,9 @@
 #include <SDL3/SDL.h>
 #include <cstdint>
 
-struct X2TouchPointer;
+namespace x2::input {
+struct TouchPointer;
+} // namespace x2::input
 
 namespace x2::native {
 
@@ -16,7 +18,7 @@ int win32_pointer_get_cursor_pos(int32_t *x, int32_t *y);
 int win32_pointer_set_cursor_pos(int32_t x, int32_t y);
 void win32_pointer_translate_mouse(const SDL_Event *event, Win32Mouse *mouse,
                                    uint32_t hwnd);
-void win32_pointer_translate_touch(const X2TouchPointer *pointer,
+void win32_pointer_translate_touch(const input::TouchPointer *pointer,
                                    Win32Mouse *mouse, uint32_t hwnd);
 
 } // namespace x2::native

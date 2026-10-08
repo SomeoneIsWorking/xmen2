@@ -264,7 +264,7 @@ lucent::cvar::Var<std::string> g_write_watch{"write_watch", ""};
  * a --set name that is still unclaimed at that point is one no run will ever
  * answer to -- a typo, or a key belonging to the OTHER configuration system
  * (the player settings in x2native.conf, whose names are read by
- * x2_settings_store and never by a CVar).
+ * settings_store and never by a CVar).
  *
  * Measured: `--set input.touch_controls=2` was accepted in silence and did
  * nothing, and the run it produced -- the overlay's pad attached too late for

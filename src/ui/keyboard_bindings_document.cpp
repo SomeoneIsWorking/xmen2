@@ -43,13 +43,13 @@ void wire(Rml::ElementDocument &document, Rml::EventListener &listener,
 
 } // namespace
 
-std::string keyboard_binding_label(const X2KeyboardProfile &profile,
+std::string keyboard_binding_label(const x2::config::KeyboardProfile &profile,
                                    unsigned row) {
   uint32_t kind = 0;
   uint32_t code = 0;
   if (profile.keyboard_set[row])
     return device_code_label(kKeyboardKind, profile.keyboard[row]);
-  if (!x2_player_input_game_keyboard_binding(row, &kind, &code))
+  if (!x2::input::player_input_game_keyboard_binding(row, &kind, &code))
     return "Game default";
   return device_code_label(kind, code);
 }
@@ -57,10 +57,11 @@ std::string keyboard_binding_label(const X2KeyboardProfile &profile,
 bool keyboard_bindings_game_known() {
   uint32_t kind;
   uint32_t code;
-  return x2_player_input_game_keyboard_binding(0, &kind, &code) != 0;
+  return x2::input::player_input_game_keyboard_binding(0, &kind, &code) != 0;
 }
 
-std::string keyboard_bindings_document_rml(const X2KeyboardProfile &profile) {
+std::string
+keyboard_bindings_document_rml(const x2::config::KeyboardProfile &profile) {
   std::ostringstream rml;
   rml << "<button id='" << kRestoreAll << "'>Restore all defaults</button>"
       << "<div class='section-heading'>Actions</div>";
@@ -88,12 +89,12 @@ void keyboard_bindings_document_wire(Rml::ElementDocument &document,
   }
 }
 
-bool keyboard_bindings_document_restore(X2KeyboardProfile &profile,
+bool keyboard_bindings_document_restore(x2::config::KeyboardProfile &profile,
                                         const std::string &id) {
   unsigned row;
   char tail;
   if (id == kRestoreAll) {
-    x2_keyboard_profile_restore_all(&profile);
+    keyboard_profile_restore_all(&profile);
     return true;
   }
   if (id.rfind(kRestorePrefix, 0) != 0 ||
@@ -101,7 +102,7 @@ bool keyboard_bindings_document_restore(X2KeyboardProfile &profile,
                   &tail) != 1 ||
       row >= INPUT_BINDING_ROWS)
     return false;
-  x2_keyboard_profile_restore_row(&profile, row);
+  keyboard_profile_restore_row(&profile, row);
   return true;
 }
 

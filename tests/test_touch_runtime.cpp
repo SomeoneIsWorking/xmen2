@@ -78,7 +78,7 @@ void check(bool ok, const char *what, const std::string &detail) {
 
 /* The window is 1 unit of SDL's normalized finger space wide, so a contact at
  * output pixel (x, y) is dispatched at (x / width, y / height) -- the same
- * conversion x2_touch_runtime_event performs in reverse. */
+ * conversion touch_runtime_event performs in reverse. */
 void send_finger(Uint32 type, SDL_FingerID id, float x, float y, int width,
                  int height) {
   SDL_Event event{};
@@ -86,18 +86,20 @@ void send_finger(Uint32 type, SDL_FingerID id, float x, float y, int width,
   event.tfinger.fingerID = id;
   event.tfinger.x = x / static_cast<float>(width);
   event.tfinger.y = y / static_cast<float>(height);
-  x2_touch_runtime_event(&event);
+  x2::input::touch_runtime_event(&event);
 }
 
-std::vector<X2TouchVisual> visuals() {
-  std::vector<X2TouchVisual> out(x2_touch_runtime_visuals(nullptr, 0));
+std::vector<x2::input::TouchVisual> visuals() {
+  std::vector<x2::input::TouchVisual> out(
+      x2::input::touch_runtime_visuals(nullptr, 0));
   if (!out.empty())
-    x2_touch_runtime_visuals(out.data(), out.size());
+    touch_runtime_visuals(out.data(), out.size());
   return out;
 }
 
-const X2TouchVisual *find_action(const std::vector<X2TouchVisual> &all,
-                                 x2::input::TouchAction action) {
+const x2::input::TouchVisual *
+find_action(const std::vector<x2::input::TouchVisual> &all,
+            x2::input::TouchAction action) {
   for (const auto &visual : all)
     if (visual.action == static_cast<int>(action))
       return &visual;
@@ -106,7 +108,7 @@ const X2TouchVisual *find_action(const std::vector<X2TouchVisual> &all,
 
 bool zone_is_active(x2::input::TouchAction action) {
   const auto all = visuals();
-  const X2TouchVisual *zone = find_action(all, action);
+  const x2::input::TouchVisual *zone = find_action(all, action);
   return zone && zone->active;
 }
 
@@ -269,14 +271,15 @@ int main() {
         "nothing has attached one");
   SDL_Gamepad *pad = nullptr;
 
-  x2_settings_store_init();
-  x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
+  x2::config::settings_store_init();
+  x2::config::settings_store()->touch_controls =
+      x2::config::kTouchControlsAlways;
   /*
    * THE WHOLE RUN BELOW HAPPENS UNDER A STALE CONTROLLER RESERVATION.
    *
    * This is the ordinary state of a phone whose owner once paired a
    * Bluetooth pad: the stored assignment survives, the device does not. It
-   * used to stop touch claiming player one -- while x2_player_input_sync,
+   * used to stop touch claiming player one -- while player_input_sync,
    * which resolves the reservation through dinput_pad_for_persistent_id,
    * left player one unassigned because no such device is here. Player one
    * ended up with no controller at all and touch declined to fill the
@@ -286,30 +289,30 @@ int main() {
    * follows -- the claim, the presses, the axes, the guest's own buffer --
    * is made in its presence.
    */
-  check(x2_settings_assign_controller(x2_settings_store(),
-                                      "a-pad-that-is-not-here", 0) != 0,
+  check(settings_assign_controller(x2::config::settings_store(),
+                                   "a-pad-that-is-not-here", 0) != 0,
         "a stale reservation for an absent controller is stored",
         "the ordinary state of a phone that once saw a Bluetooth pad");
-  check(x2_settings_player_controller(x2_settings_store(), 0) != nullptr,
+  check(settings_player_controller(x2::config::settings_store(), 0) != nullptr,
         "and player one's stored reservation names it",
         "so the run below is made under one");
-  x2_touch_runtime_window(window);
+  x2::input::touch_runtime_window(window);
 
   /* The census's OTHER branch, printed before anything has been touched.
      It is the one a phone or a browser tab sits in for the whole of the logo
      and the loading route, and it is printed here so the reader that parses
      it -- tests/test_web_touch_play.py -- is checked against the real text
      rather than a fixture that can drift from this file. */
-  x2_touch_runtime_report("");
+  x2::input::touch_runtime_report("");
 
   /* NEGATIVE FIRST. Without it an overlay that is always visible, and a test
      that only ever looked after the heartbeat, would agree with each other. */
-  check(!x2_touch_runtime_overlay_visible(),
+  check(!x2::input::touch_runtime_overlay_visible(),
         "the overlay is hidden before the game reports gameplay control",
         "no HUD heartbeat has arrived");
 
   x2_gameplay_control_hud_drawn(guest_clock_now_s());
-  check(x2_touch_runtime_overlay_visible() != 0,
+  check(x2::input::touch_runtime_overlay_visible() != 0,
         "the overlay is visible once the retail HUD has drawn",
         "one heartbeat");
 
@@ -317,7 +320,7 @@ int main() {
   check(!drawn.empty(), "the layout publishes drawn controls",
         std::to_string(drawn.size()) + " zone(s)");
 
-  const X2TouchVisual *jump = find_action(drawn, TouchAction::Jump);
+  const x2::input::TouchVisual *jump = find_action(drawn, TouchAction::Jump);
   if (!jump) {
     std::printf("  FAIL the layout has no Jump control to press\n");
     return 1;
@@ -462,9 +465,9 @@ int main() {
 
   /* The stick is the control a scroll steals first in a browser and the one a
      player uses constantly, so it gets the same treatment as a button. */
-  const X2TouchVisual *stick = nullptr;
+  const x2::input::TouchVisual *stick = nullptr;
   for (const auto &visual : drawn)
-    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
+    if (visual.kind == x2::input::TouchVisualKind::Stick) {
       stick = &visual;
       break;
     }
@@ -509,17 +512,19 @@ int main() {
    * button -- arriving whole. A button shared with another held control stays
    * down until the last holder lets go, and a power that vanishes under a
    * finger is released rather than left held. */
-  const auto centre = [](const X2TouchVisual &zone) {
+  const auto centre = [](const x2::input::TouchVisual &zone) {
     return std::pair{(zone.left + zone.right) * 0.5F,
                      (zone.top + zone.bottom) * 0.5F};
   };
   check(!find_action(visuals(), TouchAction::Power1),
         "no power is drawn before the game has published any", "fresh run");
-  const int powers[X2_POWER_SLOTS] = {4, -1, 7, -1};
-  x2_touch_runtime_power_slots(powers);
+  const int powers[x2::input::kPowerSlots] = {4, -1, 7, -1};
+  x2::input::touch_runtime_power_slots(powers);
   const auto with_powers = visuals();
-  const X2TouchVisual *power1 = find_action(with_powers, TouchAction::Power1);
-  const X2TouchVisual *power3 = find_action(with_powers, TouchAction::Power3);
+  const x2::input::TouchVisual *power1 =
+      find_action(with_powers, TouchAction::Power1);
+  const x2::input::TouchVisual *power3 =
+      find_action(with_powers, TouchAction::Power3);
   check(power1 && power3 && power1->power_icon == 4 && power3->power_icon == 7,
         "each published power is drawn with its own atlas cell",
         power1 && power3 ? std::to_string(power1->power_icon) + ", " +
@@ -547,8 +552,8 @@ int main() {
   check(axis_value(pad, "righttrigger") > 0.5F && !button_down(pad, "x"),
         "lifting one power leaves RT down for the other still held",
         "righttrigger " + std::to_string(axis_value(pad, "righttrigger")));
-  const int none[X2_POWER_SLOTS] = {-1, -1, -1, -1};
-  x2_touch_runtime_power_slots(none);
+  const int none[x2::input::kPowerSlots] = {-1, -1, -1, -1};
+  x2::input::touch_runtime_power_slots(none);
   check(axis_value(pad, "righttrigger") < 0.5F && !button_down(pad, "a"),
         "a power that vanishes under a finger is released",
         "righttrigger " + std::to_string(axis_value(pad, "righttrigger")) +
@@ -565,7 +570,7 @@ int main() {
         "precondition for the next check");
   SDL_Event lost{};
   lost.type = SDL_EVENT_WINDOW_FOCUS_LOST;
-  x2_touch_runtime_lifecycle_event(&lost);
+  x2::input::touch_runtime_lifecycle_event(&lost);
   check(!button_down(pad, "y"), "losing the window releases what was held",
         "focus lost while Jump was down");
   check(!zone_is_active(TouchAction::Jump),
@@ -610,17 +615,17 @@ int main() {
    * check is that the contact becomes a pointer press at its own position and
    * presses no pad button, because those screens are the retail GUI.
    */
-  x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_OFF;
+  x2::config::settings_store()->touch_controls = x2::config::kTouchControlsOff;
   const unsigned long pointer_before = census.pointer_events;
-  X2TouchPointer pointer{};
-  while (x2_touch_runtime_take_pointer(&pointer)) {
+  x2::input::TouchPointer pointer{};
+  while (touch_runtime_take_pointer(&pointer)) {
   }
   send_finger(SDL_EVENT_FINGER_DOWN, 6, jump_x, jump_y, width, height);
   x2::input::touch_census_read(&census);
   check(census.pointer_events == pointer_before + 1,
         "a contact with no control drawn becomes the retail pointer",
         std::to_string(census.pointer_events) + " pointer event(s)");
-  check(x2_touch_runtime_take_pointer(&pointer) && pointer.button_change == 1,
+  check(touch_runtime_take_pointer(&pointer) && pointer.button_change == 1,
         "and it is published as a pointer PRESS",
         "button_change " + std::to_string(pointer.button_change));
   check(std::abs(pointer.x - jump_x) < 1.0F &&
@@ -643,25 +648,27 @@ int main() {
 
   send_finger(SDL_EVENT_FINGER_UP, 6, jump_x, jump_y, width, height);
   bool released = false;
-  while (x2_touch_runtime_take_pointer(&pointer)) {
+  while (touch_runtime_take_pointer(&pointer)) {
     released = released || pointer.button_change == 0;
   }
   check(released, "lifting the owning finger releases the button",
         "a press with no release would leave retail's button down");
-  x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
+  x2::config::settings_store()->touch_controls =
+      x2::config::kTouchControlsAlways;
 
   /* THE MENU PAD. Off gameplay the overlay draws the controller the retail
      menus are navigated with. Both classes of finger: one that begins on a
      pad button presses that button, one that begins anywhere else is the
      retail pointer's and presses nothing on the pad. */
   x2_gameplay_control_reset();
-  check(!x2_touch_runtime_overlay_visible() &&
-            x2_touch_runtime_has_visuals() != 0,
+  check(!x2::input::touch_runtime_overlay_visible() &&
+            x2::input::touch_runtime_has_visuals() != 0,
         "off gameplay the menu pad is drawn instead of the controls",
         "no HUD heartbeat");
   {
     const auto menu = visuals();
-    const X2TouchVisual *menu_a = find_action(menu, TouchAction::MenuA);
+    const x2::input::TouchVisual *menu_a =
+        find_action(menu, TouchAction::MenuA);
     check(menu_a != nullptr && !find_action(menu, TouchAction::Jump),
           "the menu pad draws A and none of the gameplay controls",
           std::to_string(menu.size()) + " visual(s)");
@@ -670,8 +677,8 @@ int main() {
     }
     const float a_x = (menu_a->left + menu_a->right) * 0.5F;
     const float a_y = (menu_a->top + menu_a->bottom) * 0.5F;
-    X2TouchPointer drained{};
-    while (x2_touch_runtime_take_pointer(&drained)) {
+    x2::input::TouchPointer drained{};
+    while (touch_runtime_take_pointer(&drained)) {
     }
 
     send_finger(SDL_EVENT_FINGER_DOWN, 20, a_x, a_y, width, height);
@@ -681,16 +688,16 @@ int main() {
     check(guest_buttons(slot) == (1 << kDirectInputButtonA),
           "and the guest reads DirectInput button 0 and nothing else",
           "buttons bitmap " + std::to_string(guest_buttons(slot)));
-    X2TouchPointer none{};
-    check(!x2_touch_runtime_take_pointer(&none),
+    x2::input::TouchPointer none{};
+    check(!touch_runtime_take_pointer(&none),
           "a menu pad press is not also a click on the retail GUI",
           "no pointer event");
     send_finger(SDL_EVENT_FINGER_UP, 20, a_x, a_y, width, height);
     check(!button_down(pad, "a"), "lifting it releases A", "button a is up");
 
     send_finger(SDL_EVENT_FINGER_DOWN, 21, empty_x, empty_y, width, height);
-    X2TouchPointer click{};
-    const bool clicked = x2_touch_runtime_take_pointer(&click);
+    x2::input::TouchPointer click{};
+    const bool clicked = touch_runtime_take_pointer(&click);
     check(clicked && click.button_change == 1 && !button_down(pad, "a"),
           "a finger off the pad is the retail pointer and presses no button",
           "centre of the screen");
@@ -699,15 +706,16 @@ int main() {
     check(!button_down(pad, "a"), "and dragging it onto A does not press A",
           "the contact began off the pad");
     send_finger(SDL_EVENT_FINGER_UP, 21, a_x, a_y, width, height);
-    while (x2_touch_runtime_take_pointer(&drained)) {
+    while (touch_runtime_take_pointer(&drained)) {
     }
 
     /* A conversation or cinematic offers Skip; its choices are answered with
        the pad, so both are drawn, and neither on the other. */
     x2_cutscene_skip_offer(1);
-    X2Rect skip{};
+    x2::presentation::Rect skip{};
     int skip_held = 0;
-    const bool skip_drawn = x2_touch_runtime_skip_button(&skip, &skip_held);
+    const bool skip_drawn =
+        x2::input::touch_runtime_skip_button(&skip, &skip_held);
     const auto beside = visuals();
     bool overlap = false;
     for (const auto &visual : beside) {
@@ -726,7 +734,7 @@ int main() {
     send_finger(SDL_EVENT_FINGER_DOWN, 22, a_x, a_y, width, height);
     check(button_down(pad, "a"), "A is held again", "before gameplay");
     x2_gameplay_control_hud_drawn(guest_clock_now_s());
-    (void)x2_touch_runtime_take_pointer(&drained);
+    (void)touch_runtime_take_pointer(&drained);
     check(!button_down(pad, "a"),
           "gameplay taking the screen lets go of a held menu button",
           "no finger event arrived");
@@ -764,7 +772,7 @@ int main() {
 
   /* Runs it for real: a report that throws or prints nothing is not an
      instrument, and nothing else in the suite calls it. */
-  x2_touch_runtime_report("");
+  x2::input::touch_runtime_report("");
 
   std::printf("touch runtime: %d check(s), %d failure(s)\n", g_checks,
               g_failures);

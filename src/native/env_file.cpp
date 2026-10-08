@@ -89,17 +89,17 @@ static int load_file(const char *path) {
       }
       value = trim(value);
     }
-    X2ConfigOverride variable;
-    if (!x2_config_override_from_name(key, &variable)) {
+    x2::config::ConfigOverride variable;
+    if (!config_override_from_name(key, &variable)) {
       x2_log_info("x2native: %s:%lu ignored unregistered configuration '%s'; "
                   "it was not added to the process environment",
                   path, lineno, key);
       ignored++;
       continue;
     }
-    if (x2_config_override_get(variable))
+    if (config_override_get(variable))
       preserved++;
-    else if (x2_config_override_set(variable, value, 0) != 0) {
+    else if (config_override_set(variable, value, 0) != 0) {
       x2_log_error("x2native: cannot set %s from %s (%s)\n", key, path,
                    strerror(errno));
       fclose(f);

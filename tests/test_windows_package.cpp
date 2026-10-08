@@ -40,20 +40,23 @@ int main(int, char **argv) {
 
   check(x2::native::windows_package_init_from(exe.c_str()) == 0,
         "no marker is a developer launch");
-  const char *none = x2_config_override_get(kX2ConfigUiResourceDir);
+  const char *none =
+      config_override_get(x2::config::ConfigOverride::UiResourceDir);
   check(!none || !none[0], "a developer launch publishes nothing");
 
   touch(marker);
   MAKE_DIR((root + "/ui").c_str());
   check(x2::native::windows_package_init_from(exe.c_str()) == 1,
         "the marker makes it the package");
-  const char *published = x2_config_override_get(kX2ConfigUiResourceDir);
+  const char *published =
+      config_override_get(x2::config::ConfigOverride::UiResourceDir);
   check(published && std::string(published) == root + "/ui",
         "the ui folder beside the exe is published");
 
-  x2_config_override_set(kX2ConfigUiResourceDir, "/elsewhere", 1);
+  config_override_set(x2::config::ConfigOverride::UiResourceDir, "/elsewhere",
+                      1);
   x2::native::windows_package_init_from(exe.c_str());
-  published = x2_config_override_get(kX2ConfigUiResourceDir);
+  published = config_override_get(x2::config::ConfigOverride::UiResourceDir);
   check(published && std::strcmp(published, "/elsewhere") == 0,
         "an existing choice is not overwritten");
 

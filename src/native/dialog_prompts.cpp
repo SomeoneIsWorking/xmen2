@@ -90,7 +90,7 @@ void x2_override_00629bf0(CPU *C) {
     linked_return = 0;
   else
     linked_return = module->preferred + (return_address - *module->base);
-  if (!dialog_prompts_use_asset_text(x2_player_input_uses_gamepad(0),
+  if (!dialog_prompts_use_asset_text(x2::input::player_input_uses_gamepad(0),
                                      linked_return)) {
     if (linked_return == PC_HINT_LOCALIZATION_RETURN)
       g_pc_text++;

@@ -9,10 +9,10 @@ int hud_layout_mobile(const X2HudSettings *settings, int touch_enabled) {
          (settings->layout == X2_HUD_LAYOUT_AUTO && touch_enabled);
 }
 
-int hud_layout_build(X2LayoutViewport v, const X2HudSettings *s, float row_top,
-                     X2HudPlacement *out) {
-  X2Rect validated[kX2SlotCount];
-  if (!out || !x2_hud_settings_valid(s) || !x2_layout_build(v, NULL, validated))
+int hud_layout_build(LayoutViewport v, const X2HudSettings *s, float row_top,
+                     HudPlacement *out) {
+  Rect validated[kSlotCount];
+  if (!out || !x2_hud_settings_valid(s) || !layout_build(v, NULL, validated))
     return 0;
   float width = v.width - v.safe_left - v.safe_right;
   float height = v.height - v.safe_top - v.safe_bottom;
@@ -33,36 +33,35 @@ int hud_layout_build(X2LayoutViewport v, const X2HudSettings *s, float row_top,
   float face =
       fminf(available / 4.0f,
             short_edge * 0.16f * (float)s->portraits_scale_percent / 100.0f);
-  X2HudPlacement layout = {0};
-  layout.vitals = (X2Rect){left, top, left + bar_width, top + bar_height};
+  HudPlacement layout = {0};
+  layout.vitals = (Rect){left, top, left + bar_width, top + bar_height};
   float potion_top = layout.vitals.bottom + gap;
-  for (unsigned i = 0; i < X2_HUD_POTIONS; ++i) {
+  for (unsigned i = 0; i < kHudPotions; ++i) {
     float x = left + (float)i * (potion_size + gap);
     layout.potions[i] =
-        (X2Rect){x, potion_top, x + potion_size, potion_top + potion_size};
+        (Rect){x, potion_top, x + potion_size, potion_top + potion_size};
   }
   for (unsigned i = 0; i < 4; ++i) {
     float x = right - face * (float)(4 - i);
-    layout.portraits[i] = (X2Rect){x, top, x + face, top + face};
+    layout.portraits[i] = (Rect){x, top, x + face, top + face};
   }
   /* The console D-pad selector cross is moved offscreen in mobile layout:
      hero selection routes directly through portrait tapping, and its
      directional beams point away from the horizontal portrait row. */
-  layout.selector = (X2Rect){-1000.0f, -1000.0f, -1000.0f, -1000.0f};
+  layout.selector = (Rect){-1000.0f, -1000.0f, -1000.0f, -1000.0f};
   *out = layout;
   return 1;
 }
 
-X2Rect hud_potion_icon(X2Rect ring) {
+Rect hud_potion_icon(Rect ring) {
   float inset = (ring.right - ring.left) * 0.16f;
-  return (X2Rect){ring.left + inset, ring.top + inset, ring.right - inset,
-                  ring.bottom - inset};
+  return (Rect){ring.left + inset, ring.top + inset, ring.right - inset,
+                ring.bottom - inset};
 }
 
-X2Rect hud_potion_count(X2Rect ring) {
+Rect hud_potion_count(Rect ring) {
   float size = (ring.right - ring.left) * 0.36f;
-  return (X2Rect){ring.right - size, ring.bottom - size, ring.right,
-                  ring.bottom};
+  return (Rect){ring.right - size, ring.bottom - size, ring.right, ring.bottom};
 }
 
 HudSpace hud_space(float aspect, float scale_x, float scale_z) {
@@ -73,7 +72,7 @@ HudSpace hud_space(float aspect, float scale_x, float scale_z) {
 }
 
 HudTransform hud_fit(HudSpace space, float width, float height, HudSpace source,
-                     X2Rect target) {
+                     Rect target) {
   float target_width = (target.right - target.left) * space.width / width;
   float target_height = (target.bottom - target.top) * space.height / height;
   float scale =
@@ -99,12 +98,12 @@ void hud_transform_matrix(HudTransform t, float matrix[16]) {
   }
 }
 
-X2Rect hud_output_rect(HudSpace s, float width, float height, float x, float z,
-                       float radius) {
-  return (X2Rect){(x - radius - s.left) * width / s.width,
-                  (s.top - z - radius) * height / s.height,
-                  (x + radius - s.left) * width / s.width,
-                  (s.top - z + radius) * height / s.height};
+Rect hud_output_rect(HudSpace s, float width, float height, float x, float z,
+                     float radius) {
+  return (Rect){(x - radius - s.left) * width / s.width,
+                (s.top - z - radius) * height / s.height,
+                (x + radius - s.left) * width / s.width,
+                (s.top - z + radius) * height / s.height};
 }
 
 } // namespace x2::presentation

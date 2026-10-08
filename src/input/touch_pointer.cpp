@@ -59,7 +59,7 @@ bool RetailPointer::release_if_held() {
   return true;
 }
 
-bool RetailPointer::take(X2TouchPointer &out) {
+bool RetailPointer::take(TouchPointer &out) {
   if (pending_.empty()) {
     return false;
   }

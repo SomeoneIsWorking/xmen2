@@ -46,7 +46,7 @@ static int g_live = -1;
 
 static int live(void) {
   if (g_live < 0) {
-    const char *e = x2_config_override_get(kX2ConfigScripts);
+    const char *e = config_override_get(x2::config::ConfigOverride::Scripts);
     g_live = e && *e && *e != '0';
   }
   return g_live;

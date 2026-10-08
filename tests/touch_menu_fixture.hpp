@@ -51,8 +51,8 @@ inline MenuItem item(unsigned slot, const char *name, const char *label,
   return out;
 }
 
-inline X2LayoutViewport viewport_1280x720() {
-  X2LayoutViewport viewport{};
+inline x2::presentation::LayoutViewport viewport_1280x720() {
+  x2::presentation::LayoutViewport viewport{};
   viewport.width = 1280.0F;
   viewport.height = 720.0F;
   return viewport;
@@ -68,8 +68,8 @@ inline const TouchMenuButton *find(const TouchMenuLayout &layout,
   return nullptr;
 }
 
-inline std::vector<TouchMenuDelivery> tap(TouchMenu &menu, const X2Rect &rect,
-                                          std::uint64_t now) {
+inline std::vector<TouchMenuDelivery>
+tap(TouchMenu &menu, const x2::presentation::Rect &rect, std::uint64_t now) {
   const lucent::touch::Point at{0.5F * (rect.left + rect.right),
                                 0.5F * (rect.top + rect.bottom)};
   menu.contact(1, at, lucent::touch::Phase::began, now);

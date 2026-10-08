@@ -24,7 +24,7 @@ static SDL_Window *g_window;
 void win32_pointer_window(SDL_Window *window) { g_window = window; }
 
 static void mouse_geometry(MouseGeometry *geometry) {
-  const X2Settings *settings = x2_settings_store();
+  const x2::config::Settings *settings = x2::config::settings_store();
   int window_x, window_y, window_width, window_height;
 
   if (!g_window) {
@@ -221,7 +221,7 @@ void win32_pointer_translate_mouse(const SDL_Event *event,
   require_queued(queued, "mouse event");
 }
 
-void win32_pointer_translate_touch(const X2TouchPointer *pointer,
+void win32_pointer_translate_touch(const input::TouchPointer *pointer,
                                    x2::native::Win32Mouse *mouse,
                                    uint32_t hwnd) {
   int32_t client_x, client_y, screen_x, screen_y;

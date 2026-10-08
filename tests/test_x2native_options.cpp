@@ -89,12 +89,12 @@ int main(void) {
      nothing. */
   fails += check(x2native_options_parse(3, env_pair, &o) == 0 && !o.install_dir,
                  "--env NAME=VALUE was rejected");
-  armed = x2_config_override_get(kX2ConfigFrameDump);
+  armed = config_override_get(x2::config::ConfigOverride::FrameDump);
   fails += check(armed && !strcmp(armed, "busy:100"),
                  "--env NAME=VALUE did not reach the configuration owner");
   fails += check(x2native_options_parse(2, env_joined, &o) == 0,
                  "--env=NAME=VALUE was rejected");
-  armed = x2_config_override_get(kX2ConfigHeartbeat);
+  armed = config_override_get(x2::config::ConfigOverride::Heartbeat);
   fails += check(armed && !strcmp(armed, "2"),
                  "--env=NAME=VALUE did not reach the configuration owner");
   fails += check(x2native_options_parse(3, env_unknown, &o) == 2,

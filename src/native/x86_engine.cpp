@@ -41,7 +41,10 @@
  */
 extern __thread uint32_t g_fsbase, g_gsbase;
 
-static struct {
+namespace x2::native {
+
+namespace {
+struct {
   X86pMem mem;
   X86EngineJitPool *jit;
   int ready;
@@ -56,14 +59,14 @@ static struct {
 /*
  * The engine's own per-thread call stack, for a fault report and for the
  * intercept checks. x86_guest_call_stack.cpp owns it; a host backtrace stops at
- * x2_engine_call, so without this a fault inside translated guest code names no
+ * engine_call, so without this a fault inside translated guest code names no
  * guest function at all. The interception predicates handed to x86port's JIT
  * live in x86_engine_intercept.cpp.
  */
 
 /* ---- selection and setup ---------------------------------------------- */
 
-static int map_return_page(char *reason, unsigned reason_len) {
+int map_return_page(char *reason, unsigned reason_len) {
   void *host;
   if (guest_memory_map_fixed(x2::native::kEngineReturnPage, 0x1000u,
                              x2::native::kProtRead | x2::native::kProtWrite) !=
@@ -78,8 +81,9 @@ static int map_return_page(char *reason, unsigned reason_len) {
   memset(host, 0xCC, 0x1000u); /* INT3, every byte */
   return 1;
 }
+} // namespace
 
-int x2_engine_init(char *reason, unsigned reason_len) {
+int engine_init(char *reason, unsigned reason_len) {
   x86_engine_diagnostic_install();
   if (!x86p_jit_available()) {
     snprintf(reason, reason_len,
@@ -89,7 +93,7 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   }
   if (!map_return_page(reason, reason_len))
     return 0;
-  guest_memory_set_remap_observer(x2_engine_invalidate_memory);
+  guest_memory_set_remap_observer(engine_invalidate_memory);
   {
     /* The page table the memory owner keeps is handed to x86port as-is, so the
        two spellings of "readable" and "writable" have to be the same bits. */
@@ -120,7 +124,7 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   return 1;
 }
 
-void x2_engine_invalidate_memory(uint32_t address, uint32_t size) {
+void engine_invalidate_memory(uint32_t address, uint32_t size) {
   if (!g_engine.jit || !size)
     return;
   char reason[160] = {0};
@@ -131,23 +135,24 @@ void x2_engine_invalidate_memory(uint32_t address, uint32_t size) {
   }
 }
 
-void x2_engine_detach_thread(void) {
+void engine_detach_thread(void) {
   if (g_engine.jit)
     x86_engine_jit_pool_detach_current(g_engine.jit);
 }
 
-int x2_engine_active(void) { return g_engine.ready; }
+int engine_active(void) { return g_engine.ready; }
 
-const char *x2_engine_name(void) { return "jit"; }
+const char *engine_name(void) { return "jit"; }
 
 /* ---- the run loop ------------------------------------------------------ */
 
-static const char *named(uint32_t addr) {
+namespace {
+const char *named(uint32_t addr) {
   const char *n = x86_native_name_at(addr);
   return n ? n : "unnamed";
 }
 
-static void refuse(uint32_t entry, const CPU *cpu, const char *what) {
+void refuse(uint32_t entry, const CPU *cpu, const char *what) {
   uint32_t stack[16] = {0};
   int stack_readable =
       guest_memory_is_readable(cpu->reg[kX86pEsp], sizeof stack);
@@ -172,16 +177,14 @@ static void refuse(uint32_t entry, const CPU *cpu, const char *what) {
   x86_diag_dump();
   abort();
 }
+} // namespace
 
-void x2_engine_program_entry(uint32_t addr) { g_engine.program_entry = addr; }
-
-namespace x2::native {
+void engine_program_entry(uint32_t addr) { g_engine.program_entry = addr; }
 
 void engine_note_callout() { g_engine.callouts++; }
 
-} // namespace x2::native
-
 /* One guest call, as the loop that runs it needs it. */
+namespace {
 typedef struct EngineRun {
   X86pCpu *cpu;
   uint32_t entry;
@@ -202,13 +205,13 @@ typedef enum EngineRunOutcome {
  *
  * THIS FUNCTION HOLDS NO setjmp, and that is why it is separate. Emscripten's
  * setjmp support routes every call out of a function that holds one through a
- * JavaScript invoke wrapper, and with the loop inside x2_engine_call that was
+ * JavaScript invoke wrapper, and with the loop inside engine_call that was
  * the JIT run, the host bodies and every check below, several crossings into
  * JavaScript per slice of every guest call. run_call keeps even the one
  * crossing per call out of the common case: only a call whose guest reaches
  * _setjmp3 enters the frame that holds one.
  */
-static EngineRunOutcome run_guest(volatile EngineRun *run) {
+EngineRunOutcome run_guest(volatile EngineRun *run) {
   X86pCpu *cpu = run->cpu;
   const uint32_t entry = run->entry;
   X86GuestCallFrame *call_frame = run->frame;
@@ -298,7 +301,7 @@ static EngineRunOutcome run_guest(volatile EngineRun *run) {
  * same reclaim rules -- a second mechanism here would be a second answer to
  * "which buffers are still live".
  */
-__attribute__((noinline)) static void run_setjmps(volatile EngineRun *run) {
+__attribute__((noinline)) void run_setjmps(volatile EngineRun *run) {
   X86pCpu *cpu = run->cpu;
   do {
     /* The jump-buffer owner restores its saved continuation. */
@@ -321,17 +324,18 @@ __attribute__((noinline)) static void run_setjmps(volatile EngineRun *run) {
   } while (run_guest(run) == kEngineRunSetjmp);
 }
 
-/* noinline above keeps the setjmp out of this frame and x2_engine_call's. */
-static void run_call(volatile EngineRun *run) {
+/* noinline above keeps the setjmp out of this frame and engine_call's. */
+void run_call(volatile EngineRun *run) {
   if (run_guest(run) == kEngineRunSetjmp)
     run_setjmps(run);
 }
+} // namespace
 
-int x2_engine_call(uint32_t addr, CPU *C) {
-  return x2_engine_resume(addr, C, C->reg[kX86pEsp]);
+int engine_call(uint32_t addr, CPU *C) {
+  return engine_resume(addr, C, C->reg[kX86pEsp]);
 }
 
-int x2_engine_resume(uint32_t addr, CPU *C, uint32_t frame_esp) {
+int engine_resume(uint32_t addr, CPU *C, uint32_t frame_esp) {
   X86pCpu *cpu = C;
   x86_override_leaf_forbid("called guest code");
 
@@ -406,7 +410,7 @@ int x2_engine_resume(uint32_t addr, CPU *C, uint32_t frame_esp) {
   return 1;
 }
 
-void x2_engine_where(void) {
+void engine_where(void) {
   if (!g_engine.ready)
     return;
   {
@@ -443,7 +447,7 @@ void x2_engine_where(void) {
   }
 }
 
-void x2_engine_report(void) {
+void engine_report(void) {
   if (!g_engine.ready) {
     lucent_log_warn("engine", "runtime JIT was not initialized");
     return;
@@ -458,8 +462,6 @@ void x2_engine_report(void) {
                   g_engine.setjmps, g_engine.longjmps);
   x86_engine_report_jit_totals(g_engine.jit);
 }
-
-namespace x2::native {
 
 void engine_enter_service() {
   g_engine.in_service = 1;

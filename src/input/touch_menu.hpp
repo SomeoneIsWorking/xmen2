@@ -27,7 +27,7 @@ struct TouchMenuDelivery {
 /* The touch menu as it is drawn right now, copied for other threads. */
 struct TouchMenuState {
   bool shown = false;
-  X2LayoutViewport viewport{};
+  x2::presentation::LayoutViewport viewport{};
   TouchMenuView view;
   TouchMenuLayout layout;
   /* The button a finger is on, as an index into layout.buttons, or -1. */
@@ -55,7 +55,7 @@ public:
      input a pending focus walk owes now. */
   std::vector<TouchMenuDelivery> set_view(std::optional<TouchMenuView> view,
                                           std::uint64_t now_ms);
-  void set_viewport(const X2LayoutViewport &viewport);
+  void set_viewport(const x2::presentation::LayoutViewport &viewport);
   bool shown() const { return view_.has_value() && has_viewport_; }
 
   /* A contact in output pixels. Only the first finger down acts. */
@@ -100,7 +100,7 @@ private:
   void publish();
 
   std::optional<TouchMenuView> view_;
-  X2LayoutViewport viewport_{};
+  x2::presentation::LayoutViewport viewport_{};
   bool has_viewport_ = false;
   TouchMenuLayout layout_;
   float scroll_ = 0.0F;

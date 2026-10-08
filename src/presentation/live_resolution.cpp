@@ -12,7 +12,7 @@
 
 namespace x2::presentation {
 
-void live_resolution_select_next(X2Settings *settings) {
+void live_resolution_select_next(x2::config::Settings *settings) {
   unsigned display_w = 0, display_h = 0;
   unsigned height;
 
@@ -44,9 +44,9 @@ static void report_rollback(char *why, int whyn, const char *failure,
            d3d_ok ? "" : d3d_why);
 }
 
-static void rollback(struct SDL_Window *window, X2Settings *settings,
-                     const X2Settings *before, const char *failure, char *why,
-                     int whyn) {
+static void rollback(struct SDL_Window *window, x2::config::Settings *settings,
+                     const x2::config::Settings *before, const char *failure,
+                     char *why, int whyn) {
   char window_why[192] = "window rollback failed";
   char d3d_why[192] = "D3D8 rollback failed";
   char title_why[192] = "title display rollback failed";
@@ -66,8 +66,10 @@ static void rollback(struct SDL_Window *window, X2Settings *settings,
   report_rollback(why, whyn, failure, window_ok, window_why, d3d_ok, d3d_why);
 }
 
-int live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
-                          const X2Settings *before, char *why, int whyn) {
+int live_resolution_apply(struct SDL_Window *window,
+                          x2::config::Settings *settings,
+                          const x2::config::Settings *before, char *why,
+                          int whyn) {
   char failure[256];
 
   if (!window || !settings || !before) {
@@ -104,7 +106,7 @@ int live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
     rollback(window, settings, before, failure, why, whyn);
     return 0;
   }
-  if (!x2_settings_store_save(failure, (int)sizeof failure)) {
+  if (!x2::config::settings_store_save(failure, (int)sizeof failure)) {
     rollback(window, settings, before, failure, why, whyn);
     return 0;
   }

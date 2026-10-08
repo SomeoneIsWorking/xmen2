@@ -7,7 +7,7 @@ created: 2026-09-03
 
 ## Instrument
 
-jit.profile block-entry histogram (x86port jit_profile + x2_engine_report top-40)
+jit.profile block-entry histogram (x86port jit_profile + engine_report top-40)
 
 ## Validated by
 

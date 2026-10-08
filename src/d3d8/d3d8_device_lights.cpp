@@ -50,7 +50,8 @@ void d3d8_dev_SetMaterial(D3D8Object *self, CPU *C) {
   {
     static long want = -2, done;
     if (want == -2) {
-      const char *e = x2_config_override_get(kX2ConfigMaterialDump);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::MaterialDump);
       want = (e && *e) ? atol(e) : -1;
     }
     if (want > 0 && done < want) {
@@ -160,7 +161,7 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   {
     static long want = -2, done;
     if (want == -2) {
-      const char *e = x2_config_override_get(kX2ConfigLightRaw);
+      const char *e = config_override_get(x2::config::ConfigOverride::LightRaw);
       want = (e && *e) ? atol(e) : -1;
     }
     if (want > 0 && done < want) {
@@ -266,7 +267,8 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   {
     static int addr_on = -1, told;
     if (addr_on < 0) {
-      const char *e = x2_config_override_get(kX2ConfigLightAddress);
+      const char *e =
+          config_override_get(x2::config::ConfigOverride::LightAddress);
       addr_on = (e && *e) ? atoi(e) : 0;
     }
     if (addr_on && told < 24) {

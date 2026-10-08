@@ -325,7 +325,7 @@ void imp_KERNEL32_ExitProcess(CPU *C) {
                "0x%08x (%s 0x%08x). It is QUITTING on purpose -- this is "
                "not a crash.\n",
                code, from, mod ? mod : "unmapped", guest);
-  if (x2_config_override_get(kX2ConfigExitRing)) {
+  if (config_override_get(x2::config::ConfigOverride::ExitRing)) {
     x2_log_error("  X2_EXIT_RING is set: the boundary ring follows, so "
                  "what led to the decision can be read.\n");
     x86_diag_dump();
@@ -1307,7 +1307,7 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C) {
      Win32 returns a path with backslashes and the game may parse it, so the
      shape is preserved even though the file lives on a POSIX filesystem. */
   uint32_t h = A(0), buf = A(1), size = A(2);
-  const char *dir = x2_config_override_get(kX2ConfigGamePcDir);
+  const char *dir = config_override_get(x2::config::ConfigOverride::GamePcDir);
   const char *name = NULL;
   char path[1024];
   uint32_t n, i;
@@ -2417,12 +2417,12 @@ static uint32_t env_block(void) {
   EnvironmentBlockBuilder builder = {.total = 1u};
   if (p)
     return p;
-  x2_guest_environment_visit(measure_environment_entry, &builder);
+  x2::config::guest_environment_visit(measure_environment_entry, &builder);
   p = guest_malloc((uint32_t)builder.total);
   if (!p)
     return 0;
   builder.narrow = guest_memory_as<char>(p);
-  x2_guest_environment_visit(copy_environment_entry, &builder);
+  x2::config::guest_environment_visit(copy_environment_entry, &builder);
   *builder.narrow = 0;
   return p;
 }
@@ -2439,11 +2439,11 @@ void imp_KERNEL32_GetEnvironmentStringsW(CPU *C) {
   static uint32_t p;
   if (!p) {
     EnvironmentBlockBuilder builder = {.total = 1u};
-    x2_guest_environment_visit(measure_environment_entry, &builder);
+    x2::config::guest_environment_visit(measure_environment_entry, &builder);
     p = guest_malloc((uint32_t)builder.total * 2u);
     if (p) {
       builder.wide = guest_memory_as<uint16_t>(p);
-      x2_guest_environment_visit(copy_environment_entry, &builder);
+      x2::config::guest_environment_visit(copy_environment_entry, &builder);
       *builder.wide = 0;
     }
   }
@@ -2458,7 +2458,7 @@ void imp_KERNEL32_FreeEnvironmentStringsW(CPU *C) { ret_std(C, 1, 1); }
 
 void imp_KERNEL32_SetEnvironmentVariableA(CPU *C) {
   const char *name = ACS(0), *val = A(1) ? ACS(1) : NULL;
-  int rc = x2_guest_environment_set(name, val);
+  int rc = x2::config::guest_environment_set(name, val);
   /* The cached blocks above are now stale, and saying so beats silently
      handing out an environment that disagrees with the guest CRT view. */
   if (rc == 0)

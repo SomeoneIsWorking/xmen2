@@ -54,7 +54,7 @@ int display_mode_seed_plan(const char *stored, unsigned w, unsigned h,
 }
 
 int display_mode_seed_is_current() {
-  const X2Settings *settings = x2_settings_store();
+  const x2::config::Settings *settings = x2::config::settings_store();
   char stored[32];
   char expected[32];
 
@@ -66,7 +66,7 @@ int display_mode_seed_is_current() {
 }
 
 int display_mode_seed_publish() {
-  X2Settings *settings = x2_settings_store();
+  x2::config::Settings *settings = x2::config::settings_store();
   char before[32];
   char value[32];
 
@@ -95,7 +95,7 @@ int display_mode_seed_publish() {
    the mode is published. An unknown display (a headless run) keeps it. */
 namespace {
 
-void fit_display(X2Settings *settings) {
+void fit_display(x2::config::Settings *settings) {
   unsigned display_w = 0, display_h = 0;
 
   if (!x2::presentation::display_pixel_size(&display_w, &display_h))
@@ -107,7 +107,7 @@ void fit_display(X2Settings *settings) {
 } // namespace
 
 void display_mode_seed_boot() {
-  X2Settings *settings = x2_settings_store();
+  x2::config::Settings *settings = x2::config::settings_store();
   int acted, current;
 
   fit_display(settings);

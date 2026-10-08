@@ -30,12 +30,12 @@ int touch_inject(int64_t contact_id, float x, float y, TouchPhase phase) {
   /* The source verdict is part of what a contact does, and the real pump
      notes it before routing. An injected contact that skipped this would
      leave AUTO reporting "not touch" while touch was being driven. */
-  x2_touch_runtime_note_source(&event);
+  touch_runtime_note_source(&event);
   /* The host pump's order: the revive prompt before the touch controls. */
   if (x2::input::revive_prompt_event(event)) {
     return 1;
   }
-  return x2_touch_runtime_event(&event);
+  return touch_runtime_event(&event);
 }
 
 } // namespace x2::input

@@ -8,9 +8,9 @@
 namespace x2::ui {
 
 std::vector<ControllerAssignmentRow>
-controller_assignment_rows(const X2Settings &settings) {
+controller_assignment_rows(const x2::config::Settings &settings) {
   std::vector<ControllerAssignmentRow> rows;
-  for (unsigned player = 0; player < X2_SETTINGS_PLAYERS; player++) {
+  for (unsigned player = 0; player < x2::config::kSettingsPlayers; player++) {
     const char *id = x2::input::transient_controller_id(player);
     if (!id)
       continue;
@@ -22,7 +22,7 @@ controller_assignment_rows(const X2Settings &settings) {
                         : "Disconnected session controller: " + std::string(id),
                     false, true, pad, (int)player});
   }
-  for (unsigned i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++) {
+  for (unsigned i = 0; i < x2::config::kSettingsControllerAssignments; i++) {
     const char *id = settings.controller[i].id;
     if (!id[0])
       continue;

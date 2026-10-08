@@ -57,9 +57,9 @@ int main(void) {
   failures += mkdir(X2_TEST_WIN_PATH_ROOT "/saves", 0700) != 0;
   make_file(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
   make_file(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
-  x2_guest_environment_set("GAME_PC_DIR", root);
-  x2_guest_environment_set("X2_ASSETS", X2_TEST_WIN_PATH_ROOT "/pack");
-  x2_guest_environment_set("X2_SHOT_AFTER_FILE", "cine01");
+  x2::config::guest_environment_set("GAME_PC_DIR", root);
+  x2::config::guest_environment_set("X2_ASSETS", X2_TEST_WIN_PATH_ROOT "/pack");
+  x2::config::guest_environment_set("X2_SHOT_AFTER_FILE", "cine01");
   snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\foo.sfd"));
   failures += access(actual, F_OK) != 0;
   failures += strstr(actual, "/Data/Foo.SFD") == NULL;
