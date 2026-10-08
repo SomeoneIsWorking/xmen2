@@ -26,15 +26,10 @@ foreach(entry IN LISTS X2_SHADER_ENTRIES)
     set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/${entry})
     set(_out ${X2_SHADER_DIR}/${shader}_${st}.inc)
     if(EMSCRIPTEN)
-        set(_depth_args "")
-        if(shader STREQUAL "d3d8_fixed" AND st STREQUAL "frag")
-            # Fragment set 2, SDL sampler slot 3 is the raw depth view.
-            set(_depth_args --depth-sampler 2:3)
-        endif()
         add_custom_command(
             OUTPUT ${_out}
             COMMAND ${Python3_EXECUTABLE} ${_x2_shader_converter}
-                    convert ${_src} ${_out} --stage ${st} --include ${_depth_args}
+                    convert ${_src} ${_out} --stage ${st} --include
             DEPENDS ${_src} ${X2_SHADER_INCLUDES} ${_x2_shader_converter}
                     "${X2_WEB_PORT_SOURCE}/tools/shader_depth.py"
                     "${X2_WEB_PORT_SOURCE}/tools/shader_arrays.py"
