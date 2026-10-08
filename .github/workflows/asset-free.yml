@@ -103,9 +103,9 @@ jobs:
       - run: uv run --frozen python tools/ci.py native-components --target windows-x86_64
 
   android-arm64-policy:
-    name: Android ARM64 policy (product JIT unsupported)
-    runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    name: Android ARM64 policy and native build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -121,6 +121,19 @@ jobs:
           cache-dependency-glob: uv.lock
       - run: uv sync --frozen
       - run: uv run --frozen python tools/ci.py policy --target android-arm64
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y glslc ninja-build
+      - name: Ensure shared repositories
+        run: uv run --frozen python -c "import bootstrap; bootstrap.ensure_shared()"
+      # Android-only branches compile nowhere else; the release must not be
+      # the first build to see them.
+      - name: Build the Android native library
+        run: |
+          export ANDROID_NDK_VERSION=28.2.13676358
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null
+          uv run --frozen python tools/build_android.py --abi arm64-v8a --no-assemble
 
   web-wasm-portability:
     name: Web WASM shared-runtime census
