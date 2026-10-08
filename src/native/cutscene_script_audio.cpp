@@ -9,13 +9,19 @@
 #include <stdatomic.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 enum { FN_SCRIPT_SOUND = 0x004a7130u };
 
-static _Atomic unsigned long g_ordinary_commands;
-static _Atomic unsigned long g_silent_commands;
-static _Atomic unsigned g_last_context;
+_Atomic unsigned long g_ordinary_commands;
+_Atomic unsigned long g_silent_commands;
+_Atomic unsigned g_last_context;
 
-void x2_override_004a7130(CPU *cpu) {
+} // namespace
+
+void override_004a7130(CPU *cpu) {
   uint32_t context;
 
   if (!cpu)
@@ -49,7 +55,13 @@ void cutscene_script_audio_snapshot(CutsceneScriptAudioSnapshot *out) {
       atomic_load_explicit(&g_last_context, memory_order_relaxed);
 }
 
-__attribute__((constructor)) static void
+namespace {
+
+__attribute__((constructor)) void
 x2_cutscene_script_audio_register_override(void) {
-  x86_register_override("XMen2.exe", FN_SCRIPT_SOUND, x2_override_004a7130);
+  x86_register_override("XMen2.exe", FN_SCRIPT_SOUND, override_004a7130);
 }
+
+} // namespace
+
+} // namespace x2::native

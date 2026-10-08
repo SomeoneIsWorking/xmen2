@@ -302,7 +302,8 @@ void x2_override_005c9260(CPU *C) {
      clears CPadManager while the menu is active; CMenu::Hide restores it
      before the load transition. A presentation-bypassing boot has no title
      input, so supply the primary player at this exact ownership boundary. */
-  if (boot_continue && !x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER))
+  if (boot_continue &&
+      !x2::native::boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER))
     boot_continue = 0;
   x86_guest_body(C, "XMen2.exe", 0x005c9260u);
   if (!exe_base())
@@ -395,7 +396,7 @@ void x2_override_004b1280(CPU *C) {
        boot re-selects here, after the last menu Show and before the
        payload deserializes. */
     g_boot_load_pending = 0;
-    x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);
+    x2::native::boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);
   }
   call = *C;
   x86_guest_call_args(&call, g_exe + FN_SUCCESS_CALLBACK, 0u);

@@ -1,7 +1,8 @@
-#ifndef X2_BOOT_SPLASH_POLICY_H
-#define X2_BOOT_SPLASH_POLICY_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* Presentation policy for the boot's own branding, composed by the console
  * command override in startup.cpp:
@@ -16,14 +17,14 @@
  *     expiry reported rather than silent. */
 
 /* Trace one console command (no-ops unless X2_BOOT_CMD_TRACE=1). */
-void x2_boot_splash_trace(uint32_t command);
+void boot_splash_trace(std::uint32_t command);
 
 /* Arm the refusal window; call right after a boot-mode dispatch took over. */
-void x2_boot_splash_arm(void);
+void boot_splash_arm();
 
 /* 1 when this command is the refused boot loading menu -- the caller then
  * completes the command's retail contract (EAX=1, RET 0x4) without running
  * it. Handles the window's expiry internally and reports it. */
-int x2_boot_splash_refuse(uint32_t command);
+int boot_splash_refuse(std::uint32_t command);
 
-#endif
+} // namespace x2::native

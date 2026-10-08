@@ -1,10 +1,3 @@
-#ifndef X2_AUDIO_ADPCM_H
-#define X2_AUDIO_ADPCM_H
-
-#include "x86rt.h"
-
-#include <stdint.h>
-
 /*
  * IMA ADPCM decode, the algorithm XMen2.exe links at 0x00616770 (mono) and
  * 0x00616880 (stereo, low nibble = left, high nibble = right, one byte per
@@ -16,6 +9,13 @@
  * a time through the interpreter helper; the in-game block profile (issue
  * #141) put the two loops at ~6% of guest wall time combined.
  */
+#pragma once
+
+#include "x86rt.h"
+
+#include <cstdint>
+
+namespace x2::native {
 
 /*
  * Advance one nibble: updates *predictor (clamped to int16 range) and
@@ -29,11 +29,11 @@ int32_t ima_adpcm_step(uint32_t nibble, int32_t *predictor,
 
 /* XMen2.exe!0x00616770 -- void(int16_t *out, const uint8_t *in, int count,
    int *predictor, int *step_index), __cdecl. */
-void x2_override_00616770(CPU *C);
+void override_00616770(CPU *C);
 
 /* XMen2.exe!0x00616880 -- void(int16_t *out, const uint8_t *in, int frames,
    int predictor[2], int step_index[2]), __cdecl. */
-void x2_override_00616880(CPU *C);
+void override_00616880(CPU *C);
 
 /*
  * When `audio.adpcm_verify` is set: re-run the guest body at `ep` from the
@@ -49,4 +49,4 @@ void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
                                  const int32_t *native_pred,
                                  const int32_t *native_idx, int channels);
 
-#endif
+} // namespace x2::native

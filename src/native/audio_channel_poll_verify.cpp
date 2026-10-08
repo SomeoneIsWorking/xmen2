@@ -104,7 +104,7 @@ int audio_channel_poll_verify(struct X86pCpu *C) {
   /* The retail body no-ops while the recursion guard is held; nothing to
      verify, and running the native poll would be a no-op too. */
   if (RD32(V_GUARD) != 0u) {
-    audio_channel_poll_run();
+    x2::native::audio_channel_poll_run();
     return 1;
   }
 
@@ -116,7 +116,7 @@ int audio_channel_poll_verify(struct X86pCpu *C) {
   snapshot(&sg);
 
   restore(&s0);
-  audio_channel_poll_run();
+  x2::native::audio_channel_poll_run();
   snapshot(&sn);
 
   compare(&sg, &sn);

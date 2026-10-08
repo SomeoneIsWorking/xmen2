@@ -88,7 +88,7 @@ static void test_custom_reset(void) {
   memset(&C, 0, sizeof C);
   C.reg[kX86pEcx] = STACK1;
   C.reg[kX86pEsp] = 0x1000u;
-  x2_override_10034d10(&C);
+  x2::native::override_10034d10(&C);
   CHECK(C.reg[kX86pEsp] == 0x1004u, "customReset did not pop return address");
 
   CHECK(RD32(STACK1 + 0x08u) == 0u, "f08 not 0");
@@ -130,7 +130,7 @@ static void test_manager_reset(void) {
   memset(&C, 0, sizeof C);
   C.reg[kX86pEcx] = MGR;
   C.reg[kX86pEsp] = 0x2000u;
-  x2_override_10034d30(&C);
+  x2::native::override_10034d30(&C);
   CHECK(C.reg[kX86pEsp] == 0x2004u, "manager reset did not pop return address");
 
   /* Check stack 1 */

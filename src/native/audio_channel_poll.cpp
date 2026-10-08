@@ -31,6 +31,10 @@
 
 #include <lucent/cvar_c.h>
 
+namespace x2::native {
+
+namespace {
+
 /* Retail data layout, from the disassembly of 0x00594500. */
 enum {
   ACP_GUARD = 0x0080431cu,   /* recursion guard; the poll no-ops when != 0 */
@@ -61,6 +65,8 @@ static int channel_poll_enabled(void) {
 }
 #endif
 
+} // namespace
+
 void audio_channel_poll_run(void) {
   if (RD32(ACP_GUARD) != 0u)
     return;
@@ -90,7 +96,7 @@ void audio_channel_poll_run(void) {
   }
 }
 
-void x2_override_00594500(CPU *C) {
+void override_00594500(CPU *C) {
   if (__builtin_expect(!channel_poll_enabled(), 0)) {
     x86_guest_body(C, "XMen2.exe", 0x00594500u);
     return;
@@ -108,6 +114,12 @@ void x2_override_00594500(CPU *C) {
       4u; /* __cdecl, no args: consume only the return address */
 }
 
+namespace {
+
 __attribute__((constructor)) static void register_audio_channel_poll(void) {
-  x86_register_override("XMen2.exe", 0x00594500u, x2_override_00594500);
+  x86_register_override("XMen2.exe", 0x00594500u, override_00594500);
 }
+
+} // namespace
+
+} // namespace x2::native

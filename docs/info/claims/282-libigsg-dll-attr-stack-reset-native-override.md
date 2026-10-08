@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-09-04
 tags: pc,native,jit,performance,libIGSg,attr-stack
-depends: src/native/attr_stack.cpp#x2_override_10034d30, src/native/attr_stack.cpp#x2_override_10034d10, src/native/attr_stack_verify.cpp#attr_stack_verify_end
+depends: src/native/attr_stack.cpp#override_10034d30, src/native/attr_stack.cpp#override_10034d10, src/native/attr_stack_verify.cpp#attr_stack_verify_end
 ---
 
 ## Claim
@@ -17,8 +17,8 @@ In a 2000-frame in-game profiling run (`act0/tutorial/tutorial1`, `jit.profile=6
 
 `src/native/attr_stack.{c,h}` provides native implementations:
 - `attr_stack_custom_reset`: resets stack offsets `+0x08`, `+0x18`, `+0x20`, `+0x24`, `+0x28`, and `+0x30`.
-- `x2_override_10034d10`: native override for `0x10034d10` popping `ret` (`C->esp += 4u`).
-- `x2_override_10034d30`: runs the attribute stack reset loop natively in host C, clears manager pointers, invokes `clearLightHandles` via `x86_guest_call_args`, and pops `ret` (`C->esp += 4u`).
+- `override_10034d10`: native override for `0x10034d10` popping `ret` (`C->esp += 4u`).
+- `override_10034d30`: runs the attribute stack reset loop natively in host C, clears manager pointers, invokes `clearLightHandles` via `x86_guest_call_args`, and pops `ret` (`C->esp += 4u`).
 
 Controlled by runtime CVar `sg.attr_stack` (default true) for runtime A/B
 toggling without rebuilding. A differential verification harness in

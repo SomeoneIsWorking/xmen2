@@ -39,7 +39,7 @@
 
 typedef struct CutscenePlayerRuntime {
   X2CutscenePlayerPolicy policy;
-  CutsceneEventOwnershipWindow events;
+  x2::native::CutsceneEventOwnershipWindow events;
   uint32_t clock;
   uint32_t owned[OWNED_CONTEXT_LIMIT];
   unsigned owned_count;
@@ -142,29 +142,32 @@ static void begin_sequence(uint32_t clock, uint32_t context) {
   g_player.active = 1;
   g_player.release_pending = 0;
   g_player.event_refused = 0;
-  g_player.event_faults_at_start = cutscene_event_player_insertion_faults();
+  g_player.event_faults_at_start =
+      x2::native::cutscene_event_player_insertion_faults();
   g_player.starts++;
   own(context);
   memset(&g_player.events, 0, sizeof g_player.events);
-  if (cutscene_event_player_window_begin(&g_player.events) < 0)
+  if (x2::native::cutscene_event_player_window_begin(&g_player.events) < 0)
     g_player.event_refused = 1;
-  if (cutscene_event_player_watch_insertions(&g_player.events,
-                                             owns_inserting_context, NULL) < 0)
+  if (x2::native::cutscene_event_player_watch_insertions(
+          &g_player.events, owns_inserting_context, NULL) < 0)
     g_player.event_refused = 1;
 }
 
 static int claim_events(void) {
   int claimed;
 
-  if (g_player.event_refused || cutscene_event_player_insertion_faults() !=
-                                    g_player.event_faults_at_start)
+  if (g_player.event_refused ||
+      x2::native::cutscene_event_player_insertion_faults() !=
+          g_player.event_faults_at_start)
     return 0;
   if (!g_player.events.active) {
-    claimed = cutscene_event_player_window_begin(&g_player.events);
+    claimed = x2::native::cutscene_event_player_window_begin(&g_player.events);
     if (claimed <= 0)
       return claimed == 0;
   }
-  claimed = cutscene_event_player_window_claim_new(&g_player.events);
+  claimed =
+      x2::native::cutscene_event_player_window_claim_new(&g_player.events);
   if (claimed < 0)
     g_player.event_refused = 1;
   return claimed >= 0;
@@ -219,7 +222,7 @@ static void retire_released_sequence(void) {
     return;
   g_player.active = 0;
   g_player.release_pending = 0;
-  cutscene_event_player_unwatch_insertions(&g_player.events);
+  x2::native::cutscene_event_player_unwatch_insertions(&g_player.events);
 }
 
 static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
@@ -234,7 +237,8 @@ static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
   if (!claim_events())
     return -1;
   if (g_player.events.active) {
-    available = cutscene_event_player_next_owned(&g_player.events, &selected);
+    available = x2::native::cutscene_event_player_next_owned(&g_player.events,
+                                                             &selected);
     if (available > 0) {
       *fiber = EVENT_FIBER_BASE + selected;
       return 1;
@@ -265,17 +269,18 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
   if (!g_player.active || sequence != g_player.sequence)
     return X2_CUTSCENE_FIBER_ERROR;
   if (fiber >= EVENT_FIBER_BASE &&
-      fiber < EVENT_FIBER_BASE + CUTSCENE_EVENT_PLAYER_CAPACITY) {
+      fiber < EVENT_FIBER_BASE + x2::native::kCapacity) {
     uint32_t slot = (uint32_t)(fiber - EVENT_FIBER_BASE);
     uint32_t record = g_player.events.owner + slot * 0x18u;
     (void)guest_memory_try_read32(record, &g_player.last_event_target);
     (void)guest_memory_try_read32(record + 4u, &g_player.last_event_descriptor);
-    CutsceneEventPlayerStep event =
-        cutscene_event_player_step_owned_slot(cpu, &g_player.events, slot);
+    x2::native::CutsceneEventPlayerStep event =
+        x2::native::cutscene_event_player_step_owned_slot(cpu, &g_player.events,
+                                                          slot);
     g_player.event_steps++;
-    if (event == CUTSCENE_EVENT_PLAYER_STEP_RAN)
+    if (event == x2::native::CutsceneEventPlayerStep::Ran)
       return X2_CUTSCENE_FIBER_ADVANCED;
-    return event == CUTSCENE_EVENT_PLAYER_STEP_NONE
+    return event == x2::native::CutsceneEventPlayerStep::None
                ? X2_CUTSCENE_FIBER_NO_PROGRESS
                : X2_CUTSCENE_FIBER_ERROR;
   }
@@ -341,7 +346,7 @@ static X2CutscenePlayerResult finish(CPU *cpu) {
   if (result == X2_CUTSCENE_PLAYER_COMPLETED) {
     g_player.active = 0;
     g_player.release_pending = 0;
-    cutscene_event_player_unwatch_insertions(&g_player.events);
+    x2::native::cutscene_event_player_unwatch_insertions(&g_player.events);
     g_player.owned_count = 0;
     memset(g_player.owned, 0, sizeof g_player.owned);
   }
@@ -374,7 +379,7 @@ void x2_override_004d8700(CPU *cpu) {
   if (cpu->reg[kX86pEax] &&
       x2_cutscene_player_inherits_context(
           g_player.active, owns_context(current_context(), NULL),
-          cutscene_event_player_executing_owned(),
+          x2::native::cutscene_event_player_executing_owned(),
           cutscene_dialogue_payload_active()))
     own(cpu->reg[kX86pEax]);
 }
@@ -451,7 +456,8 @@ void cutscene_player_snapshot(CPU *cpu, CutscenePlayerSnapshot *out) {
   out->private_releases = g_player.private_releases;
   out->same_frame = g_player.same_frame;
   out->same_guest_time = g_player.same_guest_time;
-  out->event_insertion_faults = cutscene_event_player_insertion_faults();
+  out->event_insertion_faults =
+      x2::native::cutscene_event_player_insertion_faults();
   memcpy(out->results, g_player.result, sizeof out->results);
 }
 

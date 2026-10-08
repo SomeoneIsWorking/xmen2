@@ -229,7 +229,7 @@ void x2_override_0055beb0(CPU *C) {
   static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
   uint32_t s = RD32(C->reg[kX86pEsp] + 4u); /* param_2: the command string */
 
-  x2_boot_splash_trace(s);
+  x2::native::boot_splash_trace(s);
 
   if (mode < 0) {
     const char *e = lucent_cvar_text("boot_map");
@@ -274,13 +274,13 @@ void x2_override_0055beb0(CPU *C) {
     if (!exe_base)
       exe_base = mapped_exe_base();
     if (boot_to_host_mode(C, s, exe_base)) {
-      x2_boot_splash_arm();
+      x2::native::boot_splash_arm();
       x2::presentation::boot_blackout_arm(
           x2_boot_mode_name(x2_settings_store()->boot_mode));
       return;
     }
   }
-  if (x2_boot_splash_refuse(s)) {
+  if (x2::native::boot_splash_refuse(s)) {
     C->reg[kX86pEax] = 1u;  /* "a command ran" */
     C->reg[kX86pEsp] += 8u; /* RET 0x4: return address and one argument */
     return;

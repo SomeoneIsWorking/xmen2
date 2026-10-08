@@ -131,7 +131,7 @@ static void test_branches(void) {
   CPU C;
   memset(&C, 0, sizeof C);
   C.reg[kX86pEsp] = 0x70000000u;
-  x2_override_00594500(&C);
+  x2::native::override_00594500(&C);
 
   CHECK(C.reg[kX86pEsp] == 0x70000004u,
         "override did not pop the return address");
@@ -165,7 +165,7 @@ static void test_guard_no_ops(void) {
   WR32(GUARD, 1u);
   set_channel(2, 2, 1, 12, 0xB0000002u);
 
-  audio_channel_poll_run();
+  x2::native::audio_channel_poll_run();
 
   CHECK(RD32(COUNTER) == 0u, "counter bumped while guard held");
   CHECK(RD8(chan(2) + CH_STATE) == 2u, "channel serviced while guard held");
@@ -175,9 +175,9 @@ static void test_guard_no_ops(void) {
 static void test_counter_increments(void) {
   clear_data();
   buf_reset();
-  audio_channel_poll_run();
-  audio_channel_poll_run();
-  audio_channel_poll_run();
+  x2::native::audio_channel_poll_run();
+  x2::native::audio_channel_poll_run();
+  x2::native::audio_channel_poll_run();
   CHECK(RD32(COUNTER) == 3u, "counter did not advance once per run");
 }
 

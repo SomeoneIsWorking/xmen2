@@ -321,7 +321,7 @@ static int settings_valid(const X2Settings *settings) {
     return 0;
   for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++) {
     int owner = settings->keyboard_player[i];
-    if (!x2_settings_input_owner_valid(owner))
+    if (!x2::config::input_owner_valid(owner))
       return 0;
     for (j = i + 1; owner >= 0 && j < X2_SETTINGS_KEYBOARD_PROFILES; j++)
       if (settings->keyboard_player[j] == owner)
@@ -329,7 +329,7 @@ static int settings_valid(const X2Settings *settings) {
   }
   for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++) {
     const X2ControllerAssignment *a = &settings->controller[i];
-    if (!x2_settings_input_owner_valid(a->player) ||
+    if (!x2::config::input_owner_valid(a->player) ||
         (a->player >= 0 && !a->id[0]))
       return 0;
     if (!a->id[0])
@@ -339,7 +339,7 @@ static int settings_valid(const X2Settings *settings) {
           (a->player >= 0 && a->player == settings->controller[j].player))
         return 0;
   }
-  return x2_settings_input_assignments_valid(settings);
+  return x2::config::input_assignments_valid(settings);
 }
 
 static int migrate_legacy(ParseState *state) {

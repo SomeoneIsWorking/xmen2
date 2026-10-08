@@ -3,27 +3,32 @@
 #include "dinput_pad.h"
 #include "player_input.h"
 
-#include <stdarg.h>
-#include <stdio.h>
+#include <cstdarg>
+#include <cstdio>
 
-static void append(char *out, size_t n, size_t *at, const char *fmt, ...)
+namespace x2::input {
+namespace {
+
+void append(char *out, std::size_t n, std::size_t *at, const char *fmt, ...)
     __attribute__((format(printf, 4, 5)));
 
-static void append(char *out, size_t n, size_t *at, const char *fmt, ...) {
-  va_list ap;
+void append(char *out, std::size_t n, std::size_t *at, const char *fmt, ...) {
+  std::va_list ap;
   int written;
   if (*at >= n)
     return;
   va_start(ap, fmt);
-  written = vsnprintf(out + *at, n - *at, fmt, ap);
+  written = std::vsnprintf(out + *at, n - *at, fmt, ap);
   va_end(ap);
   if (written > 0)
-    *at += (size_t)written > n - *at ? n - *at : (size_t)written;
+    *at += (std::size_t)written > n - *at ? n - *at : (std::size_t)written;
 }
 
-size_t x2_input_probe_lifecycle_report(char *out, size_t n) {
+} // namespace
+
+std::size_t input_probe_lifecycle_report(char *out, std::size_t n) {
   unsigned char guid[16];
-  size_t at = 0;
+  std::size_t at = 0;
   int pad, player;
 
   if (!out || !n)
@@ -59,3 +64,5 @@ size_t x2_input_probe_lifecycle_report(char *out, size_t n) {
   append(out, n, &at, "\n\n");
   return at < n ? at : n - 1;
 }
+
+} // namespace x2::input

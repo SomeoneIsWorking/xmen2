@@ -1,39 +1,37 @@
-#ifndef X2_CUTSCENE_EVENT_PLAYER_H
-#define X2_CUTSCENE_EVENT_PLAYER_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* XMen2.exe FUN_004b2990/FUN_004b2a10 bound the callback pool at 0x465
  * records. Each record is 0x18 bytes and has one entry in both allocator
  * bitsets. */
-enum {
-  CUTSCENE_EVENT_PLAYER_CAPACITY = 0x465u,
-  CUTSCENE_EVENT_PLAYER_SLOT_WORDS =
-      (CUTSCENE_EVENT_PLAYER_CAPACITY + 31u) / 32u
+inline constexpr unsigned kCapacity = 0x465u;
+inline constexpr unsigned kSlotWords = (kCapacity + 31u) / 32u;
+
+enum class CutsceneEventPlayerStep {
+  Refused = -1,
+  None = 0,
+  Ran = 1,
+  RanCorrupt = 2
 };
 
-typedef enum CutsceneEventPlayerStep {
-  CUTSCENE_EVENT_PLAYER_STEP_REFUSED = -1,
-  CUTSCENE_EVENT_PLAYER_STEP_NONE = 0,
-  CUTSCENE_EVENT_PLAYER_STEP_RAN = 1,
-  CUTSCENE_EVENT_PLAYER_STEP_RAN_CORRUPT = 2
-} CutsceneEventPlayerStep;
+struct CutsceneEventOwnershipWindow {
+  std::uint32_t owner;
+  std::uint32_t excluded[kSlotWords];
+  std::uint32_t owned[kSlotWords];
+  std::uint32_t reported[kSlotWords];
+  std::uint8_t active;
+};
 
-typedef struct CutsceneEventOwnershipWindow {
-  uint32_t owner;
-  uint32_t excluded[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-  uint32_t owned[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-  uint32_t reported[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-  uint8_t active;
-} CutsceneEventOwnershipWindow;
-
-typedef int (*CutsceneEventInsertionOwner)(const struct X86pCpu *cpu,
-                                           void *opaque);
+using CutsceneEventInsertionOwner = int (*)(const struct X86pCpu *cpu,
+                                            void *opaque);
 
 /* The event owner is learned from a validated ordinary FUN_004b2d70 call. */
-uint32_t cutscene_event_player_captured_owner(void);
+std::uint32_t cutscene_event_player_captured_owner(void);
 
 /* Snapshot all currently queued slots as excluded. Returns zero when the
  * ordinary pump has not established a valid owner, and -1 for corrupt state. */
@@ -60,19 +58,21 @@ int cutscene_event_player_executing_owned(void);
 /* Read-only selection of the minimum-deadline queued slot owned by window.
  * Returns one with slot filled, zero when none exists, and -1 on refusal. */
 int cutscene_event_player_next_owned(const CutsceneEventOwnershipWindow *window,
-                                     uint32_t *slot);
+                                     std::uint32_t *slot);
 
 /* Remove and execute exactly this queued owned callback, independent of its
  * deadline. Unowned deadline/slot pairs are preserved byte-for-byte. */
-CutsceneEventPlayerStep cutscene_event_player_step_owned_slot(
-    struct X86pCpu *cpu, CutsceneEventOwnershipWindow *window, uint32_t slot);
+CutsceneEventPlayerStep
+cutscene_event_player_step_owned_slot(struct X86pCpu *cpu,
+                                      CutsceneEventOwnershipWindow *window,
+                                      std::uint32_t slot);
 
 CutsceneEventPlayerStep
 cutscene_event_player_step_owned(struct X86pCpu *cpu,
                                  CutsceneEventOwnershipWindow *window);
 
 /* Native thiscall replacement for XMen2.exe FUN_004b2d70(owner, now). */
-void x2_override_004b2d70(struct X86pCpu *cpu);
-void x2_override_004b2b40(struct X86pCpu *cpu);
+void override_004b2d70(struct X86pCpu *cpu);
+void override_004b2b40(struct X86pCpu *cpu);
 
-#endif
+} // namespace x2::native

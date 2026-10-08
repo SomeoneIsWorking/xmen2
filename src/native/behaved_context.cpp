@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   EXE_PREFERRED = 0x00400000u,
   FN_TREE_FIND = 0x00456440u,
@@ -173,6 +177,8 @@ static void release_result(CPU *cpu, uint32_t base, uint32_t result) {
   guest_call(cpu, linked(base, FN_VALUE_RELEASE), pool, arguments, 1u, 4u);
 }
 
+} // namespace
+
 uint32_t behaved_context_run(CPU *cpu, uint32_t context) {
   uint32_t base = exe_base();
   uint32_t current_address, prior, script, node, pending;
@@ -216,14 +222,20 @@ uint32_t behaved_context_run(CPU *cpu, uint32_t context) {
   return (pending & 0xffffff00u) | (pending == 0u);
 }
 
-void x2_override_004d8b30(CPU *cpu) {
+void override_004d8b30(CPU *cpu) {
   if (!cpu)
     return;
   cpu->reg[kX86pEax] = behaved_context_run(cpu, cpu->reg[kX86pEcx]);
   cpu->reg[kX86pEsp] += 4u;
 }
 
+namespace {
+
 __attribute__((constructor)) static void
 x2_behaved_context_register_override(void) {
-  x86_register_override("XMen2.exe", FN_CONTEXT_RUN, x2_override_004d8b30);
+  x86_register_override("XMen2.exe", FN_CONTEXT_RUN, override_004d8b30);
 }
+
+} // namespace
+
+} // namespace x2::native

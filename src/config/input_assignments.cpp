@@ -3,11 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-int x2_settings_input_owner_valid(int player) {
-  return player == X2_SETTINGS_UNASSIGNED ||
-         (player >= 0 && player < (int)X2_SETTINGS_PLAYERS);
-}
-
 static int player_has_keyboard(const X2Settings *settings, unsigned player) {
   unsigned i;
   for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
@@ -24,7 +19,14 @@ static int player_has_controller(const X2Settings *settings, unsigned player) {
   return 0;
 }
 
-int x2_settings_input_assignments_valid(const X2Settings *settings) {
+namespace x2::config {
+
+int input_owner_valid(int player) {
+  return player == X2_SETTINGS_UNASSIGNED ||
+         (player >= 0 && player < (int)X2_SETTINGS_PLAYERS);
+}
+
+int input_assignments_valid(const X2Settings *settings) {
   unsigned player;
   if (!settings || (!player_has_keyboard(settings, 0u) &&
                     !player_has_controller(settings, 0u)))
@@ -35,6 +37,8 @@ int x2_settings_input_assignments_valid(const X2Settings *settings) {
       return 0;
   return 1;
 }
+
+} // namespace x2::config
 
 static void clear_controller_slot(X2Settings *settings, unsigned slot) {
   memset(&settings->controller[slot], 0, sizeof settings->controller[slot]);
@@ -90,7 +94,7 @@ int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
   X2Settings changed;
   int vacated, displaced_keyboard, displaced_controller;
   if (!settings || profile >= X2_SETTINGS_KEYBOARD_PROFILES ||
-      !x2_settings_input_owner_valid(player))
+      !x2::config::input_owner_valid(player))
     return 0;
   changed = *settings;
   vacated = changed.keyboard_player[profile];
@@ -100,7 +104,7 @@ int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
   if (vacated != player)
     relocate_displaced(&changed, displaced_keyboard, displaced_controller,
                        vacated);
-  if (!x2_settings_input_assignments_valid(&changed))
+  if (!x2::config::input_assignments_valid(&changed))
     return 0;
   *settings = changed;
   return 1;
@@ -130,7 +134,7 @@ int x2_settings_assign_controller(X2Settings *settings, const char *id,
   X2Settings changed;
   int slot, vacated, displaced_keyboard, displaced_controller;
   if (!settings || !id || !id[0] || strlen(id) >= X2_SETTINGS_DEVICE_ID ||
-      !x2_settings_input_owner_valid(player))
+      !x2::config::input_owner_valid(player))
     return 0;
   changed = *settings;
   slot = controller_slot(&changed, id);
@@ -159,7 +163,7 @@ int x2_settings_assign_controller(X2Settings *settings, const char *id,
       relocate_displaced(&changed, displaced_keyboard, displaced_controller,
                          vacated);
   }
-  if (!x2_settings_input_assignments_valid(&changed))
+  if (!x2::config::input_assignments_valid(&changed))
     return 0;
   *settings = changed;
   return 1;

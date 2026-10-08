@@ -1,8 +1,8 @@
 /*
- * Exercises the shipping ADPCM overrides (x2_override_00616770 / _00616880)
- * through real guest memory, checked against an independent IMA reference
- * decoder written from the published algorithm -- not a copy of the code under
- * test.
+ * Exercises the shipping ADPCM overrides (override_00616770 /
+ * override_00616880) through real guest memory, checked against an independent
+ * IMA reference decoder written from the published algorithm -- not a copy of
+ * the code under test.
  */
 #include "audio_adpcm.h"
 #include "guest_memory.h"
@@ -16,6 +16,8 @@
 #include <string.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
+
+namespace x2::native {
 
 /* The differential gate (audio_adpcm_verify.cpp) needs the engine; this test
    exercises the decode path only, so it stands in with a no-op. */
@@ -36,6 +38,8 @@ void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
   (void)native_idx;
   (void)channels;
 }
+
+} // namespace x2::native
 
 enum {
   ARENA = 0x30000000u,
@@ -123,7 +127,7 @@ static void test_mono(void) {
   const int32_t count = 40;
   WR32(STATE + 0u, 0u);  /* predictor */
   WR32(STATE + 8u, 20u); /* step index */
-  call_override(x2_override_00616770, OUT, IN, count, STATE);
+  call_override(x2::native::override_00616770, OUT, IN, count, STATE);
 
   int pred = 0, idx = 20;
   for (int32_t i = 0; i < count; i++) {
@@ -154,7 +158,7 @@ static void test_stereo(void) {
   WR32(STATE + 4u, -50);  /* right predictor */
   WR32(STATE + 8u, 5u);   /* left index  */
   WR32(STATE + 12u, 60u); /* right index */
-  call_override(x2_override_00616880, OUT, IN, frames, STATE);
+  call_override(x2::native::override_00616880, OUT, IN, frames, STATE);
 
   int lp = 100, rp = -50, li = 5, ri = 60;
   for (int32_t i = 0; i < frames; i++) {

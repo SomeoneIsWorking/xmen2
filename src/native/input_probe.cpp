@@ -203,7 +203,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
 
   text_put(out, n, &at, "input probe -- frame %lu, guest %.2fs\n",
            gpu_frames_presented(), guest_clock_elapsed_s());
-  at += x2_input_probe_lifecycle_report(out + at, n - at);
+  at += x2::input::input_probe_lifecycle_report(out + at, n - at);
 
   object = input_bindings_object_at(controller, why, (int)sizeof why);
   if (!object) {

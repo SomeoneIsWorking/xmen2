@@ -18,10 +18,14 @@
 
 #include <lucent/cvar_c.h>
 
+namespace x2::native {
+
+namespace {
+
 #if defined(TEST_SUITE)
-static int attr_stack_enabled(void) { return 1; }
+int attr_stack_enabled(void) { return 1; }
 #else
-static int attr_stack_enabled(void) {
+int attr_stack_enabled(void) {
   static int cached = -1;
   if (__builtin_expect(cached < 0, 0))
     cached = lucent_cvar_flag("sg.attr_stack", 1) ? 1 : 0;
@@ -29,9 +33,9 @@ static int attr_stack_enabled(void) {
 }
 #endif
 
-static uint32_t s_clear_light_handles_mapped;
+uint32_t s_clear_light_handles_mapped;
 
-static void call_clear_light_handles(CPU *C, uint32_t self) {
+void call_clear_light_handles(CPU *C, uint32_t self) {
   if (__builtin_expect(!s_clear_light_handles_mapped, 0)) {
     char why[128];
     if (x86_override_resolve_check("libIGSg.dll", 0x10035950u,
@@ -45,6 +49,8 @@ static void call_clear_light_handles(CPU *C, uint32_t self) {
   x86_guest_call_args(&call_cpu, s_clear_light_handles_mapped, 0u);
 }
 
+} // namespace
+
 void attr_stack_custom_reset(uint32_t stack) {
   const uint32_t f14 = RD32(stack + 0x14u);
   WR32(stack + 0x08u, 0);
@@ -55,7 +61,7 @@ void attr_stack_custom_reset(uint32_t stack) {
   WR32(stack + 0x30u, 0);
 }
 
-void x2_override_10034d10(CPU *C) {
+void override_10034d10(CPU *C) {
   if (__builtin_expect(!attr_stack_enabled(), 0)) {
     x86_guest_body(C, "libIGSg.dll", 0x10034d10u);
     return;
@@ -64,7 +70,7 @@ void x2_override_10034d10(CPU *C) {
   C->reg[kX86pEsp] += 4u;
 }
 
-void x2_override_10034d30(CPU *C) {
+void override_10034d30(CPU *C) {
   if (__builtin_expect(!attr_stack_enabled(), 0)) {
     x86_guest_body(C, "libIGSg.dll", 0x10034d30u);
     return;
@@ -104,7 +110,13 @@ void x2_override_10034d30(CPU *C) {
   C->reg[kX86pEsp] += 4u;
 }
 
-__attribute__((constructor)) static void register_attr_stack_overrides(void) {
-  x86_register_override("libIGSg.dll", 0x10034d10u, x2_override_10034d10);
-  x86_register_override("libIGSg.dll", 0x10034d30u, x2_override_10034d30);
+namespace {
+
+__attribute__((constructor)) void register_attr_stack_overrides(void) {
+  x86_register_override("libIGSg.dll", 0x10034d10u, override_10034d10);
+  x86_register_override("libIGSg.dll", 0x10034d30u, override_10034d30);
 }
+
+} // namespace
+
+} // namespace x2::native

@@ -77,6 +77,8 @@ static unsigned fiber_of(uint32_t context) {
   return (context - manager_address - CONTEXT_POOL) / CONTEXT_STRIDE;
 }
 
+namespace x2::native {
+
 uint32_t behaved_context_run(CPU *cpu, uint32_t context_address) {
   unsigned fiber = fiber_of(context_address);
 
@@ -84,6 +86,8 @@ uint32_t behaved_context_run(CPU *cpu, uint32_t context_address) {
   note('R');
   return runner_completed[fiber];
 }
+
+} // namespace x2::native
 
 void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
   if (target == FN_MANAGER) {

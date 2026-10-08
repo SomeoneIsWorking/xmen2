@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: continue,boot,save,conversation,splash
-depends: src/native/continue_runtime.cpp#x2_continue_boot_dispatch, src/native/continue_runtime.cpp#x2_override_004b1280, src/native/startup.cpp#x2_override_00402ba0, src/native/boot_player_selection.cpp#x2_boot_player_select_primary
+depends: src/native/continue_runtime.cpp#x2_continue_boot_dispatch, src/native/continue_runtime.cpp#x2_override_004b1280, src/native/startup.cpp#x2_override_00402ba0, src/native/boot_player_selection.cpp#boot_player_select_primary
 ---
 
 ## Claim

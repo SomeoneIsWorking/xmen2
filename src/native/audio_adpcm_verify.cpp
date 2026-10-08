@@ -17,16 +17,22 @@
 
 #include <lucent/cvar_c.h>
 
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 
-static int verify_enabled(void) {
+namespace x2::native {
+
+namespace {
+
+int verify_enabled(void) {
   static int cached = -1;
   if (cached < 0)
     cached = lucent_cvar_flag("audio.adpcm_verify", 0) ? 1 : 0;
   return cached;
 }
+
+} // namespace
 
 void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
                                  uint32_t out_bytes, uint32_t pp, uint32_t ip,
@@ -70,3 +76,5 @@ void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
   }
   free(mine);
 }
+
+} // namespace x2::native
