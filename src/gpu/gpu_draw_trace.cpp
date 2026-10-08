@@ -39,7 +39,7 @@ typedef struct DrawTraceCapture {
 static DrawTraceCapture g_capture;
 
 static int capture_write(void *cookie, const char *data, int size) {
-  DrawTraceCapture *capture = cookie;
+  auto *capture = static_cast<DrawTraceCapture *>(cookie);
   size_t required;
   char *grown;
   if (size <= 0)
@@ -47,7 +47,7 @@ static int capture_write(void *cookie, const char *data, int size) {
   if (capture->size > SIZE_MAX - (size_t)size - 1u)
     return -1;
   required = capture->size + (size_t)size + 1u;
-  grown = realloc(capture->text, required);
+  grown = static_cast<char *>(realloc(capture->text, required));
   if (!grown)
     return -1;
   capture->text = grown;
