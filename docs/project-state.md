@@ -20,9 +20,9 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S022 — native Windows host package and CI release.** `x2native.exe` builds
-with llvm-mingw and boots under Wine. The active work is a native Windows run
-before a release artifact.
+**S022 — native Windows host package and CI release.** The portable ZIP ships
+in v0.3.0, built and fault-checked on a Windows runner. The active work is a
+game run on real Windows hardware.
 
 ## Capability inventory
 
@@ -2192,11 +2192,11 @@ every test with no warnings. Under Wine 11:
   is written as before; a bare terminal shows nothing, so redirect or read the log.
 - The `build-windows` job in `release.yml` builds the ZIP on `windows-2025`,
   unzips it and runs `--fault-selftest` from the folder, then publishes it.
-  That job has not run yet: no CI run was possible from here.
+  It passed in release run `37798996880`, and the ZIP ships in v0.3.0.
 
 Gap:
 - No native Windows run of the game has been made (window, input, audio,
-  speed on real hardware), and the `build-windows` job has no run.
+  speed on real hardware).
 
 Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
 the order of the remaining work. Until a Windows hardware run qualifies the ZIP,
