@@ -25,6 +25,10 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   TITLE_TRANSFORM_BUILDER = 0x005707d0u,
   SELECTION_CALLER = 0x005ead9bu,
@@ -82,7 +86,9 @@ static void x2_dialog_selection_transform(CPU *C) {
   d3d8_selector_probe_title_builder_leave();
 }
 
-void x2_dialog_selection_scale_report(void) {
+} // namespace
+
+void dialog_selection_scale_report() {
   lucent_log_error(
       "x2",
       "DIALOG SELECTION: %lu transform-builder call(s), %lu selected-row "
@@ -91,8 +97,14 @@ void x2_dialog_selection_scale_report(void) {
       g_calls, g_selected, g_corrected, g_refused);
 }
 
+namespace {
+
 __attribute__((constructor)) static void
 x2_dialog_selection_scale_register(void) {
   x86_register_override("XMen2.exe", TITLE_TRANSFORM_BUILDER,
                         x2_dialog_selection_transform);
 }
+
+} // namespace
+
+} // namespace x2::native

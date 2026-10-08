@@ -4,7 +4,7 @@ kind: claim
 status: falsified
 created: 2026-08-26
 tags: text,glyphs,prompts,renderer,overrides
-depends: src/native/prompt_glyph_draw.cpp#x2_override_005ee780, src/native/prompt_labels.cpp#x2_override_00619e30
+depends: src/native/prompt_glyph_draw.cpp#x2_override_005ee780, src/native/prompt_labels.cpp#override_00619e30
 falsified_on: 2026-08-26
 ---
 

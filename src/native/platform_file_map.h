@@ -1,16 +1,17 @@
-#ifndef X2_PLATFORM_FILE_MAP_H
-#define X2_PLATFORM_FILE_MAP_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
 
-typedef struct X2FileMap {
+namespace x2::native {
+
+struct FileMap {
   void *address;
-  size_t size;
-} X2FileMap;
+  std::size_t size;
+};
 
 /* Map an existing file read-only for the lifetime of `out`.  The caller owns
  * the unmap and must not write through the returned address. */
-int x2_file_map_readonly(const char *path, X2FileMap *out);
-void x2_file_unmap(X2FileMap *mapping);
+int file_map_readonly(const char *path, FileMap *out);
+void file_unmap(FileMap *mapping);
 
-#endif
+} // namespace x2::native

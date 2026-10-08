@@ -16,7 +16,7 @@ bool install_fatal_handlers();
 /* Faults this process with `kind`, through a real faulting instruction when
  * `genuine` and the host's own raise otherwise. Returns only if nothing
  * fired. */
-void trigger(X2FaultKind kind, bool genuine);
+void trigger(FaultKind kind, bool genuine);
 
 struct ChildResult {
   std::size_t bytes; /* stderr captured into the caller's buffer */

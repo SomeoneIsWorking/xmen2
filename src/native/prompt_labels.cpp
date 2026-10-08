@@ -24,6 +24,10 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 #define LABEL_BUFFER_BYTES 512u
 #define MAX_RETAIL_LABEL 127u
 
@@ -32,7 +36,11 @@ static unsigned long g_buffer_failures;
 
 static uint32_t g_styled_label;
 
-uint32_t x2_prompt_label_buffer(void) { return g_styled_label; }
+} // namespace
+
+uint32_t prompt_label_buffer() { return g_styled_label; }
+
+namespace {
 
 /* WHO asks for these labels? The composed label is handed back as a return
    value, and nothing in this file knows whether the caller draws it, stores
@@ -73,30 +81,32 @@ static int keycap_glyphs_available(void) {
          x2_prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
 }
 
-enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
-                                           uint8_t *output, size_t capacity) {
+} // namespace
+
+PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
+                                      size_t capacity) {
   size_t length, name_length, i;
   uint16_t run[X2_KEYCAP_NAME_MAX + 2u];
 
   if (!input || !output || !capacity)
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
   length = strlen((const char *)input);
   if (length == 3u && input[0] == '[' && pad_glyph_byte(input[1]) &&
       input[2] == ']') {
     if (capacity < 2u || !x2_prompt_glyph_available(input[1]))
-      return PROMPT_LABEL_UNCHANGED;
+      return PromptLabelStyle::Unchanged;
     output[0] = input[1];
     output[1] = 0;
-    return PROMPT_LABEL_PAD_GLYPH;
+    return PromptLabelStyle::PadGlyph;
   }
   if (length < 3u || input[0] != '[' || input[length - 1u] != ']')
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
   if (!keycap_glyphs_available())
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
   name_length = length - 2u;
   if (name_length > X2_KEYCAP_NAME_MAX ||
       (name_length == 3u && memcmp(input + 1u, "???", 3u) == 0))
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
   run[0] = X2_KEYCAP_GLYPH_LEFT;
   for (i = 0; i < name_length; i++) {
     run[i + 1u] = input[i + 1u];
@@ -107,23 +117,23 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
   if (x2_keycap_run_length(run, (unsigned)name_length + 2u, 0u) !=
           name_length + 2u ||
       !x2_keycap_label_art(run + 1u, (unsigned)name_length))
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
   if (name_length + 3u > capacity)
-    return PROMPT_LABEL_UNCHANGED;
+    return PromptLabelStyle::Unchanged;
 
   output[0] = X2_KEYCAP_GLYPH_LEFT;
   memcpy(output + 1u, input + 1u, name_length);
   output[name_length + 1u] = X2_KEYCAP_GLYPH_RIGHT;
   output[name_length + 2u] = 0;
-  return PROMPT_LABEL_KEYCAP;
+  return PromptLabelStyle::Keycap;
 }
 
-void x2_override_00619e30(CPU *C) {
+void override_00619e30(CPU *C) {
   uint8_t retail[MAX_RETAIL_LABEL + 1u];
   uint8_t styled[LABEL_BUFFER_BYTES];
   uint32_t out;
   size_t length;
-  enum PromptLabelStyle style;
+  PromptLabelStyle style;
 
   /* Before the super-call: the retail body pops its own return address. */
   note_caller(RD32(C->reg[kX86pEsp]));
@@ -143,7 +153,7 @@ void x2_override_00619e30(CPU *C) {
     return;
   }
   style = prompt_label_rewrite(retail, styled, sizeof styled);
-  if (style == PROMPT_LABEL_UNCHANGED) {
+  if (style == PromptLabelStyle::Unchanged) {
     g_unchanged++;
     return;
   }
@@ -157,18 +167,22 @@ void x2_override_00619e30(CPU *C) {
   for (size_t i = 0; i < length; i++)
     WR8(g_styled_label + (uint32_t)i, styled[i]);
   C->reg[kX86pEax] = g_styled_label;
-  if (style == PROMPT_LABEL_PAD_GLYPH)
+  if (style == PromptLabelStyle::PadGlyph)
     g_pad_labels++;
   else
     g_keycap_labels++;
 }
 
+namespace {
+
 __attribute__((constructor)) static void
 x2_prompt_labels_register_override(void) {
-  x86_register_override("XMen2.exe", 0x00619e30, x2_override_00619e30);
+  x86_register_override("XMen2.exe", 0x00619e30, override_00619e30);
 }
 
-void prompt_labels_report(void) {
+} // namespace
+
+void prompt_labels_report() {
   static int done;
   unsigned i;
   if (done++)
@@ -193,3 +207,5 @@ void prompt_labels_report(void) {
     x2_log_info("           %lu call(s) from sites past the table\n",
                 g_site_overflow);
 }
+
+} // namespace x2::native

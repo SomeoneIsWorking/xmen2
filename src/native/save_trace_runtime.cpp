@@ -244,8 +244,8 @@ size_t save_trace_runtime_report(char *out, size_t capacity) {
   if (!autosave_size)
     return 0;
   combined_size = trace_size + autosave_size;
-  load_menu_size = x2_load_game_menu_runtime_report(out + combined_size,
-                                                    capacity - combined_size);
+  load_menu_size = x2::native::load_game_menu_runtime_report(
+      out + combined_size, capacity - combined_size);
   if (!load_menu_size)
     return 0;
   return combined_size + load_menu_size;

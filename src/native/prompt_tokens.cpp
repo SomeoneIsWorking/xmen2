@@ -77,8 +77,8 @@ void x2_probe_004bd720(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x004bd720u);
   /* The resolver returns the display string in EAX. Ours is the one guest
      buffer prompt_label_rewrite publishes. */
-  ours =
-      x2_prompt_label_buffer() && C->reg[kX86pEax] == x2_prompt_label_buffer();
+  ours = x2::native::prompt_label_buffer() &&
+         C->reg[kX86pEax] == x2::native::prompt_label_buffer();
   if (ours) {
     g_ours++;
     note_site(ret);

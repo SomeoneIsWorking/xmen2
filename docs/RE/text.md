@@ -155,7 +155,7 @@ every ordinary one.
 
 | hop | what happens |
 |---|---|
-| `x2_override_00619e30` | composes the label as NARROW bytes (`WR8`, `strlen`) |
+| `override_00619e30` | composes the label as NARROW bytes (`WR8`, `strlen`) |
 | `FUN_004bd720` | token resolver: calls the label builder with the action id in the low byte, then RETURNS that string pointer to its own caller at `L_004bd7ff` |
 | `FUN_00596df0` (`0x00596f5a`) and `FUN_005ef2e0` (`0x005ef757`) | the two consumers, x1143 and x1142 in one run |
 | `FUN_005ef2e0` | markup -> wide line buffers. The widening is a plain `MOVZX AX,BL` at `0x005ef7b3`, so a 0x90 byte becomes wchar 0x0090 unchanged |

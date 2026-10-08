@@ -1,5 +1,4 @@
-#ifndef X2_CAMPAIGN_SNAPSHOT_H
-#define X2_CAMPAIGN_SNAPSHOT_H
+#pragma once
 
 /*
  * The running campaign, serialized the way a save file holds it.
@@ -17,21 +16,21 @@
  * among the rest.
  */
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "x86rt.h"
 
-enum {
-  X2_CAMPAIGN_SNAPSHOT_PAYLOAD_BYTES = 0x2fc00,
-  X2_CAMPAIGN_SNAPSHOT_OBJECT_BYTES = 0x2fc78
-};
+namespace x2::native {
 
-typedef struct X2CampaignSnapshot X2CampaignSnapshot;
+inline constexpr int kCampaignSnapshotPayloadBytes = 0x2fc00;
+inline constexpr int kCampaignSnapshotObjectBytes = 0x2fc78;
 
-X2CampaignSnapshot *x2_campaign_snapshot_create(void);
+struct CampaignSnapshot;
+
+CampaignSnapshot *campaign_snapshot_create();
 /* 1 once the running campaign has been serialized into the snapshot. */
-int x2_campaign_snapshot_capture(X2CampaignSnapshot *snapshot, const CPU *cpu);
+int campaign_snapshot_capture(CampaignSnapshot *snapshot, const CPU *cpu);
 /* The guest address of the save object, 0 before a capture. */
-uint32_t x2_campaign_snapshot_address(const X2CampaignSnapshot *snapshot);
+std::uint32_t campaign_snapshot_address(const CampaignSnapshot *snapshot);
 
-#endif
+} // namespace x2::native

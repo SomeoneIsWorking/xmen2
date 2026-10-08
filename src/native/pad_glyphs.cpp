@@ -251,5 +251,5 @@ void pad_glyphs_report(void) {
               "row's pad binding, %lu had none and used the game's own slot "
               "order\n",
               g_rows_asked, g_rows_padded, g_rows_no_pad);
-  prompt_labels_report();
+  x2::native::prompt_labels_report();
 }

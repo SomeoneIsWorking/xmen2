@@ -19,6 +19,10 @@
 #include <stdint.h>
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 enum {
   EXE_PREFERRED = 0x00400000u,
   FN_SCHEDULER_PUMP = 0x004d9640u,
@@ -199,7 +203,7 @@ static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
   uint32_t completed;
 
   if (!context_index(heap->manager, context, &fiber_index))
-    return BEHAVED_PLAYER_STEP_REFUSED;
+    return BehavedPlayerStep::Refused;
   remove_heap_entry(heap, index);
   completed = x2::native::behaved_context_run(cpu, context);
   if ((completed & 0xffu) == 1u) {
@@ -212,24 +216,25 @@ static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
     else {
       call_guest(cpu, base + (FN_SCHEDULER_SLOT_RELEASE - EXE_PREFERRED),
                  heap->scheduler, 1, heap->entry[index].slot);
-      return BEHAVED_PLAYER_STEP_REFUSED;
+      return BehavedPlayerStep::Refused;
     }
   }
   call_guest(cpu, base + (FN_SCHEDULER_SLOT_RELEASE - EXE_PREFERRED),
              heap->scheduler, 1, heap->entry[index].slot);
-  return (completed & 0xffu) == 1u ? BEHAVED_PLAYER_STEP_COMPLETED
-                                   : BEHAVED_PLAYER_STEP_RAN;
+  return (completed & 0xffu) == 1u ? BehavedPlayerStep::Completed
+                                   : BehavedPlayerStep::Ran;
 }
 
 static BehavedPlayerStep step_due(CPU *cpu, uint32_t base, uint32_t scheduler,
                                   float now) {
   ValidatedHeap heap;
   if (!validate_heap(scheduler, &heap))
-    return BEHAVED_PLAYER_STEP_REFUSED;
+    return BehavedPlayerStep::Refused;
   if (heap.count == 0u || !(entry_deadline(&heap.entry[0]) < now))
-    return BEHAVED_PLAYER_STEP_NONE;
+    return BehavedPlayerStep::None;
   return execute_entry(cpu, base, &heap, 0u);
 }
+} // namespace
 
 int behaved_player_next_owned(CPU *cpu, BehavedPlayerOwnsContext owns,
                               void *opaque, uint32_t *context) {
@@ -264,11 +269,11 @@ BehavedPlayerStep behaved_player_step_context(CPU *cpu, uint32_t context) {
   if (!cpu || !(base = exe_base()) || !(owner = manager(cpu, base)) ||
       owner > UINT32_MAX - MANAGER_SCHEDULER ||
       !validate_heap(owner + MANAGER_SCHEDULER, &heap) || heap.manager != owner)
-    return BEHAVED_PLAYER_STEP_REFUSED;
+    return BehavedPlayerStep::Refused;
   for (index = 0; index < heap.count; ++index)
     if (heap.context[index] == context)
       return execute_entry(cpu, base, &heap, index);
-  return BEHAVED_PLAYER_STEP_NONE;
+  return BehavedPlayerStep::None;
 }
 
 BehavedPlayerStep behaved_player_step_owned(CPU *cpu,
@@ -277,13 +282,13 @@ BehavedPlayerStep behaved_player_step_owned(CPU *cpu,
   uint32_t context;
   int found = behaved_player_next_owned(cpu, owns, opaque, &context);
   if (found < 0)
-    return BEHAVED_PLAYER_STEP_REFUSED;
+    return BehavedPlayerStep::Refused;
   if (found == 0)
-    return BEHAVED_PLAYER_STEP_NONE;
+    return BehavedPlayerStep::None;
   return behaved_player_step_context(cpu, context);
 }
 
-void x2_override_004d9640(CPU *cpu) {
+void override_004d9640(CPU *cpu) {
   uint32_t base = exe_base();
   uint32_t now_bits = 0;
   float now;
@@ -294,15 +299,21 @@ void x2_override_004d9640(CPU *cpu) {
     memcpy(&now, &now_bits, sizeof now);
     do {
       result = step_due(cpu, base, cpu->reg[kX86pEcx], now);
-    } while (result == BEHAVED_PLAYER_STEP_RAN ||
-             result == BEHAVED_PLAYER_STEP_COMPLETED);
+    } while (result == BehavedPlayerStep::Ran ||
+             result == BehavedPlayerStep::Completed);
   }
   if (cpu)
     cpu->reg[kX86pEsp] += 8u; /* RET 4: return address plus float argument. */
 }
 
+namespace {
+
 __attribute__((constructor)) static void
 x2_behaved_player_register_override(void) {
   /* The retail body remains callable through the JIT for differential A/B. */
-  x86_register_override("XMen2.exe", FN_SCHEDULER_PUMP, x2_override_004d9640);
+  x86_register_override("XMen2.exe", FN_SCHEDULER_PUMP, override_004d9640);
 }
+
+} // namespace
+
+} // namespace x2::native

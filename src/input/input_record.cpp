@@ -82,7 +82,7 @@ int input_record_start(const char *path) {
   if (g_file)
     return 1;
   if (!path[0]) {
-    if (!x2_directory_create(g_directory)) {
+    if (!x2::config::directory_create(g_directory)) {
       x2_log_error("input record: cannot create %s: %s. REFUSING to "
                    "call this run recorded.\n",
                    g_directory, strerror(errno));

@@ -26,25 +26,29 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const char *fault_name(X2FaultKind kind) {
+namespace x2::fault {
+
+const char *fault_name(FaultKind kind) {
   switch (kind) {
-  case X2_FAULT_SEGV:
+  case FaultKind::Segv:
     return "SIGSEGV";
-  case X2_FAULT_ILL:
+  case FaultKind::Ill:
     return "SIGILL";
-  case X2_FAULT_FPE:
+  case FaultKind::Fpe:
     return "SIGFPE";
-  case X2_FAULT_BUS:
+  case FaultKind::Bus:
     return "SIGBUS";
-  case X2_FAULT_TRAP:
+  case FaultKind::Trap:
     return "SIGTRAP";
-  case X2_FAULT_KIND_COUNT:
+  case FaultKind::KindCount:
     break;
   }
   return "signal";
 }
 
-static void fault_host_pc_report(uintptr_t pc) {
+namespace {
+
+void fault_host_pc_report(uintptr_t pc) {
 #if defined(__EMSCRIPTEN__)
   char stack[4096];
   (void)pc;
@@ -68,6 +72,8 @@ static void fault_host_pc_report(uintptr_t pc) {
 #endif
 }
 
+} // namespace
+
 /*
  * A fault in the poison region is an unbound import being used. Say which.
  *
@@ -78,7 +84,7 @@ static void fault_host_pc_report(uintptr_t pc) {
  * host PC, guest registers and boundary ring -- which names where the guest
  * was executing.
  */
-void fault_report(const X2Fault *fault) {
+void fault_report(const Fault *fault) {
   uint32_t a;
   const char *mod = NULL, *sym;
   void *const address = (void *)fault->address;
@@ -87,10 +93,10 @@ void fault_report(const X2Fault *fault) {
                                       fault->code, fault->address, fault->pc);
   if (!guest_memory_host_address(address, &a))
     a = (uint32_t)fault->address;
-  if (fault->kind != X2_FAULT_SEGV) {
+  if (fault->kind != FaultKind::Segv) {
     x2_log_error("\n*** %s at %p -- %s\n", fault_name(fault->kind), address,
                  fault->meaning);
-    if (fault->kind == X2_FAULT_ILL || fault->kind == X2_FAULT_TRAP)
+    if (fault->kind == FaultKind::Ill || fault->kind == FaultKind::Trap)
       x2_log_error(
           "    For a guest body this usually means control reached "
           "something that is not code:\n"
@@ -134,3 +140,5 @@ where:
   x86_diag_dump();
   _exit(3);
 }
+
+} // namespace x2::fault

@@ -24,7 +24,7 @@ namespace {
 constexpr ULONG kOverflowReserve = 64 * 1024;
 
 struct Classified {
-  X2FaultKind kind;
+  x2::fault::FaultKind kind;
   const char *meaning;
 };
 
@@ -47,47 +47,49 @@ const char *access_meaning(const EXCEPTION_RECORD *record) {
 bool classify(const EXCEPTION_RECORD *record, Classified *out) {
   switch (record->ExceptionCode) {
   case EXCEPTION_ACCESS_VIOLATION:
-    *out = {X2_FAULT_SEGV, access_meaning(record)};
+    *out = {x2::fault::FaultKind::Segv, access_meaning(record)};
     return true;
   case EXCEPTION_STACK_OVERFLOW:
-    *out = {X2_FAULT_SEGV, "stack overflow"};
+    *out = {x2::fault::FaultKind::Segv, "stack overflow"};
     return true;
   case EXCEPTION_IN_PAGE_ERROR:
-    *out = {X2_FAULT_BUS, "the page could not be read in"};
+    *out = {x2::fault::FaultKind::Bus, "the page could not be read in"};
     return true;
   case EXCEPTION_DATATYPE_MISALIGNMENT:
-    *out = {X2_FAULT_BUS, "misaligned address"};
+    *out = {x2::fault::FaultKind::Bus, "misaligned address"};
     return true;
   case EXCEPTION_ILLEGAL_INSTRUCTION:
-    *out = {X2_FAULT_ILL, "illegal OPCODE -- the instruction at this address "
-                          "is not an instruction"};
+    *out = {x2::fault::FaultKind::Ill,
+            "illegal OPCODE -- the instruction at this address "
+            "is not an instruction"};
     return true;
   case EXCEPTION_PRIV_INSTRUCTION:
-    *out = {X2_FAULT_ILL, "privileged opcode"};
+    *out = {x2::fault::FaultKind::Ill, "privileged opcode"};
     return true;
   case EXCEPTION_INT_DIVIDE_BY_ZERO:
-    *out = {X2_FAULT_FPE, "integer divide by zero"};
+    *out = {x2::fault::FaultKind::Fpe, "integer divide by zero"};
     return true;
   case EXCEPTION_INT_OVERFLOW:
-    *out = {X2_FAULT_FPE, "integer overflow"};
+    *out = {x2::fault::FaultKind::Fpe, "integer overflow"};
     return true;
   case EXCEPTION_FLT_DIVIDE_BY_ZERO:
-    *out = {X2_FAULT_FPE, "floating-point divide by zero"};
+    *out = {x2::fault::FaultKind::Fpe, "floating-point divide by zero"};
     return true;
   case EXCEPTION_FLT_INVALID_OPERATION:
-    *out = {X2_FAULT_FPE, "invalid floating-point operation"};
+    *out = {x2::fault::FaultKind::Fpe, "invalid floating-point operation"};
     return true;
   case EXCEPTION_FLT_DENORMAL_OPERAND:
   case EXCEPTION_FLT_INEXACT_RESULT:
   case EXCEPTION_FLT_OVERFLOW:
   case EXCEPTION_FLT_STACK_CHECK:
   case EXCEPTION_FLT_UNDERFLOW:
-    *out = {X2_FAULT_FPE, "an arithmetic fault"};
+    *out = {x2::fault::FaultKind::Fpe, "an arithmetic fault"};
     return true;
   case EXCEPTION_BREAKPOINT:
   case EXCEPTION_SINGLE_STEP:
-    *out = {X2_FAULT_TRAP, "a trap instruction (INT3/INT1) executed with no "
-                           "debugger to take it"};
+    *out = {x2::fault::FaultKind::Trap,
+            "a trap instruction (INT3/INT1) executed with no "
+            "debugger to take it"};
     return true;
   default:
     return false;
@@ -108,13 +110,14 @@ LONG CALLBACK on_exception(EXCEPTION_POINTERS *info) {
     code = static_cast<int>(record->ExceptionInformation[0]);
     address = static_cast<uintptr_t>(record->ExceptionInformation[1]);
   }
-  const X2Fault fault = {classified.kind,
-                         classified.meaning,
-                         static_cast<int>(record->ExceptionCode),
-                         code,
-                         address,
-                         static_cast<uintptr_t>(info->ContextRecord->Rip)};
-  fault_report(&fault);
+  const x2::fault::Fault fault = {
+      classified.kind,
+      classified.meaning,
+      static_cast<int>(record->ExceptionCode),
+      code,
+      address,
+      static_cast<uintptr_t>(info->ContextRecord->Rip)};
+  x2::fault::fault_report(&fault);
 }
 
 constexpr char kInterruptedMessage[] =
@@ -168,21 +171,21 @@ bool install_handlers() {
   return installed;
 }
 
-void trigger(X2FaultKind kind, bool genuine) {
-  if (genuine && kind == X2_FAULT_ILL) {
+void trigger(FaultKind kind, bool genuine) {
+  if (genuine && kind == FaultKind::Ill) {
     __asm__ __volatile__("ud2");
   }
   switch (kind) {
-  case X2_FAULT_ILL:
+  case FaultKind::Ill:
     RaiseException(EXCEPTION_ILLEGAL_INSTRUCTION, 0, 0, nullptr);
     break;
-  case X2_FAULT_FPE:
+  case FaultKind::Fpe:
     RaiseException(EXCEPTION_INT_DIVIDE_BY_ZERO, 0, 0, nullptr);
     break;
-  case X2_FAULT_BUS:
+  case FaultKind::Bus:
     RaiseException(EXCEPTION_DATATYPE_MISALIGNMENT, 0, 0, nullptr);
     break;
-  case X2_FAULT_TRAP:
+  case FaultKind::Trap:
     RaiseException(EXCEPTION_BREAKPOINT, 0, 0, nullptr);
     break;
   default: {

@@ -6,7 +6,9 @@
 
 #include <windows.h>
 
-int x2_file_map_readonly(const char *path, X2FileMap *out) {
+namespace x2::native {
+
+int file_map_readonly(const char *path, FileMap *out) {
   HANDLE file, section;
   LARGE_INTEGER size;
   void *address;
@@ -35,12 +37,14 @@ int x2_file_map_readonly(const char *path, X2FileMap *out) {
   return 0;
 }
 
-void x2_file_unmap(X2FileMap *mapping) {
+void file_unmap(FileMap *mapping) {
   if (mapping->address != NULL)
     (void)UnmapViewOfFile(mapping->address);
   mapping->address = NULL;
   mapping->size = 0;
 }
+
+} // namespace x2::native
 
 #else
 
@@ -50,7 +54,9 @@ void x2_file_unmap(X2FileMap *mapping) {
 #include <sys/mman.h>
 #include <sys/stat.h>
 
-int x2_file_map_readonly(const char *path, X2FileMap *out) {
+namespace x2::native {
+
+int file_map_readonly(const char *path, FileMap *out) {
   struct stat stat_info;
   int descriptor;
   void *address;
@@ -74,11 +80,13 @@ int x2_file_map_readonly(const char *path, X2FileMap *out) {
   return 0;
 }
 
-void x2_file_unmap(X2FileMap *mapping) {
+void file_unmap(FileMap *mapping) {
   if (mapping->address != NULL)
     (void)munmap(mapping->address, mapping->size);
   mapping->address = NULL;
   mapping->size = 0;
 }
+
+} // namespace x2::native
 
 #endif

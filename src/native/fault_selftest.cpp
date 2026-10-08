@@ -14,17 +14,17 @@
 namespace {
 
 struct SelftestCase {
-  X2FaultKind kind;
+  x2::fault::FaultKind kind;
   bool genuine;
   const char *what;
 };
 
 constexpr SelftestCase kCases[] = {
-    {X2_FAULT_ILL, true, "a real illegal opcode instruction"},
-    {X2_FAULT_FPE, false, "a raised arithmetic fault"},
-    {X2_FAULT_BUS, false, "a raised bus/alignment fault"},
-    {X2_FAULT_TRAP, false, "a raised trap"},
-    {X2_FAULT_SEGV, false, "a raised access fault"},
+    {x2::fault::FaultKind::Ill, true, "a real illegal opcode instruction"},
+    {x2::fault::FaultKind::Fpe, false, "a raised arithmetic fault"},
+    {x2::fault::FaultKind::Bus, false, "a raised bus/alignment fault"},
+    {x2::fault::FaultKind::Trap, false, "a raised trap"},
+    {x2::fault::FaultKind::Segv, false, "a raised access fault"},
 };
 constexpr int kCaseCount = static_cast<int>(sizeof kCases / sizeof kCases[0]);
 
@@ -44,16 +44,14 @@ int selftest_child(int selftest_case) {
   _exit(0); /* the handler leaves with 3; reaching here for a fault fails */
 }
 
-} // namespace x2::fault
-
-int x2_fault_selftest(void) {
+int fault_selftest() {
   int fails = 0;
 
   for (int i = 0; i <= kCaseCount; i++) {
     const bool control = i == kCaseCount;
     char output[8192];
-    x2::fault::ChildResult result{};
-    if (!x2::fault::run_child(i, output, sizeof output, &result)) {
+    ChildResult result{};
+    if (!run_child(i, output, sizeof output, &result)) {
       x2_log_info("x2native --fault-selftest: no child process could be "
                   "started; NOTHING was checked.\n");
       return 1;
@@ -93,3 +91,5 @@ int x2_fault_selftest(void) {
       fails ? "FAILED" : "PASSED", fails);
   return fails ? 1 : 0;
 }
+
+} // namespace x2::fault

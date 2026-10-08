@@ -78,7 +78,7 @@ static void (*g_cmd_work)(void *); /* CMD_GUEST_READ's reader */
 static void *g_cmd_context;
 static char *g_probe; /* input snapshot, server-thread owned */
 static size_t g_probe_len;
-static X2ControlScreenshot g_screenshot;
+static x2::native::ControlScreenshot g_screenshot;
 static int g_shot_abandoned;
 
 static int g_port;
@@ -208,7 +208,7 @@ static void control_frame_pump(void) {
 
   pthread_mutex_lock(&g_lock);
   if (g_shot_abandoned) {
-    x2_control_screenshot_abandon(&g_screenshot);
+    x2::native::control_screenshot_abandon(&g_screenshot);
     g_shot_abandoned = 0;
   }
   if (g_cmd != CMD_SHOT) {
@@ -216,13 +216,13 @@ static void control_frame_pump(void) {
     return;
   }
 
-  result = x2_control_screenshot_poll(&g_screenshot, g_cmd_why,
-                                      (int)sizeof g_cmd_why);
-  if (result == X2_CONTROL_SCREENSHOT_PENDING) {
+  result = x2::native::control_screenshot_poll(&g_screenshot, g_cmd_why,
+                                               (int)sizeof g_cmd_why);
+  if (result == x2::native::kControlScreenshotPending) {
     pthread_mutex_unlock(&g_lock);
     return;
   }
-  g_cmd_ok = result == X2_CONTROL_SCREENSHOT_READY;
+  g_cmd_ok = result == x2::native::kControlScreenshotReady;
   if (g_cmd_ok)
     g_shots++;
   g_cmd = CMD_NONE;
@@ -338,7 +338,7 @@ static void route_shot(x2_socket_t fd) {
     control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why);
     return;
   }
-  png = x2_control_screenshot_png(&g_screenshot, &png_bytes);
+  png = x2::native::control_screenshot_png(&g_screenshot, &png_bytes);
   control_reply_bytes(fd, 200, "OK", "image/png", png, png_bytes);
 }
 

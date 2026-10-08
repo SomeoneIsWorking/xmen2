@@ -437,7 +437,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
     }
   }
 
-  at += x2_player_participation_probe_report(cpu, out + at, n - at);
+  at += x2::native::player_participation_probe_report(cpu, out + at, n - at);
 
   /*
    * The prompt label the game last composed, byte by byte.

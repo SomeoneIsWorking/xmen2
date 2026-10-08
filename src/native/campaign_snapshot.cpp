@@ -29,13 +29,13 @@ bool CampaignSnapshot::capture(const CPU &cpu) {
     return false;
   }
   if (!object_) {
-    object_ = guest_malloc(X2_CAMPAIGN_SNAPSHOT_OBJECT_BYTES);
+    object_ = guest_malloc(native::kCampaignSnapshotObjectBytes);
   }
   if (!object_) {
     return false;
   }
   std::memset(guest_memory_pointer(object_), 0,
-              X2_CAMPAIGN_SNAPSHOT_OBJECT_BYTES);
+              native::kCampaignSnapshotObjectBytes);
   WR32(object_ + kCursor, object_);
   WR8(object_ + kHeaderFlagA, 0u);
   WR8(object_ + kHeaderFlagB, 0u);
@@ -52,18 +52,20 @@ bool CampaignSnapshot::capture(const CPU &cpu) {
 
 } // namespace x2::save
 
-struct X2CampaignSnapshot {
-  x2::save::CampaignSnapshot snapshot;
+namespace x2::native {
+
+struct CampaignSnapshot {
+  save::CampaignSnapshot snapshot;
 };
 
-X2CampaignSnapshot *x2_campaign_snapshot_create(void) {
-  return new X2CampaignSnapshot();
-}
+CampaignSnapshot *campaign_snapshot_create() { return new CampaignSnapshot(); }
 
-int x2_campaign_snapshot_capture(X2CampaignSnapshot *snapshot, const CPU *cpu) {
+int campaign_snapshot_capture(CampaignSnapshot *snapshot, const CPU *cpu) {
   return snapshot && cpu && snapshot->snapshot.capture(*cpu);
 }
 
-uint32_t x2_campaign_snapshot_address(const X2CampaignSnapshot *snapshot) {
+std::uint32_t campaign_snapshot_address(const CampaignSnapshot *snapshot) {
   return snapshot ? snapshot->snapshot.address() : 0u;
 }
+
+} // namespace x2::native
