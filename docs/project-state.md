@@ -2173,12 +2173,34 @@ every test with no warnings. Under Wine 11:
   natively on the runner (run `37489972297`).
 - CTest through `wine` passes every host-boundary test.
 
+- `tools/package_windows.py` zips the Release `x2native.exe` as
+  `X-Men Legends II.exe` with `ui/` and the `xmen2-package.txt` marker into
+  `X-Men-Legends-II-windows-x86_64.zip` (5.9 MB). The executable's imports are
+  27 Windows system libraries (KERNEL32, USER32, GDI32, WS2_32, the Universal
+  CRT `api-ms-win-crt-*` set and the like); the packager refuses any other.
+- Unzipped into a fresh folder and run under Wine 11 from it alone:
+  `--fault-selftest` reports all five fault kinds, `--selftest` against the
+  retail install fails 0 of 92 checks, and a headless `--d3d8` boot presents
+  1443 frames by 47 s. With the build tree's `ui` folder moved away, a windowed
+  run still initializes the Port Settings overlay, so the resources load from
+  the package. With no install configured, the first-run picker appears
+  ("Choose XMen2.exe, or a ZIP containing exactly one XMen2.exe ...", Quit and
+  Browse).
+- `x2native.exe` is a GUI-subsystem program (PE `Subsystem 2`, CMake
+  `WIN32_EXECUTABLE`) in every Windows build, so a double-click opens no console.
+  Redirected stdout and stderr still reach pipes and files, and the run log
+  is written as before; a bare terminal shows nothing, so redirect or read the log.
+- The `build-windows` job in `release.yml` builds the ZIP on `windows-2025`,
+  unzips it and runs `--fault-selftest` from the folder, then publishes it.
+  That job has not run yet: no CI run was possible from here.
+
 Gap:
-- No native Windows run has been made, and there is no release ZIP.
+- No native Windows run of the game has been made (window, input, audio,
+  speed on real hardware), and the `build-windows` job has no run.
 
 Issue [#146](issues/0146-native-windows-host-boundary.md) has the evidence and
-the order of the remaining work. Until a package exists, the Windows comparison
-baseline is the retail executable.
+the order of the remaining work. Until a Windows hardware run qualifies the ZIP,
+the Windows comparison baseline is the retail executable.
 
 ### S024 — optional extraction-point revive: partial
 

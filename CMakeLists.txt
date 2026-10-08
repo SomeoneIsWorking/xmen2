@@ -523,6 +523,13 @@ target_include_directories(test_macos_bundle PRIVATE src/native)
 target_link_libraries(test_macos_bundle PRIVATE ${X2_SDL})
 add_test(NAME macos_bundle COMMAND test_macos_bundle)
 
+add_executable(test_windows_package tests/test_windows_package.cpp
+               src/native/windows_package.cpp src/config/environment.cpp
+               src/native/x2_log.cpp)
+target_include_directories(test_windows_package PRIVATE src/native)
+target_link_libraries(test_windows_package PRIVATE ${X2_SDL} lucent::lucent)
+add_test(NAME windows_package COMMAND test_windows_package)
+
 add_executable(test_touch_source tests/test_touch_source.cpp
                src/input/touch_source.cpp)
 target_link_libraries(test_touch_source PRIVATE ${X2_SDL})
@@ -1612,6 +1619,10 @@ add_test(NAME appimage_packaging
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/package_appimage.py --selftest)
 
+add_test(NAME windows_packaging
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/package_windows.py --selftest)
+
 add_test(NAME appimage_env
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tests/test_appimage_env.py
@@ -2210,6 +2221,7 @@ set(X2_NATIVE_SOURCES
     src/native/control_ui_route.cpp
     src/native/control_input_route.cpp
     src/native/macos_bundle.cpp
+    src/native/windows_package.cpp
     src/native/control_performance_route.cpp
     src/native/control_status_route.cpp
     src/native/control_png.cpp
@@ -2349,6 +2361,9 @@ if(ANDROID)
     add_library(x2native SHARED ${X2_NATIVE_SOURCES})
 else()
     add_executable(x2native ${X2_NATIVE_SOURCES})
+    # GUI subsystem on every Windows build, so the binary CI tests is the one
+    # that ships; redirected stdout and stderr still reach pipes and files.
+    set_target_properties(x2native PROPERTIES WIN32_EXECUTABLE ON)
 endif()
 # -----------------------------------------------------------------
 # The product-only runtime execution engine.
