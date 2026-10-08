@@ -20,8 +20,10 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S018 — measured mobile performance.** v0.3.0 runs on the HONOR 600 and
-combat is reported slow; the active work is a combat profile on that phone.
+**S018 — combat performance.** Combat is reported slow on the phone; the
+desktop reproduction is `tools/live_case.py combat-bench` (a boss fight). Its
+first finding, whole-cache JIT flushes, is fixed ([#194](issues/0194-combat-hitches-when-the-jit-block-table-fills.md));
+the remaining steady-state profile is the active work.
 
 ## Capability inventory
 

@@ -15,6 +15,7 @@ scratch/run/live.json.
     tools/live_case.py extraction-free        # a pad revives and refills the party
     tools/live_case.py extraction-paid        # near a pad, a request pays the total
     tools/live_case.py menu-model             # GET /menu matches the drawn menus
+    tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
 Artifacts (log, screenshots, profile) stay under
@@ -71,6 +72,7 @@ from live_cases_touch_team import (
     case_touch_team_skills,
     case_touch_team_stats,
 )
+from live_cases_combat import case_combat_bench
 from live_cases_extraction import (
     case_extract_keyboard_back,
     case_extraction_free,
@@ -110,6 +112,7 @@ CASES = {
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,
+    "combat-bench": case_combat_bench,
     "deadzone-render": case_deadzone_render,
     "deadzone-water": case_deadzone_water,
     "selector-dialog-800": case_selector_dialog,
