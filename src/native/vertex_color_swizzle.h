@@ -1,9 +1,10 @@
-#ifndef X2_VERTEX_COLOR_SWIZZLE_H
-#define X2_VERTEX_COLOR_SWIZZLE_H
+#pragma once
 
 #include "x86rt.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /*
  * libIGGfx.dll!0x10046ce0 -- the range colour-channel swap that
@@ -26,7 +27,7 @@
 uint32_t vtx_color_swizzle_word(uint32_t w);
 
 /* libIGGfx.dll!0x10046ce0 -- __thiscall void(Desc *d, int flags), ret 8. */
-void x2_override_10046ce0(CPU *C);
+void override_10046ce0(CPU *C);
 
 /*
  * `gfx.vtx_swizzle_verify` differential gate (vertex_color_swizzle_verify.cpp).
@@ -35,18 +36,18 @@ void x2_override_10046ce0(CPU *C);
  * the native result. Both are no-ops unless the flag is set. `VtxSwizzleVerify`
  * is opaque storage the override keeps on its stack across the call.
  */
-typedef struct VtxSwizzleVerify {
+struct VtxSwizzleVerify {
   uint8_t *before;
   uint32_t addr;
   uint32_t len;
   uint8_t s60;
   uint8_t s68;
   int active;
-} VtxSwizzleVerify;
+};
 
 void vtx_swizzle_verify_begin(VtxSwizzleVerify *v, uint32_t self,
                               uint32_t desc);
 void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
                             uint32_t desc, uint32_t flags);
 
-#endif
+} // namespace x2::native

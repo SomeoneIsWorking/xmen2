@@ -1490,8 +1490,8 @@ int main(int argc, char **argv) {
   /* Before the options are read: a double-clicked .app or Windows folder
      supplies no options, and being packaged IS the launch shape --appimage
      names on Linux. Each publishes its own resources. */
-  if (x2_macos_bundle_init(argv[0]) || x2::native::windows_package_init())
-    packaged_bundle = 1;
+  packaged_bundle = x2::native::macos_bundle_init(argv[0]) ||
+                    x2::native::windows_package_init();
   if ((rc = x2native_options_parse(argc, argv, &options)) != 0)
     return rc;
   if (packaged_bundle)

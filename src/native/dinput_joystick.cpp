@@ -35,7 +35,7 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
   }
   x2::input::directinput_controller_write(
       &sample, guest_memory_as<unsigned char>(out), size);
-  x2_alchemy_controller_observe(pad, &sample, lo, hi);
+  x2::input::alchemy_controller_observe(pad, &sample, lo, hi);
 }
 
 static void object_guid(unsigned char guid[16], unsigned char low) {

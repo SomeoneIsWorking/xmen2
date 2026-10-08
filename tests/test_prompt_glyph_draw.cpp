@@ -397,7 +397,7 @@ int main(void) {
       ok("every stock glyph inside the key collapses; the words stay stock");
     /* Emitted glyph i sits at x 10+20i .. 28+20i: the left edge is glyph 0
        and the right edge glyph 4. */
-    if (!art || count != X2_KEYCAP_QUADS || quads[0].x0 != 10.0f ||
+    if (!art || count != x2::native::kKeycapQuads || quads[0].x0 != 10.0f ||
         quads[2].x1 != 108.0f || quads[1].x0 != quads[0].x1 ||
         quads[1].x1 != quads[2].x0 || quads[3].u0 != art->u0 ||
         quads[3].u1 != art->u1 || quads[3].x0 + quads[3].x1 != 118.0f ||
@@ -513,7 +513,7 @@ int main(void) {
   /* The report itself runs, so a change that breaks its format is caught
      here rather than in a run log nobody diffs. */
   printf("  the report reads:\n");
-  x2_prompt_draw_report();
+  x2::native::prompt_draw_report();
 
   printf("\ntest_prompt_glyph_draw: %d failure(s)\n", failures);
   return failures ? 1 : 0;

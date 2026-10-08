@@ -1,12 +1,13 @@
 /* A composed keyboard keycap: its shape in a string, and its shared art. */
-#ifndef X2_KEYCAP_RUN_H
-#define X2_KEYCAP_RUN_H
+#pragma once
 
 #include "prompt_glyph_quads.h"
 
-#include <stdint.h>
+#include <cstdint>
 
 struct x2_keycap_art;
+
+namespace x2::native {
 
 /*
  * prompt_labels.cpp turns the retail "[NAME]" into
@@ -20,12 +21,11 @@ struct x2_keycap_art;
  * and the name lettered in the shared key typeface (keycap_labels.h). The
  * game's letters inside the span draw nothing.
  */
-#define X2_KEYCAP_NAME_MAX 31u
+inline constexpr unsigned kKeycapNameMax = 31u;
 
 /* The length in characters of the keycap that opens at wide[at], edges
    included, or 0 when none does. The name is wide[at+1 .. at+length-2]. */
-unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
-                              unsigned at);
+unsigned keycap_run_length(const uint16_t *wide, unsigned length, unsigned at);
 
 /*
  * The whole key over one composed run, in the engine text plane. `left` and
@@ -35,9 +35,9 @@ unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
  * stretched middle and right end, then the label, centred and narrowed to the
  * cap's lettering width when the name is wider than the layout left for it.
  */
-#define X2_KEYCAP_QUADS 4u
-void x2_keycap_quads(const float left[4], const float right[4],
-                     const struct x2_keycap_art *label, uint32_t color,
-                     struct x2::native::PromptQuad out[X2_KEYCAP_QUADS]);
+inline constexpr unsigned kKeycapQuads = 4u;
+void keycap_quads(const float left[4], const float right[4],
+                  const struct x2_keycap_art *label, uint32_t color,
+                  PromptQuad out[kKeycapQuads]);
 
-#endif
+} // namespace x2::native

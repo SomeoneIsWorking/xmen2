@@ -1,6 +1,9 @@
 /* The menu text tokens the retail UI resolves, and what each becomes. */
-#ifndef X2_PROMPT_TOKENS_H
-#define X2_PROMPT_TOKENS_H
+#pragma once
+
+struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * XMen2.exe FUN_004bd720 is the token resolver the menus' authored text runs
@@ -17,8 +20,7 @@
  *
  * This owner records which is which, by token, from a real run.
  */
-struct X86pCpu;
-void x2_probe_004bd720(struct X86pCpu *cpu);
-void x2_prompt_tokens_report(void);
+void probe_004bd720(struct X86pCpu *cpu);
+void prompt_tokens_report(void);
 
-#endif
+} // namespace x2::native

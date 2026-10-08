@@ -65,7 +65,9 @@ static PowerSlotSource g_source;
 static char g_atlas[512];
 static int g_icons[X2_POWER_SLOTS] = {-1, -1, -1, -1};
 
-const char *x2_power_slots_atlas(void) { return g_atlas; }
+namespace x2::native {
+const char *power_slots_atlas(void) { return g_atlas; }
+} // namespace x2::native
 
 static uint32_t exe(uint32_t linked) {
   return x86_module_base("XMen2.exe") + linked - IMAGE_BASE;

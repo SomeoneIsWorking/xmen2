@@ -111,7 +111,7 @@ published `autosave.save`. No alternate leaf or corrupt-newest fallback is
 allowed if a future validation fails.
 
 ### Reopened (2026-08-25)
-Regression reported 2026-08-25: Boot=Continue traversed the menus again. Root cause is repository history, not save selection: commit 78e22e1 had already live-proven direct x2_continue_boot_dispatch -> start_latest_load with zero menu/main_back opens, but the later unsafe-history rewrite reset past that commit and its selective clean replay omitted this seam while retaining the older menu-mediated startup.cpp. Recovered only the direct boot seam into continue_runtime.{c,h} and startup.cpp, preserving start_latest_load as the single mode-3 owner; the wiring selftest now rejects the menu-only composition. Awaiting a fresh default-path live observation before resolving again.
+Regression reported 2026-08-25: Boot=Continue traversed the menus again. Root cause is repository history, not save selection: commit 78e22e1 had already live-proven direct continue_boot_dispatch -> start_latest_load with zero menu/main_back opens, but the later unsafe-history rewrite reset past that commit and its selective clean replay omitted this seam while retaining the older menu-mediated startup.cpp. Recovered only the direct boot seam into continue_runtime.{c,h} and startup.cpp, preserving start_latest_load as the single mode-3 owner; the wiring selftest now rejects the menu-only composition. Awaiting a fresh default-path live observation before resolving again.
 
 ### Resolved (2026-08-25, second reopening)
 

@@ -89,13 +89,15 @@ static struct {
 } g_cap;
 static unsigned long g_keys_drawn;
 
-int x2_glyph_loop_emits_quad(uint16_t c) {
+namespace x2::native {
+int glyph_loop_emits_quad(uint16_t c) {
   if (c >= 256u)
     return 0; /* colour tokens, pen sets, markup */
   if (c == ' ' || c == '\t')
     return 0; /* advance without drawing */
   return 1;
 }
+} // namespace x2::native
 
 /* The next wchar the emitter is about to draw, advancing the cursor. */
 static uint16_t cursor_take(void) {
@@ -104,7 +106,7 @@ static uint16_t cursor_take(void) {
     if (!c)
       return 0;
     g_cursor_index++;
-    if (x2_glyph_loop_emits_quad(c))
+    if (x2::native::glyph_loop_emits_quad(c))
       return c;
   }
   return 0;
@@ -217,14 +219,14 @@ static void intercept_keycap(CPU *C, uint16_t c) {
     g_cap.open = 1;
     g_cap.name_at = g_cursor_index;
   } else if (c == X2_KEYCAP_GLYPH_RIGHT) {
-    uint16_t name[X2_KEYCAP_NAME_MAX];
-    struct x2::native::PromptQuad quads[X2_KEYCAP_QUADS];
+    uint16_t name[x2::native::kKeycapNameMax];
+    struct x2::native::PromptQuad quads[x2::native::kKeycapQuads];
     const struct x2_keycap_art *art;
     const unsigned length = g_cursor_index - 1u - g_cap.name_at;
     float right[4];
     unsigned i;
 
-    for (i = 0; i < length && i < X2_KEYCAP_NAME_MAX; i++) {
+    for (i = 0; i < length && i < x2::native::kKeycapNameMax; i++) {
       name[i] = RD16(g_cursor_string + (g_cap.name_at + i) * 2u);
     }
     art = x2_keycap_label_art(name, length);
@@ -234,8 +236,8 @@ static void intercept_keycap(CPU *C, uint16_t c) {
       abort();
     }
     read_corners(C, right);
-    x2_keycap_quads(g_cap.left, right, art, g_cursor_color, quads);
-    retain(quads, X2_KEYCAP_QUADS);
+    x2::native::keycap_quads(g_cap.left, right, art, g_cursor_color, quads);
+    retain(quads, x2::native::kKeycapQuads);
     g_cap.open = 0;
     g_keys_drawn++;
   }
@@ -273,12 +275,12 @@ static struct PromptStringPlan plan_string(uint32_t s) {
   }
   for (i = 0; i < n; i++) {
     const uint16_t c = wide[i];
-    if (x2_glyph_loop_emits_quad(c))
+    if (x2::native::glyph_loop_emits_quad(c))
       plan.emitted++;
     if (!x2::native::prompt_codepoint(c))
       continue;
     if (c == X2_KEYCAP_GLYPH_LEFT) {
-      const unsigned run = x2_keycap_run_length(wide, n, i);
+      const unsigned run = x2::native::keycap_run_length(wide, n, i);
       if (!run || !x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT) ||
           !x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT) ||
           !x2_keycap_label_art(wide + i + 1u, run - 2u)) {
@@ -286,7 +288,7 @@ static struct PromptStringPlan plan_string(uint32_t s) {
         continue;
       }
       key_end = i + run - 1u;
-      plan.native += X2_KEYCAP_QUADS;
+      plan.native += x2::native::kKeycapQuads;
     } else if (c == X2_KEYCAP_GLYPH_RIGHT) {
       if (i != key_end)
         plan.unavailable = 1; /* an edge that closes no key */
@@ -383,7 +385,8 @@ __attribute__((constructor)) static void x2_prompt_draw_register(void) {
   x86_register_override("XMen2.exe", 0x005ee400, x2_override_005ee400);
 }
 
-void x2_prompt_draw_report(void) {
+namespace x2::native {
+void prompt_draw_report(void) {
   x2::native::prompt_string_census_report();
   x2_log_error("PROMPT DRAW: %lu super-call(s) of the glyph loop\n",
                g_super_called);
@@ -405,3 +408,4 @@ void x2_prompt_draw_report(void) {
                  "harvested rectangles are not trustworthy.\n");
   }
 }
+} // namespace x2::native

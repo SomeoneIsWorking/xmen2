@@ -283,11 +283,13 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
        g_exe + (plan.disable_online_special ? EMPTY_STRING : LABEL_OPTION09));
 }
 
-void x2_main_menu_refresh(CPU *cpu, uint32_t menu) {
+namespace x2::native {
+void main_menu_refresh(CPU *cpu, uint32_t menu) {
   if (!exe_base() || !menu)
     return;
   apply_menu_plan(cpu, menu, catalog_for_show());
 }
+} // namespace x2::native
 
 void x2_override_005c9260(CPU *C) {
   uint32_t menu = C->reg[kX86pEcx];
@@ -349,7 +351,8 @@ static int start_latest_load(const CPU *source) {
    current player), which is the piece the first direct attempt lacked.
    Returns 0 unchanged when anything refuses -- the caller falls back to the
    retail menu path. */
-int x2_continue_boot_dispatch(struct X86pCpu *C) {
+namespace x2::native {
+int continue_boot_dispatch(struct X86pCpu *C) {
   if (!exe_base())
     return 0;
   if (!catalog_for_show())
@@ -360,6 +363,7 @@ int x2_continue_boot_dispatch(struct X86pCpu *C) {
   x2::native::boot_mode_runtime_continue_started();
   return 1;
 }
+} // namespace x2::native
 
 void x2_override_005f2b70(CPU *C) {
   if (!g_continue_command_armed) {

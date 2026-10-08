@@ -1,10 +1,11 @@
 #include "hud_portrait_position.h"
 
+namespace x2::native {
+
 /* 005a16d0..005a1725. Explicit float stores preserve the original x87 spill
  * boundaries; x, y and z deliberately do not use one rearranged formula. */
-void x2_hud_portrait_position(const X2HudPortraitAnchor *parent,
-                              const X2HudPortraitAnchor *local,
-                              float output[3]) {
+void hud_portrait_position(const HudPortraitAnchor *parent,
+                           const HudPortraitAnchor *local, float output[3]) {
   const long double scale = local->scale;
   const long double parent_scale = parent->scale;
   const float x = (float)((scale * local->xyz[0]) * parent_scale);
@@ -15,3 +16,5 @@ void x2_hud_portrait_position(const X2HudPortraitAnchor *parent,
   output[1] = (float)((long double)y + parent->xyz[1]);
   output[2] = (float)((long double)z_local * parent_scale + parent->xyz[2]);
 }
+
+} // namespace x2::native

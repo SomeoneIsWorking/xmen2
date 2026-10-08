@@ -74,7 +74,7 @@ namespace x2::native {
 void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   if (!window) {
     x2_touch_runtime_cancel();
-    x2_win32_pointer_window(NULL);
+    x2::native::win32_pointer_window(NULL);
     x2::native::win32_mouse_window_state(&g_mouse, 0, 0, 0);
     apply_cursor_policy();
     g_window = NULL;
@@ -83,7 +83,7 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
   }
 
   g_window = window;
-  x2_win32_pointer_window(window);
+  x2::native::win32_pointer_window(window);
   x2_touch_runtime_window(window);
   g_hwnd = hwnd;
   g_hidden = hidden != 0;
@@ -122,19 +122,19 @@ int win32_events_guest_show_cursor(int show) {
 }
 
 int win32_events_client_to_screen(int32_t *x, int32_t *y) {
-  return x2_win32_pointer_client_to_screen(x, y);
+  return x2::native::win32_pointer_client_to_screen(x, y);
 }
 
 int win32_events_screen_to_client(int32_t *x, int32_t *y) {
-  return x2_win32_pointer_screen_to_client(x, y);
+  return x2::native::win32_pointer_screen_to_client(x, y);
 }
 
 int win32_events_get_cursor_pos(int32_t *x, int32_t *y) {
-  return x2_win32_pointer_get_cursor_pos(x, y);
+  return x2::native::win32_pointer_get_cursor_pos(x, y);
 }
 
 int win32_events_set_cursor_pos(int32_t x, int32_t y) {
-  return x2_win32_pointer_set_cursor_pos(x, y);
+  return x2::native::win32_pointer_set_cursor_pos(x, y);
 }
 
 } // namespace x2::native
@@ -177,7 +177,7 @@ static void post_activation(int active, uint64_t timestamp) {
 static void drain_touch_pointer(void) {
   X2TouchPointer pointer;
   while (x2_touch_runtime_take_pointer(&pointer))
-    x2_win32_pointer_translate_touch(&pointer, &g_mouse, g_hwnd);
+    x2::native::win32_pointer_translate_touch(&pointer, &g_mouse, g_hwnd);
 }
 
 static void pump_sdl(void) {
@@ -240,7 +240,7 @@ static void pump_sdl(void) {
     if (event.type == SDL_EVENT_MOUSE_MOTION ||
         event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
         event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-      x2_win32_pointer_translate_mouse(&event, &g_mouse, g_hwnd);
+      x2::native::win32_pointer_translate_mouse(&event, &g_mouse, g_hwnd);
     } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
       static int told;
       if (!told++)

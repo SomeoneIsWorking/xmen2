@@ -6,6 +6,8 @@
 
 #include <math.h>
 
+namespace x2::native {
+
 /* The cap's height in design pixels, and the lettering margin either side
    of a fitted label, in the same units. */
 #define CAP_DESIGN_HEIGHT ((float)X2_PROMPT_SOURCE_CELL_DESIGN)
@@ -15,8 +17,7 @@
 
 static int name_char(uint16_t c) { return c > 0x20u && c < 0x7fu; }
 
-unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
-                              unsigned at) {
+unsigned keycap_run_length(const uint16_t *wide, unsigned length, unsigned at) {
   unsigned end;
 
   if (!wide || at >= length || wide[at] != X2_KEYCAP_GLYPH_LEFT) {
@@ -24,7 +25,7 @@ unsigned x2_keycap_run_length(const uint16_t *wide, unsigned length,
   }
   for (end = at + 1u; end < length && name_char(wide[end]); end++) {
   }
-  if (end == at + 1u || end - at - 1u > X2_KEYCAP_NAME_MAX || end == length ||
+  if (end == at + 1u || end - at - 1u > kKeycapNameMax || end == length ||
       wide[end] != X2_KEYCAP_GLYPH_RIGHT) {
     return 0;
   }
@@ -49,9 +50,9 @@ static struct x2::native::PromptQuad art_quad(const struct x2_keycap_art *art,
   return q;
 }
 
-void x2_keycap_quads(const float left[4], const float right[4],
-                     const struct x2_keycap_art *label, uint32_t color,
-                     struct x2::native::PromptQuad out[X2_KEYCAP_QUADS]) {
+void keycap_quads(const float left[4], const float right[4],
+                  const struct x2_keycap_art *label, uint32_t color,
+                  struct x2::native::PromptQuad out[kKeycapQuads]) {
   const float x0 = left[0], x1 = right[2], y0 = left[1], y1 = left[3];
   const float dir = x1 >= x0 ? 1.0f : -1.0f;
   const float span = fabsf(x1 - x0);
@@ -73,3 +74,5 @@ void x2_keycap_quads(const float left[4], const float right[4],
   out[3] = art_quad(label, centre - dir * 0.5f * text,
                     centre + dir * 0.5f * text, y0, y1, color);
 }
+
+} // namespace x2::native

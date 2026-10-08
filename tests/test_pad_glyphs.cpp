@@ -368,7 +368,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "prompt keycap: an unlisted name was not lettered\n");
       return 1;
     }
-    /* A name that is not one printable word of at most X2_KEYCAP_NAME_MAX
+    /* A name that is not one printable word of at most kKeycapNameMax
        characters stays the game's own text rather than half a key. */
     if (strcmp(label_after("Btn 3"), "[Btn 3]") != 0 ||
         strcmp(label_after("ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEF"),

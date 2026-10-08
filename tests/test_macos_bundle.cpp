@@ -10,7 +10,8 @@ static int failures;
 
 static void expect_root(const char *executable, const char *expected) {
   char root[4096] = "";
-  const int ok = x2_macos_bundle_root(executable, root, (unsigned)sizeof root);
+  const int ok =
+      x2::native::macos_bundle_root(executable, root, (unsigned)sizeof root);
 
   if (expected) {
     if (!ok || strcmp(root, expected) != 0) {
@@ -42,8 +43,9 @@ int main(void) {
      a truncated root names a directory that does not exist. */
   {
     char small[8] = "";
-    if (x2_macos_bundle_root("/Applications/Foo.app/Contents/MacOS/x2native",
-                             small, (unsigned)sizeof small)) {
+    if (x2::native::macos_bundle_root(
+            "/Applications/Foo.app/Contents/MacOS/x2native", small,
+            (unsigned)sizeof small)) {
       printf("FAIL: a too-small buffer returned a root: %s\n", small);
       failures++;
     }

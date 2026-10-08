@@ -63,8 +63,9 @@ int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
   return 1;
 }
 
-int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
-                                  int whyn) {
+namespace x2::native {
+int display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
+                               int whyn) {
   steps[step_count++] = STEP_TITLE;
   title_width[title_calls] = width;
   title_height[title_calls] = height;
@@ -75,6 +76,7 @@ int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
   }
   return 1;
 }
+} // namespace x2::native
 
 namespace x2::presentation {
 
@@ -99,10 +101,12 @@ int window_settings_apply(SDL_Window *window, const X2Settings *settings,
    reloaded, and without this call they keep the size the BOOT resolution
    asked for. It belongs after the save, on the success path only -- a rolled
    back change must leave the text where it was. */
-int x2_ui_text_scale_reapply(void) {
+namespace x2::native {
+int ui_text_scale_reapply(void) {
   steps[step_count++] = STEP_TEXT;
   return 1;
 }
+} // namespace x2::native
 
 int x2_settings_store_save(char *why, int whyn) {
   steps[step_count++] = STEP_SAVE;
@@ -148,35 +152,35 @@ int main(void) {
   display_w = 1920;
   display_h = 1080;
   settings = before;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1920 && settings.height == 1080);
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1280 && settings.height == 720);
 
   /* 4K: the full ladder, each width derived from the same 16:9 ratio. */
   display_w = 3840;
   display_h = 2160;
   settings.height = 720;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1920 && settings.height == 1080);
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 2560 && settings.height == 1440);
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 3840 && settings.height == 2160);
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1280 && settings.height == 720);
 
   /* The point of the change: width follows the PANEL, not a 16:9 table. */
   display_w = 2560; /* 16:10 */
   display_h = 1600;
   settings.height = 720;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1728 && settings.height == 1080);
 
   display_w = 3440; /* 21:9 */
   display_h = 1440;
   settings.height = 720;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 2580 && settings.height == 1080);
 
   /* A width that cannot be even is rounded down rather than accepted: 1080p
@@ -184,7 +188,7 @@ int main(void) {
   display_w = 1366;
   display_h = 768;
   settings.height = 720;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1280 && settings.height == 720);
   CHECK(x2_resolution_width_for(1080, 1366, 768) == 1920);
 
@@ -192,7 +196,7 @@ int main(void) {
      setting. */
   display_w = display_h = 0;
   settings.height = 720;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1920 && settings.height == 1080);
 
   /* A height stored by an older build is not on the ladder; it resolves to
@@ -201,7 +205,7 @@ int main(void) {
   display_h = 1080;
   settings.width = 1600;
   settings.height = 900;
-  x2_live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings);
   CHECK(settings.width == 1280 && settings.height == 720);
 
   {
@@ -213,7 +217,8 @@ int main(void) {
 
   reset_calls();
   settings = changed(&before);
-  CHECK(x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                why, sizeof why));
   CHECK(step_count == 5 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
         steps[2] == STEP_WINDOW && steps[3] == STEP_SAVE &&
         steps[4] == STEP_TEXT);
@@ -223,16 +228,16 @@ int main(void) {
   reset_calls();
   fail_d3d_call = 1;
   settings = changed(&before);
-  CHECK(
-      !x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(!x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                 why, sizeof why));
   CHECK(step_count == 1 && steps[0] == STEP_D3D);
   CHECK(settings.width == 1280 && settings.height == 720);
 
   reset_calls();
   fail_title_call = 1;
   settings = changed(&before);
-  CHECK(
-      !x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(!x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                 why, sizeof why));
   CHECK(step_count == 3 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
         steps[2] == STEP_D3D);
   CHECK(d3d_width[1] == 1280 && d3d_height[1] == 720);
@@ -241,8 +246,8 @@ int main(void) {
   reset_calls();
   fail_window_call = 1;
   settings = changed(&before);
-  CHECK(
-      !x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(!x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                 why, sizeof why));
   CHECK(step_count == 6 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
         steps[2] == STEP_WINDOW && steps[3] == STEP_WINDOW &&
         steps[4] == STEP_TITLE && steps[5] == STEP_D3D);
@@ -254,8 +259,8 @@ int main(void) {
   reset_calls();
   fail_save_call = 1;
   settings = changed(&before);
-  CHECK(
-      !x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(!x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                 why, sizeof why));
   CHECK(step_count == 7 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
         steps[2] == STEP_WINDOW && steps[3] == STEP_SAVE &&
         steps[4] == STEP_WINDOW && steps[5] == STEP_TITLE &&
@@ -266,8 +271,8 @@ int main(void) {
   fail_window_call = 2;
   fail_save_call = 1;
   settings = changed(&before);
-  CHECK(
-      !x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
+  CHECK(!x2::presentation::live_resolution_apply(&window, &settings, &before,
+                                                 why, sizeof why));
   CHECK(d3d_calls == 2);
   CHECK(strstr(why, "rollback failed") != NULL);
 

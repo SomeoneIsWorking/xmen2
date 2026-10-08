@@ -40,11 +40,11 @@ static void fill(unsigned char *bgra, size_t pixels, unsigned char b,
 
 int main(void) {
   static unsigned char frame[N * 4];
-  X2PresentLumaStats s;
+  x2::gpu::PresentLumaStats s;
 
   /* The negative class: a real all-black frame. */
   fill(frame, N, 0, 0, 0, 255);
-  x2_present_luma_stats(frame, W, H, &s);
+  x2::gpu::present_luma_stats(frame, W, H, &s);
   CHECK(s.sampled == N || s.sampled > 0, "black frame sampled %u px",
         s.sampled);
   CHECK(s.nonblack == 0, "black frame reported %u nonblack samples",
@@ -55,13 +55,13 @@ int main(void) {
   /* Uninitialised buffer with only ALPHA set must still be black -- the
      probe must not mistake the alpha byte for light. */
   fill(frame, N, 0, 0, 0, 255);
-  x2_present_luma_stats(frame, W, H, &s);
+  x2::gpu::present_luma_stats(frame, W, H, &s);
   CHECK(s.nonblack == 0 && s.max_channel == 0,
         "alpha-only frame read as light (max %u)", s.max_channel);
 
   /* White: the positive class. */
   fill(frame, N, 255, 255, 255, 255);
-  x2_present_luma_stats(frame, W, H, &s);
+  x2::gpu::present_luma_stats(frame, W, H, &s);
   CHECK(s.nonblack == s.sampled, "white frame: %u of %u samples nonblack",
         s.nonblack, s.sampled);
   CHECK(s.mean_luma > 250.0, "white frame mean %.2f", s.mean_luma);
@@ -69,7 +69,7 @@ int main(void) {
   /* A single live channel -- the format-swizzle failure -- must be caught
      even though its luma is low: blue averages ~28 by ITU weights. */
   fill(frame, N, 255, 0, 0, 255);
-  x2_present_luma_stats(frame, W, H, &s);
+  x2::gpu::present_luma_stats(frame, W, H, &s);
   CHECK(s.nonblack == s.sampled, "blue frame: %u of %u nonblack", s.nonblack,
         s.sampled);
   CHECK(s.max_channel == 255, "blue frame max %u", s.max_channel);
@@ -87,16 +87,16 @@ int main(void) {
         frame[i * 4 + 2] = 200;
       }
   }
-  x2_present_luma_stats(frame, W, H, &s);
+  x2::gpu::present_luma_stats(frame, W, H, &s);
   CHECK(s.nonblack > s.sampled / 3 && s.nonblack < (s.sampled * 2) / 3,
         "half-lit frame: %u of %u samples, expected about half", s.nonblack,
         s.sampled);
 
   /* Zero-size and missing frames must report nothing bright, not crash. */
-  x2_present_luma_stats(frame, 0, H, &s);
+  x2::gpu::present_luma_stats(frame, 0, H, &s);
   CHECK(s.sampled == 0 && s.nonblack == 0, "zero-width frame sampled %u",
         s.sampled);
-  x2_present_luma_stats(NULL, W, H, &s);
+  x2::gpu::present_luma_stats(NULL, W, H, &s);
   CHECK(s.sampled == 0, "NULL frame sampled %u", s.sampled);
 
   if (!failures) {

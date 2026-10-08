@@ -249,7 +249,8 @@ void Coordinator::refresh_label(const CPU &cpu) {
   }
   shown_label_ = label_;
   CPU call = cpu;
-  x2_main_menu_refresh(&call, retail::FrontEnd::active_menu_object(cpu));
+  x2::native::main_menu_refresh(&call,
+                                retail::FrontEnd::active_menu_object(cpu));
 }
 
 const char *Coordinator::join_label() const {

@@ -18,7 +18,7 @@
 #define GAP 2u
 
 struct Label {
-  uint16_t name[X2_KEYCAP_NAME_MAX];
+  uint16_t name[x2::native::kKeycapNameMax];
   unsigned length;
   struct x2_keycap_art art;
 };
@@ -163,7 +163,7 @@ const struct x2_keycap_art *x2_keycap_label_art(const uint16_t *name,
   unsigned x, y, width;
   long advance;
 
-  if (!name || !length || length > X2_KEYCAP_NAME_MAX) {
+  if (!name || !length || length > x2::native::kKeycapNameMax) {
     return 0;
   }
   known = find(name, length);

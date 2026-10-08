@@ -71,7 +71,7 @@ int install_picker_directory_from_executable(const char *path, char *directory,
 #endif
   if (!slash || slash == path || strcasecmp(slash + 1, "XMen2.exe") != 0)
     return 0;
-  if (!x2_install_validate_executable(path, NULL, 0))
+  if (!x2::native::install_validate_executable(path, NULL, 0))
     return 0;
   length = (size_t)(slash - path);
   if (!length || length >= capacity)
@@ -244,7 +244,8 @@ int directory_from_folder(const char *folder, char *directory,
     return 0;
   }
   const std::string path = found.string();
-  if (!x2_install_validate_executable(path.c_str(), reason, reason_capacity))
+  if (!x2::native::install_validate_executable(path.c_str(), reason,
+                                               reason_capacity))
     return 0;
   return install_picker_directory_from_executable(path.c_str(), directory,
                                                   capacity);
@@ -269,7 +270,8 @@ int directory_from_selection(const char *selection, char *directory,
     return 0;
   }
   if (!is_zip_path(selection)) {
-    if (!x2_install_validate_executable(selection, reason, reason_capacity))
+    if (!x2::native::install_validate_executable(selection, reason,
+                                                 reason_capacity))
       return 0;
     if (install_picker_directory_from_executable(selection, directory,
                                                  capacity))
@@ -281,13 +283,13 @@ int directory_from_selection(const char *selection, char *directory,
   }
 
   char executable[X2_INSTALL_PATH_SIZE];
-  const int extracted =
-      archive_destination
-          ? x2_install_archive_prepare_to(selection, archive_destination,
-                                          executable, sizeof executable, reason,
-                                          reason_capacity)
-          : x2_install_archive_prepare(selection, executable, sizeof executable,
-                                       reason, reason_capacity);
+  const int extracted = archive_destination
+                            ? x2::native::install_archive_prepare_to(
+                                  selection, archive_destination, executable,
+                                  sizeof executable, reason, reason_capacity)
+                            : x2::native::install_archive_prepare(
+                                  selection, executable, sizeof executable,
+                                  reason, reason_capacity);
   if (!extracted || !install_picker_directory_from_executable(
                         executable, directory, capacity)) {
     if (!reason[0])

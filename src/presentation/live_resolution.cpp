@@ -10,7 +10,9 @@
 
 #include <stdio.h>
 
-void x2_live_resolution_select_next(X2Settings *settings) {
+namespace x2::presentation {
+
+void live_resolution_select_next(X2Settings *settings) {
   unsigned display_w = 0, display_h = 0;
   unsigned height;
 
@@ -52,8 +54,8 @@ static void rollback(struct SDL_Window *window, X2Settings *settings,
   *settings = *before;
   window_ok = x2::presentation::window_settings_apply(
       window, before, window_why, (int)sizeof window_why);
-  title_ok = x2_display_mode_runtime_apply(before->width, before->height,
-                                           title_why, (int)sizeof title_why);
+  title_ok = x2::native::display_mode_runtime_apply(
+      before->width, before->height, title_why, (int)sizeof title_why);
   d3d_ok = d3d8_live_resolution_apply(before->width, before->height, d3d_why,
                                       (int)sizeof d3d_why);
   if (!title_ok && why && whyn > 0) {
@@ -63,8 +65,8 @@ static void rollback(struct SDL_Window *window, X2Settings *settings,
   report_rollback(why, whyn, failure, window_ok, window_why, d3d_ok, d3d_why);
 }
 
-int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
-                             const X2Settings *before, char *why, int whyn) {
+int live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
+                          const X2Settings *before, char *why, int whyn) {
   char failure[256];
 
   if (!window || !settings || !before) {
@@ -80,8 +82,8 @@ int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
       snprintf(why, (size_t)whyn, "%s", failure);
     return 0;
   }
-  if (!x2_display_mode_runtime_apply(settings->width, settings->height, failure,
-                                     (int)sizeof failure)) {
+  if (!x2::native::display_mode_runtime_apply(settings->width, settings->height,
+                                              failure, (int)sizeof failure)) {
     char d3d_why[192] = "D3D8 rollback failed";
     int d3d_ok = d3d8_live_resolution_apply(before->width, before->height,
                                             d3d_why, (int)sizeof d3d_why);
@@ -107,9 +109,11 @@ int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
   }
   /* Fonts already in memory are not reloaded by a resolution change, so the
      text would otherwise keep the size the boot resolution asked for. */
-  x2_ui_text_scale_reapply();
+  x2::native::ui_text_scale_reapply();
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "Saved; game renders at %ux%u now",
              settings->width, settings->height);
   return 1;
 }
+
+} // namespace x2::presentation

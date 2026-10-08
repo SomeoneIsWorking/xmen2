@@ -64,7 +64,8 @@ static void note_site(uint32_t ret) {
   g_n_sites++;
 }
 
-void x2_probe_004bd720(CPU *C) {
+namespace x2::native {
+void probe_004bd720(CPU *C) {
   const uint32_t ret = RD32(C->reg[kX86pEsp]);
   /* AN INTEGER, NOT A POINTER. Reading it as a string took a SIGSEGV at guest
      0x10d2; the ids a run actually asks for are 0xfffff004, 0xfffff014 and
@@ -85,12 +86,14 @@ void x2_probe_004bd720(CPU *C) {
   }
   note_token(token, ours);
 }
+} // namespace x2::native
 
 __attribute__((constructor)) static void x2_prompt_tokens_register(void) {
-  x86_register_override("XMen2.exe", 0x004bd720, x2_probe_004bd720);
+  x86_register_override("XMen2.exe", 0x004bd720, x2::native::probe_004bd720);
 }
 
-void x2_prompt_tokens_report(void) {
+namespace x2::native {
+void prompt_tokens_report(void) {
   unsigned i;
   x2_log_info("  Menu token resolver FUN_004bd720: %lu call(s) for %u distinct "
               "token id(s); %lu handed back one of the port's composed "
@@ -120,3 +123,4 @@ void x2_prompt_tokens_report(void) {
     x2_log_info("           %lu consumer(s) past the table\n", g_site_overflow);
   }
 }
+} // namespace x2::native

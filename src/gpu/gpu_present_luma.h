@@ -16,24 +16,27 @@
  * `present_luma=<N>` (`--set present_luma=N`, reachable from the browser page
  * through `?arg=`), and silent when unarmed.
  */
-#ifndef X2_GPU_PRESENT_LUMA_H
-#define X2_GPU_PRESENT_LUMA_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+struct SDL_GPUDevice;
+
+namespace x2::gpu {
 
 /* Frame statistics over sampled pixels. `max_channel` is the largest single
    R/G/B byte seen, so a coloured-black failure (one channel alive) is not
    averaged away by the luma weights. */
-typedef struct {
+struct PresentLumaStats {
   double mean_luma; /* ITU-R weighted, 0..255, over the samples */
   uint32_t max_channel;
   uint32_t sampled;
   uint32_t nonblack; /* samples with any channel above 24 */
-} X2PresentLumaStats;
+};
 
 /* Pure: the both-answers control is unit-testable without a GPU. */
-void x2_present_luma_stats(const unsigned char *bgra, uint32_t width,
-                           uint32_t height, X2PresentLumaStats *out);
+void present_luma_stats(const unsigned char *bgra, uint32_t width,
+                        uint32_t height, PresentLumaStats *out);
 
 /* Drive one windowed present: request, or harvest and report, per the armed
    interval. `draws` is the frame-counter denominator for the log line; the
@@ -41,7 +44,6 @@ void x2_present_luma_stats(const unsigned char *bgra, uint32_t width,
    scene exists, and at what size), because "the presented frame is black"
    reads completely differently when the scene stage is missing than when it
    exists and composites black. */
-struct SDL_GPUDevice;
-void x2_present_luma_frame(struct SDL_GPUDevice *device, unsigned long draws);
+void present_luma_frame(struct SDL_GPUDevice *device, unsigned long draws);
 
-#endif /* X2_GPU_PRESENT_LUMA_H */
+} // namespace x2::gpu

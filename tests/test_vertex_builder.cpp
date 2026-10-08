@@ -24,12 +24,14 @@ static int s_use_leaf;
 
 static void add_vertex(CPU *c) {
   if (!s_use_leaf) {
-    x2_override_005840a0(c);
-  } else if (!x2_vertex_builder_leaf(c)) {
+    x2::native::override_005840a0(c);
+  } else if (!x2::native::vertex_builder_leaf(c)) {
     fprintf(stderr, "the leaf declined with verification off\n");
     failures++;
   }
 }
+
+namespace x2::native {
 
 int vtx_builder_verifying(void) { return 0; }
 
@@ -42,6 +44,8 @@ void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self) {
   (void)v;
   (void)self;
 }
+
+} // namespace x2::native
 
 enum {
   ARENA = 0x30000000u,
@@ -200,7 +204,8 @@ int main(void) {
     test_add_vertex_no_uv();
     test_capacity_limit();
   }
-  if (native_stubs_leaf("XMen2.exe", 0x005840a0u) != x2_vertex_builder_leaf) {
+  if (native_stubs_leaf("XMen2.exe", 0x005840a0u) !=
+      x2::native::vertex_builder_leaf) {
     fprintf(stderr, "constructor did not register the leaf\n");
     failures++;
   }

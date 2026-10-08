@@ -75,8 +75,8 @@ typedef struct X2TouchVisual {
      player nothing about what the game is being sent. */
   float deflect_x;
   float deflect_y;
-  /* A power button's cell in x2_power_slots_atlas(); -1 for every other
-     kind. */
+  /* A power button's cell in x2::native::power_slots_atlas(); -1 for every
+     other kind. */
   int power_icon;
 } X2TouchVisual;
 

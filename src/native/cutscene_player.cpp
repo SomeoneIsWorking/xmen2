@@ -34,11 +34,11 @@
 #define INPUT_ACTION_MASK_SLOT 0x140u
 #define CINEMATIC_SKIP_ACTION 20u
 #define OWNED_CONTEXT_LIMIT 30u
-#define CONVERSATION_FIBER ((X2CutsceneFiber)UINTPTR_MAX)
-#define EVENT_FIBER_BASE ((X2CutsceneFiber)UINT64_C(0x100000000))
+#define CONVERSATION_FIBER ((x2::native::CutsceneFiber)UINTPTR_MAX)
+#define EVENT_FIBER_BASE ((x2::native::CutsceneFiber)UINT64_C(0x100000000))
 
 typedef struct CutscenePlayerRuntime {
-  X2CutscenePlayerPolicy policy;
+  x2::native::CutscenePlayerPolicy policy;
   x2::native::CutsceneEventOwnershipWindow events;
   uint32_t clock;
   uint32_t owned[OWNED_CONTEXT_LIMIT];
@@ -193,7 +193,8 @@ static int call_action_mask(CPU *cpu, uint32_t *mask) {
   return 1;
 }
 
-static int active_sequence(void *context, X2CutsceneSequence *sequence) {
+static int active_sequence(void *context,
+                           x2::native::CutsceneSequence *sequence) {
   (void)context;
   if (!g_player.active)
     return 0;
@@ -201,18 +202,18 @@ static int active_sequence(void *context, X2CutsceneSequence *sequence) {
   return 1;
 }
 
-static X2CutsceneControlState control_state(void *context,
-                                            X2CutsceneSequence sequence) {
+static x2::native::CutsceneControlState
+control_state(void *context, x2::native::CutsceneSequence sequence) {
   (void)context;
   if (!g_player.active || sequence != g_player.sequence)
-    return X2_CUTSCENE_CONTROL_UNREADABLE;
+    return x2::native::CutsceneControlState::Unreadable;
   switch (cutscene_control_clock_state(g_player.clock)) {
   case kX2CutsceneClockLocked:
-    return X2_CUTSCENE_CONTROL_LOCKED;
+    return x2::native::CutsceneControlState::Locked;
   case kX2CutsceneClockReleased:
-    return X2_CUTSCENE_CONTROL_RELEASED;
+    return x2::native::CutsceneControlState::Released;
   default:
-    return X2_CUTSCENE_CONTROL_UNREADABLE;
+    return x2::native::CutsceneControlState::Unreadable;
   }
 }
 
@@ -225,8 +226,9 @@ static void retire_released_sequence(void) {
   x2::native::cutscene_event_player_unwatch_insertions(&g_player.events);
 }
 
-static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
-                            X2CutsceneFiber *fiber) {
+static int next_owned_fiber(void *context,
+                            x2::native::CutsceneSequence sequence,
+                            x2::native::CutsceneFiber *fiber) {
   CPU *cpu = static_cast<CPU *>(context);
   ConversationPlayerState conversation;
   uint32_t selected = 0;
@@ -261,14 +263,15 @@ static int next_owned_fiber(void *context, X2CutsceneSequence sequence,
   return available;
 }
 
-static X2CutsceneFiberStep
-step_owned_fiber(void *context, X2CutsceneSequence sequence,
-                 X2CutsceneFiber fiber, X2CutsceneConversation *conversation) {
+static x2::native::CutsceneFiberStep
+step_owned_fiber(void *context, x2::native::CutsceneSequence sequence,
+                 x2::native::CutsceneFiber fiber,
+                 x2::native::CutsceneConversation *conversation) {
   x2::native::BehavedPlayerStep step;
   CPU *cpu = static_cast<CPU *>(context);
 
   if (!g_player.active || sequence != g_player.sequence)
-    return X2_CUTSCENE_FIBER_ERROR;
+    return x2::native::CutsceneFiberStep::Error;
   if (fiber >= EVENT_FIBER_BASE &&
       fiber < EVENT_FIBER_BASE + x2::native::kCapacity) {
     uint32_t slot = (uint32_t)(fiber - EVENT_FIBER_BASE);
@@ -280,39 +283,40 @@ step_owned_fiber(void *context, X2CutsceneSequence sequence,
                                                           slot);
     g_player.event_steps++;
     if (event == x2::native::CutsceneEventPlayerStep::Ran)
-      return X2_CUTSCENE_FIBER_ADVANCED;
+      return x2::native::CutsceneFiberStep::Advanced;
     return event == x2::native::CutsceneEventPlayerStep::None
-               ? X2_CUTSCENE_FIBER_NO_PROGRESS
-               : X2_CUTSCENE_FIBER_ERROR;
+               ? x2::native::CutsceneFiberStep::NoProgress
+               : x2::native::CutsceneFiberStep::Error;
   }
   if (fiber == CONVERSATION_FIBER) {
     ConversationPlayerState state = conversation_player_state(cpu);
     *conversation = 1;
     if (state == CONVERSATION_PLAYER_DETERMINISTIC)
-      return X2_CUTSCENE_FIBER_DETERMINISTIC_CONVERSATION;
+      return x2::native::CutsceneFiberStep::DeterministicConversation;
     if (state == CONVERSATION_PLAYER_CHOICE)
-      return X2_CUTSCENE_FIBER_CHOICE;
-    return X2_CUTSCENE_FIBER_NO_PROGRESS;
+      return x2::native::CutsceneFiberStep::Choice;
+    return x2::native::CutsceneFiberStep::NoProgress;
   }
   step = x2::native::behaved_player_step_context(cpu, (uint32_t)fiber);
   g_player.behaved_steps++;
   if (!claim_events())
-    return X2_CUTSCENE_FIBER_ERROR;
+    return x2::native::CutsceneFiberStep::Error;
   switch (step) {
   case x2::native::BehavedPlayerStep::Ran:
-    return X2_CUTSCENE_FIBER_ADVANCED;
+    return x2::native::CutsceneFiberStep::Advanced;
   case x2::native::BehavedPlayerStep::Completed:
-    return X2_CUTSCENE_FIBER_COMPLETED;
+    return x2::native::CutsceneFiberStep::Completed;
   case x2::native::BehavedPlayerStep::None:
-    return X2_CUTSCENE_FIBER_NO_PROGRESS;
+    return x2::native::CutsceneFiberStep::NoProgress;
   case x2::native::BehavedPlayerStep::Refused:
   default:
-    return X2_CUTSCENE_FIBER_ERROR;
+    return x2::native::CutsceneFiberStep::Error;
   }
 }
 
-static int play_conversation(void *context, X2CutsceneSequence sequence,
-                             X2CutsceneConversation conversation) {
+static int play_conversation(void *context,
+                             x2::native::CutsceneSequence sequence,
+                             x2::native::CutsceneConversation conversation) {
   CPU *cpu = static_cast<CPU *>(context);
   int advanced;
 
@@ -322,19 +326,19 @@ static int play_conversation(void *context, X2CutsceneSequence sequence,
   return advanced && claim_events();
 }
 
-static X2CutscenePlayerResult finish(CPU *cpu) {
-  static const X2CutscenePlayerOps ops = {
+static x2::native::CutscenePlayerResult finish(CPU *cpu) {
+  static const x2::native::CutscenePlayerOps ops = {
       active_sequence,  control_state,     next_owned_fiber,
       step_owned_fiber, play_conversation,
   };
-  X2CutscenePlayerResult result;
+  x2::native::CutscenePlayerResult result;
   unsigned long frame_before = gpu_frames_presented();
   uint32_t time_before = 0, time_after = 1;
 
   (void)cutscene_control_clock_now_bits(g_player.clock, &time_before);
   cutscene_dialogue_skip_begin();
   g_player.finishing = 1;
-  result = x2_cutscene_player_finish(&g_player.policy, &ops, cpu);
+  result = x2::native::cutscene_player_finish(&g_player.policy, &ops, cpu);
   g_player.finishing = 0;
   cutscene_dialogue_skip_end(cpu);
   (void)cutscene_control_clock_now_bits(g_player.clock, &time_after);
@@ -342,9 +346,10 @@ static X2CutscenePlayerResult finish(CPU *cpu) {
     g_player.same_frame++;
   if (time_after == time_before)
     g_player.same_guest_time++;
-  if ((unsigned)result < sizeof g_player.result / sizeof g_player.result[0])
-    g_player.result[result]++;
-  if (result == X2_CUTSCENE_PLAYER_COMPLETED) {
+  const unsigned result_index = static_cast<unsigned>(result);
+  if (result_index < sizeof g_player.result / sizeof g_player.result[0])
+    g_player.result[result_index]++;
+  if (result == x2::native::CutscenePlayerResult::Completed) {
     g_player.active = 0;
     g_player.release_pending = 0;
     x2::native::cutscene_event_player_unwatch_insertions(&g_player.events);
@@ -378,7 +383,7 @@ void x2_override_004d8700(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", 0x004d8700u);
   g_player.allocations++;
   if (cpu->reg[kX86pEax] &&
-      x2_cutscene_player_inherits_context(
+      x2::native::cutscene_player_inherits_context(
           g_player.active, owns_context(current_context(), NULL),
           x2::native::cutscene_event_player_executing_owned(),
           cutscene_dialogue_payload_active()))
@@ -404,8 +409,8 @@ void x2_override_004a00d0(CPU *cpu) {
 
   x86_guest_body(cpu, "XMen2.exe", 0x004a00d0u);
   retire_released_sequence();
-  locked = g_player.active &&
-           control_state(cpu, g_player.sequence) == X2_CUTSCENE_CONTROL_LOCKED;
+  locked = g_player.active && control_state(cpu, g_player.sequence) ==
+                                  x2::native::CutsceneControlState::Locked;
   /* Publish the lock to the one owner of "does the player control a
      character": this override runs every input poll, cutscene or not, so
      the RELEASE is published as reliably as the acquisition. The same fact
@@ -425,9 +430,9 @@ void x2_override_004a00d0(CPU *cpu) {
 }
 
 void cutscene_player_snapshot(CPU *cpu, CutscenePlayerSnapshot *out) {
-  X2CutsceneControlState controls = g_player.active
-                                        ? control_state(cpu, g_player.sequence)
-                                        : X2_CUTSCENE_CONTROL_RELEASED;
+  x2::native::CutsceneControlState controls =
+      g_player.active ? control_state(cpu, g_player.sequence)
+                      : x2::native::CutsceneControlState::Released;
 
   if (!out)
     return;
@@ -438,7 +443,7 @@ void cutscene_player_snapshot(CPU *cpu, CutscenePlayerSnapshot *out) {
   out->event_window_active = g_player.events.active;
   out->event_refused = g_player.event_refused;
   out->event_owner = g_player.events.owner;
-  out->control_state = (unsigned)(controls + 1);
+  out->control_state = static_cast<unsigned>(static_cast<int>(controls) + 1);
   out->requests = g_player.policy.requests;
   out->invocations = g_player.policy.invocations;
   out->completions = g_player.policy.completed;

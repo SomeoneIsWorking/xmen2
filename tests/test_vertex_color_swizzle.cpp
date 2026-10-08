@@ -1,7 +1,7 @@
 /*
- * Exercises x2_override_10046ce0 through real guest memory, checked against an
- * independent byte-level reference for the channel swap -- not a copy of the
- * code under test.
+ * Exercises x2::native::override_10046ce0 through real guest memory, checked
+ * against an independent byte-level reference for the channel swap -- not a
+ * copy of the code under test.
  */
 #include "vertex_color_swizzle.h"
 
@@ -15,6 +15,8 @@
 #include <string.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
+
+namespace x2::native {
 
 /* The verify gate needs the engine; this test exercises the swap path only. */
 void vtx_swizzle_verify_begin(VtxSwizzleVerify *v, uint32_t self,
@@ -31,6 +33,8 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
   (void)desc;
   (void)flags;
 }
+
+} // namespace x2::native
 
 enum {
   ARENA = 0x30000000u,
@@ -79,7 +83,7 @@ static void run_override(uint32_t type, uint32_t start, uint32_t count,
   WR32(DESC + 0x08u, start);
   WR32(DESC + 0x0cu, count);
 
-  x2_override_10046ce0(&c);
+  x2::native::override_10046ce0(&c);
 
   if (c.reg[kX86pEsp] != STACK + 12u) {
     fprintf(stderr, "esp left at %08x, want %08x (ret 8)\n", c.reg[kX86pEsp],
@@ -172,7 +176,7 @@ static void test_word_helper(void) {
   };
   for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
     uint32_t w = samples[i];
-    uint32_t got = vtx_color_swizzle_word(w);
+    uint32_t got = x2::native::vtx_color_swizzle_word(w);
     uint32_t want =
         (w & 0xff00ff00u) | ((w & 0xffu) << 16) | ((w >> 16) & 0xffu);
     if (got != want) {

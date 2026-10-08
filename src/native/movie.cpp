@@ -72,7 +72,8 @@ static const char *movie_state_name(x2::media::FmvState state) {
   }
 }
 
-void x2_movie_beat_report(void) {
+namespace x2::native {
+void movie_beat_report(void) {
   static unsigned long p_load, p_unload, p_play, p_check, p_next, p_frames;
   if (!g_movie_calls.load) {
     return;
@@ -104,6 +105,7 @@ void x2_movie_beat_report(void) {
   p_next = g_movie_calls.next;
   p_frames = g_movie_calls.frames;
 }
+} // namespace x2::native
 
 static int native_fmv_enabled(void) {
   static int enabled = -1;
@@ -148,11 +150,13 @@ static x2::media::FmvPlayer *movie_for(uint32_t info) {
   return g_native_movie.info == info ? g_native_movie.player : NULL;
 }
 
-void x2_movie_report(void) {
+namespace x2::native {
+void movie_report(void) {
   x2::media::fmv_probe_report();
   if (g_native_movie.player)
     x2::media::fmv_report(g_native_movie.player);
 }
+} // namespace x2::native
 
 static void x2_movie_load(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);

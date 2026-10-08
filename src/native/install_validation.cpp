@@ -86,8 +86,9 @@ RequiredFile regular_file_at(const std::filesystem::path &directory,
 
 } // namespace
 
-int x2_install_validate_executable(const char *executable, char *reason,
-                                   unsigned reason_capacity) {
+namespace x2::native {
+int install_validate_executable(const char *executable, char *reason,
+                                unsigned reason_capacity) {
   if (reason && reason_capacity)
     reason[0] = 0;
   if (!executable || !*executable)
@@ -103,7 +104,8 @@ int x2_install_validate_executable(const char *executable, char *reason,
     return set_reason(reason, reason_capacity, "That file is not XMen2.exe.",
                       "");
   char header_reason[160];
-  if (!x2_pe32_validate_file(executable, header_reason, sizeof header_reason))
+  if (!x2::native::pe32_validate_file(executable, header_reason,
+                                      sizeof header_reason))
     return set_reason(reason, reason_capacity, "%s", header_reason);
 
   const std::filesystem::path directory = image.parent_path();
@@ -132,3 +134,4 @@ int x2_install_validate_executable(const char *executable, char *reason,
   }
   return 1;
 }
+} // namespace x2::native
