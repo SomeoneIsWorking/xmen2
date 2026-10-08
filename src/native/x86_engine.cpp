@@ -26,7 +26,6 @@
 #include <lucent/log_c.h>
 
 #include <setjmp.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

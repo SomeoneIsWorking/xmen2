@@ -1,7 +1,7 @@
 #include "guest_clock.h"
 #include <lucent/log_c.h>
 
-#include <stdatomic.h>
+#include <atomic>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -19,14 +19,14 @@ static double g_skipped_s, g_largest_skip;
 static double g_start_real;
 
 /* The most recent precise reading any thread took; 0 before the first. */
-static _Atomic uint64_t g_last_real_ns;
+static std::atomic<uint64_t> g_last_real_ns;
 
 static uint64_t real_now_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   const uint64_t ns =
       (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-  atomic_store_explicit(&g_last_real_ns, ns, memory_order_relaxed);
+  g_last_real_ns.store(ns, std::memory_order_relaxed);
   return ns;
 }
 
@@ -44,8 +44,7 @@ static double real_now_s(void) { return (double)real_now_ns() / 1e9; }
  * by the width of a race; it can never be ahead of a reading taken after it.
  */
 static uint64_t real_coarse_ns(void) {
-  const uint64_t last =
-      atomic_load_explicit(&g_last_real_ns, memory_order_relaxed);
+  const uint64_t last = g_last_real_ns.load(std::memory_order_relaxed);
   return last ? last : real_now_ns();
 }
 

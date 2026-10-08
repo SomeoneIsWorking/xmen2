@@ -16,15 +16,15 @@
  * that finds the key before the module sees a miss and walks the list. A
  * full memo stores nothing more and every further name is a miss.
  */
-#include <stdatomic.h>
+#include <atomic>
 
 struct X86Module;
 
 enum { MODULE_NAME_MEMO_SLOTS = 256 };
 
 typedef struct ModuleNameMemo {
-  _Atomic(const char *) key[MODULE_NAME_MEMO_SLOTS];
-  _Atomic(struct X86Module *) module[MODULE_NAME_MEMO_SLOTS];
+  std::atomic<const char *> key[MODULE_NAME_MEMO_SLOTS];
+  std::atomic<struct X86Module *> module[MODULE_NAME_MEMO_SLOTS];
 } ModuleNameMemo;
 
 /* The module `name` was remembered to name, or NULL. */

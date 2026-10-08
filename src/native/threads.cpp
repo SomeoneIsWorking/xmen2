@@ -53,8 +53,8 @@
 
 #include "platform_posix.h"
 #include "platform_threads.h"
+#include <atomic>
 #include <errno.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,7 +79,7 @@ void k32_tls_switch(int slot);
 static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
 /* Records in g_thread that are used and not finished; see
    guest_thread_others_live. */
-static _Atomic int g_live_threads;
+static std::atomic<int> g_live_threads;
 static __thread GuestThread *g_self;
 /* Declared in x86rt.h and naturally separated by the host pthreads. */
 extern __thread uint32_t g_fsbase, g_gsbase;
@@ -151,7 +151,7 @@ int32_t guest_thread_priority_get(void) {
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_cond = PTHREAD_COND_INITIALIZER;
-static _Atomic int g_waiters, g_cond_waiters;
+static std::atomic<int> g_waiters, g_cond_waiters;
 static unsigned long g_contended;
 static unsigned long g_switches; /* mutex hand-offs performed */
 static unsigned long g_quanta;   /* preemptions actually taken */
@@ -163,8 +163,8 @@ static void guest_suspend_point(void);
 int scheduler_has_waiter(void) {
   if (g_waiters)
     return 1;
-  if (!guest_thread_others_live(
-          atomic_load_explicit(&g_live_threads, memory_order_relaxed), g_self))
+  if (!guest_thread_others_live(g_live_threads.load(std::memory_order_relaxed),
+                                g_self))
     return 0;
   return guest_thread_any_ready(g_thread, MAX_THREADS + 1, g_self, now_s);
 }
@@ -181,7 +181,7 @@ static void sched_attach_main(void) {
   t->tid = MAIN_TID;
   t->state = TS_RUNNING;
   t->state_since = now_s();
-  atomic_fetch_add_explicit(&g_live_threads, 1, memory_order_relaxed);
+  g_live_threads.fetch_add(1, std::memory_order_relaxed);
   g_self = t;
   k32_tls_switch(MAIN_SLOT);
 }
@@ -371,7 +371,7 @@ static void *thread_main(void *argument) {
   x2_engine_detach_thread();
 
   t->finished = 1;
-  atomic_fetch_sub_explicit(&g_live_threads, 1, memory_order_relaxed);
+  g_live_threads.fetch_sub(1, std::memory_order_relaxed);
   t->state = TS_DONE;
   t->state_since = now_s();
   g_exited++;
@@ -441,7 +441,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
     return 0;
   }
   pthread_detach(t->thread);
-  atomic_fetch_add_explicit(&g_live_threads, 1, memory_order_relaxed);
+  g_live_threads.fetch_add(1, std::memory_order_relaxed);
 
   /*
    * The creator still holds the guest mutex, so the pthread cannot enter
@@ -642,7 +642,7 @@ void guest_thread_exit(uint32_t code) {
   }
   t->exit_code = code;
   t->finished = 1;
-  atomic_fetch_sub_explicit(&g_live_threads, 1, memory_order_relaxed);
+  g_live_threads.fetch_sub(1, std::memory_order_relaxed);
   t->state = TS_DONE;
   g_exited++;
   k32_handle_thread_done(t);

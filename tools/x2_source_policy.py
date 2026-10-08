@@ -73,6 +73,8 @@ DIRECT_DIAGNOSTICS = (
     re.compile(r"\bOutputDebugString(?:A|W)?\s*\("),
 )
 
+# C11 atomics compile under libstdc++ but not under the NDK's libc++.
+C_ATOMICS = re.compile(r"<stdatomic\.h>|\b_Atomic\b|\batomic_(?:load|store|fetch_\w+|exchange|compare_exchange_\w+)(?:_explicit)?\s*\(")
 STATIC_TOOL_PATTERNS = (
     re.compile(r"\b(?:static[- ]?)?recomp(?:il(?:e[rd]?|ation))?\b", re.IGNORECASE),
     re.compile(r"tools/gen_probes\.py"),
@@ -142,6 +144,8 @@ def text_violations(
             )
         if any(pattern.search(text) for pattern in DIRECT_DIAGNOSTICS):
             violations.append(Violation(relative, "direct diagnostic output bypasses Lucent"))
+        if C_ATOMICS.search(text):
+            violations.append(Violation(relative, "C11 atomics remain; use std::atomic"))
     repository_text = source_text if all_text is None else all_text
     for relative, text in repository_text.items():
         if relative in STATIC_POLICY_OWNERS:
