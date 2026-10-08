@@ -44,8 +44,8 @@ struct FmvPlayer {
   int width;
   int height;
   int eof;
-  X2FmvDecoderDrain video_drain;
-  X2FmvDecoderDrain audio_drain;
+  FmvDecoderDrain video_drain;
+  FmvDecoderDrain audio_drain;
   int drain_error;
   FmvState state;
   X2FmvAudioSink sink;
@@ -136,37 +136,37 @@ int queue_video_frame(FmvPlayer *player, const AVFrame *frame) {
   player->decoded_video++;
   return 1;
 }
-X2FmvDrainResult receive_video_step(void *userdata) {
+FmvDrainResult receive_video_step(void *userdata) {
   FmvPlayer *player = (FmvPlayer *)userdata;
   int result;
   if (player->video_count == VIDEO_QUEUE_CAPACITY)
-    return X2_FMV_DRAIN_OUTPUT_BLOCKED;
+    return FmvDrainResult::OutputBlocked;
   result = avcodec_receive_frame(player->video_codec, player->frame);
   if (result == AVERROR(EAGAIN))
-    return X2_FMV_DRAIN_NEEDS_INPUT;
+    return FmvDrainResult::NeedsInput;
   if (result == AVERROR_EOF)
-    return X2_FMV_DRAIN_COMPLETE;
+    return FmvDrainResult::Complete;
   if (result < 0) {
     player->drain_error = result;
-    return X2_FMV_DRAIN_FAILED;
+    return FmvDrainResult::Failed;
   }
   result = queue_video_frame(player, player->frame);
   av_frame_unref(player->frame);
   if (result < 0) {
     player->drain_error = AVERROR(ENOMEM);
-    return X2_FMV_DRAIN_FAILED;
+    return FmvDrainResult::Failed;
   }
-  return X2_FMV_DRAIN_PROGRESS;
+  return FmvDrainResult::Progress;
 }
 int receive_video(FmvPlayer *player) {
   int received = 0;
   for (;;) {
-    X2FmvDrainResult result = receive_video_step(player);
-    if (result == X2_FMV_DRAIN_PROGRESS) {
+    FmvDrainResult result = receive_video_step(player);
+    if (result == FmvDrainResult::Progress) {
       received++;
       continue;
     }
-    if (result == X2_FMV_DRAIN_FAILED)
+    if (result == FmvDrainResult::Failed)
       return player->drain_error;
     break;
   }
@@ -187,21 +187,21 @@ int send_video_packet(FmvPlayer *player, const AVPacket *packet) {
 int send_video_payload(void *userdata, const AVPacket *packet) {
   return send_video_packet((FmvPlayer *)userdata, packet);
 }
-X2FmvFlushResult send_decoder_flush(FmvPlayer *player, AVCodecContext *codec) {
+FmvFlushResult send_decoder_flush(FmvPlayer *player, AVCodecContext *codec) {
   int result = avcodec_send_packet(codec, NULL);
   if (result >= 0 || result == AVERROR_EOF)
-    return X2_FMV_FLUSH_ACCEPTED;
+    return FmvFlushResult::Accepted;
   if (result == AVERROR(EAGAIN))
-    return X2_FMV_FLUSH_NEEDS_RECEIVE;
+    return FmvFlushResult::NeedsReceive;
   player->drain_error = result;
-  return X2_FMV_FLUSH_FAILED;
+  return FmvFlushResult::Failed;
 }
-X2FmvFlushResult send_video_flush(void *userdata) {
+FmvFlushResult send_video_flush(void *userdata) {
   FmvPlayer *player = (FmvPlayer *)userdata;
   return send_decoder_flush(player, player->video_codec);
 }
-const X2FmvDecoderDrainOps g_video_drain_ops = {send_video_flush,
-                                                receive_video_step, NULL};
+const FmvDecoderDrainOps g_video_drain_ops = {send_video_flush,
+                                              receive_video_step, NULL};
 double queued_video_horizon(const FmvPlayer *player) {
   int tail;
   if (!player->video_count)
@@ -262,10 +262,10 @@ int pump(FmvPlayer *player, double playback_seconds) {
     if (result < 0)
       return result;
     int video_result =
-        x2_fmv_decoder_drain(&player->video_drain, &g_video_drain_ops, player);
+        fmv_decoder_drain(&player->video_drain, &g_video_drain_ops, player);
     int audio_result =
-        x2_fmv_decoder_drain(&player->audio_drain, fmv_audio_decode_drain_ops(),
-                             player->audio_decode);
+        fmv_decoder_drain(&player->audio_drain, fmv_audio_decode_drain_ops(),
+                          player->audio_decode);
     if (video_result < 0)
       return player->drain_error ? player->drain_error : AVERROR_BUG;
     if (audio_result < 0)

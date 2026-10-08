@@ -5,13 +5,13 @@
 namespace x2::native {
 
 struct BootModeDecision {
-  X2BootMode requested;
-  X2BootMode effective;
+  x2::config::BootMode requested;
+  x2::config::BootMode effective;
   int fell_back_to_menu;
 };
 
 /* Resolve only policy. The caller owns save discovery and guest dispatch. */
-BootModeDecision boot_mode_decide(X2BootMode requested,
+BootModeDecision boot_mode_decide(x2::config::BootMode requested,
                                   int latest_save_available);
 int boot_mode_is_intro_command(const char *command);
 

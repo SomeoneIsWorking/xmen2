@@ -84,7 +84,7 @@ void x2_interrupt_reports(int killed) {
      use _exit. Print them here so successful runs retain their denominators. */
   x2_ui_text_scale_report();
   x2::native::dialog_selection_scale_report();
-  x2_touch_hud_report();
+  x2::native::touch_hud_report();
   x2_touch_runtime_report("");
   dinput_device_report();
   dinput_pad_report();

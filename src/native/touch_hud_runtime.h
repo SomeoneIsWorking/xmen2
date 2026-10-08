@@ -1,6 +1,7 @@
-#ifndef X2_TOUCH_HUD_RUNTIME_H
-#define X2_TOUCH_HUD_RUNTIME_H
+#pragma once
 
-void x2_touch_hud_report(void);
+namespace x2::native {
 
-#endif /* X2_TOUCH_HUD_RUNTIME_H */
+void touch_hud_report(void);
+
+} // namespace x2::native

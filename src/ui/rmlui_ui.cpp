@@ -86,7 +86,7 @@ bool gamepad_navigation(const SDL_Event &event) {
     break;
   case SDL_GAMEPAD_BUTTON_EAST:
     if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
-      x2_settings_overlay_hide();
+      x2::ui::settings_overlay_hide();
       x2::ui::settings_document_cancel_capture();
     }
     return true;
@@ -196,26 +196,26 @@ int x2_ui_handle_event(SDL_Event *event) {
      -- none of the 42 retail keyboard defaults read DIK 0x3c -- but the
      consumed event also never reaches the guest's window. */
   if ((event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) &&
-      x2_settings_overlay_toggle_key(event->key.key,
-                                     event->type == SDL_EVENT_KEY_DOWN,
-                                     event->key.repeat != 0)) {
+      x2::ui::settings_overlay_toggle_key(event->key.key,
+                                          event->type == SDL_EVENT_KEY_DOWN,
+                                          event->key.repeat != 0)) {
     if (event->type == SDL_EVENT_KEY_DOWN) {
       x2_log_info("RMLUI: F2 %s the Port Settings overlay.\n",
-                  x2_settings_overlay_visible() ? "showed" : "hid");
-      if (!x2_settings_overlay_visible() &&
+                  x2::ui::settings_overlay_visible() ? "showed" : "hid");
+      if (!x2::ui::settings_overlay_visible() &&
           x2::ui::settings_document_capturing())
         x2::ui::settings_document_cancel_capture();
     }
     return 1;
   }
-  if (!x2_settings_overlay_visible())
+  if (!x2::ui::settings_overlay_visible())
     return 0;
   if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
       event->key.key == SDLK_ESCAPE) {
     if (x2::ui::settings_document_capturing())
       x2::ui::settings_document_cancel_capture();
     else
-      x2_settings_overlay_hide();
+      x2::ui::settings_overlay_hide();
     return 1;
   }
   if (x2::ui::settings_document_handle_event(*event))
@@ -225,12 +225,12 @@ int x2_ui_handle_event(SDL_Event *event) {
   if (initialized) {
     RmlSDL::InputEventHandler(context, host_window, *event);
     if (x2::ui::settings_document_take_close_request())
-      x2_settings_overlay_hide();
+      x2::ui::settings_overlay_hide();
   }
   return 1;
 }
 
-int x2_ui_captures_input(void) { return x2_settings_overlay_visible(); }
+int x2_ui_captures_input(void) { return x2::ui::settings_overlay_visible(); }
 
 void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
                   SDL_GPUTexture *swapchain, uint32_t width, uint32_t height,
@@ -240,17 +240,17 @@ void x2_ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
     const char *open = x2_config_override_get(kX2ConfigSettingsOpen);
     environment_checked = true;
     if (open && open[0] && open[0] != '0') {
-      x2_settings_overlay_show();
+      x2::ui::settings_overlay_show();
       x2_log_info("RMLUI: X2_SETTINGS_OPEN requested the settings overlay at "
                   "startup.\n");
     }
   }
   if (x2_touch_runtime_take_menu_request()) {
-    x2_settings_overlay_show();
+    x2::ui::settings_overlay_show();
     x2_log_info("RMLUI: the touch menu button showed the Port Settings "
                 "overlay.\n");
   }
-  const bool settings_visible = x2_settings_overlay_visible();
+  const bool settings_visible = x2::ui::settings_overlay_visible();
   /* Not the gameplay overlay's own gate: the menu pad is drawn on exactly
      the screens where that gate is false. */
   const bool touch_visible =

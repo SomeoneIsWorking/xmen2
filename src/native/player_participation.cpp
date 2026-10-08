@@ -53,8 +53,8 @@ static void thiscall0(const CPU *source, uint32_t object, uint32_t slot) {
 
 /* The game's player -> controller table and which controllers are local
    (player_participation_policy.h). */
-static X2PlayerSeatMap read_seat_map(const CPU *cpu) {
-  X2PlayerSeatMap map = {{0, 1, 2, 3}, 0x0fu};
+static x2::input::PlayerSeatMap read_seat_map(const CPU *cpu) {
+  x2::input::PlayerSeatMap map = {{0, 1, 2, 3}, 0x0fu};
   const uint32_t players = guest_call0(cpu, exe_base() + PLAYER_MANAGER_RVA);
   unsigned i;
   int32_t local_count;
@@ -63,7 +63,7 @@ static X2PlayerSeatMap read_seat_map(const CPU *cpu) {
     return map;
   local_count = (int32_t)RD32(players + PLAYER_LOCAL_CONTROLLERS);
   map.local_controllers = 0;
-  for (i = 0; i < X2_PARTICIPATION_PLAYERS; i++) {
+  for (i = 0; i < x2::input::kParticipationPlayers; i++) {
     map.controller_of_player[i] =
         (int32_t)RD32(players + PLAYER_CONTROLLER_MAP + 4u * i);
     if ((int32_t)i < local_count && !RD8(players + PLAYER_REMOTE_FLAGS + i))
@@ -73,8 +73,8 @@ static X2PlayerSeatMap read_seat_map(const CPU *cpu) {
 }
 
 static void apply_to_manager(CPU *cpu, uint32_t manager,
-                             const X2PlayerSeatMap *map, uint8_t join_players,
-                             uint8_t leave_players) {
+                             const x2::input::PlayerSeatMap *map,
+                             uint8_t join_players, uint8_t leave_players) {
   unsigned player;
   int changed = 0;
 
@@ -118,7 +118,7 @@ namespace x2::native {
 void player_participation_apply(CPU *cpu, uint8_t join_seats,
                                 uint8_t leave_seats) {
   uint32_t manager;
-  X2PlayerSeatMap map;
+  x2::input::PlayerSeatMap map;
 
   if (!cpu || !(join_seats | leave_seats))
     return;
@@ -127,14 +127,14 @@ void player_participation_apply(CPU *cpu, uint8_t join_seats,
     return;
   map = read_seat_map(cpu);
   apply_to_manager(cpu, manager, &map,
-                   x2_player_seats_to_players(&map, join_seats),
-                   x2_player_seats_to_players(&map, leave_seats));
+                   x2::input::player_seats_to_players(&map, join_seats),
+                   x2::input::player_seats_to_players(&map, leave_seats));
 }
 
 void player_participation_enforce_eligibility(CPU *cpu,
                                               uint8_t eligible_seats) {
   uint32_t manager;
-  X2PlayerSeatMap map;
+  x2::input::PlayerSeatMap map;
   uint8_t evict, leave_players = 0;
   unsigned player;
 
@@ -144,8 +144,8 @@ void player_participation_enforce_eligibility(CPU *cpu,
   if (!manager)
     return;
   map = read_seat_map(cpu);
-  evict = (uint8_t)(x2_player_seats_governed(&map) &
-                    ~x2_player_seats_to_players(&map, eligible_seats));
+  evict = (uint8_t)(x2::input::player_seats_governed(&map) &
+                    ~x2::input::player_seats_to_players(&map, eligible_seats));
   for (player = 0; player < 4u; player++) {
     uint8_t bit = (uint8_t)(1u << player);
     if ((evict & bit) && (uint8_t)thiscall_player(

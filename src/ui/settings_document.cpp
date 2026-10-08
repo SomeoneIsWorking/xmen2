@@ -86,7 +86,7 @@ void rebuild() {
   if (active_tab == 0) {
     rml << "<pane><div class='section-heading'>Startup</div>"
            "<select-button id='boot-mode'><key>Boot</key><value>"
-        << escape_rml(x2_boot_mode_label(settings->boot_mode))
+        << escape_rml(x2::config::boot_mode_label(settings->boot_mode))
         << "</value></select-button>"
            "<p id='status' class='status'></p><spacer></spacer></pane>"
            "<pane><div class='section-heading'>Boot behavior</div>"
@@ -192,11 +192,11 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     return;
   if (id == "boot-mode") {
     X2Settings *settings = x2_settings_store();
-    X2BootMode before = settings->boot_mode;
+    x2::config::BootMode before = settings->boot_mode;
     char why[256];
     bool saved;
     settings->boot_mode =
-        (X2BootMode)(((unsigned)settings->boot_mode + 1u) % 3u);
+        (x2::config::BootMode)(((unsigned)settings->boot_mode + 1u) % 3u);
     saved = x2_settings_store_save(why, sizeof why);
     if (!saved)
       settings->boot_mode = before;

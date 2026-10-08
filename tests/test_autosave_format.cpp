@@ -21,7 +21,7 @@ int main(void) {
   static const unsigned char NO_CLOSE[] = "\n[SAVEGAMEBEGIN: incomplete";
   static const unsigned char CONTROL[] = "\n[SAVEGAMEBEGIN: bad\tname]";
   static const char EXPECTED[] = "00:13 - Sanctuary (Normal)";
-  unsigned char header[X2_SAVE_HEADER_BYTES];
+  unsigned char header[x2::save::kSaveHeaderBytes];
   unsigned i;
 
   memset(header, 0xa5, sizeof header);

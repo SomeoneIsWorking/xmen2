@@ -15,6 +15,8 @@
 #include <windows.h>
 #endif
 
+namespace x2::save {
+
 static int write_complete(int fd, const void *data, size_t size) {
   const unsigned char *bytes = static_cast<const unsigned char *>(data);
   while (size) {
@@ -29,8 +31,8 @@ static int write_complete(int fd, const void *data, size_t size) {
   return 1;
 }
 
-static int injected(X2AutosaveStorageFault requested,
-                    X2AutosaveStorageFault point) {
+static int injected(AutosaveStorageFault requested,
+                    AutosaveStorageFault point) {
   if (requested != point)
     return 0;
   errno = EIO;
@@ -39,28 +41,28 @@ static int injected(X2AutosaveStorageFault requested,
 
 /* Header, little-endian payload length, payload, then a file sync. */
 static int write_record(int file_fd, const void *header, const void *payload,
-                        size_t payload_size, X2AutosaveStorageFault fault) {
+                        size_t payload_size, AutosaveStorageFault fault) {
   unsigned char size_le[4];
   const uint32_t payload_u32 = (uint32_t)payload_size;
   size_le[0] = (unsigned char)payload_u32;
   size_le[1] = (unsigned char)(payload_u32 >> 8);
   size_le[2] = (unsigned char)(payload_u32 >> 16);
   size_le[3] = (unsigned char)(payload_u32 >> 24);
-  return write_complete(file_fd, header, X2_SAVE_HEADER_BYTES) &&
-         !injected(fault, X2_AUTOSAVE_FAULT_AFTER_HEADER) &&
+  return write_complete(file_fd, header, kSaveHeaderBytes) &&
+         !injected(fault, AutosaveStorageFault::AfterHeader) &&
          write_complete(file_fd, size_le, sizeof size_le) &&
-         !injected(fault, X2_AUTOSAVE_FAULT_AFTER_LENGTH) &&
+         !injected(fault, AutosaveStorageFault::AfterLength) &&
          write_complete(file_fd, payload, payload_size) &&
-         !injected(fault, X2_AUTOSAVE_FAULT_AFTER_PAYLOAD) &&
+         !injected(fault, AutosaveStorageFault::AfterPayload) &&
          fsync(file_fd) == 0 &&
-         !injected(fault, X2_AUTOSAVE_FAULT_AFTER_FILE_SYNC);
+         !injected(fault, AutosaveStorageFault::AfterFileSync);
 }
 
 #if defined(_WIN32)
 /* MOVEFILE_WRITE_THROUGH stands in for the POSIX directory fsync. */
 static int publish(const char *directory, const void *header,
                    const void *payload, size_t payload_size,
-                   X2AutosaveStorageFault fault) {
+                   AutosaveStorageFault fault) {
   static unsigned long sequence;
   char temporary[MAX_PATH];
   char destination[MAX_PATH];
@@ -72,7 +74,7 @@ static int publish(const char *directory, const void *header,
                directory, (long)getpid(),
                ++sequence) >= (int)sizeof temporary ||
       snprintf(destination, sizeof destination, "%s/%s", directory,
-               X2_AUTOSAVE_LEAF) >= (int)sizeof destination) {
+               kAutosaveLeaf) >= (int)sizeof destination) {
     errno = ENAMETOOLONG;
     return 0;
   }
@@ -84,7 +86,7 @@ static int publish(const char *directory, const void *header,
   if (close(file_fd) != 0 && !saved_errno)
     saved_errno = errno;
   if (!saved_errno) {
-    if (injected(fault, X2_AUTOSAVE_FAULT_BEFORE_RENAME))
+    if (injected(fault, AutosaveStorageFault::BeforeRename))
       saved_errno = errno;
     else if (MoveFileExA(temporary, destination,
                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
@@ -103,7 +105,7 @@ static int publish(const char *directory, const void *header,
 #else
 static int publish(const char *directory, const void *header,
                    const void *payload, size_t payload_size,
-                   X2AutosaveStorageFault fault) {
+                   AutosaveStorageFault fault) {
   static unsigned long sequence;
   char temporary[96];
   int directory_fd = -1;
@@ -133,8 +135,8 @@ static int publish(const char *directory, const void *header,
     goto done;
   }
   file_fd = -1;
-  if (injected(fault, X2_AUTOSAVE_FAULT_BEFORE_RENAME) ||
-      renameat(directory_fd, temporary, directory_fd, X2_AUTOSAVE_LEAF) != 0) {
+  if (injected(fault, AutosaveStorageFault::BeforeRename) ||
+      renameat(directory_fd, temporary, directory_fd, kAutosaveLeaf) != 0) {
     failed = 1;
     goto done;
   }
@@ -159,14 +161,16 @@ done:
 }
 #endif
 
-int x2_autosave_storage_publish(const char *directory, const void *header,
-                                const void *payload, size_t payload_size,
-                                X2AutosaveStorageFault fault) {
+int autosave_storage_publish(const char *directory, const void *header,
+                             const void *payload, size_t payload_size,
+                             AutosaveStorageFault fault) {
   if (!directory || !directory[0] || !header || (!payload && payload_size) ||
-      payload_size > UINT32_MAX || fault < X2_AUTOSAVE_FAULT_NONE ||
-      fault > X2_AUTOSAVE_FAULT_BEFORE_RENAME) {
+      payload_size > UINT32_MAX || fault < AutosaveStorageFault::None ||
+      fault > AutosaveStorageFault::BeforeRename) {
     errno = EINVAL;
     return 0;
   }
   return publish(directory, header, payload, payload_size, fault);
 }
+
+} // namespace x2::save

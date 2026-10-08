@@ -6,15 +6,18 @@
 
 namespace x2::native {
 
-BootModeDecision boot_mode_decide(X2BootMode requested,
+BootModeDecision boot_mode_decide(x2::config::BootMode requested,
                                   int latest_save_available) {
   BootModeDecision decision;
   decision.requested = requested;
   decision.effective =
-      (unsigned)requested <= X2_BOOT_CONTINUE ? requested : X2_BOOT_NORMAL;
+      (unsigned)requested <= (unsigned)x2::config::BootMode::Continue
+          ? requested
+          : x2::config::BootMode::Normal;
   decision.fell_back_to_menu = 0;
-  if (decision.effective == X2_BOOT_CONTINUE && !latest_save_available) {
-    decision.effective = X2_BOOT_MENU;
+  if (decision.effective == x2::config::BootMode::Continue &&
+      !latest_save_available) {
+    decision.effective = x2::config::BootMode::Menu;
     decision.fell_back_to_menu = 1;
   }
   return decision;

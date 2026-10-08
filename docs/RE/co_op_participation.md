@@ -59,7 +59,7 @@ game player to a controller at `+4 + 4*player`, flags remote controllers at
 host maps `0 1 2 3` and flags controller 1 remote for the joined client; the
 client maps `1 0 2 3`, so its seat 0 drives game player 1.
 
-`x2_player_seats_to_players` translates seats through that map before any join
+`x2::input::player_seats_to_players` translates seats through that map before any join
 or leave request, and a player whose controller is remote or out of range is
 never governed by the host's policy. Without the translation the eligibility
 pass evicted every network player on every frame.

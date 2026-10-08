@@ -10,7 +10,7 @@
 
 typedef struct {
   int assigned;
-  X2ControllerInstance instance;
+  x2::input::ControllerInstance instance;
   char id[64];
 } TransientAssignment;
 
@@ -26,14 +26,14 @@ int x2_transient_controller_assign(int pad, unsigned player) {
     return 0;
   displaced = g_assignment[player];
   for (i = 0; i < TRANSIENT_PLAYERS; i++)
-    if (g_assignment[i].assigned &&
-        x2_controller_instance_matches(&g_assignment[i].instance, guid)) {
+    if (g_assignment[i].assigned && x2::input::controller_instance_matches(
+                                        &g_assignment[i].instance, guid)) {
       memset(&g_assignment[i], 0, sizeof g_assignment[i]);
       vacated = (int)i;
     }
   memset(&g_assignment[player], 0, sizeof g_assignment[player]);
   g_assignment[player].assigned = 1;
-  x2_controller_instance_bind(&g_assignment[player].instance, guid);
+  x2::input::controller_instance_bind(&g_assignment[player].instance, guid);
   id = dinput_pad_persistent_id(pad);
   snprintf(g_assignment[player].id, sizeof g_assignment[player].id, "%s",
            id ? id : "session-controller");
@@ -62,7 +62,8 @@ int x2_transient_controller_has_assignment(unsigned player) {
 
 int x2_transient_controller_resolve(unsigned player) {
   return x2_transient_controller_has_assignment(player)
-             ? x2_controller_instance_resolve(&g_assignment[player].instance)
+             ? x2::input::controller_instance_resolve(
+                   &g_assignment[player].instance)
              : -1;
 }
 
@@ -73,7 +74,8 @@ int x2_transient_controller_player_for_pad(int pad) {
     return -1;
   for (player = 0; player < TRANSIENT_PLAYERS; player++)
     if (g_assignment[player].assigned &&
-        x2_controller_instance_matches(&g_assignment[player].instance, guid))
+        x2::input::controller_instance_matches(&g_assignment[player].instance,
+                                               guid))
       return (int)player;
   return -1;
 }

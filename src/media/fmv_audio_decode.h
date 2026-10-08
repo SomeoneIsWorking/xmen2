@@ -16,7 +16,7 @@ FmvAudioDecode *fmv_audio_decode_create(AVCodecContext *codec,
 void fmv_audio_decode_close(FmvAudioDecode *decode);
 int fmv_audio_decode_send_packet(FmvAudioDecode *decode,
                                  const AVPacket *packet);
-const X2FmvDecoderDrainOps *fmv_audio_decode_drain_ops();
+const FmvDecoderDrainOps *fmv_audio_decode_drain_ops();
 int fmv_audio_decode_sample_rate(const FmvAudioDecode *decode);
 unsigned long fmv_audio_decode_samples(const FmvAudioDecode *decode);
 int fmv_audio_decode_error(const FmvAudioDecode *decode);

@@ -153,7 +153,9 @@ static int try_ancestors(char *dir) {
   }
 }
 
-int x2_load_project_env(const char *argv0) {
+namespace x2::native {
+
+int load_project_env(const char *argv0) {
   char cwd[PATH_MAX], exe[PATH_MAX], *slash;
   int rc;
 
@@ -177,3 +179,5 @@ int x2_load_project_env(const char *argv0) {
   }
   return try_ancestors(cwd);
 }
+
+} // namespace x2::native

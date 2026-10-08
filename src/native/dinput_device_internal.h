@@ -14,14 +14,14 @@ typedef struct {
   int acquired;
   unsigned long polls;
   unsigned long n_poll, n_acquire, n_acquire_fail;
-  X2ControllerInstance controller;
+  x2::input::ControllerInstance controller;
   int32_t axis_lo, axis_hi;
   int range_set;
 } DInputDevice;
 
 static inline int dinput_device_pad(const DInputDevice *device) {
   return device && device->kind == DINPUT_DEV_JOYSTICK
-             ? x2_controller_instance_resolve(&device->controller)
+             ? x2::input::controller_instance_resolve(&device->controller)
              : -1;
 }
 

@@ -1501,7 +1501,7 @@ int main(int argc, char **argv) {
      its Browse flow and persisted OS user-data selection are the sole player
      authority. Explicit environment variables still remain diagnostics. */
   if (x2native_options_uses_project_env(&options) &&
-      x2_load_project_env(argv[0]) < 0)
+      x2::native::load_project_env(argv[0]) < 0)
     return 2;
   x2::diagnostics::Startup::begin(x2_config_directory());
   if (!sdl_host_setup(options.window))

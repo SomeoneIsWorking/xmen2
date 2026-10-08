@@ -57,62 +57,62 @@ int convert_frame(FmvAudioDecode *decode) {
   return result;
 }
 
-X2FmvDrainResult receive_step(void *userdata) {
+FmvDrainResult receive_step(void *userdata) {
   FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int result = avcodec_receive_frame(decode->codec, decode->frame);
   if (result == AVERROR(EAGAIN))
-    return X2_FMV_DRAIN_NEEDS_INPUT;
+    return FmvDrainResult::NeedsInput;
   if (result == AVERROR_EOF)
-    return X2_FMV_DRAIN_COMPLETE;
+    return FmvDrainResult::Complete;
   if (result >= 0)
     result = convert_frame(decode);
   if (result < 0) {
     decode->error = result;
-    return X2_FMV_DRAIN_FAILED;
+    return FmvDrainResult::Failed;
   }
-  return X2_FMV_DRAIN_PROGRESS;
+  return FmvDrainResult::Progress;
 }
 
 int receive_all(FmvAudioDecode *decode) {
   int received = 0;
   for (;;) {
-    X2FmvDrainResult result = receive_step(decode);
-    if (result == X2_FMV_DRAIN_PROGRESS) {
+    FmvDrainResult result = receive_step(decode);
+    if (result == FmvDrainResult::Progress) {
       received++;
       continue;
     }
-    if (result == X2_FMV_DRAIN_FAILED)
+    if (result == FmvDrainResult::Failed)
       return decode->error;
     return received;
   }
 }
 
-X2FmvFlushResult send_flush(void *userdata) {
+FmvFlushResult send_flush(void *userdata) {
   FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int result = avcodec_send_packet(decode->codec, NULL);
   if (result >= 0 || result == AVERROR_EOF)
-    return X2_FMV_FLUSH_ACCEPTED;
+    return FmvFlushResult::Accepted;
   if (result == AVERROR(EAGAIN))
-    return X2_FMV_FLUSH_NEEDS_RECEIVE;
+    return FmvFlushResult::NeedsReceive;
   decode->error = result;
-  return X2_FMV_FLUSH_FAILED;
+  return FmvFlushResult::Failed;
 }
 
-X2FmvDrainResult flush_tail(void *userdata) {
+FmvDrainResult flush_tail(void *userdata) {
   FmvAudioDecode *decode = (FmvAudioDecode *)userdata;
   int64_t delay = swr_get_delay(decode->resampler, decode->codec->sample_rate);
   int capacity;
   int result;
   uint8_t *output = NULL;
   if (delay <= 0)
-    return X2_FMV_DRAIN_COMPLETE;
+    return FmvDrainResult::Complete;
   capacity = (int)av_rescale_rnd(delay, decode->sample_rate,
                                  decode->codec->sample_rate, AV_ROUND_UP);
   if (capacity <= 0)
-    return X2_FMV_DRAIN_COMPLETE;
+    return FmvDrainResult::Complete;
   if (av_samples_alloc(&output, NULL, 2, capacity, AV_SAMPLE_FMT_FLT, 0) < 0) {
     decode->error = AVERROR(ENOMEM);
-    return X2_FMV_DRAIN_FAILED;
+    return FmvDrainResult::Failed;
   }
   result = swr_convert(decode->resampler, &output, capacity, NULL, 0);
   if (result >= 0)
@@ -120,12 +120,12 @@ X2FmvDrainResult flush_tail(void *userdata) {
   av_freep(&output);
   if (result < 0) {
     decode->error = result;
-    return X2_FMV_DRAIN_FAILED;
+    return FmvDrainResult::Failed;
   }
-  return result > 0 ? X2_FMV_DRAIN_PROGRESS : X2_FMV_DRAIN_COMPLETE;
+  return result > 0 ? FmvDrainResult::Progress : FmvDrainResult::Complete;
 }
 
-const X2FmvDecoderDrainOps g_drain_ops = {send_flush, receive_step, flush_tail};
+const FmvDecoderDrainOps g_drain_ops = {send_flush, receive_step, flush_tail};
 
 } // namespace
 
@@ -202,9 +202,7 @@ int fmv_audio_decode_send_packet(FmvAudioDecode *decode,
   return receive_all(decode) < 0 ? decode->error : 0;
 }
 
-const X2FmvDecoderDrainOps *fmv_audio_decode_drain_ops() {
-  return &g_drain_ops;
-}
+const FmvDecoderDrainOps *fmv_audio_decode_drain_ops() { return &g_drain_ops; }
 
 int fmv_audio_decode_sample_rate(const FmvAudioDecode *decode) {
   return decode ? decode->sample_rate : 0;

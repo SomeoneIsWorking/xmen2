@@ -64,14 +64,14 @@ static int temporary_count(const char *directory) {
 }
 
 int main(void) {
-  unsigned char header[X2_SAVE_HEADER_BYTES];
+  unsigned char header[x2::save::kSaveHeaderBytes];
   const unsigned char payload[] = {1, 2, 3, 4, 5};
   const unsigned char prior[] = "prior-autosave";
   unsigned char result[256];
   const char *directory;
   char parent[256];
   char leaf[256];
-  X2AutosaveStorageFault fault;
+  x2::save::AutosaveStorageFault fault;
   size_t size;
   unsigned i;
 
@@ -84,33 +84,35 @@ int main(void) {
   directory = x2_retail_save_directory();
   CHECK(directory != NULL);
   ensure_directory(directory);
-  snprintf(leaf, sizeof leaf, "%s/%s", directory, X2_AUTOSAVE_LEAF);
+  snprintf(leaf, sizeof leaf, "%s/%s", directory, x2::save::kAutosaveLeaf);
   memset(header, 0xa5, sizeof header);
 
-  for (fault = X2_AUTOSAVE_FAULT_AFTER_HEADER;
-       fault <= X2_AUTOSAVE_FAULT_BEFORE_RENAME;
-       fault = static_cast<X2AutosaveStorageFault>(fault + 1)) {
+  for (fault = x2::save::AutosaveStorageFault::AfterHeader;
+       fault <= x2::save::AutosaveStorageFault::BeforeRename;
+       fault = static_cast<x2::save::AutosaveStorageFault>((int)fault + 1)) {
     CHECK(write_file(leaf, prior, sizeof prior));
-    CHECK(!x2_autosave_storage_publish(directory, header, payload,
-                                       sizeof payload, fault));
+    CHECK(!x2::save::autosave_storage_publish(directory, header, payload,
+                                              sizeof payload, fault));
     size = read_file(leaf, result, sizeof result);
     CHECK(size == sizeof prior);
     CHECK(!memcmp(result, prior, sizeof prior));
     CHECK(temporary_count(directory) == 0);
   }
 
-  CHECK(x2_autosave_storage_publish(directory, header, payload, sizeof payload,
-                                    X2_AUTOSAVE_FAULT_NONE));
+  CHECK(x2::save::autosave_storage_publish(
+      directory, header, payload, sizeof payload,
+      x2::save::AutosaveStorageFault::None));
   size = read_file(leaf, result, sizeof result);
-  CHECK(size == X2_SAVE_HEADER_BYTES + 4u + sizeof payload);
+  CHECK(size == x2::save::kSaveHeaderBytes + 4u + sizeof payload);
   CHECK(!memcmp(result, header, sizeof header));
   CHECK(result[128] == sizeof payload && result[129] == 0 && result[130] == 0 &&
         result[131] == 0);
   CHECK(!memcmp(result + 132u, payload, sizeof payload));
   CHECK(temporary_count(directory) == 0);
 
-  CHECK(!x2_autosave_storage_publish(NULL, header, payload, sizeof payload,
-                                     X2_AUTOSAVE_FAULT_NONE));
+  CHECK(!x2::save::autosave_storage_publish(
+      NULL, header, payload, sizeof payload,
+      x2::save::AutosaveStorageFault::None));
   for (i = 0; i < sizeof result; i++)
     result[i] = 0;
   CHECK(unlink(leaf) == 0);

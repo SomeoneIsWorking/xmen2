@@ -1,23 +1,25 @@
 #include "fmv_decoder_drain.h"
 
-static int receive_until_flush_accepted(X2FmvDecoderDrain *drain,
-                                        const X2FmvDecoderDrainOps *ops,
+namespace x2::media {
+
+static int receive_until_flush_accepted(FmvDecoderDrain *drain,
+                                        const FmvDecoderDrainOps *ops,
                                         void *userdata) {
   for (;;) {
-    X2FmvFlushResult flush = ops->send_flush(userdata);
-    X2FmvDrainResult received;
-    if (flush == X2_FMV_FLUSH_ACCEPTED) {
+    FmvFlushResult flush = ops->send_flush(userdata);
+    FmvDrainResult received;
+    if (flush == FmvFlushResult::Accepted) {
       drain->flush_sent = 1;
       return 1;
     }
-    if (flush == X2_FMV_FLUSH_FAILED)
+    if (flush == FmvFlushResult::Failed)
       return -1;
     received = ops->receive(userdata);
-    if (received == X2_FMV_DRAIN_PROGRESS)
+    if (received == FmvDrainResult::Progress)
       continue;
-    if (received == X2_FMV_DRAIN_OUTPUT_BLOCKED)
+    if (received == FmvDrainResult::OutputBlocked)
       return 0;
-    if (received == X2_FMV_DRAIN_COMPLETE) {
+    if (received == FmvDrainResult::Complete) {
       drain->flush_sent = 1;
       drain->decoder_drained = 1;
       return 1;
@@ -28,15 +30,15 @@ static int receive_until_flush_accepted(X2FmvDecoderDrain *drain,
   }
 }
 
-static int drain_decoder(X2FmvDecoderDrain *drain,
-                         const X2FmvDecoderDrainOps *ops, void *userdata) {
+static int drain_decoder(FmvDecoderDrain *drain, const FmvDecoderDrainOps *ops,
+                         void *userdata) {
   while (!drain->decoder_drained) {
-    X2FmvDrainResult received = ops->receive(userdata);
-    if (received == X2_FMV_DRAIN_PROGRESS)
+    FmvDrainResult received = ops->receive(userdata);
+    if (received == FmvDrainResult::Progress)
       continue;
-    if (received == X2_FMV_DRAIN_OUTPUT_BLOCKED)
+    if (received == FmvDrainResult::OutputBlocked)
       return 0;
-    if (received == X2_FMV_DRAIN_COMPLETE) {
+    if (received == FmvDrainResult::Complete) {
       drain->decoder_drained = 1;
       break;
     }
@@ -47,20 +49,19 @@ static int drain_decoder(X2FmvDecoderDrain *drain,
   return 1;
 }
 
-static int drain_converter_tail(X2FmvDecoderDrain *drain,
-                                const X2FmvDecoderDrainOps *ops,
-                                void *userdata) {
+static int drain_converter_tail(FmvDecoderDrain *drain,
+                                const FmvDecoderDrainOps *ops, void *userdata) {
   if (!ops->flush_tail) {
     drain->tail_drained = 1;
     return 1;
   }
   while (!drain->tail_drained) {
-    X2FmvDrainResult flushed = ops->flush_tail(userdata);
-    if (flushed == X2_FMV_DRAIN_PROGRESS)
+    FmvDrainResult flushed = ops->flush_tail(userdata);
+    if (flushed == FmvDrainResult::Progress)
       continue;
-    if (flushed == X2_FMV_DRAIN_OUTPUT_BLOCKED)
+    if (flushed == FmvDrainResult::OutputBlocked)
       return 0;
-    if (flushed == X2_FMV_DRAIN_COMPLETE) {
+    if (flushed == FmvDrainResult::Complete) {
       drain->tail_drained = 1;
       break;
     }
@@ -69,8 +70,8 @@ static int drain_converter_tail(X2FmvDecoderDrain *drain,
   return 1;
 }
 
-int x2_fmv_decoder_drain(X2FmvDecoderDrain *drain,
-                         const X2FmvDecoderDrainOps *ops, void *userdata) {
+int fmv_decoder_drain(FmvDecoderDrain *drain, const FmvDecoderDrainOps *ops,
+                      void *userdata) {
   int result;
   if (!drain || !ops || !ops->send_flush || !ops->receive)
     return -1;
@@ -84,3 +85,5 @@ int x2_fmv_decoder_drain(X2FmvDecoderDrain *drain,
     return result;
   return drain_converter_tail(drain, ops, userdata);
 }
+
+} // namespace x2::media

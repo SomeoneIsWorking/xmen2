@@ -100,7 +100,7 @@ void x2_settings_defaults(X2Settings *settings) {
   settings->dynamic_shadows = 1;
   settings->shadow_resolution = 2048;
   settings->text_scale = 0.0f; /* auto */
-  settings->boot_mode = X2_BOOT_NORMAL;
+  settings->boot_mode = x2::config::BootMode::Normal;
   settings->touch_controls = X2_TOUCH_CONTROLS_AUTO;
   settings->extraction_revive = X2_EXTRACTION_REVIVE_OFF;
   x2_hud_settings_defaults(&settings->hud);
@@ -246,7 +246,7 @@ static int parse_line(ParseState *state, char *line) {
     return 1;
   }
   if (strcmp(key, "boot.mode") == 0)
-    return x2_boot_mode_parse(value, &settings->boot_mode);
+    return x2::config::boot_mode_parse(value, &settings->boot_mode);
   if (strcmp(key, "gameplay.extraction_revive") == 0)
     return x2_extraction_revive_parse(value, &settings->extraction_revive);
   if (strcmp(key, "input.touch_controls") == 0) {
@@ -310,7 +310,8 @@ static int settings_valid(const X2Settings *settings) {
   unsigned i, j;
   if (!x2_hud_settings_valid(&settings->hud))
     return 0;
-  if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE ||
+  if ((unsigned)settings->boot_mode >
+          (unsigned)x2::config::BootMode::Continue ||
       settings->touch_controls > X2_TOUCH_CONTROLS_ALWAYS ||
       (unsigned)settings->extraction_revive > X2_EXTRACTION_REVIVE_PAID)
     return 0;
@@ -484,7 +485,8 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
     fclose(file);
     return 0;
   }
-  fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
+  fprintf(file, "boot.mode=%s\n",
+          x2::config::boot_mode_name(settings->boot_mode));
   fprintf(file, "gameplay.extraction_revive=%s\n",
           x2_extraction_revive_name(settings->extraction_revive));
   fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);

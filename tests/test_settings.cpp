@@ -202,11 +202,12 @@ int main(void) {
   CHECK(saved.hud.potions_scale_percent == 100);
   CHECK(saved.hud.portraits_scale_percent == 100);
   CHECK(saved.hud.safe_inset_percent == 2);
-  CHECK(saved.boot_mode == X2_BOOT_NORMAL);
-  CHECK(strcmp(x2_boot_mode_label(saved.boot_mode), "Boot normally") == 0);
-  CHECK(x2_boot_mode_parse("menu", &saved.boot_mode));
-  CHECK(saved.boot_mode == X2_BOOT_MENU);
-  CHECK(!x2_boot_mode_parse("new-game", &saved.boot_mode));
+  CHECK(saved.boot_mode == x2::config::BootMode::Normal);
+  CHECK(strcmp(x2::config::boot_mode_label(saved.boot_mode), "Boot normally") ==
+        0);
+  CHECK(x2::config::boot_mode_parse("menu", &saved.boot_mode));
+  CHECK(saved.boot_mode == x2::config::BootMode::Menu);
+  CHECK(!x2::config::boot_mode_parse("new-game", &saved.boot_mode));
   CHECK(x2_settings_player_keyboard(&saved, 0) == 0);
   CHECK(x2_settings_player_keyboard(&saved, 1) == -1);
 
@@ -216,7 +217,7 @@ int main(void) {
   saved.dynamic_shadows = 0;
   saved.shadow_resolution = 4096;
   saved.touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
-  saved.boot_mode = X2_BOOT_CONTINUE;
+  saved.boot_mode = x2::config::BootMode::Continue;
   CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
   CHECK(x2_settings_player_keyboard(&saved, 0) == 2);
   CHECK(saved.keyboard_player[0] == X2_SETTINGS_UNASSIGNED);

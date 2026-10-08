@@ -557,7 +557,7 @@ static uint32_t device_alloc(DInputDeviceKind kind,
   d->axis_hi = 65535;
   if (kind == DINPUT_DEV_JOYSTICK) {
     int pad;
-    x2_controller_instance_bind(&d->controller, pad_guid);
+    x2::input::controller_instance_bind(&d->controller, pad_guid);
     pad = pad_of(d);
     x2_log_error("DINPUT8: a native gamepad device at 0x%08x for pad %d "
                  "(\"%s\")\n",

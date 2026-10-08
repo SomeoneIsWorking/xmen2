@@ -1,14 +1,15 @@
-#ifndef X2_SAVE_CATALOG_H
-#define X2_SAVE_CATALOG_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-#define X2_SAVE_LEAF_CAPACITY 16
+namespace x2::save {
 
-typedef struct {
-  char leaf[X2_SAVE_LEAF_CAPACITY];
+inline constexpr int kSaveLeafCapacity = 16;
+
+struct SaveCandidate {
+  char leaf[kSaveLeafCapacity];
   int64_t mtime_ns;
-} X2SaveCandidate;
+};
 
 /* Find the newest regular save leaf in directory. Only saveslot0..9.save and
    autosave.save are candidates. Equal timestamps choose the lexicographically
@@ -17,6 +18,6 @@ typedef struct {
    Returns 1 when a candidate was found, 0 when there are no candidates or the
    directory does not exist yet, and -1 for an invalid argument or any other
    filesystem error. Save contents are opaque. */
-int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out);
+int save_catalog_latest(const char *directory, SaveCandidate *out);
 
-#endif /* X2_SAVE_CATALOG_H */
+} // namespace x2::save

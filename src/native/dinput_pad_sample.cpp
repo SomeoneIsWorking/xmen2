@@ -208,11 +208,12 @@ static int read_stick_axis(int pad, SDL_Gamepad *gp, int axis) {
       (float)SDL_GetGamepadAxis(gp, left ? SDL_GAMEPAD_AXIS_LEFTY
                                          : SDL_GAMEPAD_AXIS_RIGHTY) /
       32767.0f;
-  X2PadStick stick = {x, y};
+  x2::native::PadStick stick = {x, y};
   if (pad != dinput_pad_virtual_slot()) {
-    stick = x2_pad_stick_dead_zone(x, y,
-                                   left ? X2_PAD_LEFT_STICK_DEAD_ZONE
-                                        : X2_PAD_RIGHT_STICK_DEAD_ZONE);
+    stick = x2::native::pad_stick_dead_zone(
+        x, y,
+        left ? x2::native::kPadLeftStickDeadZone
+             : x2::native::kPadRightStickDeadZone);
   }
   return (int)lroundf((vertical ? stick.y : stick.x) * 32767.0f);
 }

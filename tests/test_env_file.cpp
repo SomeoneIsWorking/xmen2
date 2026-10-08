@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
   if (!strcmp(argv[1], "load")) {
     if (!setup_simple("X2_VERBOSE='path with spaces'\n"))
       return 2;
-    rc = x2_load_project_env(NULL);
+    rc = x2::native::load_project_env(NULL);
     got = getenv("X2_VERBOSE");
     if (rc != 1 || !got || strcmp(got, "path with spaces") != 0)
       return 1;
@@ -98,19 +98,19 @@ int main(int argc, char **argv) {
     if (!setup_simple("X2_VERBOSE=from-file\n"))
       return 2;
     x2_guest_environment_set("X2_VERBOSE", "from-launcher");
-    rc = x2_load_project_env(NULL);
+    rc = x2::native::load_project_env(NULL);
     got = getenv("X2_VERBOSE");
     if (rc != 1 || !got || strcmp(got, "from-launcher") != 0)
       return 1;
   } else if (!strcmp(argv[1], "malformed")) {
     if (!setup_simple("this is not an assignment\n"))
       return 2;
-    if (x2_load_project_env(NULL) != -1)
+    if (x2::native::load_project_env(NULL) != -1)
       return 1;
   } else if (!strcmp(argv[1], "unknown-key")) {
     if (!setup_simple("X2_NOT_A_REGISTERED_SETTING=unsafe\n"))
       return 2;
-    if (x2_load_project_env(NULL) != 1 ||
+    if (x2::native::load_project_env(NULL) != 1 ||
         getenv("X2_NOT_A_REGISTERED_SETTING") != NULL)
       return 1;
   } else if (!strcmp(argv[1], "executable-precedence")) {
@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
       return 2;
     snprintf(executable, sizeof executable, "%s/%s/project/bin/x2native",
              start_dir, test_dir);
-    rc = x2_load_project_env(executable);
+    rc = x2::native::load_project_env(executable);
     got = getenv("X2_VERBOSE");
     if (rc != 1 || !got || strcmp(got, "from-executable") != 0)
       return 1;

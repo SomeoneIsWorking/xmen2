@@ -47,10 +47,10 @@ static int prepare_leaf(const char *leaf) {
   if (!leaf || g_owner != x2::native::ExactSaveLoadOwner::None)
     return 0;
   length = strlen(leaf);
-  if (length == 0u || length >= X2_SAVE_LEAF_CAPACITY)
+  if (length == 0u || length >= x2::save::kSaveLeafCapacity)
     return 0;
   if (!g_leaf_guest)
-    g_leaf_guest = guest_malloc(X2_SAVE_LEAF_CAPACITY);
+    g_leaf_guest = guest_malloc(x2::save::kSaveLeafCapacity);
   if (!g_leaf_guest)
     return 0;
   memcpy(guest_memory_pointer(g_leaf_guest), leaf, length + 1u);

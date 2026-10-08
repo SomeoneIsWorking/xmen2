@@ -13,29 +13,29 @@ static int checks;
 int main(void) {
   x2::native::BootModeDecision decision;
 
-  decision = x2::native::boot_mode_decide(X2_BOOT_NORMAL, 0);
-  CHECK(decision.requested == X2_BOOT_NORMAL);
-  CHECK(decision.effective == X2_BOOT_NORMAL);
+  decision = x2::native::boot_mode_decide(x2::config::BootMode::Normal, 0);
+  CHECK(decision.requested == x2::config::BootMode::Normal);
+  CHECK(decision.effective == x2::config::BootMode::Normal);
   CHECK(!decision.fell_back_to_menu);
 
-  decision = x2::native::boot_mode_decide(X2_BOOT_MENU, 1);
-  CHECK(decision.requested == X2_BOOT_MENU);
-  CHECK(decision.effective == X2_BOOT_MENU);
+  decision = x2::native::boot_mode_decide(x2::config::BootMode::Menu, 1);
+  CHECK(decision.requested == x2::config::BootMode::Menu);
+  CHECK(decision.effective == x2::config::BootMode::Menu);
   CHECK(!decision.fell_back_to_menu);
 
-  decision = x2::native::boot_mode_decide(X2_BOOT_CONTINUE, 1);
-  CHECK(decision.requested == X2_BOOT_CONTINUE);
-  CHECK(decision.effective == X2_BOOT_CONTINUE);
+  decision = x2::native::boot_mode_decide(x2::config::BootMode::Continue, 1);
+  CHECK(decision.requested == x2::config::BootMode::Continue);
+  CHECK(decision.effective == x2::config::BootMode::Continue);
   CHECK(!decision.fell_back_to_menu);
 
-  decision = x2::native::boot_mode_decide(X2_BOOT_CONTINUE, 0);
-  CHECK(decision.requested == X2_BOOT_CONTINUE);
-  CHECK(decision.effective == X2_BOOT_MENU);
+  decision = x2::native::boot_mode_decide(x2::config::BootMode::Continue, 0);
+  CHECK(decision.requested == x2::config::BootMode::Continue);
+  CHECK(decision.effective == x2::config::BootMode::Menu);
   CHECK(decision.fell_back_to_menu);
 
-  decision = x2::native::boot_mode_decide((X2BootMode)99, 1);
-  CHECK(decision.requested == (X2BootMode)99);
-  CHECK(decision.effective == X2_BOOT_NORMAL);
+  decision = x2::native::boot_mode_decide((x2::config::BootMode)99, 1);
+  CHECK(decision.requested == (x2::config::BootMode)99);
+  CHECK(decision.effective == x2::config::BootMode::Normal);
   CHECK(!decision.fell_back_to_menu);
 
   CHECK(x2::native::boot_mode_is_intro_command("runscript menus/intro_normal"));

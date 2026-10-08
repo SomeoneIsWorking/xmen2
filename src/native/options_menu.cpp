@@ -61,7 +61,7 @@ static uint32_t exe_base(void) {
 namespace x2::native {
 
 void port_settings_command(CPU *C) {
-  x2_settings_overlay_show();
+  x2::ui::settings_overlay_show();
   /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
   C->reg[kX86pEsp] += 4u;
 }

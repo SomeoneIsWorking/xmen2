@@ -6,7 +6,7 @@ namespace x2::save {
 
 int autosave_header_from_payload(const unsigned char *payload,
                                  size_t payload_size,
-                                 unsigned char header[X2_SAVE_HEADER_BYTES]) {
+                                 unsigned char header[kSaveHeaderBytes]) {
   static const unsigned char PREFIX[] = "[SAVEGAMEBEGIN: ";
   const unsigned char *description;
   size_t description_size = 0;
@@ -21,14 +21,13 @@ int autosave_header_from_payload(const unsigned char *payload,
   while (offset + description_size < payload_size &&
          payload[offset + description_size] != ']') {
     unsigned char ch = payload[offset + description_size];
-    if (ch < 0x20u || ch > 0x7eu ||
-        description_size >= X2_SAVE_HEADER_BYTES - 1u)
+    if (ch < 0x20u || ch > 0x7eu || description_size >= kSaveHeaderBytes - 1u)
       return 0;
     description_size++;
   }
   if (!description_size || offset + description_size >= payload_size)
     return 0;
-  memset(header, 0, X2_SAVE_HEADER_BYTES);
+  memset(header, 0, kSaveHeaderBytes);
   memcpy(header, description, description_size);
   return 1;
 }

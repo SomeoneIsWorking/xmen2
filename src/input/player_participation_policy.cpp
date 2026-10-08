@@ -2,15 +2,17 @@
 
 #include <string.h>
 
-#define PLAYER_MASK ((1u << X2_PARTICIPATION_PLAYERS) - 1u)
+#define PLAYER_MASK ((1u << kParticipationPlayers) - 1u)
 
-void x2_player_participation_policy_init(X2PlayerParticipationPolicy *policy) {
+namespace x2::input {
+
+void player_participation_policy_init(PlayerParticipationPolicy *policy) {
   if (policy)
     memset(policy, 0, sizeof *policy);
 }
 
-void x2_player_participation_policy_configure(
-    X2PlayerParticipationPolicy *policy, uint8_t eligible_players) {
+void player_participation_policy_configure(PlayerParticipationPolicy *policy,
+                                           uint8_t eligible_players) {
   uint8_t eligible, changed;
 
   if (!policy)
@@ -28,11 +30,11 @@ void x2_player_participation_policy_configure(
   policy->configured = 1u;
 }
 
-void x2_player_participation_policy_note_start(
-    X2PlayerParticipationPolicy *policy, unsigned player, int down) {
+void player_participation_policy_note_start(PlayerParticipationPolicy *policy,
+                                            unsigned player, int down) {
   uint8_t bit;
 
-  if (!policy || player >= X2_PARTICIPATION_PLAYERS)
+  if (!policy || player >= kParticipationPlayers)
     return;
   bit = (uint8_t)(1u << player);
   if (down) {
@@ -44,9 +46,9 @@ void x2_player_participation_policy_note_start(
   }
 }
 
-X2PlayerParticipationTransition
-x2_player_participation_policy_consume(X2PlayerParticipationPolicy *policy) {
-  X2PlayerParticipationTransition out = {0, 0};
+PlayerParticipationTransition
+player_participation_policy_consume(PlayerParticipationPolicy *policy) {
+  PlayerParticipationTransition out = {0, 0};
 
   if (!policy)
     return out;
@@ -58,21 +60,23 @@ x2_player_participation_policy_consume(X2PlayerParticipationPolicy *policy) {
   return out;
 }
 
-uint8_t x2_player_seats_to_players(const X2PlayerSeatMap *map, uint8_t seats) {
+uint8_t player_seats_to_players(const PlayerSeatMap *map, uint8_t seats) {
   uint8_t players = 0;
   unsigned player;
 
   if (!map)
     return 0;
-  for (player = 0; player < X2_PARTICIPATION_PLAYERS; player++) {
+  for (player = 0; player < kParticipationPlayers; player++) {
     const int32_t controller = map->controller_of_player[player];
-    if (controller >= 0 && controller < (int32_t)X2_PARTICIPATION_PLAYERS &&
+    if (controller >= 0 && controller < (int32_t)kParticipationPlayers &&
         (map->local_controllers & seats & (1u << controller)))
       players |= (uint8_t)(1u << player);
   }
   return players;
 }
 
-uint8_t x2_player_seats_governed(const X2PlayerSeatMap *map) {
-  return x2_player_seats_to_players(map, PLAYER_MASK);
+uint8_t player_seats_governed(const PlayerSeatMap *map) {
+  return player_seats_to_players(map, PLAYER_MASK);
 }
+
+} // namespace x2::input

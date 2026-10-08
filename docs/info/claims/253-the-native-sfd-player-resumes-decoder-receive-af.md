@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: native,fmv,ffmpeg,audio,issue-109
-depends: src/media/fmv_decoder_drain.cpp#x2_fmv_decoder_drain, src/media/fmv_audio_decode.cpp#flush_tail, src/media/fmv_player.cpp#pump
+depends: src/media/fmv_decoder_drain.cpp#fmv_decoder_drain, src/media/fmv_audio_decode.cpp#flush_tail, src/media/fmv_player.cpp#pump
 ---
 
 ## Claim

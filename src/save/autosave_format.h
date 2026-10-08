@@ -11,6 +11,6 @@ namespace x2::save {
    NUL-padded to the retail 128-byte field. */
 int autosave_header_from_payload(const unsigned char *payload,
                                  size_t payload_size,
-                                 unsigned char header[X2_SAVE_HEADER_BYTES]);
+                                 unsigned char header[kSaveHeaderBytes]);
 
 } // namespace x2::save
