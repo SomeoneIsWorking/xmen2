@@ -83,6 +83,14 @@ temporary AppImage payload, because older patchers corrupt `DT_INIT` in current
 Fedora ELFs; `appimagetool` writes the result to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
+Build the Windows portable ZIP on a Windows runner or by cross-building with
+`uv run --frozen python tools/build_windows.py --build-type Release --target x2native`
+followed by `uv run --frozen python tools/package_windows.py --build-dir <that build>`.
+The ZIP holds `X-Men Legends II.exe`, `ui/` and the `xmen2-package.txt` marker whose
+presence makes the executable enter the same first-run picker as the AppImage
+(`src/native/windows_package.h`). The packager refuses any DLL import that is not
+a Windows system library; the build links everything else statically.
+
 Build the ARM64 APK from a selected Android SDK/NDK with
 `uv run --frozen python tools/build_android.py`. The dependency step consumes
 the pinned `shared/android-port` prefix under `build/deps/android/`; Android

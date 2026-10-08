@@ -51,6 +51,7 @@
 #include "shell32.h"
 #include "threads.h"
 #include "win32_sdl.h"
+#include "windows_package.h"
 #include "x2native_options.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
@@ -1486,11 +1487,10 @@ int main(int argc, char **argv) {
      until this runs every fatal message the port prints is invisible and a
      deliberate exit looks like an unexplained crash. */
   x2_android_log_stdio();
-  /* Before the options are read, because a double-clicked .app supplies no
-     options at all: the bundle is the argument. It publishes its own
-     resources and Vulkan driver, and being in one IS the packaged product
-     launch shape that --appimage names on Linux. */
-  if (x2_macos_bundle_init(argv[0]))
+  /* Before the options are read: a double-clicked .app or Windows folder
+     supplies no options, and being packaged IS the launch shape --appimage
+     names on Linux. Each publishes its own resources. */
+  if (x2_macos_bundle_init(argv[0]) || x2::native::windows_package_init())
     packaged_bundle = 1;
   if ((rc = x2native_options_parse(argc, argv, &options)) != 0)
     return rc;

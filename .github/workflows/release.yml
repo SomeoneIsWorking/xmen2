@@ -118,6 +118,52 @@ jobs:
           name: macos-package
           path: build/release/X-Men-Legends-II-macos-arm64.zip
 
+  build-windows:
+    name: Windows x86-64 portable ZIP (llvm-mingw)
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # The same host tools as the asset-free Windows job: FFmpeg's configure
+      # needs sh and make, pkgconf reads the prefix's .pc files and glslc builds
+      # the shaders. llvm-mingw and every library come from tools/windows_deps.py.
+      - name: Install the Windows host build tools from MSYS2
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed make mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-shaderc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - run: uv sync --frozen
+      - name: Build the native release binary
+        run: uv run --frozen python tools/build_windows.py --build-dir build/windows-x86_64 --build-type Release --target x2native
+      - name: Package the portable folder
+        run: uv run --frozen python tools/package_windows.py --build-dir build/windows-x86_64 --output build/release/X-Men-Legends-II-windows-x86_64.zip
+      - name: Run the unzipped package
+        # The shipped executable, from the unzipped folder alone, on a real
+        # Windows host: every fault kind must be reported by name.
+        shell: pwsh
+        run: |
+          Expand-Archive -Path build/release/X-Men-Legends-II-windows-x86_64.zip -DestinationPath "$env:RUNNER_TEMP/x2-package"
+          Set-Location "$env:RUNNER_TEMP/x2-package/X-Men Legends II"
+          $run = Start-Process -FilePath ".\X-Men Legends II.exe" -ArgumentList "--no-window","--fault-selftest" -Wait -PassThru -NoNewWindow
+          if ($run.ExitCode -ne 0) { exit $run.ExitCode }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: windows-package
+          path: build/release/X-Men-Legends-II-windows-x86_64.zip
+
   build-android:
     name: Android (arm64-v8a)
     runs-on: ubuntu-24.04
@@ -189,7 +235,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [build-appimage, build-macos, build-android]
+    needs: [build-appimage, build-macos, build-windows, build-android]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -236,12 +282,15 @@ jobs:
           - **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.zip`
             - A self-contained `X-Men Legends II.app`: it carries SDL3, SDL3_image, FreeType, FFmpeg and its own Vulkan loader with MoltenVK, so nothing has to be installed first. Unzip it, move it to Applications and open it; the first launch asks for your PC installation with a Browse dialog and accepts a folder, its `XMen2.exe`, or a ZIP of either.
             - It is ad-hoc signed rather than notarised, so the first open needs right-click -> Open (or Open Anyway in System Settings -> Privacy & Security).
+          - **Windows x86-64**: `X-Men-Legends-II-windows-x86_64.zip`
+            - A portable folder: unzip it anywhere and run `X-Men Legends II.exe`. SDL3, FFmpeg and FreeType are linked statically, so nothing has to be installed first (Windows 10 or later). The first launch asks for your PC installation with a Browse dialog and accepts a folder, its `XMen2.exe`, or a ZIP of either.
+            - The package is built and its fault reporter run from the unzipped folder on a Windows runner, but a full game run on real Windows hardware has not been made yet.
           - **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a.apk`
             - Storage Access Framework setup and touch controls. Signed with the project's long-lived key, so it installs over any earlier release of the same lineage and keeps your imported game installation. Device performance is not yet measured.
           - **Checksums**: `SHA256SUMS.txt`
 
           ### Platform Notes:
-          - **Windows**: no package yet. The native Windows host builds but is not yet qualified on Windows; on Windows the 2005 retail release runs on its own.
+          - **Windows**: the ZIP is a first release of the native host; it runs the game under Wine on Linux but has not been qualified on real Windows hardware. The 2005 retail release still runs on its own there.
           - **No Copyrighted Assets**: These packages contain no game content, audio, textures, or retail code. Supply your own legally obtained PC installation of *X-Men Legends II* (folder or ZIP containing `XMen2.exe` and its original DLLs).
           EOF
           if gh release view "$TAG" >/dev/null 2>&1; then

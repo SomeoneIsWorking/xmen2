@@ -135,6 +135,7 @@ WINDOWS_HOST_TARGETS = (
     "test_install_picker",
     "test_override_leaf",
     "test_run_log",
+    "test_windows_package",
     "x2native",
 )
 
@@ -169,6 +170,7 @@ WINDOWS_HOST_TESTS = (
     "install_picker",
     "override_leaf",
     "run_log",
+    "windows_package",
     "fault_reporter",
 )
 
