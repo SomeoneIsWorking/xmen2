@@ -38,10 +38,17 @@ A perf profile of the flushing run put 21% of all samples in
 
 ## Fix
 
-Native default raised to 262,144 blocks and 128 MB of code: about 2.9 times
-this route's working set, 25 MB of table and chain slots for the single native
-engine. `jit.blocks` / `jit.code_mb` still override both.
+The limits are ceilings now, not allocations (jit-common `8a0e953`, x86port
+`ff72f97`): the block table starts at 8,192 entries and doubles as blocks
+arrive, chain slots are initialised as they are claimed, and native code memory
+is made in chunks (a sixteenth of the ceiling, at most 32 MB) as the working set
+reaches them. Only reaching a ceiling flushes. Native ceilings are 2,097,152
+blocks and 512 MB; `jit.blocks` / `jit.code_mb` still override them.
 
-Frame-time percentiles in the fight window vary more between runs of one size
-(p50 6.8 to 15.9 ms) than between sizes, so no steady-state gain is claimed.
-The phone is not measured; it uses the same default.
+After the change the same route translates 91,582 blocks into 31.6 MB in one
+chunk with no flush. The heartbeat's arena line names chunks and whole-cache
+flushes, because it used to say the arena held the working set while it was
+flushing.
+
+Frame-time percentiles in the fight window vary more between runs than between
+configurations, so no steady-state gain is claimed. The phone is not measured.
