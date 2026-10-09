@@ -21,8 +21,10 @@
 #include "dinput8_controller_slots.h"
 #include "dinput_pad.h"
 #include "gpu_device.h"
+#include "guest_call.hpp"
 #include "guest_clock.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "input_bindings.h"
 #include "input_probe_lifecycle.h"
 #include "player_participation_probe.h"
@@ -33,8 +35,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define EXE_PREFERRED 0x00400000u
-
 /*
  * Guest addresses are written here EXACTLY as the disassembly writes them --
  * absolute, at the module's preferred base -- and the offset from the mapped
@@ -43,7 +43,7 @@
  * confident nonsense; it happened three times while this file was being
  * written, so the subtraction is done in one place instead.
  */
-#define RVA(va) ((uint32_t)(va) - EXE_PREFERRED)
+#define RVA(va) ((uint32_t)(va) - x2::native::kExePreferred)
 #define INPUT_MGR_RVA                                                          \
   RVA(0x005d8920u)            /* FUN_005d8920, the input singleton    */
 #define VT_ACTION_DOWN 0x138u /* vtable slot the conversation gates on */
@@ -118,26 +118,6 @@
 #define DI_PAD_VALUE_RVA                                                       \
   RVA(0x00627650u) /* FUN_00627650(pad, code) -> float      */
 
-static uint32_t exe_base(void) {
-  X86Module *m;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == EXE_PREFERRED && m->base && *m->base)
-      return *m->base;
-  return 0;
-}
-
-static uint32_t thiscall(CPU *cpu, uint32_t fn, uint32_t ecx, int argc,
-                         const uint32_t *argv) {
-  CPU call = *cpu;
-  int i;
-  call.reg[kX86pEsp] -= (uint32_t)argc * 4u;
-  for (i = 0; i < argc; i++)
-    WR32(call.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
-  call.reg[kX86pEcx] = ecx;
-  x86_guest_call_args(&call, fn, (uint32_t)argc * 4u);
-  return call.reg[kX86pEax];
-}
-
 /*
  * The physical-code vocabulary FUN_00627650 answers for, named.
  *
@@ -192,7 +172,7 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
                                       size_t n) {
   char why[192];
   size_t at = 0;
-  uint32_t object, manager = 0, base = exe_base();
+  uint32_t object, manager = 0, base = x2::native::guest_exe_base();
   uint32_t row, slot, action;
   unsigned populated = 0, pad_rows = 0, kb_rows = 0;
   unsigned resolved = 0, unmapped = 0, down = 0;
@@ -225,7 +205,8 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
     return at;
   }
 
-  manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
+  manager =
+      base ? x2::guest::GuestCall(*cpu).thiscall(base + INPUT_MGR_RVA, 0u) : 0u;
   at += x2::native::cutscene_skip_probe_report(cpu, controller, manager,
                                                out + at, n - at);
   text_put(
@@ -284,7 +265,8 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
       uint32_t vt = 0, fn = 0;
       if (guest_memory_try_read32(manager, &vt) &&
           guest_memory_try_read32(vt + VT_ACTION_DOWN, &fn) && fn)
-        state = (uint8_t)thiscall(cpu, fn, manager, 1, &action);
+        state =
+            (uint8_t)x2::guest::GuestCall(*cpu).thiscall(fn, manager, {action});
     }
     if (state) {
       down++;
@@ -468,7 +450,8 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
    * The player's own character, and whether the game can resolve it.
    */
   {
-    uint32_t mgr = base ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL) : 0u;
+    uint32_t mgr =
+        base ? x2::guest::GuestCall(*cpu).thiscall(base + PAD_MGR_RVA, 0u) : 0u;
     int32_t idx = -1;
     uint32_t i, resolved = 0, live = 0;
 

@@ -17,10 +17,10 @@
 #include "cutscene_skip_publication.h"
 #include "input_bindings.h"
 #include "rmlui_ui.h"
+#include "text_put.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 
 #define PAUSE_ROW 17u
@@ -30,22 +30,6 @@
 #define VT_CINEMATIC_MASK 0x140u
 #define DIK_ESCAPE 0x01u
 #define PAD_START 0x1cu
-
-static void append(char *out, size_t size, size_t *at, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-
-static void append(char *out, size_t size, size_t *at, const char *fmt, ...) {
-  va_list args;
-  int wrote;
-
-  if (*at >= size)
-    return;
-  va_start(args, fmt);
-  wrote = vsnprintf(out + *at, size - *at, fmt, args);
-  va_end(args);
-  if (wrote > 0)
-    *at += (size_t)wrote > size - *at ? size - *at : (size_t)wrote;
-}
 
 static uint32_t call0(CPU *cpu, uint32_t object, uint32_t slot, int *readable) {
   CPU call;
@@ -100,21 +84,22 @@ static void report_publication(char *out, size_t size, size_t *at,
 
   for (bank = 0; bank < INPUT_BINDING_SETS; bank++) {
     found[bank] = publication_at(controller[bank]);
-    append(out, size, at,
-           "  %-7s controller %u row 17: Escape %s, Start %s%s\n", NAME[bank],
-           controller[bank], found[bank].escape ? "yes" : "no",
-           found[bank].start ? "yes" : "no",
-           found[bank].readable ? "" : "  (UNREADABLE)");
+    x2::native::text_put(
+        out, size, at, "  %-7s controller %u row 17: Escape %s, Start %s%s\n",
+        NAME[bank], controller[bank], found[bank].escape ? "yes" : "no",
+        found[bank].start ? "yes" : "no",
+        found[bank].readable ? "" : "  (UNREADABLE)");
   }
   summary = x2::native::cutscene_skip_publication_classify(found);
-  append(out, size, at,
-         "  publication: Escape %u/%u banks%s; Start %u/%u banks%s; "
-         "%u/%u readable\n",
-         summary.escape, INPUT_BINDING_SETS,
-         summary.escape == INPUT_BINDING_SETS ? " (complete)" : " (MISSING)",
-         summary.start, INPUT_BINDING_SETS,
-         summary.start == INPUT_BINDING_SETS ? " (complete)" : " (MISSING)",
-         summary.readable, INPUT_BINDING_SETS);
+  x2::native::text_put(
+      out, size, at,
+      "  publication: Escape %u/%u banks%s; Start %u/%u banks%s; "
+      "%u/%u readable\n",
+      summary.escape, INPUT_BINDING_SETS,
+      summary.escape == INPUT_BINDING_SETS ? " (complete)" : " (MISSING)",
+      summary.start, INPUT_BINDING_SETS,
+      summary.start == INPUT_BINDING_SETS ? " (complete)" : " (MISSING)",
+      summary.readable, INPUT_BINDING_SETS);
 }
 
 static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
@@ -135,61 +120,71 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
   x2::native::cutscene_player_snapshot(cpu, &player);
   x2::native::cutscene_dialogue_snapshot(&dialogue);
   x2::native::cutscene_script_audio_snapshot(&audio);
-  append(
+  x2::native::text_put(
       out, size, at,
       "Cutscene player: active %u sequence %u; %u owned BehavEd context(s)\n",
       player.active, player.sequence, player.owned_contexts);
-  append(out, size, at,
-         "  input: %lu poll(s), %lu skip edge(s); policy: %u request(s), "
-         "%u invocation(s), %u completion(s)\n",
-         player.input_polls, player.input_edges, player.requests,
-         player.invocations, player.completions);
-  append(out, size, at,
-         "  work: %lu authored step(s) (%lu BehavEd, %lu event), "
-         "%lu conversation payload(s); "
-         "contexts: %lu allocation(s), %lu inherited, %lu freed\n",
-         player.authored_steps, player.behaved_steps, player.event_steps,
-         player.conversation_payloads, player.allocations, player.inherited,
-         player.freed);
-  append(out, size, at,
-         "  timed events: window %s owner 0x%08x, refused %u, "
-         "%lu insertion fault(s)\n",
-         player.event_window_active ? "active" : "inactive", player.event_owner,
-         player.event_refused, player.event_insertion_faults);
-  append(out, size, at,
-         "                last event target 0x%08x descriptor 0x%08x\n",
-         player.last_event_target, player.last_event_descriptor);
-  append(out, size, at,
-         "  control release: %lu authored, %lu consumed on the private "
-         "cutscene timeline\n",
-         player.releases, player.private_releases);
-  append(out, size, at,
-         "  one-step invariant: %lu same-frame, %lu same-guest-time; "
-         "results completed/inactive/choice/no-progress/runaway/error "
-         "%lu/%lu/%lu/%lu/%lu/%lu\n",
-         player.same_frame, player.same_guest_time, player.results[0],
-         player.results[1], player.results[2], player.results[3],
-         player.results[4], player.results[5]);
-  append(out, size, at,
-         "  dialogue presentation: %lu ordinary response, %lu ordinary "
-         "line start(s); skip stopped %lu active voice(s), suppressed "
-         "%lu response and %lu line start(s), leaked %lu; last line "
-         "presenter 0x%08x\n",
-         dialogue.ordinary_response_starts, dialogue.ordinary_line_starts,
-         dialogue.active_voice_stops, dialogue.suppressed_response_starts,
-         dialogue.suppressed_line_starts, dialogue.skip_presentation_starts,
-         dialogue.last_line_presenter);
-  append(out, size, at,
-         "                         manager 0x%08x, last stopped handle "
-         "0x%08x\n",
-         dialogue.last_manager, dialogue.last_stopped_handle);
-  append(out, size, at,
-         "  script sound commands: %lu ordinary, %lu silent; "
-         "last context 0x%08x\n",
-         audio.ordinary_commands, audio.silent_commands, audio.last_context);
-  append(out, size, at, "  boundary: controls %s; conversation payload %s\n",
-         controls[player.control_state <= 2u ? player.control_state : 0u],
-         conversations[payload]);
+  x2::native::text_put(
+      out, size, at,
+      "  input: %lu poll(s), %lu skip edge(s); policy: %u request(s), "
+      "%u invocation(s), %u completion(s)\n",
+      player.input_polls, player.input_edges, player.requests,
+      player.invocations, player.completions);
+  x2::native::text_put(
+      out, size, at,
+      "  work: %lu authored step(s) (%lu BehavEd, %lu event), "
+      "%lu conversation payload(s); "
+      "contexts: %lu allocation(s), %lu inherited, %lu freed\n",
+      player.authored_steps, player.behaved_steps, player.event_steps,
+      player.conversation_payloads, player.allocations, player.inherited,
+      player.freed);
+  x2::native::text_put(out, size, at,
+                       "  timed events: window %s owner 0x%08x, refused %u, "
+                       "%lu insertion fault(s)\n",
+                       player.event_window_active ? "active" : "inactive",
+                       player.event_owner, player.event_refused,
+                       player.event_insertion_faults);
+  x2::native::text_put(
+      out, size, at,
+      "                last event target 0x%08x descriptor 0x%08x\n",
+      player.last_event_target, player.last_event_descriptor);
+  x2::native::text_put(
+      out, size, at,
+      "  control release: %lu authored, %lu consumed on the private "
+      "cutscene timeline\n",
+      player.releases, player.private_releases);
+  x2::native::text_put(
+      out, size, at,
+      "  one-step invariant: %lu same-frame, %lu same-guest-time; "
+      "results completed/inactive/choice/no-progress/runaway/error "
+      "%lu/%lu/%lu/%lu/%lu/%lu\n",
+      player.same_frame, player.same_guest_time, player.results[0],
+      player.results[1], player.results[2], player.results[3],
+      player.results[4], player.results[5]);
+  x2::native::text_put(
+      out, size, at,
+      "  dialogue presentation: %lu ordinary response, %lu ordinary "
+      "line start(s); skip stopped %lu active voice(s), suppressed "
+      "%lu response and %lu line start(s), leaked %lu; last line "
+      "presenter 0x%08x\n",
+      dialogue.ordinary_response_starts, dialogue.ordinary_line_starts,
+      dialogue.active_voice_stops, dialogue.suppressed_response_starts,
+      dialogue.suppressed_line_starts, dialogue.skip_presentation_starts,
+      dialogue.last_line_presenter);
+  x2::native::text_put(
+      out, size, at,
+      "                         manager 0x%08x, last stopped handle "
+      "0x%08x\n",
+      dialogue.last_manager, dialogue.last_stopped_handle);
+  x2::native::text_put(out, size, at,
+                       "  script sound commands: %lu ordinary, %lu silent; "
+                       "last context 0x%08x\n",
+                       audio.ordinary_commands, audio.silent_commands,
+                       audio.last_context);
+  x2::native::text_put(
+      out, size, at, "  boundary: controls %s; conversation payload %s\n",
+      controls[player.control_state <= 2u ? player.control_state : 0u],
+      conversations[payload]);
 }
 
 namespace x2::native {
@@ -212,36 +207,42 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
       call0(cpu, input_manager, VT_CINEMATIC_MASK, &cinematic_readable);
   ui_capture = x2::ui::ui_captures_input();
 
-  append(out, size, &at, "cutscene skip input boundary -- player %u\n",
-         player + 1u);
-  append(out, size, &at, "  host modal UI capture: %s%s\n",
-         ui_capture ? "yes" : "no",
-         ui_capture
-             ? " (game DirectInput is intentionally zeroed; Escape closes "
-               "the settings UI, not the cutscene)"
-             : "");
-  append(out, size, &at,
-         "  retail map: FMV action 19 -> row %d; scripted cinematic "
-         "action 20 -> row %d%s\n",
-         fmv_row, cinematic_row,
-         fmv_row == (int)PAUSE_ROW && cinematic_row == (int)PAUSE_ROW
-             ? "  (both Pause)"
-             : "  (UNEXPECTED RETAIL MAP)");
+  x2::native::text_put(out, size, &at,
+                       "cutscene skip input boundary -- player %u\n",
+                       player + 1u);
+  x2::native::text_put(
+      out, size, &at, "  host modal UI capture: %s%s\n",
+      ui_capture ? "yes" : "no",
+      ui_capture ? " (game DirectInput is intentionally zeroed; Escape closes "
+                   "the settings UI, not the cutscene)"
+                 : "");
+  x2::native::text_put(
+      out, size, &at,
+      "  retail map: FMV action 19 -> row %d; scripted cinematic "
+      "action 20 -> row %d%s\n",
+      fmv_row, cinematic_row,
+      fmv_row == (int)PAUSE_ROW && cinematic_row == (int)PAUSE_ROW
+          ? "  (both Pause)"
+          : "  (UNEXPECTED RETAIL MAP)");
   report_publication(out, size, &at, player);
   if (fmv_readable)
-    append(out, size, &at, "  FMV mask       0x%08x: action 19 %s\n", fmv_mask,
-           fmv_mask & (1u << FMV_SKIP_ACTION) ? "DOWN" : "up");
+    x2::native::text_put(out, size, &at,
+                         "  FMV mask       0x%08x: action 19 %s\n", fmv_mask,
+                         fmv_mask & (1u << FMV_SKIP_ACTION) ? "DOWN" : "up");
   else
-    append(out, size, &at, "  FMV mask: UNREADABLE at input vtable +0x12c\n");
+    x2::native::text_put(out, size, &at,
+                         "  FMV mask: UNREADABLE at input vtable +0x12c\n");
   if (cinematic_readable)
-    append(out, size, &at, "  cinematic mask 0x%08x: action 20 %s\n",
-           cinematic_mask,
-           cinematic_mask & (1u << CINEMATIC_SKIP_ACTION) ? "DOWN" : "up");
+    x2::native::text_put(
+        out, size, &at, "  cinematic mask 0x%08x: action 20 %s\n",
+        cinematic_mask,
+        cinematic_mask & (1u << CINEMATIC_SKIP_ACTION) ? "DOWN" : "up");
   else
-    append(out, size, &at,
-           "  cinematic mask: UNREADABLE at input vtable +0x140\n");
+    x2::native::text_put(
+        out, size, &at,
+        "  cinematic mask: UNREADABLE at input vtable +0x140\n");
   report_player(cpu, out, size, &at);
-  append(
+  x2::native::text_put(
       out, size, &at,
       "  boundary rule: an action 20 edge asks the ported cutscene "
       "player to finish its control-lock epoch. It drains only causally "

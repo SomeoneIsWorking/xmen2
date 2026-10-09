@@ -9,6 +9,7 @@
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "lan_session.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
@@ -26,11 +27,7 @@ namespace x2::native {
 
 namespace {
 
-enum {
-  EXE_PREFERRED = 0x00400000u,
-  MANAGER_RVA = 0x0035cbc0u,
-  MANAGER_MODE = 0xd4u
-};
+enum { MANAGER_RVA = 0x0035cbc0u, MANAGER_MODE = 0xd4u };
 
 enum AutosaveLastResult {
   AUTOSAVE_LAST_NONE = 0,
@@ -62,18 +59,6 @@ void initialize(void) {
     return;
   x2::save::autosave_policy_init(&g_policy);
   g_initialized = 1;
-}
-
-uint32_t exe_base(void) {
-  const X86Module *module;
-  if (g_exe)
-    return g_exe;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && *module->base) {
-      g_exe = *module->base;
-      break;
-    }
-  return g_exe;
 }
 
 int serialize_snapshot(const CPU *source) {
@@ -135,7 +120,8 @@ void autosave_runtime_poll(CPU *cpu) {
   int succeeded;
 
   initialize();
-  if (!cpu || !exe_base())
+  g_exe = x2::native::guest_exe_base();
+  if (!cpu || !g_exe)
     return;
   g_last_manager_mode = RD32(g_exe + MANAGER_RVA + MANAGER_MODE);
   g_last_control = x2_gameplay_control_state(guest_clock_now_s());

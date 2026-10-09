@@ -23,12 +23,12 @@
 #include "cutscene_player_policy.h"
 #include "gpu_device.h"
 #include "guest_body.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <stdint.h>
 #include <string.h>
-#define EXE_PREFERRED 0x00400000u
-#define EXE_RVA(va) ((uint32_t)(va) - EXE_PREFERRED)
+#define EXE_RVA(va) ((uint32_t)(va) - x2::native::kExePreferred)
 #define CURRENT_CONTEXT_RVA EXE_RVA(0x00787730u)
 #define FN_INPUT 0x005d8920u
 #define INPUT_ACTION_MASK_SLOT 0x140u
@@ -71,16 +71,8 @@ static CutscenePlayerRuntime g_player;
 
 static uint32_t current_context(void);
 
-static uint32_t exe_base(void) {
-  X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
 static uint32_t linked(uint32_t preferred) {
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
 
   return base ? base + EXE_RVA(preferred) : 0;
 }
@@ -125,7 +117,7 @@ static void disown(uint32_t context) {
 }
 
 static uint32_t current_context(void) {
-  uint32_t base = exe_base(), context = 0;
+  uint32_t base = x2::native::guest_exe_base(), context = 0;
 
   if (base)
     (void)guest_memory_try_read32(base + CURRENT_CONTEXT_RVA, &context);

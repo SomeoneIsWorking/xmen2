@@ -28,6 +28,7 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "player_input.h"
+#include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -35,13 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
-
-static void ret_com(CPU *C, uint32_t hr, int nargs) {
-  C->reg[kX86pEax] = hr;
-  C->reg[kX86pEsp] += 4u + (uint32_t)(nargs + 1) * 4u;
-}
 
 #define S_OK 0x00000000u
 #define S_FALSE 0x00000001u

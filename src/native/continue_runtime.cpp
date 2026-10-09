@@ -3,8 +3,10 @@
 #include "boot_player_selection.h"
 #include "continue_policy.h"
 #include "exact_save_load.h"
+#include "guest_call.hpp"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "lan_session.h"
 #include "save_catalog.h"
 #include "save_directory.h"
@@ -19,7 +21,6 @@
 #include <string.h>
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   FN_SUCCESS_CALLBACK = 0x0009f140u,
   FN_MAIN_MENU_HIDE = 0x001bb920u,
   FN_CONTINUE_CALLBACK = 0x001f2b70u,
@@ -69,18 +70,6 @@ static x2::save::ContinueTransaction g_transaction;
 
 static void continue_load_completed(int succeeded);
 
-static uint32_t exe_base(void) {
-  const X86Module *module;
-  if (g_exe)
-    return g_exe;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && *module->base) {
-      g_exe = *module->base;
-      break;
-    }
-  return g_exe;
-}
-
 static uint32_t copy_guest_string(const char *text) {
   uint32_t address;
   size_t size = strlen(text) + 1u;
@@ -105,19 +94,13 @@ static int prepare_strings(void) {
   return g_strings_ready;
 }
 
-static uint32_t guest_call0(const CPU *source, uint32_t target) {
-  CPU call = *source;
-  x86_guest_call_args(&call, target, 0u);
-  return call.reg[kX86pEax];
-}
-
 /* The engine's interned copy of a command string, as authored rows hold. */
 static uint32_t intern_command(const CPU *source, uint32_t text,
                                uint32_t bytes) {
   CPU call = *source;
   uint32_t pool;
 
-  pool = guest_call0(source, g_exe + FN_INTERN_POOL);
+  pool = x2::guest::GuestCall(*source).cdecl_call(g_exe + FN_INTERN_POOL);
   if (!pool)
     return 0;
   call.reg[kX86pEsp] -= 4u;
@@ -285,7 +268,8 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
 
 namespace x2::native {
 void main_menu_refresh(CPU *cpu, uint32_t menu) {
-  if (!exe_base() || !menu)
+  g_exe = x2::native::guest_exe_base();
+  if (!g_exe || !menu)
     return;
   apply_menu_plan(cpu, menu, catalog_for_show());
 }
@@ -308,7 +292,8 @@ void x2_override_005c9260(CPU *C) {
       !x2::native::boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER))
     boot_continue = 0;
   x86_guest_body(C, "XMen2.exe", 0x005c9260u);
-  if (!exe_base())
+  g_exe = x2::native::guest_exe_base();
+  if (!g_exe)
     return;
   has_save = catalog_for_show();
   apply_menu_plan(C, menu, has_save);
@@ -353,7 +338,8 @@ static int start_latest_load(const CPU *source) {
    retail menu path. */
 namespace x2::native {
 int continue_boot_dispatch(struct X86pCpu *C) {
-  if (!exe_base())
+  g_exe = x2::native::guest_exe_base();
+  if (!g_exe)
     return 0;
   if (!catalog_for_show())
     return 0;

@@ -20,15 +20,12 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include "guest_modules.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-enum {
-  EXE_PREFERRED = 0x00400000u,
-  COMMAND_REGISTRY_RVA = 0x0015c890u,
-  REGISTER_COMMAND_VSLOT = 0x10u
-};
+enum { COMMAND_REGISTRY_RVA = 0x0015c890u, REGISTER_COMMAND_VSLOT = 0x10u };
 
 typedef struct {
   const char *name;
@@ -42,21 +39,8 @@ static const PortCommand PORT_COMMANDS[] = {
 
 enum { PORT_COMMAND_COUNT = sizeof PORT_COMMANDS / sizeof PORT_COMMANDS[0] };
 
-static uint32_t g_exe;
 static uint32_t g_callback[PORT_COMMAND_COUNT];
 static int g_registered;
-
-static uint32_t exe_base(void) {
-  const X86Module *module;
-  if (g_exe)
-    return g_exe;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && *module->base) {
-      g_exe = *module->base;
-      break;
-    }
-  return g_exe;
-}
 
 namespace x2::native {
 
@@ -106,7 +90,7 @@ static void register_command(const CPU *source, uint32_t manager,
 
 static void register_port_commands(const CPU *source) {
   CPU call = *source;
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
   uint32_t manager;
 
   if (g_registered)

@@ -27,6 +27,7 @@
 #include "../config/config_directory.h"
 #include "guest_memory.h"
 #include "shell32.h"
+#include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -36,13 +37,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
-static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->reg[kX86pEax] = eax;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 
 /* CSIDL values, and the flag bits that ride on top of them. */
 #define CSIDL_PERSONAL 0x0005u /* My Documents */

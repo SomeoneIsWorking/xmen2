@@ -1,6 +1,7 @@
 #include "exact_save_load.h"
 #include "x2_log.h"
 
+#include "guest_call.hpp"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "save_catalog.h"
@@ -35,12 +36,6 @@ static uint32_t g_pending_exe;
 static x2::native::ExactSaveLoadOwner g_owner;
 static x2::native::ExactSaveLoadCompletion g_completion;
 
-static uint32_t guest_call0(const CPU *source, uint32_t target) {
-  CPU call = *source;
-  x86_guest_call_args(&call, target, 0u);
-  return call.reg[kX86pEax];
-}
-
 static int prepare_leaf(const char *leaf) {
   size_t length;
 
@@ -60,7 +55,7 @@ static int prepare_leaf(const char *leaf) {
 static int read_prepared_header(const CPU *source, uint32_t exe,
                                 uint32_t metadata) {
   CPU call;
-  uint32_t storage = guest_call0(source, exe + FN_STORAGE);
+  uint32_t storage = x2::guest::GuestCall(*source).cdecl_call(exe + FN_STORAGE);
 
   if (!storage || !metadata)
     return 0;
@@ -110,7 +105,7 @@ int exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
        owner != ExactSaveLoadOwner::Menu) ||
       staging_slot >= MANAGER_METADATA_SLOTS || !prepare_leaf(leaf))
     return 0;
-  manager = guest_call0(source, exe + FN_SAVE_MANAGER);
+  manager = x2::guest::GuestCall(*source).cdecl_call(exe + FN_SAVE_MANAGER);
   if (!manager)
     return 0;
   expected_mode =

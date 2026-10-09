@@ -2,6 +2,7 @@
 #include "guest_memory.h"
 #include "x2_log.h"
 
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -13,20 +14,11 @@ namespace x2::native {
 namespace {
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   PAD_MANAGER_RVA = 0x00151ed0u,
   PAD_CURRENT_PLAYER = 0x34u,
   PAD_SET_CURRENT_PLAYER = 0x68u,
   LOCAL_PLAYER_COUNT = 4u
 };
-
-uint32_t mapped_exe_base(void) {
-  const X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && *module->base)
-      return *module->base;
-  return 0u;
-}
 
 } // namespace
 
@@ -38,7 +30,7 @@ int boot_player_select_primary(CPU *source, unsigned primary_player) {
 
   if (!source || primary_player >= LOCAL_PLAYER_COUNT)
     return 0;
-  base = mapped_exe_base();
+  base = x2::native::guest_exe_base();
   if (!base)
     return 0;
 

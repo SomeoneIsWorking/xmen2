@@ -14,6 +14,7 @@
  */
 #include "dialog_prompts.h"
 
+#include "guest_modules.h"
 #include "player_input.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -22,7 +23,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define EXE_PREFERRED 0x00400000u
 #define PC_HINT_LOCALIZATION_RETURN 0x005ec066u
 #define DIALOG_READER_FROM_OVERRIDE_ESP 0x1cu
 #define ASSET_TEXT_KEY 0x00685cbcu
@@ -43,7 +43,8 @@ int dialog_prompts_use_asset_text(int player_uses_gamepad,
 static X86Module *exe_module(void) {
   X86Module *module;
   for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
+    if (module->preferred == x2::native::kExePreferred && module->base &&
+        *module->base)
       return module;
   return NULL;
 }

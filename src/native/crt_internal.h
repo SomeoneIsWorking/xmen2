@@ -10,11 +10,8 @@
 #ifndef X2_CRT_INTERNAL_H
 #define X2_CRT_INTERNAL_H
 
+#include "stdcall_import.h"
 #include "x86rt.h"
-
-/* Argument `i` of a __cdecl call, with ESP still pointing at the return
-   address the caller pushed. */
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* Return from a __cdecl stub: set EAX and pop the return address. The callee
    pops nothing else, which is what __cdecl means. */

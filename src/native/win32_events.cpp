@@ -1,6 +1,7 @@
 #include "win32_events.h"
 #include "x2_log.h"
 
+#include "stdcall_import.h"
 #include "win32_mouse.h"
 #include "win32_pointer.h"
 #include "x86rt.h"
@@ -17,8 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
 namespace {
 
 SDL_Window *g_window;
@@ -31,11 +30,6 @@ static int g_hidden;
    owned before giving the desktop back. */
 static int g_cursor_hidden;
 static x2::native::Win32Mouse g_mouse;
-
-static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->reg[kX86pEax] = eax;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 
 static void set_cursor_visible(int visible) {
   int applied = visible ? SDL_ShowCursor() : SDL_HideCursor();

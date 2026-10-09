@@ -21,6 +21,7 @@
 
 #include "entity_spawn_probe.h"
 #include "gpu_device.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -138,32 +139,28 @@ static unsigned long g_startconv, g_startconv_took, g_lockcontrols;
 static uint8_t conversation_flags(void) {
   uint32_t self = 0;
   uint8_t f = 0;
-  X86Module *m;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
-                                   &self) ||
-          !self)
-        return 0xffu; /* no singleton: distinct from 0 */
-      guest_memory_try_read(self + CONV_FLAGS, &f, 1);
-      return f;
-    }
-  return 0xffu;
+  uint32_t base = x2::native::guest_exe_base();
+  if (!base)
+    return 0xffu;
+  if (!guest_memory_try_read32(
+          base + (CONV_SINGLETON_VA - x2::native::kExePreferred), &self) ||
+      !self)
+    return 0xffu; /* no singleton: distinct from 0 */
+  guest_memory_try_read(self + CONV_FLAGS, &f, 1);
+  return f;
 }
 
 static int conversation_field(uint32_t off, uint32_t *out) {
   uint32_t self = 0;
-  X86Module *m;
+  uint32_t base = x2::native::guest_exe_base();
   *out = 0;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
-                                   &self) ||
-          !self)
-        return 0;
-      return guest_memory_try_read32(self + off, out);
-    }
-  return 0;
+  if (!base)
+    return 0;
+  if (!guest_memory_try_read32(
+          base + (CONV_SINGLETON_VA - x2::native::kExePreferred), &self) ||
+      !self)
+    return 0;
+  return guest_memory_try_read32(self + off, out);
 }
 
 void x2_override_004a5660(CPU *C) {
@@ -243,19 +240,17 @@ static unsigned long g_convstart, g_convstart_ok, g_reset;
 
 static void seen_bitmap(uint32_t out[5]) {
   uint32_t self = 0, i;
-  X86Module *m;
+  uint32_t base = x2::native::guest_exe_base();
   for (i = 0; i < 5; i++)
     out[i] = 0;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == 0x00400000u && m->base && *m->base) {
-      if (!guest_memory_try_read32(*m->base + (CONV_SINGLETON_VA - 0x00400000u),
-                                   &self) ||
-          !self)
-        return;
-      for (i = 0; i < 5; i++)
-        guest_memory_try_read32(self + CONV_SEEN + i * 4u, &out[i]);
-      return;
-    }
+  if (!base)
+    return;
+  if (!guest_memory_try_read32(
+          base + (CONV_SINGLETON_VA - x2::native::kExePreferred), &self) ||
+      !self)
+    return;
+  for (i = 0; i < 5; i++)
+    guest_memory_try_read32(self + CONV_SEEN + i * 4u, &out[i]);
 }
 
 /* convmgr vt+0x04 -- the only thing that clears the seen bitmap. Counted so

@@ -4,6 +4,7 @@
 #include "cutscene_event_player.h"
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <atomic>
@@ -17,7 +18,6 @@ namespace x2::native {
 namespace {
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   CALLBACK_STRIDE = 0x18u,
   ALLOCATED_BITS = 0x6978u,
   LIVE_BITS = 0x7bacu,
@@ -51,14 +51,6 @@ void *watched_opaque;
 unsigned causal_depth;
 std::uint32_t causal_inflight_slot;
 unsigned owned_execution_depth;
-
-std::uint32_t exe_base(void) {
-  const X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
 
 float deadline_value(const EventEntry *entry) {
   float deadline;
@@ -239,14 +231,14 @@ void execute_entry(CPU *cpu, std::uint32_t base, const ValidatedEvents *events,
   ++causal_depth;
   if (owned)
     ++owned_execution_depth;
-  call_guest(cpu, base + (FN_CALLBACK_EXECUTE - EXE_PREFERRED),
+  call_guest(cpu, base + (FN_CALLBACK_EXECUTE - x2::native::kExePreferred),
              events->owner + slot * CALLBACK_STRIDE, 0, 0u);
   if (owned)
     --owned_execution_depth;
   --causal_depth;
   causal_inflight_slot = prior_inflight;
-  call_guest(cpu, base + (FN_SLOT_FREE - EXE_PREFERRED), events->owner, 1,
-             slot);
+  call_guest(cpu, base + (FN_SLOT_FREE - x2::native::kExePreferred),
+             events->owner, 1, slot);
 }
 
 CutsceneEventPlayerStep step_due(CPU *cpu, std::uint32_t base,
@@ -423,7 +415,7 @@ CutsceneEventPlayerStep cutscene_event_player_step_owned_slot(
   ValidatedEvents events;
   std::uint32_t base, index;
   if (!cpu || !window || !window->active || !window->owner ||
-      !(base = exe_base()) || slot >= kCapacity ||
+      !(base = x2::native::guest_exe_base()) || slot >= kCapacity ||
       !mask_has(window->owned, slot) ||
       window->owner != cutscene_event_player_captured_owner() ||
       !validate_events(window->owner, &events))
@@ -505,7 +497,7 @@ void override_004b2b40(CPU *cpu) {
 void override_004b2d70(CPU *cpu) {
   std::uint32_t base, now_bits;
   float now;
-  if (cpu && (base = exe_base()) &&
+  if (cpu && (base = x2::native::guest_exe_base()) &&
       guest_memory_try_read32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
     ValidatedEvents events;
     std::memcpy(&now, &now_bits, sizeof now);

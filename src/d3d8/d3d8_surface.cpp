@@ -50,14 +50,6 @@ uint32_t d3d8_format_bpp(uint32_t format) {
   }
 }
 
-static void *guest_ptr(uint32_t a, const char *what) {
-  if (!a) {
-    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
-    return NULL;
-  }
-  return guest_memory_pointer(a);
-}
-
 D3D8Surface *d3d8_surface_of(D3D8Object *o) {
   return (D3D8Surface *)d3d8_object_ctx(o);
 }
@@ -197,7 +189,8 @@ static void surf_GetDevice(D3D8Object *self, CPU *C) {
 
 static void surf_GetDesc(D3D8Object *self, CPU *C) {
   D3D8Surface *s = d3d8_surface_of(self);
-  uint32_t *d = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "surface description");
+  uint32_t *d =
+      (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 0), "surface description");
   if (!d) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -215,7 +208,7 @@ static void surf_GetDesc(D3D8Object *self, CPU *C) {
 
 static void surf_LockRect(D3D8Object *self, CPU *C) {
   D3D8Surface *s = d3d8_surface_of(self);
-  uint32_t *lr = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "locked rect");
+  uint32_t *lr = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 0), "locked rect");
   uint32_t rect = d3d8_arg(C, 1);
 
   if (!lr) {

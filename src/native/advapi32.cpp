@@ -36,6 +36,7 @@
 #include "advapi32_internal.h"
 #include "guest_memory.h"
 #include "shell32.h"
+#include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -46,8 +47,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
 #define ERROR_SUCCESS 0u
 #define ERROR_FILE_NOT_FOUND 2u
 #define ERROR_ACCESS_DENIED 5u
@@ -57,11 +56,6 @@
 #define REG_SZ 1u
 #define REG_BINARY 3u
 #define REG_DWORD 4u
-
-static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->reg[kX86pEax] = eax;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
 
 /* ---- the store ---------------------------------------------------------- */
 

@@ -28,23 +28,23 @@ LEGACY_LIMITS = {
     "src/native/x86rt_native.cpp": 1856,        # was 1865; dladdr -> host_code_location.cpp
     "src/native/x2native.cpp": 2024,            # was 2329, 2152; signals -> fault_signals_*.cpp
     "src/d3d8/d3d8_drawcall.cpp": 1613,         # was 1650, 1695; VS source -> d3d8_vs_draw.cpp, transforms -> d3d8_transform.cpp
-    "src/d3d8/d3d8_device.cpp": 1633,           # bindings -> d3d8_device_bindings.cpp
+    "src/d3d8/d3d8_device.cpp": 1625,           # was 1633; bindings -> d3d8_device_bindings.cpp
     "src/native/crt.cpp": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.cpp
     "src/gpu/gpu_draw.cpp": 1016,               # was 1123; uniforms -> gpu_vertex_uniforms.cpp
     "src/d3d8/d3d8_report.cpp": 1433,           # was 1514; gamma -> d3d8_gamma_selftest.cpp
-    "src/native/threads.cpp": 673,              # was 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.cpp
+    "src/native/threads.cpp": 669,              # was 673, 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.cpp
     "src/gpu/gpu_device.cpp": 753,              # was 758; pass attachments -> gpu_pass_attachments.cpp
-    "src/d3d8/d3d8_resource.cpp": 1050,         # was 924
+    "src/d3d8/d3d8_resource.cpp": 1038,         # was 1050, 924
     "src/native/dinput_pad.cpp": 378,           # sampler split into dinput_pad_sample.cpp
-    "src/native/win32_sdl.cpp": 1025,           # was 930
-    "src/native/conversation.cpp": 968,         # was 958
-    "src/native/dsound.cpp": 745,               # was 1097 before the mixer split
+    "src/native/win32_sdl.cpp": 1018,           # was 1025, 930
+    "src/native/conversation.cpp": 959,         # was 968, 958
+    "src/native/dsound.cpp": 736,               # was 745, 1097 before the mixer split
     "src/gpu/gpu_selftest.cpp": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.cpp
-    "src/native/input_probe.cpp": 597,          # was 606
-    "src/native/dinput_device.cpp": 611,        # was 524
-    "src/native/advapi32.cpp": 710,             # was 599
-    "src/d3d8/d3d8_com.cpp": 620,               # was 609
-    "src/native/dinput8.cpp": 533,              # was 516
+    "src/native/input_probe.cpp": 580,          # was 597, 606
+    "src/native/dinput_device.cpp": 601,        # was 611, 524
+    "src/native/advapi32.cpp": 685,             # was 710, 599
+    "src/d3d8/d3d8_com.cpp": 613,               # was 620, 609
+    "src/native/dinput8.cpp": 522,              # was 533, 516
     "src/native/heartbeat.cpp": 429,            # JIT snapshot policy stays in x86_engine.cpp
 }
 

@@ -2,6 +2,7 @@
 /* BehavEd command-graph interpreter, ported from XMen2.exe 004d8b30. */
 #include "behaved_context.h"
 
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -15,7 +16,6 @@ namespace x2::native {
 namespace {
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   FN_TREE_FIND = 0x00456440u,
   FN_VALUE_FIND = 0x004d59e0u,
   FN_VALUE_RELEASE = 0x004d5ff0u,
@@ -30,17 +30,8 @@ enum {
   ARGUMENT_CAPACITY = 7u
 };
 
-static uint32_t exe_base(void) {
-  const X86Module *module;
-
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
 static uint32_t linked(uint32_t base, uint32_t preferred) {
-  return base + preferred - EXE_PREFERRED;
+  return base + preferred - x2::native::kExePreferred;
 }
 
 static uint32_t guest_call(const CPU *source, uint32_t target, uint32_t self,
@@ -180,7 +171,7 @@ static void release_result(CPU *cpu, uint32_t base, uint32_t result) {
 } // namespace
 
 uint32_t behaved_context_run(CPU *cpu, uint32_t context) {
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
   uint32_t current_address, prior, script, node, pending;
 
   if (!cpu || !base || !context)

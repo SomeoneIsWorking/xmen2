@@ -83,8 +83,6 @@ extern __thread uint32_t g_fsbase, g_gsbase;
    this read CLOCK_MONOTONIC directly, and the guest gates real logic on
    elapsed time, so any two of them disagreeing is a timing bug wearing a
    gameplay bug's clothes. */
-static double now_s(void) { return guest_clock_now_s(); }
-
 void guest_thread_note_crossing(const char *what, uint32_t guest_addr,
                                 double at) {
   if (!g_self) {
@@ -101,7 +99,7 @@ static void state_set(int st) {
   if (g_self->state == st)
     return;
   g_self->state = st;
-  g_self->state_since = now_s();
+  g_self->state_since = guest_clock_now_s();
 }
 
 /*
@@ -161,7 +159,8 @@ int scheduler_has_waiter(void) {
   if (!guest_thread_others_live(g_live_threads.load(std::memory_order_relaxed),
                                 g_self))
     return 0;
-  return guest_thread_any_ready(g_thread, MAIN_SLOT + 1, g_self, now_s);
+  return guest_thread_any_ready(g_thread, MAIN_SLOT + 1, g_self,
+                                guest_clock_now_s);
 }
 
 /* Attach the process main thread to the same bookkeeping as created threads. */
@@ -175,7 +174,7 @@ static void sched_attach_main(void) {
   t->slot = MAIN_SLOT;
   t->tid = MAIN_TID;
   t->state = x2::native::TS_RUNNING;
-  t->state_since = now_s();
+  t->state_since = guest_clock_now_s();
   g_live_threads.fetch_add(1, std::memory_order_relaxed);
   g_self = t;
   k32_tls_switch(MAIN_SLOT);
@@ -266,7 +265,7 @@ void guest_cond_wait_us(uint64_t us) {
     t = g_self;
   }
   x86_override_leaf_forbid("waited, releasing the guest lock");
-  guest_thread_enter_cond_wait(t, us, now_s());
+  guest_thread_enter_cond_wait(t, us, guest_clock_now_s());
   state_set(x2::native::TS_COND);
   g_switches++;
   g_cond_waiters++;
@@ -368,7 +367,7 @@ static void *thread_main(void *argument) {
   t->finished = 1;
   g_live_threads.fetch_sub(1, std::memory_order_relaxed);
   t->state = x2::native::TS_DONE;
-  t->state_since = now_s();
+  t->state_since = guest_clock_now_s();
   g_exited++;
   x2::native::k32_handle_thread_done(t);
   guest_cond_broadcast();
@@ -412,7 +411,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
      a 130-second run, which is the instrument lying rather than the thread
      being stuck. */
   t->state = x2::native::TS_NEW;
-  t->state_since = now_s();
+  t->state_since = guest_clock_now_s();
   t->suspended = suspended;
   t->start = start;
   t->arg = arg;

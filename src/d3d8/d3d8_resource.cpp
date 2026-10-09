@@ -124,14 +124,6 @@ static unsigned long g_relocked_in_frame;
 static unsigned long g_generations_after_draw; /* renames the path exercised */
 static uint32_t g_lock_other_bits;
 
-static void *guest_ptr(uint32_t a, const char *what) {
-  if (!a) {
-    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
-    return NULL;
-  }
-  return guest_memory_pointer(a);
-}
-
 static Resource *res_of(D3D8Object *o) {
   return (Resource *)d3d8_object_ctx(o);
 }
@@ -525,7 +517,7 @@ static void tex_GetLOD(D3D8Object *self, CPU *C) {
 static void tex_GetLevelDesc(D3D8Object *self, CPU *C) {
   Resource *r = res_of(self);
   uint32_t level = d3d8_arg(C, 0);
-  uint32_t *d = (uint32_t *)guest_ptr(d3d8_arg(C, 1), "level description");
+  uint32_t *d = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 1), "level description");
   uint32_t lw, lh;
 
   if (!d || level >= r->levels) {
@@ -553,7 +545,7 @@ static void tex_GetLevelDesc(D3D8Object *self, CPU *C) {
 static void lock_sub(D3D8Object *self, CPU *C, uint32_t face, uint32_t level,
                      uint32_t lr_addr, uint32_t rect) {
   Resource *r = res_of(self);
-  uint32_t *lr = (uint32_t *)guest_ptr(lr_addr, "locked rect");
+  uint32_t *lr = (uint32_t *)d3d8_guest_ptr(lr_addr, "locked rect");
   uint32_t sub, lw, lh;
 
   if (!lr || level >= r->levels || face >= r->faces) {
@@ -762,7 +754,7 @@ static void cube_GetType(D3D8Object *self, CPU *C) {
 static void cube_GetLevelDesc(D3D8Object *self, CPU *C) {
   Resource *r = res_of(self);
   uint32_t level = d3d8_arg(C, 0);
-  uint32_t *d = (uint32_t *)guest_ptr(d3d8_arg(C, 1), "level description");
+  uint32_t *d = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 1), "level description");
   uint32_t lw, lh;
 
   if (!d || level >= r->levels) {
@@ -963,7 +955,7 @@ static void ibuf_GetType(D3D8Object *self, CPU *C) {
 
 static void vbuf_GetDesc(D3D8Object *self, CPU *C) {
   Resource *r = res_of(self);
-  uint32_t *d = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "description");
+  uint32_t *d = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 0), "description");
   if (!d) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -979,7 +971,7 @@ static void vbuf_GetDesc(D3D8Object *self, CPU *C) {
 
 static void ibuf_GetDesc(D3D8Object *self, CPU *C) {
   Resource *r = res_of(self);
-  uint32_t *d = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "description");
+  uint32_t *d = (uint32_t *)d3d8_guest_ptr(d3d8_arg(C, 0), "description");
   if (!d) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;

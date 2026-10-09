@@ -9,13 +9,13 @@
 #include "conversation_player.h"
 #include "guest_memory.h"
 
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 namespace x2::native {
 
-#define EXE_PREFERRED 0x00400000u
-#define EXE_RVA(va) ((uint32_t)(va) - EXE_PREFERRED)
+#define EXE_RVA(va) ((uint32_t)(va) - x2::native::kExePreferred)
 #define CONV_SINGLETON_RVA EXE_RVA(0x00717aacu)
 #define FN_LINE_BY_ID 0x004573f0u
 
@@ -29,17 +29,8 @@ namespace x2::native {
 #define RESPONSE_SLOTS 8u
 #define VT_CHOOSE_RESPONSE 0x18u
 
-static uint32_t exe_base(void) {
-  X86Module *module;
-
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
 static int manager(uint32_t *out) {
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
 
   if (!base || !guest_memory_try_read32(base + CONV_SINGLETON_RVA, out) ||
       !*out)
@@ -100,7 +91,7 @@ int conversation_player_selection(struct X86pCpu *cpu,
   out->choose_response = function;
   out->selected = selected;
   out->line_presenter = 0u;
-  base = exe_base();
+  base = x2::native::guest_exe_base();
   call = *cpu;
   call.reg[kX86pEsp] -= 4u;
   WR32(call.reg[kX86pEsp], RD32(self + CV_CUR_LINE));

@@ -12,11 +12,11 @@
 
 #include "conversation_player.h"
 #include "guest_body.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#define EXE_PREFERRED 0x00400000u
-#define EXE_RVA(va) ((uint32_t)(va) - EXE_PREFERRED)
+#define EXE_RVA(va) ((uint32_t)(va) - x2::native::kExePreferred)
 #define FN_AUDIO 0x00592480u
 #define FN_LINE_AUDIO 0x0045a170u
 #define FN_BEGIN_RESPONSE 0x00458700u
@@ -37,18 +37,9 @@ typedef struct CutsceneDialogueRuntime {
 
 static CutsceneDialogueRuntime g_dialogue;
 
-static uint32_t exe_base(void) {
-  X86Module *module;
-
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
 static int stop_active_voice(CPU *cpu, uint32_t manager) {
   CPU call;
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
   uint32_t audio, handle, null_handle, vtable, stop;
 
   if (!cpu || !base ||
@@ -78,7 +69,7 @@ static int stop_active_voice(CPU *cpu, uint32_t manager) {
 }
 
 static int active_voice(uint32_t manager, uint32_t *handle) {
-  uint32_t base = exe_base(), null_handle;
+  uint32_t base = x2::native::guest_exe_base(), null_handle;
 
   if (!base ||
       !guest_memory_try_read32(base + NULL_SOUND_HANDLE_RVA, &null_handle) ||
@@ -88,7 +79,7 @@ static int active_voice(uint32_t manager, uint32_t *handle) {
 }
 
 static uint32_t current_manager(void) {
-  uint32_t base = exe_base(), manager = 0u;
+  uint32_t base = x2::native::guest_exe_base(), manager = 0u;
 
   if (base)
     (void)guest_memory_try_read32(base + CONV_SINGLETON_RVA, &manager);

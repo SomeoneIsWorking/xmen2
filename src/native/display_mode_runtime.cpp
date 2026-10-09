@@ -15,6 +15,7 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include "guest_modules.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,6 @@
 
 enum {
   LINKED_SETTINGS_LOAD = 0x00619770u,
-  EXE_PREFERRED_BASE = 0x00400000u,
   RVA_BUILD_REGISTRY_CONTEXT = 0x00216a70u,
   RVA_READ_STRING = 0x00216e10u,
   RVA_PUBLISHER_NAME = 0x002a3a64u,
@@ -57,20 +57,6 @@ static void refuse(const char *reason, const char *expected,
   abort();
 }
 
-static uint32_t executable_base(void) {
-  X86Module *module;
-
-  for (module = x86_modules(); module; module = module->next) {
-    if (!strcmp(module->name, "XMen2.exe")) {
-      if (!module->base || !*module->base ||
-          module->preferred != EXE_PREFERRED_BASE)
-        return 0u;
-      return *module->base;
-    }
-  }
-  return 0u;
-}
-
 static int report_failure(char *why, int whyn, const char *message) {
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "%s", message);
@@ -90,7 +76,7 @@ static void write_float(uint32_t address, float value) {
 namespace x2::native {
 int display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
                                int whyn) {
-  uint32_t exe = executable_base();
+  uint32_t exe = x2::native::guest_exe_base();
   uint32_t display, old_width, old_height;
   float old_aspect, old_layout_aspect, x_per_pixel, y_per_pixel;
   float height_scale, aspect;
@@ -212,7 +198,7 @@ static void x2_override_display_settings_load(CPU *C) {
     refuse("configured mode could not be republished after first-run defaults",
            expected, NULL);
 
-  exe = executable_base();
+  exe = x2::native::guest_exe_base();
   if (!exe)
     refuse("XMen2.exe mapping is unavailable", expected, NULL);
   reread_resolution(C, exe, expected);

@@ -21,6 +21,7 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "movie_audio.h"
+#include "stdcall_import.h"
 #include "win32_sdl.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -33,7 +34,6 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 #define DS_OK 0x00000000u
 #define DSERR_INVALIDPARAM 0x8878000au
@@ -121,15 +121,6 @@ static const char *const BVT_NAME[BVT_COUNT] = {"QueryInterface",
                                                 "Stop",
                                                 "Unlock",
                                                 "Restore"};
-
-static void ret_std(CPU *C, uint32_t value, int nargs) {
-  C->reg[kX86pEax] = value;
-  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
-}
-
-static void ret_com(CPU *C, uint32_t value, int nargs) {
-  ret_std(C, value, nargs + 1);
-}
 
 static x2::native::DSBuffer *this_buffer(CPU *C) {
   x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(THIS);

@@ -40,6 +40,8 @@
  * Each override preserves the original return register and stack effect.
  */
 #include "guest_body.h"
+#include "guest_call.hpp"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <stdio.h>
@@ -47,26 +49,19 @@
 #include <string.h>
 /* ---- where the exe actually landed ------------------------------------- */
 
-#define EXE_PREFERRED 0x00400000u
-
-static uint32_t exe_base(void) {
-  static uint32_t cached;
-  X86Module *m;
-  if (cached)
-    return cached;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == EXE_PREFERRED && *m->base) {
-      cached = *m->base;
-      return cached;
-    }
+static uint32_t exe_address(uint32_t rva) {
+  uint32_t base = x2::native::guest_exe_base();
   /* Never silently 0: every address below would then be an offset from the
      null page and the first read would fault with no explanation. */
-  x2_log_error("conversation: XMen2.exe is not mapped, so no conversation "
-               "address can be resolved. Refusing to guess.\n");
-  abort();
+  if (!base) {
+    x2_log_error("conversation: XMen2.exe is not mapped, so no conversation "
+                 "address can be resolved. Refusing to guess.\n");
+    abort();
+  }
+  return base + rva;
 }
 
-#define EXE(rva) (exe_base() + (uint32_t)(rva))
+#define EXE(rva) exe_address((uint32_t)(rva))
 
 /* Guest functions this port does not own yet. Named, so a reader can see
    exactly how much of the subsystem is still the translated original. */
@@ -281,23 +276,12 @@ void conversation_report(void) {
  * part of the bridge contract: a RET that pops anything else is corruption,
  * not a warning to repair on the copied CPU.
  */
-static uint32_t thiscall(CPU *C, uint32_t fn, uint32_t ecx, int argc,
-                         const uint32_t *argv) {
-  CPU K = *C;
-  int i;
-  K.reg[kX86pEsp] -= (uint32_t)argc * 4u;
-  for (i = 0; i < argc; i++)
-    WR32(K.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
-  K.reg[kX86pEcx] = ecx;
-  x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
-  return K.reg[kX86pEax];
-}
 static uint32_t call0(CPU *C, uint32_t fn, uint32_t ecx) {
-  return thiscall(C, fn, ecx, 0, NULL);
+  return x2::guest::GuestCall(*C).thiscall(fn, ecx);
 }
 
 static uint32_t call1(CPU *C, uint32_t fn, uint32_t ecx, uint32_t a) {
-  return thiscall(C, fn, ecx, 1, &a);
+  return x2::guest::GuestCall(*C).thiscall(fn, ecx, {a});
 }
 
 /* The singleton, created on demand exactly as every call site in the original
@@ -396,7 +380,8 @@ void x2_override_00455600(CPU *C) {
   sm = script_manager(C);
   args[0] = name;
   args[1] = flag;
-  ok = thiscall(C, vslot(sm, SM_LAUNCH), sm, 2, args);
+  ok = x2::guest::GuestCall(*C).thiscall(vslot(sm, SM_LAUNCH), sm,
+                                         {args[0], args[1]});
 
   if (ok & 0xFFu) {
     c_launch_done++;
@@ -431,7 +416,8 @@ void x2_override_0045a100(CPU *C) {
     uint32_t args[2];
     args[0] = s;
     args[1] = 1u;
-    thiscall(C, EXE(0x00055600u), self, 2, args);
+    x2::guest::GuestCall(*C).thiscall(EXE(0x00055600u), self,
+                                      {args[0], args[1]});
   }
   s = RD32(rec + RC_SCRIPT_FILE);
   if (!name_is_empty(s, "scriptFile")) {
@@ -439,7 +425,8 @@ void x2_override_0045a100(CPU *C) {
     uint32_t args[2];
     args[0] = s;
     args[1] = 1u;
-    thiscall(C, EXE(0x00055600u), self, 2, args);
+    x2::guest::GuestCall(*C).thiscall(EXE(0x00055600u), self,
+                                      {args[0], args[1]});
   }
   C->reg[kX86pEsp] += 4u; /* RET */
 }
@@ -501,7 +488,8 @@ void x2_override_0045b6d0(CPU *C) {
     self = conv_singleton(C);
     args[0] = cond;
     args[1] = 1u;
-    thiscall(C, EXE(0x00055600u), self, 2, args);
+    x2::guest::GuestCall(*C).thiscall(EXE(0x00055600u), self,
+                                      {args[0], args[1]});
   }
 
   self = conv_singleton(C);
@@ -750,7 +738,8 @@ void x2_override_0045d1a0(CPU *C) {
     uint32_t args[2];
     args[0] = RD32(self + 0x4b0u);
     args[1] = RD32(self + 0x8u);
-    slot = thiscall(C, FN_SLOT_OF, self + 4u, 2, args);
+    slot = x2::guest::GuestCall(*C).thiscall(FN_SLOT_OF, self + 4u,
+                                             {args[0], args[1]});
   }
   if (slot == 0x3fffffffu) {
     /* 0x0045d21f: no slot -- the conversation is over. */
@@ -804,7 +793,8 @@ void x2_override_0045d1a0(CPU *C) {
     uint32_t args[2];
     args[0] = scratch; /* &pair */
     args[1] = RD32(self + 0x4b0u);
-    thiscall(C, FN_SLOT_PAIR, self + 4u, 2, args);
+    x2::guest::GuestCall(*C).thiscall(FN_SLOT_PAIR, self + 4u,
+                                      {args[0], args[1]});
     {
       uint32_t idx = RD32(scratch);
       uint32_t arr = RD32(scratch + 4u);
@@ -822,8 +812,8 @@ void x2_override_0045d1a0(CPU *C) {
   c_upd_gate_seen++;
   {
     uint32_t action = 4u;
-    int accept_down =
-        (uint8_t)thiscall(C, vslot(input, 0x138u), input, 1, &action);
+    int accept_down = (uint8_t)x2::guest::GuestCall(*C).thiscall(
+        vslot(input, 0x138u), input, {action});
     int advance = 0;
     if (accept_down) {
       uint32_t clock = call0(C, FN_CLOCK, 0);
@@ -838,7 +828,7 @@ void x2_override_0045d1a0(CPU *C) {
     }
     if (advance) {
       uint32_t in2 = call0(C, FN_INPUT, 0), six = 6u;
-      thiscall(C, vslot(in2, 0xe8u), in2, 1, &six);
+      x2::guest::GuestCall(*C).thiscall(vslot(in2, 0xe8u), in2, {six});
       if (RD32(self + CV_SOUND_HANDLE) != RD32(G_NULL_HANDLE)) {
         uint32_t au = call0(C, FN_AUDIO, 0);
         call1(C, vslot(au, 0x74u), au, RD32(self + CV_SOUND_HANDLE));
@@ -870,7 +860,8 @@ void x2_override_0045d1a0(CPU *C) {
       uint32_t in2 = call0(C, FN_INPUT, 0);
       args[0] = scratch + 0x10u;
       args[1] = 0u;
-      thiscall(C, vslot(in2, 0x1f8u), in2, 2, args);
+      x2::guest::GuestCall(*C).thiscall(vslot(in2, 0x1f8u), in2,
+                                        {args[0], args[1]});
     }
     pads = call0(C, FN_PADS, 0);
     call1(C, vslot(pads, 0x68u), pads, stick);
@@ -899,7 +890,7 @@ void x2_override_0045d1a0(CPU *C) {
     }
     if (vertical != 0 && before != (int16_t)RD16(self + CV_TAG_INDEX)) {
       uint32_t in2 = call0(C, FN_INPUT, 0), zero = 0u;
-      thiscall(C, vslot(in2, 0xe8u), in2, 1, &zero);
+      x2::guest::GuestCall(*C).thiscall(vslot(in2, 0xe8u), in2, {zero});
     }
   }
 
@@ -913,13 +904,16 @@ void x2_override_0045d1a0(CPU *C) {
     uint32_t two = 2u, zero = 0u;
 
     sing = call0(C, FN_CONV_SINGLETON, 0);
-    py = thiscall(C, RD32(G_LAYOUT_INDEX), sing + CV_LAYOUT, 1, &two);
+    py = x2::guest::GuestCall(*C).thiscall(RD32(G_LAYOUT_INDEX),
+                                           sing + CV_LAYOUT, {two});
     sing = call0(C, FN_CONV_SINGLETON, 0);
-    px = thiscall(C, RD32(G_LAYOUT_INDEX), sing + CV_LAYOUT, 1, &zero);
+    px = x2::guest::GuestCall(*C).thiscall(RD32(G_LAYOUT_INDEX),
+                                           sing + CV_LAYOUT, {zero});
 
     {
       uint32_t q[4] = {0x3f800000u, 0x3f800000u, 0x3f800000u, 0x3f800000u};
-      quad = thiscall(C, RD32(G_MAKE_RGBA), scratch + 0x10u, 4, q);
+      quad = x2::guest::GuestCall(*C).thiscall(
+          RD32(G_MAKE_RGBA), scratch + 0x10u, {q[0], q[1], q[2], q[3]});
     }
     colour = cdecl_call(C, FN_PACK_ARGB, 1, &quad);
 
@@ -943,7 +937,8 @@ void x2_override_0045d1a0(CPU *C) {
       uint32_t args[2];
       args[0] = (uint32_t)i;
       args[1] = 0u;
-      thiscall(C, vslot(sub, 0x2cu), sub, 2, args);
+      x2::guest::GuestCall(*C).thiscall(vslot(sub, 0x2cu), sub,
+                                        {args[0], args[1]});
     }
   }
 

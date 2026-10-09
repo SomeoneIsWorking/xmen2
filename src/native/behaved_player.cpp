@@ -11,6 +11,7 @@
 #include "guest_memory.h"
 
 #include "behaved_context.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -24,7 +25,6 @@ namespace x2::native {
 namespace {
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   FN_SCHEDULER_PUMP = 0x004d9640u,
   FN_SCHEDULER_SLOT_RELEASE = 0x004d5d00u,
   FN_CONTEXT_POOL_RELEASE = 0x004d7c10u,
@@ -54,14 +54,6 @@ typedef struct ValidatedHeap {
   HeapEntry entry[MAX_CONTEXTS];
   uint32_t context[MAX_CONTEXTS];
 } ValidatedHeap;
-
-static uint32_t exe_base(void) {
-  const X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
 
 static float entry_deadline(const HeapEntry *entry) {
   float deadline;
@@ -192,7 +184,8 @@ static uint32_t call_guest(const CPU *source, uint32_t target, uint32_t self,
 }
 
 static uint32_t manager(const CPU *cpu, uint32_t base) {
-  return call_guest(cpu, base + (FN_MANAGER - EXE_PREFERRED), 0, 0, 0);
+  return call_guest(cpu, base + (FN_MANAGER - x2::native::kExePreferred), 0, 0,
+                    0);
 }
 
 static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
@@ -208,18 +201,22 @@ static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
   completed = x2::native::behaved_context_run(cpu, context);
   if ((completed & 0xffu) == 1u) {
     uint32_t live_manager;
-    call_guest(cpu, base + (FN_CONTEXT_CLEANUP - EXE_PREFERRED), context, 0, 0);
+    call_guest(cpu, base + (FN_CONTEXT_CLEANUP - x2::native::kExePreferred),
+               context, 0, 0);
     live_manager = manager(cpu, base);
     if (live_manager == heap->manager)
-      call_guest(cpu, base + (FN_CONTEXT_POOL_RELEASE - EXE_PREFERRED),
+      call_guest(cpu,
+                 base + (FN_CONTEXT_POOL_RELEASE - x2::native::kExePreferred),
                  live_manager + MANAGER_CONTEXT_POOL, 1, fiber_index);
     else {
-      call_guest(cpu, base + (FN_SCHEDULER_SLOT_RELEASE - EXE_PREFERRED),
+      call_guest(cpu,
+                 base + (FN_SCHEDULER_SLOT_RELEASE - x2::native::kExePreferred),
                  heap->scheduler, 1, heap->entry[index].slot);
       return BehavedPlayerStep::Refused;
     }
   }
-  call_guest(cpu, base + (FN_SCHEDULER_SLOT_RELEASE - EXE_PREFERRED),
+  call_guest(cpu,
+             base + (FN_SCHEDULER_SLOT_RELEASE - x2::native::kExePreferred),
              heap->scheduler, 1, heap->entry[index].slot);
   return (completed & 0xffu) == 1u ? BehavedPlayerStep::Completed
                                    : BehavedPlayerStep::Ran;
@@ -242,7 +239,7 @@ int behaved_player_next_owned(CPU *cpu, BehavedPlayerOwnsContext owns,
   uint32_t base, owner, index, selected = MAX_CONTEXTS;
   float earliest = 0.0f;
 
-  if (!cpu || !owns || !context || !(base = exe_base()) ||
+  if (!cpu || !owns || !context || !(base = x2::native::guest_exe_base()) ||
       !(owner = manager(cpu, base)) || owner > UINT32_MAX - MANAGER_SCHEDULER ||
       !validate_heap(owner + MANAGER_SCHEDULER, &heap) || heap.manager != owner)
     return -1;
@@ -266,8 +263,8 @@ BehavedPlayerStep behaved_player_step_context(CPU *cpu, uint32_t context) {
   ValidatedHeap heap;
   uint32_t base, owner, index;
 
-  if (!cpu || !(base = exe_base()) || !(owner = manager(cpu, base)) ||
-      owner > UINT32_MAX - MANAGER_SCHEDULER ||
+  if (!cpu || !(base = x2::native::guest_exe_base()) ||
+      !(owner = manager(cpu, base)) || owner > UINT32_MAX - MANAGER_SCHEDULER ||
       !validate_heap(owner + MANAGER_SCHEDULER, &heap) || heap.manager != owner)
     return BehavedPlayerStep::Refused;
   for (index = 0; index < heap.count; ++index)
@@ -289,7 +286,7 @@ BehavedPlayerStep behaved_player_step_owned(CPU *cpu,
 }
 
 void override_004d9640(CPU *cpu) {
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
   uint32_t now_bits = 0;
   float now;
 

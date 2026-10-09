@@ -2,6 +2,7 @@
 /* See igvk_ark.h. The mechanism this speaks is docs/RE/ark.md (C008/C009). */
 #include "igvk_ark.h"
 
+#include "../native/stdcall_import.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "pe_map.h"
@@ -11,8 +12,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* ---- talking to the guest --------------------------------------------- */
 
