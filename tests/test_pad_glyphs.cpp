@@ -233,7 +233,7 @@ int main(int argc, char **argv) {
     unsigned code, distinct = 0, collisions = 0;
     memset(seen, 0, sizeof seen);
     for (code = 1u; code <= 0x1eu; code++) {
-      uint8_t g = pad_glyph_code(code);
+      uint8_t g = x2::native::pad_glyph_code(code);
       if (!g)
         continue;
       if (seen[g]++) {

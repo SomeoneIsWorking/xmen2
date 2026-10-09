@@ -19,6 +19,8 @@
 static X86Module g_module[X2_INSTALL_REQUIRED_IMAGE_COUNT];
 static uint32_t g_base[X2_INSTALL_REQUIRED_IMAGE_COUNT];
 
+namespace x2::native {
+
 int guest_modules_register(void) {
   unsigned i;
   for (i = 0; i < X2_INSTALL_REQUIRED_IMAGE_COUNT; i++) {
@@ -36,3 +38,5 @@ int guest_modules_register(void) {
   }
   return 0;
 }
+
+} // namespace x2::native

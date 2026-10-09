@@ -1,8 +1,9 @@
-#ifndef X2_CRT_STDIO_H
-#define X2_CRT_STDIO_H
+#pragma once
 
-#include <stdint.h>
-#include <stdio.h>
+#include <cstdint>
+#include <cstdio>
+
+namespace x2::native {
 
 /*
  * The host stream behind a guest FILE*.
@@ -18,4 +19,4 @@ FILE *crt_file(uint32_t guest_handle);
 /* The guest address of `_iob[0]`, allocated on first use. */
 uint32_t crt_iob_base(void);
 
-#endif /* X2_CRT_STDIO_H */
+} // namespace x2::native

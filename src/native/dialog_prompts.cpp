@@ -30,11 +30,15 @@
 
 static unsigned long g_asset_text, g_pc_text, g_other_lookups;
 
+namespace x2::native {
+
 int dialog_prompts_use_asset_text(int player_uses_gamepad,
                                   uint32_t localization_return) {
   return player_uses_gamepad &&
          localization_return == PC_HINT_LOCALIZATION_RETURN;
 }
+
+} // namespace x2::native
 
 static X86Module *exe_module(void) {
   X86Module *module;
@@ -90,8 +94,8 @@ void x2_override_00629bf0(CPU *C) {
     linked_return = 0;
   else
     linked_return = module->preferred + (return_address - *module->base);
-  if (!dialog_prompts_use_asset_text(x2::input::player_input_uses_gamepad(0),
-                                     linked_return)) {
+  if (!x2::native::dialog_prompts_use_asset_text(
+          x2::input::player_input_uses_gamepad(0), linked_return)) {
     if (linked_return == PC_HINT_LOCALIZATION_RETURN)
       g_pc_text++;
     else
@@ -108,6 +112,8 @@ x2_dialog_prompts_register_override(void) {
   x86_register_override("XMen2.exe", 0x00629bf0, x2_override_00629bf0);
 }
 
+namespace x2::native {
+
 void dialog_prompts_report(void) {
   static int done;
   if (done++)
@@ -116,3 +122,5 @@ void dialog_prompts_report(void) {
               "%lu unrelated localization lookup(s)\n",
               g_asset_text, g_pc_text, g_other_lookups);
 }
+
+} // namespace x2::native

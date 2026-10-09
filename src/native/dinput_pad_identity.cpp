@@ -15,6 +15,8 @@ int dinput_pad_type_uses_xbox_glyphs(int type) {
 #endif
 }
 
+namespace x2::native {
+
 void dinput_pad_make_product_guid(unsigned char guid[16], uint16_t vendor,
                                   uint16_t product) {
   static const unsigned char tail[10] = {0x00, 0x00, 0x00, 0x00, 'P',
@@ -27,3 +29,5 @@ void dinput_pad_make_product_guid(unsigned char guid[16], uint16_t vendor,
   guid[14] = 0x00;
   guid[15] = 0x00;
 }
+
+} // namespace x2::native

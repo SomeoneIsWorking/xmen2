@@ -14,7 +14,11 @@
 
 static SDL_GPUTextureFormat g_depth_fmt;
 
+namespace x2::gpu {
+
 void gpu_depth_forget(void) { g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID; }
+
+} // namespace x2::gpu
 
 SDL_GPUTextureFormat gpu_depth_format(void) {
   static const SDL_GPUTextureFormat WANT[] = {

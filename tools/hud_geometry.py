@@ -30,10 +30,10 @@ CONSTANT_NAMES = {
 def parse_constants(source: str) -> dict[str, float]:
     """Read the single authoritative numeric definitions without evaluating C."""
     values = {}
-    for name, expression in re.findall(r"^#define\s+(HUD_\w+)\s+([^\n]+)$", source, re.M):
+    for name, expression in re.findall(r"^inline constexpr float\s+(HUD_\w+)\s*=\s*([^;\n]+);$", source, re.M):
         if name not in CONSTANT_NAMES:
             continue
-        match = re.fullmatch(r"\((-?\d+(?:\.\d+)?)f\)", expression.strip())
+        match = re.fullmatch(r"(-?\d+(?:\.\d+)?)f", expression.strip())
         if not match or name in values:
             raise ValueError(f"HUD geometry: invalid or duplicate definition {name}")
         values[name] = float(match[1])

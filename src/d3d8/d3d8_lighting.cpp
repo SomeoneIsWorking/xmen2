@@ -88,7 +88,7 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
      it could not: its "0 unlit" was true by construction, not measured -- a
      counter that can only ever print zero. */
   if (!out->lighting) {
-    d3d8_light_survey(out);
+    x2::d3d8::d3d8_light_survey(out);
     return;
   }
 
@@ -174,7 +174,7 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
     d3d8_light_note_viewpos(wv[12], wv[13], wv[14]);
   }
   d3d8_light_dump(out);
-  d3d8_light_survey(out);
+  x2::d3d8::d3d8_light_survey(out);
 }
 
 static void light_table_report(void) {
@@ -195,5 +195,5 @@ static void light_table_report(void) {
 void d3d8_lighting_report(void) {
   d3d8_light_dump_report();
   light_table_report();
-  d3d8_light_survey_report();
+  x2::d3d8::d3d8_light_survey_report();
 }

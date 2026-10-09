@@ -1445,11 +1445,11 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                           /* 39 MultiplyTransform */
     dev_SetViewport,                /* 40 */
     dev_GetViewport,                /* 41 */
-    d3d8_dev_SetMaterial,           /* 42 */
+    x2::d3d8::d3d8_dev_SetMaterial, /* 42 */
     NULL,                           /* 43 GetMaterial */
-    d3d8_dev_SetLight,              /* 44 */
+    x2::d3d8::d3d8_dev_SetLight,    /* 44 */
     NULL,                           /* 45 GetLight */
-    d3d8_dev_LightEnable,           /* 46 */
+    x2::d3d8::d3d8_dev_LightEnable, /* 46 */
     NULL,                           /* 47 GetLightEnable */
     NULL,                           /* 48 SetClipPlane */
     NULL,                           /* 49 GetClipPlane */

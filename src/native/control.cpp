@@ -388,22 +388,22 @@ static void serve(x2::native::Socket fd) {
     *query++ = '\0';
 
   if (!strcmp(path, "/status"))
-    control_status_route(fd, g_requests, g_keys_pressed, g_keys_refused,
-                         g_shots);
+    x2::native::control_status_route(fd, g_requests, g_keys_pressed,
+                                     g_keys_refused, g_shots);
   else if (!strcmp(path, "/key"))
-    control_route_key(fd, query ? query : "");
+    x2::native::control_route_key(fd, query ? query : "");
   else if (!strcmp(path, "/ui/key"))
-    control_ui_key_route(fd, query ? query : "");
+    x2::native::control_ui_key_route(fd, query ? query : "");
   else if (!strcmp(path, "/ui/click"))
-    control_ui_click_route(fd, query ? query : "");
+    x2::native::control_ui_click_route(fd, query ? query : "");
   else if (!strcmp(path, "/pad"))
-    control_route_pad(fd, query ? query : "");
+    x2::native::control_route_pad(fd, query ? query : "");
   else if (!strcmp(path, "/touch"))
-    control_route_touch(fd, query ? query : "");
+    x2::native::control_route_touch(fd, query ? query : "");
   else if (!strcmp(path, "/controls"))
-    control_route_controls(fd);
+    x2::native::control_route_controls(fd);
   else if (!strcmp(path, "/assignment"))
-    control_route_assignment(fd, query ? query : "");
+    x2::native::control_route_assignment(fd, query ? query : "");
   else if (!strcmp(path, "/screenshot"))
     route_shot(fd);
   else if (!strcmp(path, "/input"))
@@ -419,9 +419,9 @@ static void serve(x2::native::Socket fd) {
   else if (!strcmp(path, "/party"))
     x2::control::party_route(fd);
   else if (!strcmp(path, "/performance/reset"))
-    control_performance_reset_route(fd);
+    x2::native::control_performance_reset_route(fd);
   else if (!strcmp(path, "/performance/probe"))
-    control_performance_probe_route(fd, query ? query : "");
+    x2::native::control_performance_probe_route(fd, query ? query : "");
   else
     control_reply_text(
         fd, 404, "Not Found",

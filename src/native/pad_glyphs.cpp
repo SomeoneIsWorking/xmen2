@@ -93,6 +93,8 @@ static int probe_char(void) {
   return c;
 }
 
+namespace x2::native {
+
 uint8_t pad_glyph_code(uint32_t code) {
   static const uint8_t buttons[] = {X2_PAD_GLYPH_FACE_A, X2_PAD_GLYPH_FACE_B,
                                     X2_PAD_GLYPH_FACE_X, X2_PAD_GLYPH_FACE_Y,
@@ -135,6 +137,8 @@ uint8_t pad_glyph_code(uint32_t code) {
   return 0;
 }
 
+} // namespace x2::native
+
 /* Is this byte one of the codepoints this port publishes? The bounds are
    generated with the glyphs, because a hand-written range ending at whichever
    glyph is currently last stops covering the set the moment one is added. */
@@ -159,7 +163,7 @@ void x2_override_006281f0(CPU *C) {
   uint32_t out;
   int host_pad;
 
-  glyph = pad_glyph_code(code);
+  glyph = x2::native::pad_glyph_code(code);
   host_pad = host_pad_for_kind(kind);
   if (!x2::native::prompt_glyphs_enabled() || host_pad < 0 || !glyph ||
       !x2::native::prompt_glyph_available(glyph) ||
@@ -237,6 +241,8 @@ x2_pad_glyphs_register_overrides(void) {
   x86_register_override("XMen2.exe", 0x006294b0, x2_override_006294b0);
 }
 
+namespace x2::native {
+
 void pad_glyphs_report(void) {
   static int done;
   if (done++)
@@ -254,3 +260,5 @@ void pad_glyphs_report(void) {
               g_rows_asked, g_rows_padded, g_rows_no_pad);
   x2::native::prompt_labels_report();
 }
+
+} // namespace x2::native

@@ -1,5 +1,6 @@
-#ifndef GPU_DEPTH_H
-#define GPU_DEPTH_H
+#pragma once
+
+namespace x2::gpu {
 
 /* Forget the format this device was found to have, when that device goes.
    The next device is asked again rather than inheriting an answer that was
@@ -7,4 +8,4 @@
    declared with the rest of the renderer's internals in gpu_internal.h. */
 void gpu_depth_forget(void);
 
-#endif
+} // namespace x2::gpu

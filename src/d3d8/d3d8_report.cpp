@@ -680,7 +680,7 @@ static int lighting_selftest(void) {
   st.material_set = 1;
 
   /* One DIRECTIONAL light (type 3) shining along +Z, white. */
-  d3d8_light_selftest_configure(&st);
+  x2::d3d8::d3d8_light_selftest_configure(&st);
 
   for (pass = 0; pass < 2; pass++) {
     float nz = pass == 0 ? -1.0f : 1.0f; /* toward, then away */
@@ -1415,7 +1415,7 @@ int d3d8_host_selftest(void) {
   fails += pixel_shader_selftest();
   fails += d3d8_vs_selftest();
   fails += d3d8_constants_probe_selftest();
-  fails += d3d8_light_selftest();
+  fails += x2::d3d8::d3d8_light_selftest();
   fails += d3d8_binding_selftest();
   fails += d3d8_gamma_selftest();
   fails += getdirect3d_selftest();

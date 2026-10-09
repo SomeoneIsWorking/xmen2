@@ -22,10 +22,14 @@ int native_stubs_registered(const char *module, uint32_t linked_ep);
 
 /* --- stubs for the override's collaborators ------------------------------ */
 
+namespace x2::native {
+
 int audio_channel_poll_verify(CPU *C) {
   (void)C;
   return 0; /* gate disabled in the unit test */
 }
+
+} // namespace x2::native
 
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
   (void)C;

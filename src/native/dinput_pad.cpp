@@ -183,8 +183,8 @@ static void pad_open(SDL_JoystickID id) {
   p->gp = gp;
   p->id = id;
   gu = SDL_GetJoystickGUIDForID(id);
-  dinput_pad_make_product_guid(p->prod, SDL_GetGamepadVendorForID(id),
-                               SDL_GetGamepadProductForID(id));
+  x2::native::dinput_pad_make_product_guid(
+      p->prod, SDL_GetGamepadVendorForID(id), SDL_GetGamepadProductForID(id));
   nm = SDL_GetGamepadNameForID(id);
   snprintf(p->name, sizeof p->name, "%s", nm ? nm : "Gamepad");
   make_identities(p, gp, id, &gu, (unsigned)i);

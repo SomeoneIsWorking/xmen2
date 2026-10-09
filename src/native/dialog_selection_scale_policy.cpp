@@ -26,8 +26,8 @@ float dialog_selection_retail_scale(uint32_t output_height) {
 float dialog_selection_scale(uint32_t output_height) {
   uint32_t layout_height = output_height;
 
-  if (layout_height > X2_RETAIL_UI_DESIGN_HEIGHT)
-    layout_height = X2_RETAIL_UI_DESIGN_HEIGHT;
+  if (layout_height > x2::presentation::X2_RETAIL_UI_DESIGN_HEIGHT)
+    layout_height = x2::presentation::X2_RETAIL_UI_DESIGN_HEIGHT;
   return dialog_selection_retail_scale(layout_height);
 }
 

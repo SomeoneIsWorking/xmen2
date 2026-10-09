@@ -92,9 +92,9 @@ int main(void) {
   CHECK(result == 0);
 
   CHECK(native_stubs_registered("XMen2.exe", 0x00629bf0u));
-  CHECK(!dialog_prompts_use_asset_text(0, LOCALIZE_RETURN));
-  CHECK(!dialog_prompts_use_asset_text(1, 0x00629c05u));
-  CHECK(dialog_prompts_use_asset_text(1, LOCALIZE_RETURN));
+  CHECK(!x2::native::dialog_prompts_use_asset_text(0, LOCALIZE_RETURN));
+  CHECK(!x2::native::dialog_prompts_use_asset_text(1, 0x00629c05u));
+  CHECK(x2::native::dialog_prompts_use_asset_text(1, LOCALIZE_RETURN));
 
   run_lookup(0, LOCALIZE_RETURN, 0x11112222u, 1, 0);
   run_lookup(1, 0x00629c05u, 0x11112222u, 1, 0);
