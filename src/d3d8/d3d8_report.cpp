@@ -216,7 +216,7 @@ static int d3d8_draw_selftest(void) {
   }
   gpu_offscreen_end();
 
-  fails += d3d8_screen_space_pixels_check(img, TW, TH);
+  fails += x2::d3d8::d3d8_screen_space_pixels_check(img, TW, TH);
 
   /* Model-space positions take a different Y/winding route from XYZRHW.
      This is the D3DCULL_CW half the screen-space test above cannot see. */
@@ -1416,13 +1416,13 @@ int d3d8_host_selftest(void) {
   fails += d3d8_vs_selftest();
   fails += d3d8_constants_probe_selftest();
   fails += x2::d3d8::d3d8_light_selftest();
-  fails += d3d8_binding_selftest();
-  fails += d3d8_gamma_selftest();
+  fails += x2::d3d8::d3d8_binding_selftest();
+  fails += x2::d3d8::d3d8_gamma_selftest();
   fails += getdirect3d_selftest();
   fails += texture_level_selftest();
   fails += cube_selftest();
   fails += d3d8_draw_selftest();
-  fails += d3d8_vs_gpu_selftest();
+  fails += x2::d3d8::d3d8_vs_gpu_selftest();
   fails += depth_selftest();
   fails += fan_selftest();
   fails += multistage_counter_selftest();

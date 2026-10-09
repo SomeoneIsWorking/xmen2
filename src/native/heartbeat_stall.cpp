@@ -3,12 +3,16 @@
 #include "x2_log.h"
 #include "x86rt_native.h"
 
+namespace x2::native {
+
 /* Beats in a row with the device presenting nothing, and whether the one
    ring dump this run is allowed has been spent. */
-static int g_present_stalled;
-static int g_dumped;
+namespace {
 
-static void dump_the_ring_once(double period, int crossings_moved) {
+int g_present_stalled;
+int g_dumped;
+
+void dump_the_ring_once(double period, int crossings_moved) {
   if (++g_present_stalled != 2 || g_dumped) {
     return;
   }
@@ -33,6 +37,8 @@ static void dump_the_ring_once(double period, int crossings_moved) {
                                  "ring's tail is the last thing it did");
   x86_ring_dump();
 }
+
+} // namespace
 
 int heartbeat_stall_observe(double t, double period, unsigned long cross,
                             int crossings_moved, int have_dev,
@@ -65,3 +71,5 @@ void heartbeat_stall_reset(void) {
   g_present_stalled = 0;
   g_dumped = 0;
 }
+
+} // namespace x2::native

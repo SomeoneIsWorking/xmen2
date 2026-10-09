@@ -1,7 +1,6 @@
-#ifndef X2_INPUT_PROBE_H
-#define X2_INPUT_PROBE_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
 
 struct X86pCpu;
 
@@ -22,7 +21,9 @@ struct X86pCpu;
  * Returns the number of bytes written. It always writes something: an empty
  * report would be indistinguishable from "the probe never ran".
  */
+namespace x2::native {
+
 size_t input_probe_report(struct X86pCpu *cpu, unsigned controller, char *out,
                           size_t n);
 
-#endif
+} // namespace x2::native

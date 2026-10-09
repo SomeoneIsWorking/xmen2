@@ -9,7 +9,11 @@
 
 #include <stdio.h>
 
-static void slow_frame_report(unsigned long frame, unsigned long long dt_ns) {
+namespace x2::gpu {
+
+namespace {
+
+void slow_frame_report(unsigned long frame, unsigned long long dt_ns) {
   GpuHostTimes host = gpu_host_timer_frame();
   if (!gpu_host_timer_armed()) {
     x2_log_error("gpu: frame %lu took %.0f ms; its host draw and upload share "
@@ -22,6 +26,8 @@ static void slow_frame_report(unsigned long frame, unsigned long long dt_ns) {
                frame, (double)dt_ns * 1e-6, (double)host.draw_ns * 1e-6,
                (double)host.upload_ns * 1e-6);
 }
+
+} // namespace
 
 void gpu_frame_timing_report_install(void) {
   gpu_frame_timing_slow_hook = slow_frame_report;
@@ -82,3 +88,5 @@ void gpu_frame_timing_report_interval(void) {
                (double)wp50 * 1e-6, (double)wp95 * 1e-6, (double)wp99 * 1e-6,
                window);
 }
+
+} // namespace x2::gpu

@@ -1,8 +1,9 @@
-#ifndef X2_CONTROL_SAVE_ROUTE_H
-#define X2_CONTROL_SAVE_ROUTE_H
+#pragma once
 
 #include "platform_socket.h"
 
-void control_save_route(x2::native::Socket fd);
+namespace x2::native {
 
-#endif
+void control_save_route(Socket fd);
+
+} // namespace x2::native

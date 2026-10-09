@@ -73,6 +73,8 @@ static Block *sb_of(uint32_t token, const char *what) {
   return &g_sb[i];
 }
 
+namespace x2::d3d8 {
+
 int d3d8_sb_create(uint32_t type, const D3D8State *now, uint32_t *token_out) {
   unsigned i;
 
@@ -270,3 +272,5 @@ void d3d8_sb_report(void) {
       g_applied, g_apply_light_changed, g_apply_light_darkened,
       g_apply_material_changed);
 }
+
+} // namespace x2::d3d8

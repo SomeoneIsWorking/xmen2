@@ -1,5 +1,4 @@
-#ifndef X2_CONTROL_CONSOLE_H
-#define X2_CONTROL_CONSOLE_H
+#pragma once
 
 /*
  * /console?command=...: run one of the game's own console commands.
@@ -19,9 +18,11 @@
 #include "control_http.h"
 #include "x86rt.h"
 
-void control_console_route(x2::native::Socket fd, const char *query);
+namespace x2::native {
+
+void control_console_route(Socket fd, const char *query);
 
 /* Called from control_pump on the guest's input thread. */
 void control_console_pump(CPU *cpu);
 
-#endif
+} // namespace x2::native

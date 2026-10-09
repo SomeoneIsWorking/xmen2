@@ -1,5 +1,4 @@
-#ifndef GPU_VERTEX_UNIFORMS_H
-#define GPU_VERTEX_UNIFORMS_H
+#pragma once
 
 /*
  * The vertex stage's uniforms for one draw.
@@ -16,10 +15,12 @@
 
 #include <SDL3/SDL.h>
 
+namespace x2::gpu {
+
 /* Fill the vertex uniforms from `d` and `shadow` and push them into slot 0,
    and the program's blocks into slots 1 and 2 when `d` has one. */
 void gpu_vertex_uniforms_push(SDL_GPUCommandBuffer *command, const GpuDraw *d,
                               const GpuShadowSample *shadow);
-#endif
 
-#endif /* GPU_VERTEX_UNIFORMS_H */
+} // namespace x2::gpu
+#endif

@@ -1,5 +1,4 @@
-#ifndef GPU_HEADLESS_H
-#define GPU_HEADLESS_H
+#pragma once
 
 /*
  * The off-screen target a windowless run renders into, and reading it back.
@@ -10,10 +9,15 @@
  * out. The frame path asks whether headless is active rather than reading the
  * state, so there is one owner of "is there a window" instead of two.
  */
-#include <stdint.h>
+#include <cstdint>
 
 #ifdef X2_WITH_SDL
 struct SDL_GPUTexture;
+#endif
+
+namespace x2::gpu {
+
+#ifdef X2_WITH_SDL
 /* The target, made on first use: the GPU device does not exist until the
    guest asks for one. NULL means it could not be made, and that has been
    reported by name. */
@@ -34,4 +38,4 @@ void gpu_headless_note_frame(void);
  */
 void gpu_headless_follow_backbuffer(uint32_t width, uint32_t height);
 
-#endif /* GPU_HEADLESS_H */
+} // namespace x2::gpu

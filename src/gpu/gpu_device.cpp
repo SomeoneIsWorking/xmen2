@@ -60,7 +60,7 @@ static SDL_GPUTexture *g_offscreen;
 static SDL_Window *(*g_window_provider)(void);
 
 /* What the next render pass must clear with. */
-static GpuPassClear g_clear;
+static x2::gpu::GpuPassClear g_clear;
 
 static struct {
   int x, y, w, h;
@@ -99,7 +99,7 @@ int gpu_device_create(void) {
   return 0;
 #else
   x2::config::Settings *settings = x2::config::settings_store();
-  gpu_frame_timing_report_install();
+  x2::gpu::gpu_frame_timing_report_install();
   gpu_shadow_configure(settings->dynamic_shadows, settings->shadow_resolution);
   if (g_gpu)
     return 1;
@@ -203,7 +203,7 @@ int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height) {
 #ifdef X2_WITH_SDL
   if (!gpu_present_resize_targets(g_gpu, width, height, gpu_depth_format()))
     return 0;
-  gpu_headless_follow_backbuffer(width, height);
+  x2::gpu::gpu_headless_follow_backbuffer(width, height);
   return 1;
 #else
   (void)width;
@@ -411,9 +411,9 @@ static void pass_begin(int reopen) {
 
   if (g_pass || !g_cmd || !g_swap)
     return;
-  gpu_pass_color_target(&ct, g_swap, &g_clear, reopen);
+  x2::gpu::gpu_pass_color_target(&ct, g_swap, &g_clear, reopen);
   depth = gpu_depth_target(g_swap_w, g_swap_h);
-  gpu_pass_depth_target(&dt, depth, &g_clear, reopen);
+  x2::gpu::gpu_pass_depth_target(&dt, depth, &g_clear, reopen);
 
   g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
   if (!g_pass) {
@@ -440,8 +440,8 @@ int gpu_frame_begin(void) {
 
   if (!g_gpu)
     return 0;
-  if (gpu_headless_active()) {
-    SDL_GPUTexture *t = gpu_headless_target();
+  if (x2::gpu::gpu_headless_active()) {
+    SDL_GPUTexture *t = x2::gpu::gpu_headless_target();
     if (!t)
       return 0;
     if (g_cmd)
@@ -451,11 +451,12 @@ int gpu_frame_begin(void) {
                    SDL_GetError());
       return 0;
     }
-    gpu_set_offscreen_target(t, gpu_headless_width(), gpu_headless_height());
+    gpu_set_offscreen_target(t, x2::gpu::gpu_headless_width(),
+                             x2::gpu::gpu_headless_height());
     gpu_shadow_frame_begin();
     g_clear.mask = 0;
     gpu_host_timer_frame_reset();
-    gpu_headless_note_frame();
+    x2::gpu::gpu_headless_note_frame();
     return 1;
   }
   if (!g_win) {
@@ -564,19 +565,20 @@ void gpu_frame_end(void) {
   if (!g_offscreen)
     x2::ui::ui_render(g_gpu, g_cmd, final_output, g_output_w, g_output_h,
                       g_win);
-  else if (gpu_headless_active())
+  else if (x2::gpu::gpu_headless_active())
     x2::ui::ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
   /* Boot presentation policy: withhold the retail boot's branding (legal
      loading backdrop, splash art) by presenting black until the
      destination map is up; see src/presentation/boot_blackout.cpp. */
   if (x2::presentation::boot_blackout_active())
-    gpu_present_boot_blackout(g_cmd,
-                              gpu_headless_active() ? g_swap : final_output);
-  gpu_capture_submit_frame(g_gpu, g_cmd, gpu_headless_active(),
-                           gpu_headless_active() ? g_swap : final_output,
-                           gpu_headless_active() ? NULL : g_output,
-                           gpu_headless_active() ? g_swap_w : g_output_w,
-                           gpu_headless_active() ? g_swap_h : g_output_h);
+    gpu_present_boot_blackout(
+        g_cmd, x2::gpu::gpu_headless_active() ? g_swap : final_output);
+  gpu_capture_submit_frame(
+      g_gpu, g_cmd, x2::gpu::gpu_headless_active(),
+      x2::gpu::gpu_headless_active() ? g_swap : final_output,
+      x2::gpu::gpu_headless_active() ? NULL : g_output,
+      x2::gpu::gpu_headless_active() ? g_swap_w : g_output_w,
+      x2::gpu::gpu_headless_active() ? g_swap_h : g_output_h);
   g_cmd = NULL;
   g_frame_end_submits++;
   if (!g_offscreen) {
@@ -584,8 +586,9 @@ void gpu_frame_end(void) {
     g_output = NULL;
   }
   g_frames_presented++;
-  gpu_capture_frame(gpu_headless_active(), gpu_headless_frames(),
-                    gpu_headless_width(), gpu_headless_height());
+  gpu_capture_frame(
+      x2::gpu::gpu_headless_active(), x2::gpu::gpu_headless_frames(),
+      x2::gpu::gpu_headless_width(), x2::gpu::gpu_headless_height());
   /* X2_MAX_FRAMES: stop cleanly after this many presented frames, through
      the path a SIGTERM takes (the heartbeat thread writes the reports). */
   {

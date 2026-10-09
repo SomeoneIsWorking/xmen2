@@ -97,7 +97,7 @@ void control_pump(CPU *cpu, double now) {
   x2::native::lan_session_poll(cpu, now);
   if (!g_port)
     return;
-  control_console_pump(cpu);
+  x2::native::control_console_pump(cpu);
   pthread_mutex_lock(&g_lock);
   cmd = g_cmd;
   if (cmd == CMD_NONE) {
@@ -159,8 +159,8 @@ void control_pump(CPU *cpu, double now) {
       snprintf(g_cmd_why, sizeof g_cmd_why,
                "could not allocate the %u-byte report buffer", PROBE_BYTES);
     } else {
-      g_probe_len =
-          input_probe_report(cpu, g_cmd_controller, g_probe, PROBE_BYTES);
+      g_probe_len = x2::native::input_probe_report(cpu, g_cmd_controller,
+                                                   g_probe, PROBE_BYTES);
       g_cmd_ok = g_probe_len != 0;
       if (g_cmd_ok)
         g_probes++;
@@ -411,9 +411,9 @@ static void serve(x2::native::Socket fd) {
   else if (!strcmp(path, "/lan"))
     x2::native::lan_session_route(fd, query ? query : "");
   else if (!strcmp(path, "/console"))
-    control_console_route(fd, query ? query : "");
+    x2::native::control_console_route(fd, query ? query : "");
   else if (!strcmp(path, "/save"))
-    control_save_route(fd);
+    x2::native::control_save_route(fd);
   else if (!strcmp(path, "/menu"))
     x2::control::menu_route(fd, query ? query : "");
   else if (!strcmp(path, "/party"))

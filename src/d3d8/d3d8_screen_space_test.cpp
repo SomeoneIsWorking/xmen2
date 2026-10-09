@@ -10,6 +10,8 @@
 
 #include <stdio.h>
 
+namespace x2::d3d8 {
+
 int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
                                    int height) {
   uint32_t centre, corner, upper_left, lower_left;
@@ -50,3 +52,5 @@ int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
               upper_left, lower_left);
   return fails + 1;
 }
+
+} // namespace x2::d3d8

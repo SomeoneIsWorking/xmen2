@@ -8,6 +8,8 @@
 #include "platform_posix.h"
 #include <stdio.h>
 
+namespace x2::native {
+
 size_t control_status_format(char *body, size_t capacity,
                              unsigned long requests, unsigned long keys_pressed,
                              unsigned long keys_refused,
@@ -63,3 +65,5 @@ size_t control_status_format(char *body, size_t capacity,
       requests, keys_pressed, keys_refused, screenshots);
   return size > 0 && (size_t)size < capacity ? (size_t)size : 0;
 }
+
+} // namespace x2::native

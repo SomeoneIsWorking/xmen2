@@ -89,9 +89,11 @@ ConsoleChannel &channel() { return g_channel; }
 } // namespace
 } // namespace x2::control
 
+namespace x2::native {
+
 void control_console_pump(CPU *cpu) { x2::control::channel().pump(cpu); }
 
-void control_console_route(x2::native::Socket fd, const char *query) {
+void control_console_route(Socket fd, const char *query) {
   using Outcome = x2::control::ConsoleChannel::Outcome;
   std::array<char, x2::control::kCommandBytes> raw{};
   if (!control_query_arg(query, "command", raw.data(), raw.size()) || !raw[0]) {
@@ -125,3 +127,5 @@ void control_console_route(x2::native::Socket fd, const char *query) {
     break;
   }
 }
+
+} // namespace x2::native

@@ -24,10 +24,9 @@
  *
  * WHAT A PAD LOOKS LIKE. It is presented as the DirectInput layout of an Xbox
  * 360 pad, a layout the game's controller-type enumeration already names.
- * Left stick is X/Y,
- * right stick on Rx/Ry, both triggers COMBINED on Z (left positive, right
- * negative -- the 360's actual DirectInput behaviour, not a simplification),
- * d-pad on POV 0, and ten buttons in the 360's order.
+ * Left stick is X/Y, right stick on Rx/Ry, both triggers COMBINED on Z (left
+ * positive, right negative -- the 360's actual DirectInput behaviour, not a
+ * simplification), d-pad on POV 0, and ten buttons in the 360's order.
  */
 #include "dinput_pad.h"
 
@@ -272,7 +271,8 @@ static Pad *pad_at(int pad) {
 }
 
 #ifdef X2_WITH_SDL
-X2PadSlotState dinput_pad_handle(int pad, SDL_Gamepad **out) {
+x2::native::X2PadSlotState x2::native::dinput_pad_handle(int pad,
+                                                         SDL_Gamepad **out) {
   Pad *p = pad_at(pad);
   if (!p) {
     return X2_PAD_SLOT_EMPTY;

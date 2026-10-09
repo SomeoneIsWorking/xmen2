@@ -1,9 +1,10 @@
-#ifndef X2_D3D8_SCREEN_SPACE_TEST_H
-#define X2_D3D8_SCREEN_SPACE_TEST_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::d3d8 {
 
 int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
                                    int height);
 
-#endif
+} // namespace x2::d3d8

@@ -141,7 +141,7 @@ unsigned input_bindings_write_player(CPU *cpu, uint32_t player, uint32_t row,
 
   if (player >= INPUT_PLAYERS)
     return 0;
-  input_binding_sets_for_player(player, write_player_set, &write);
+  x2::native::input_binding_sets_for_player(player, write_player_set, &write);
   return write.done;
 }
 

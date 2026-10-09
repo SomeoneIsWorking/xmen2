@@ -82,7 +82,8 @@ unsigned input_bindings_write_player(CPU *cpu, uint32_t player, uint32_t row,
                                      uint32_t code) {
   TestBindingWrite write = {row, slot, kind, code};
   (void)cpu;
-  return input_binding_sets_for_player(player, write_test_set, &write);
+  return x2::native::input_binding_sets_for_player(player, write_test_set,
+                                                   &write);
 }
 namespace x2::native {
 

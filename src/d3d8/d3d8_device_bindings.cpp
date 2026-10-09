@@ -8,6 +8,8 @@
 
 #include <stddef.h>
 
+namespace x2::d3d8 {
+
 /*
  * The device holds a REFERENCE on whatever is bound to it.
  *
@@ -23,7 +25,9 @@
  * Order matters: addref the new one BEFORE releasing the old, or binding a
  * resource to itself frees it.
  */
-static void bind_ref(uint32_t *slot, uint32_t next, D3D8Object *next_obj) {
+namespace {
+
+void bind_ref(uint32_t *slot, uint32_t next, D3D8Object *next_obj) {
   D3D8Object *o;
   if (*slot == next)
     return;
@@ -38,14 +42,16 @@ static void bind_ref(uint32_t *slot, uint32_t next, D3D8Object *next_obj) {
    what the slot already holds: rebinding the bound object -- most of the
    engine's calls -- is then a compare, not two reads of cold guest memory.
    NULL for a pointer that is no object, which the setter refuses. */
-static D3D8Object *bound_candidate(const uint32_t *slot, uint32_t next) {
+D3D8Object *bound_candidate(const uint32_t *slot, uint32_t next) {
   return next && next != *slot ? d3d8_object_from_guest(next) : NULL;
 }
 
 /* bind_ref for a binding that has not been resolved yet. */
-static void bind_ref_guest(uint32_t *slot, uint32_t next) {
+void bind_ref_guest(uint32_t *slot, uint32_t next) {
   bind_ref(slot, next, bound_candidate(slot, next));
 }
+
+} // namespace
 
 void d3d8_bound_objects_snapshot(D3D8BoundObjects *out,
                                  const D3D8State *state) {
@@ -56,12 +62,16 @@ void d3d8_bound_objects_snapshot(D3D8BoundObjects *out,
     out->texture[i] = state->texture[i];
 }
 
+namespace {
+
 /* bind_ref from the binding `before` held to the one `slot` holds now. */
-static void follow(uint32_t *slot, uint32_t before) {
+void follow(uint32_t *slot, uint32_t before) {
   const uint32_t next = *slot;
   *slot = before;
   bind_ref_guest(slot, next);
 }
+
+} // namespace
 
 void d3d8_bound_objects_follow(D3D8State *state,
                                const D3D8BoundObjects *before) {
@@ -130,3 +140,5 @@ void d3d8_dev_SetIndices(D3D8Object *self, CPU *C) {
   state->base_vertex_index = base;
   d3d8_ret(C, D3D_OK);
 }
+
+} // namespace x2::d3d8

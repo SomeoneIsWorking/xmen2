@@ -1,7 +1,6 @@
-#ifndef X2_GUEST_INSPECT_H
-#define X2_GUEST_INSPECT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 /*
  * Read-only descriptions of guest memory, for diagnostics.
@@ -18,6 +17,8 @@
  * describing is worse than no diagnostic.
  */
 
+namespace x2::native {
+
 /*
  * The `words` words at `esp`, eight to a line, with a second pass naming each
  * word that is a return address into a mapped image or a pointer to something
@@ -30,4 +31,4 @@ void guest_inspect_stack(uint32_t esp, unsigned words, const char *tag);
    previous report named. Refuses by saying the address is not readable. */
 void guest_inspect_words(uint32_t address, unsigned words, const char *tag);
 
-#endif
+} // namespace x2::native

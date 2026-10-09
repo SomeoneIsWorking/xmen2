@@ -4,6 +4,8 @@
 #ifdef X2_WITH_SDL
 #include <string.h>
 
+namespace x2::gpu {
+
 void gpu_pass_color_target(SDL_GPUColorTargetInfo *ct, SDL_GPUTexture *target,
                            const GpuPassClear *clear, int reopen) {
   memset(ct, 0, sizeof *ct);
@@ -69,4 +71,6 @@ void gpu_pass_depth_target(SDL_GPUDepthStencilTargetInfo *dt,
     dt->stencil_store_op = SDL_GPU_STOREOP_STORE;
   }
 }
+
+} // namespace x2::gpu
 #endif

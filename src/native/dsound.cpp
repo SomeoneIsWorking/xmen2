@@ -131,8 +131,8 @@ static void ret_com(CPU *C, uint32_t value, int nargs) {
   ret_std(C, value, nargs + 1);
 }
 
-static DSBuffer *this_buffer(CPU *C) {
-  DSBuffer *b = dsound_mixer_voice_of(THIS);
+static x2::native::DSBuffer *this_buffer(CPU *C) {
+  x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(THIS);
   if (!b) {
     x2_log_error("DSOUND: IDirectSoundBuffer method on unknown object "
                  "0x%08x\n",
@@ -142,10 +142,10 @@ static DSBuffer *this_buffer(CPU *C) {
   return b;
 }
 
-void dsound_movie_audio_begin(void) { dsound_mixer_open_device(); }
+void dsound_movie_audio_begin(void) { x2::native::dsound_mixer_open_device(); }
 
-void dsound_movie_audio_tick(void) { dsound_mixer_tick_silent(); }
-static int read_waveformat(uint32_t p, DSBuffer *b) {
+void dsound_movie_audio_tick(void) { x2::native::dsound_mixer_tick_silent(); }
+static int read_waveformat(uint32_t p, x2::native::DSBuffer *b) {
   if (!p)
     return 0;
   b->format_tag = RD16(p + 0u);
@@ -167,7 +167,7 @@ static int read_waveformat(uint32_t p, DSBuffer *b) {
   return 1;
 }
 
-static void write_waveformat(uint32_t p, const DSBuffer *b) {
+static void write_waveformat(uint32_t p, const x2::native::DSBuffer *b) {
   WR16(p + 0u, b->format_tag);
   WR16(p + 2u, b->channels);
   WR32(p + 4u, b->sample_rate);
@@ -177,14 +177,14 @@ static void write_waveformat(uint32_t p, const DSBuffer *b) {
   WR16(p + 16u, 0);
 }
 
-static DSBuffer *alloc_buffer(void) {
-  DSBuffer *b = dsound_mixer_alloc_voice();
+static x2::native::DSBuffer *alloc_buffer(void) {
+  x2::native::DSBuffer *b = x2::native::dsound_mixer_alloc_voice();
   if (!b) {
     return NULL;
   }
   b->guest = guest_malloc(8u);
   if (!b->guest) {
-    dsound_mixer_free_voice(b);
+    x2::native::dsound_mixer_free_voice(b);
     return NULL;
   }
   WR32(b->guest + 0u, g_buf_vtable);
@@ -202,7 +202,7 @@ static void b_unimplemented(CPU *C) {
 }
 
 static void b_QueryInterface(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (A(2))
     WR32(A(2), b->guest);
   b->refs++;
@@ -211,25 +211,25 @@ static void b_QueryInterface(CPU *C) {
 }
 
 static void b_AddRef(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   b->refs++;
   WR32(b->guest + 4u, b->refs);
   ret_com(C, b->refs, 0);
 }
 
 int dsound_buffer_is_playing(uint32_t guest) {
-  DSBuffer *b = dsound_mixer_voice_of(guest);
+  x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
-  dsound_mixer_tick_silent();
+  x2::native::dsound_mixer_tick_silent();
   return b->playing ? 1 : 0;
 }
 
 unsigned dsound_buffer_release_guest(uint32_t guest) {
-  DSBuffer *b = dsound_mixer_voice_of(guest);
+  x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   unsigned n = b->refs ? --b->refs : 0;
   WR32(b->guest + 4u, n);
   if (!n) {
@@ -240,9 +240,9 @@ unsigned dsound_buffer_release_guest(uint32_t guest) {
                        ? " (shared PCM remains through a duplicate)"
                        : "");
     g_buffer_releases++;
-    dsound_mixer_free_voice(b);
+    x2::native::dsound_mixer_free_voice(b);
   }
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   return n;
 }
 
@@ -251,7 +251,7 @@ static void b_Release(CPU *C) {
 }
 
 static void b_GetCaps(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t p = A(1), size = p ? RD32(p) : 0;
   if (!p || size < 20u) {
     ret_com(C, DSERR_INVALIDPARAM, 1);
@@ -265,9 +265,9 @@ static void b_GetCaps(CPU *C) {
 }
 
 static void b_GetCurrentPosition(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t play = A(1), write = A(2), pos = 0, bytes = 0;
-  dsound_mixer_tick_silent();
+  x2::native::dsound_mixer_tick_silent();
   if (b->data && b->block_align) {
     bytes = b->data->bytes;
     pos = ((uint32_t)b->cursor_frames * b->block_align) % (bytes ? bytes : 1u);
@@ -283,7 +283,7 @@ static void b_GetCurrentPosition(CPU *C) {
 }
 
 static void b_GetFormat(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t p = A(1), bytes = A(2), wrote = A(3);
   if (wrote)
     WR32(wrote, 18u);
@@ -297,28 +297,28 @@ static void b_GetFormat(CPU *C) {
 }
 
 static void b_GetVolume(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (A(1))
     WR32(A(1), (uint32_t)b->volume);
   ret_com(C, DS_OK, 1);
 }
 static void b_GetPan(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (A(1))
     WR32(A(1), (uint32_t)b->pan);
   ret_com(C, DS_OK, 1);
 }
 static void b_GetFrequency(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (A(1))
     WR32(A(1), b->frequency);
   ret_com(C, DS_OK, 1);
 }
 
 static void b_GetStatus(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t status;
-  dsound_mixer_tick_silent();
+  x2::native::dsound_mixer_tick_silent();
   status = b->playing ? DSBSTATUS_PLAYING : 0u;
   if (b->playing && b->looping)
     status |= DSBSTATUS_LOOPING;
@@ -328,19 +328,19 @@ static void b_GetStatus(CPU *C) {
 }
 
 static void b_Lock(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t off = A(1), bytes = A(2), p1 = A(3), n1 = A(4), p2 = A(5), n2 = A(6),
            flags = A(7);
   uint32_t total, first;
   (void)flags;
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   if (b->locked) {
-    dsound_mixer_unlock();
+    x2::native::dsound_mixer_unlock();
     ret_com(C, DSERR_INVALIDCALL, 7);
     return;
   }
   if (!b->data || !b->data->bytes || off >= b->data->bytes) {
-    dsound_mixer_unlock();
+    x2::native::dsound_mixer_unlock();
     ret_com(C, DSERR_INVALIDPARAM, 7);
     return;
   }
@@ -367,91 +367,91 @@ static void b_Lock(CPU *C) {
 }
 
 static void b_Play(CPU *C) {
-  DSBuffer *b = this_buffer(C);
-  dsound_mixer_lock();
+  x2::native::DSBuffer *b = this_buffer(C);
+  x2::native::dsound_mixer_lock();
   b->playing = 1;
   b->looping = (A(3) & DSBPLAY_LOOPING) != 0;
   b->plays++;
   g_buffer_plays++;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 3);
 }
 
 static void b_SetCurrentPosition(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t byte = A(1);
   if (!b->data || byte >= b->data->bytes || !b->block_align) {
     ret_com(C, DSERR_INVALIDPARAM, 1);
     return;
   }
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   b->cursor_frames = byte / b->block_align;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 
 static void b_SetFormat(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (!read_waveformat(A(1), b)) {
     ret_com(C, DSERR_INVALIDPARAM, 1);
     return;
   }
   if (b->primary) {
-    dsound_mixer_set_rate((int)b->sample_rate);
-    dsound_mixer_open_device();
+    x2::native::dsound_mixer_set_rate((int)b->sample_rate);
+    x2::native::dsound_mixer_open_device();
   }
   ret_com(C, DS_OK, 1);
 }
 
 static void b_SetVolume(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   int32_t v = (int32_t)A(1);
   if (v > 0)
     v = 0;
   if (v < -10000)
     v = -10000;
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   b->volume = v;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_SetPan(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   int32_t v = (int32_t)A(1);
   if (v > 10000)
     v = 10000;
   if (v < -10000)
     v = -10000;
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   b->pan = v;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_SetFrequency(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   uint32_t v = A(1);
   if (!v)
     v = b->sample_rate;
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   b->frequency = v;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_Stop(CPU *C) {
-  DSBuffer *b = this_buffer(C);
-  dsound_mixer_lock();
+  x2::native::DSBuffer *b = this_buffer(C);
+  x2::native::dsound_mixer_lock();
   b->playing = 0;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 0);
 }
 static void b_Unlock(CPU *C) {
-  DSBuffer *b = this_buffer(C);
+  x2::native::DSBuffer *b = this_buffer(C);
   if (!b->locked) {
     ret_com(C, DSERR_INVALIDCALL, 4);
     return;
   }
   b->locked = 0;
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 4);
 }
 static void b_Restore(CPU *C) {
@@ -489,8 +489,8 @@ static void ds_Release(CPU *C) {
 
 static void ds_CreateSoundBuffer(CPU *C) {
   uint32_t desc = A(1), out = A(2), flags, bytes, fmt;
-  DSBuffer *b;
-  SampleData *data;
+  x2::native::DSBuffer *b;
+  x2::native::SampleData *data;
   if (!desc || RD32(desc) < 20u || !out) {
     ret_com(C, DSERR_INVALIDPARAM, 3);
     return;
@@ -498,10 +498,10 @@ static void ds_CreateSoundBuffer(CPU *C) {
   flags = RD32(desc + 4u);
   bytes = RD32(desc + 8u);
   fmt = RD32(desc + 16u);
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   b = alloc_buffer();
   if (!b) {
-    dsound_mixer_unlock();
+    x2::native::dsound_mixer_unlock();
     WR32(out, 0);
     ret_com(C, DSERR_OUTOFMEMORY, 3);
     return;
@@ -514,16 +514,16 @@ static void ds_CreateSoundBuffer(CPU *C) {
                    "flags=0x%x bytes=%u format=0x%08x\n",
                    desc, flags, bytes, fmt);
       b->used = 0;
-      dsound_mixer_unlock();
+      x2::native::dsound_mixer_unlock();
       WR32(out, 0);
       ret_com(C, DSERR_INVALIDPARAM, 3);
       return;
     }
-    data = (SampleData *)calloc(1, sizeof *data);
+    data = (x2::native::SampleData *)calloc(1, sizeof *data);
     if (!data || !(data->guest_data = guest_malloc(bytes))) {
       free(data);
       b->used = 0;
-      dsound_mixer_unlock();
+      x2::native::dsound_mixer_unlock();
       WR32(out, 0);
       ret_com(C, DSERR_OUTOFMEMORY, 3);
       return;
@@ -541,7 +541,7 @@ static void ds_CreateSoundBuffer(CPU *C) {
                    b->bits, b->channels == 1 ? "mono" : "stereo");
   }
   WR32(out, b->guest);
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   ret_com(C, DS_OK, 3);
 }
 
@@ -562,19 +562,19 @@ static void ds_GetCaps(CPU *C) {
 }
 
 static void ds_DuplicateSoundBuffer(CPU *C) {
-  DSBuffer *src = dsound_mixer_voice_of(A(1)), *b;
-  DSBuffer source;
+  x2::native::DSBuffer *src = x2::native::dsound_mixer_voice_of(A(1)), *b;
+  x2::native::DSBuffer source;
   if (!src || src->primary || !A(2)) {
     ret_com(C, DSERR_INVALIDPARAM, 2);
     return;
   }
-  dsound_mixer_lock();
+  x2::native::dsound_mixer_lock();
   /* Allocating a voice may move the registry, so take the source by value
      rather than carrying a host pointer across the allocation. */
   source = *src;
   b = alloc_buffer();
   if (!b) {
-    dsound_mixer_unlock();
+    x2::native::dsound_mixer_unlock();
     WR32(A(2), 0);
     ret_com(C, DSERR_OUTOFMEMORY, 2);
     return;
@@ -595,7 +595,7 @@ static void ds_DuplicateSoundBuffer(CPU *C) {
   WR32(b->guest, g_buf_vtable);
   WR32(b->guest + 4, b->refs);
   WR32(A(2), b->guest);
-  dsound_mixer_unlock();
+  x2::native::dsound_mixer_unlock();
   g_duplicates++;
   if (g_duplicates <= 12) {
     x2_log_error("DSOUND: duplicate %lu of 0x%08x -> 0x%08x, out "
@@ -697,13 +697,13 @@ void dsound_install(void) {
 
 void dsound_report(void) {
   static int done;
-  DsoundMixerStats mixer;
+  x2::native::DsoundMixerStats mixer;
   int live, playing;
   if (done++) {
     return;
   }
-  dsound_mixer_voice_counts(&live, &playing);
-  dsound_mixer_stats(&mixer);
+  x2::native::dsound_mixer_voice_counts(&live, &playing);
+  x2::native::dsound_mixer_stats(&mixer);
   x2_log_info("  dsound: %lu DirectSoundCreate, %lu secondary buffer(s), %lu "
               "duplicate(s); %d live / %d playing, %lu Play, %lu Lock\n",
               g_creates, g_secondary_created, g_duplicates, live, playing,
@@ -718,8 +718,8 @@ void dsound_report(void) {
 
 void dsound_audio_beat_report(void) {
   static unsigned long p_cb, p_frames, p_silent;
-  DsoundMixerStats mixer;
-  dsound_mixer_stats(&mixer);
+  x2::native::DsoundMixerStats mixer;
+  x2::native::dsound_mixer_stats(&mixer);
   if (!mixer.attempted) {
     return;
   }
@@ -742,4 +742,4 @@ void dsound_audio_beat_report(void) {
   p_silent = mixer.silent_advances;
 }
 
-int dsound_selftest(void) { return dsound_mixer_selftest(); }
+int dsound_selftest(void) { return x2::native::dsound_mixer_selftest(); }

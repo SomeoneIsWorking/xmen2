@@ -325,7 +325,7 @@ static void *heartbeat_thread(void *arg) {
                    gpu_draws == p_gpu && draws != p_draws
                        ? "  -- the engine asked and the BACKEND drew none"
                        : "");
-      gpu_frame_timing_report_interval();
+      x2::gpu::gpu_frame_timing_report_interval();
       /*
        * Dynamic buffers, live, including the write-after-draw case that
        * requires SDL_GPU to cycle to a new backing generation. The

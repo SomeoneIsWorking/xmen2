@@ -479,7 +479,7 @@ static void dev_CreateStateBlock(D3D8Object *self, CPU *C) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
-  if (!d3d8_sb_create(type, &g_dev.state, &token)) {
+  if (!x2::d3d8::d3d8_sb_create(type, &g_dev.state, &token)) {
     /* The out-parameter is zeroed on failure: a caller that ignores the
        HRESULT would otherwise pass whatever was in that DWORD to Apply,
        and 0 is guaranteed not to name a block. */
@@ -494,26 +494,26 @@ static void dev_CreateStateBlock(D3D8Object *self, CPU *C) {
 static void dev_ApplyStateBlock(D3D8Object *self, CPU *C) {
   /* A block replaces the bindings wholesale, so the device's references have
      to follow it. */
-  D3D8BoundObjects before;
-  int ok;
+  x2::d3d8::D3D8BoundObjects before;
   (void)self;
-  d3d8_bound_objects_snapshot(&before, &g_dev.state);
-  ok = d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state);
+  x2::d3d8::d3d8_bound_objects_snapshot(&before, &g_dev.state);
+  int ok = x2::d3d8::d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state);
   if (ok)
-    d3d8_bound_objects_follow(&g_dev.state, &before);
+    x2::d3d8::d3d8_bound_objects_follow(&g_dev.state, &before);
   d3d8_ret(C, ok ? D3D_OK : D3DERR_INVALIDCALL);
 }
 
 static void dev_CaptureStateBlock(D3D8Object *self, CPU *C) {
   (void)self;
-  d3d8_ret(C, d3d8_sb_capture(d3d8_arg(C, 0), &g_dev.state)
+  d3d8_ret(C, x2::d3d8::d3d8_sb_capture(d3d8_arg(C, 0), &g_dev.state)
                   ? D3D_OK
                   : D3DERR_INVALIDCALL);
 }
 
 static void dev_DeleteStateBlock(D3D8Object *self, CPU *C) {
   (void)self;
-  d3d8_ret(C, d3d8_sb_delete(d3d8_arg(C, 0)) ? D3D_OK : D3DERR_INVALIDCALL);
+  d3d8_ret(C, x2::d3d8::d3d8_sb_delete(d3d8_arg(C, 0)) ? D3D_OK
+                                                       : D3DERR_INVALIDCALL);
 }
 
 static void dev_SetRenderState(D3D8Object *self, CPU *C) {
@@ -1416,90 +1416,90 @@ static const D3D8MethodFn g_impl[] = {
     dev_SetCursorProperties, /* 10 */
     dev_SetCursorPosition,
     dev_ShowCursor,
-    NULL,                           /* 13 CreateAdditionalSwapChain */
-    NULL,                           /* 14 Reset */
-    dev_Present,                    /* 15 */
-    dev_GetBackBuffer,              /* 16 */
-    NULL,                           /* 17 GetRasterStatus */
-    dev_SetGammaRamp,               /* 18 */
-    dev_GetGammaRamp,               /* 19 */
-    dev_CreateTexture,              /* 20 */
-    NULL,                           /* 21 CreateVolumeTexture */
-    dev_CreateCubeTexture,          /* 22 */
-    dev_CreateVertexBuffer,         /* 23 */
-    dev_CreateIndexBuffer,          /* 24 */
-    NULL,                           /* 25 CreateRenderTarget */
-    NULL,                           /* 26 CreateDepthStencilSurface */
-    dev_CreateImageSurface,         /* 27 */
-    NULL,                           /* 28 CopyRects */
-    NULL,                           /* 29 UpdateTexture */
-    NULL,                           /* 30 GetFrontBuffer */
-    dev_SetRenderTarget,            /* 31 */
-    dev_GetRenderTarget,            /* 32 */
-    dev_GetDepthStencilSurface,     /* 33 */
-    dev_BeginScene,                 /* 34 */
-    dev_EndScene,                   /* 35 */
-    dev_Clear,                      /* 36 */
-    dev_SetTransform,               /* 37 */
-    dev_GetTransform,               /* 38 */
-    NULL,                           /* 39 MultiplyTransform */
-    dev_SetViewport,                /* 40 */
-    dev_GetViewport,                /* 41 */
-    x2::d3d8::d3d8_dev_SetMaterial, /* 42 */
-    NULL,                           /* 43 GetMaterial */
-    x2::d3d8::d3d8_dev_SetLight,    /* 44 */
-    NULL,                           /* 45 GetLight */
-    x2::d3d8::d3d8_dev_LightEnable, /* 46 */
-    NULL,                           /* 47 GetLightEnable */
-    NULL,                           /* 48 SetClipPlane */
-    NULL,                           /* 49 GetClipPlane */
-    dev_SetRenderState,             /* 50 */
-    dev_GetRenderState,             /* 51 */
-    NULL,                           /* 52 BeginStateBlock */
-    NULL,                           /* 53 EndStateBlock */
-    dev_ApplyStateBlock,            /* 54 */
-    dev_CaptureStateBlock,          /* 55 */
-    dev_DeleteStateBlock,           /* 56 */
-    dev_CreateStateBlock,           /* 57 */
-    NULL,                           /* 58 SetClipStatus */
-    NULL,                           /* 59 GetClipStatus */
-    NULL,                           /* 60 GetTexture */
-    d3d8_dev_SetTexture,            /* 61 */
-    dev_GetTextureStageState,       /* 62 */
-    dev_SetTextureStageState,       /* 63 */
-    dev_ValidateDevice,             /* 64 */
-    NULL,                           /* 65 GetInfo */
-    NULL,                           /* 66 SetPaletteEntries */
-    NULL,                           /* 67 GetPaletteEntries */
-    NULL,                           /* 68 SetCurrentTexturePalette */
-    NULL,                           /* 69 GetCurrentTexturePalette */
-    dev_DrawPrimitive,              /* 70 */
-    dev_DrawIndexedPrimitive,       /* 71 */
-    dev_DrawPrimitiveUP,            /* 72 */
-    NULL,                           /* 73 DrawIndexedPrimitiveUP */
-    NULL,                           /* 74 ProcessVertices */
-    dev_CreateVertexShader,         /* 75 */
-    dev_SetVertexShader,            /* 76 */
-    dev_GetVertexShader,            /* 77 */
-    dev_DeleteVertexShader,         /* 78 */
-    dev_SetVertexShaderConstant,    /* 79 */
-    dev_GetVertexShaderConstant,    /* 80 */
-    dev_GetVertexShaderDeclaration, /* 81 */
-    dev_GetVertexShaderFunction,    /* 82 */
-    d3d8_dev_SetStreamSource,       /* 83 */
-    NULL,                           /* 84 GetStreamSource */
-    d3d8_dev_SetIndices,            /* 85 */
-    NULL,                           /* 86 GetIndices */
-    NULL,                           /* 87 CreatePixelShader */
-    dev_SetPixelShader,             /* 88 */
-    dev_GetPixelShader,             /* 89 */
-    NULL,                           /* 90 DeletePixelShader */
-    NULL,                           /* 91 SetPixelShaderConstant */
-    NULL,                           /* 92 GetPixelShaderConstant */
-    NULL,                           /* 93 GetPixelShaderFunction */
-    NULL,                           /* 94 DrawRectPatch */
-    NULL,                           /* 95 DrawTriPatch */
-    NULL                            /* 96 DeletePatch */
+    NULL,                               /* 13 CreateAdditionalSwapChain */
+    NULL,                               /* 14 Reset */
+    dev_Present,                        /* 15 */
+    dev_GetBackBuffer,                  /* 16 */
+    NULL,                               /* 17 GetRasterStatus */
+    dev_SetGammaRamp,                   /* 18 */
+    dev_GetGammaRamp,                   /* 19 */
+    dev_CreateTexture,                  /* 20 */
+    NULL,                               /* 21 CreateVolumeTexture */
+    dev_CreateCubeTexture,              /* 22 */
+    dev_CreateVertexBuffer,             /* 23 */
+    dev_CreateIndexBuffer,              /* 24 */
+    NULL,                               /* 25 CreateRenderTarget */
+    NULL,                               /* 26 CreateDepthStencilSurface */
+    dev_CreateImageSurface,             /* 27 */
+    NULL,                               /* 28 CopyRects */
+    NULL,                               /* 29 UpdateTexture */
+    NULL,                               /* 30 GetFrontBuffer */
+    dev_SetRenderTarget,                /* 31 */
+    dev_GetRenderTarget,                /* 32 */
+    dev_GetDepthStencilSurface,         /* 33 */
+    dev_BeginScene,                     /* 34 */
+    dev_EndScene,                       /* 35 */
+    dev_Clear,                          /* 36 */
+    dev_SetTransform,                   /* 37 */
+    dev_GetTransform,                   /* 38 */
+    NULL,                               /* 39 MultiplyTransform */
+    dev_SetViewport,                    /* 40 */
+    dev_GetViewport,                    /* 41 */
+    x2::d3d8::d3d8_dev_SetMaterial,     /* 42 */
+    NULL,                               /* 43 GetMaterial */
+    x2::d3d8::d3d8_dev_SetLight,        /* 44 */
+    NULL,                               /* 45 GetLight */
+    x2::d3d8::d3d8_dev_LightEnable,     /* 46 */
+    NULL,                               /* 47 GetLightEnable */
+    NULL,                               /* 48 SetClipPlane */
+    NULL,                               /* 49 GetClipPlane */
+    dev_SetRenderState,                 /* 50 */
+    dev_GetRenderState,                 /* 51 */
+    NULL,                               /* 52 BeginStateBlock */
+    NULL,                               /* 53 EndStateBlock */
+    dev_ApplyStateBlock,                /* 54 */
+    dev_CaptureStateBlock,              /* 55 */
+    dev_DeleteStateBlock,               /* 56 */
+    dev_CreateStateBlock,               /* 57 */
+    NULL,                               /* 58 SetClipStatus */
+    NULL,                               /* 59 GetClipStatus */
+    NULL,                               /* 60 GetTexture */
+    x2::d3d8::d3d8_dev_SetTexture,      /* 61 */
+    dev_GetTextureStageState,           /* 62 */
+    dev_SetTextureStageState,           /* 63 */
+    dev_ValidateDevice,                 /* 64 */
+    NULL,                               /* 65 GetInfo */
+    NULL,                               /* 66 SetPaletteEntries */
+    NULL,                               /* 67 GetPaletteEntries */
+    NULL,                               /* 68 SetCurrentTexturePalette */
+    NULL,                               /* 69 GetCurrentTexturePalette */
+    dev_DrawPrimitive,                  /* 70 */
+    dev_DrawIndexedPrimitive,           /* 71 */
+    dev_DrawPrimitiveUP,                /* 72 */
+    NULL,                               /* 73 DrawIndexedPrimitiveUP */
+    NULL,                               /* 74 ProcessVertices */
+    dev_CreateVertexShader,             /* 75 */
+    dev_SetVertexShader,                /* 76 */
+    dev_GetVertexShader,                /* 77 */
+    dev_DeleteVertexShader,             /* 78 */
+    dev_SetVertexShaderConstant,        /* 79 */
+    dev_GetVertexShaderConstant,        /* 80 */
+    dev_GetVertexShaderDeclaration,     /* 81 */
+    dev_GetVertexShaderFunction,        /* 82 */
+    x2::d3d8::d3d8_dev_SetStreamSource, /* 83 */
+    NULL,                               /* 84 GetStreamSource */
+    x2::d3d8::d3d8_dev_SetIndices,      /* 85 */
+    NULL,                               /* 86 GetIndices */
+    NULL,                               /* 87 CreatePixelShader */
+    dev_SetPixelShader,                 /* 88 */
+    dev_GetPixelShader,                 /* 89 */
+    NULL,                               /* 90 DeletePixelShader */
+    NULL,                               /* 91 SetPixelShaderConstant */
+    NULL,                               /* 92 GetPixelShaderConstant */
+    NULL,                               /* 93 GetPixelShaderFunction */
+    NULL,                               /* 94 DrawRectPatch */
+    NULL,                               /* 95 DrawTriPatch */
+    NULL                                /* 96 DeletePatch */
 };
 
 void d3d8_device_install(void) {
@@ -1622,7 +1622,7 @@ void d3d8_device_report(void) {
       "show for it\n",
       unresolved, g_dev.draws);
   d3d8_state_report(&g_dev.state);
-  d3d8_sb_report();
+  x2::d3d8::d3d8_sb_report();
   d3d8_vs_report();
   d3d8_surface_report();
   d3d8_resource_report();

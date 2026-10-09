@@ -49,7 +49,7 @@ int main() {
   lucent::set_sink([](lucent::Level, std::string_view line) {
     g_lines.push_back(std::string(line));
   });
-  x86_engine_diagnostic_install();
+  x2::native::x86_engine_diagnostic_install();
 
   {
     const X86pDiagnostic diagnostic = {kX86pDiagnosticError, "unit",
@@ -101,7 +101,7 @@ int main() {
                 g_lines.size());
   }
 
-  x86_engine_diagnostic_install();
+  x2::native::x86_engine_diagnostic_install();
   {
     const X86pDiagnostic diagnostic = {kX86pDiagnosticError, "unit",
                                        "installed a second time"};

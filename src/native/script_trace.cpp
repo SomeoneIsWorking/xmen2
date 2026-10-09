@@ -104,7 +104,7 @@ void x2_override_004a1320(CPU *C) {
   g_last_caller = caller;
   record(name, ok);
   if (ok)
-    entity_spawn_probe_after_script_launch(C, name);
+    x2::native::entity_spawn_probe_after_script_launch(C, name);
   if (live())
     x2_log_error("SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",
                  ok ? "launch" : "FAILED", name, gpu_frames_presented(),
