@@ -2,7 +2,9 @@
 /* See d3d8_com.h. */
 #include "d3d8_com.h"
 
+#include "../native/stdcall_import.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -260,8 +262,6 @@ D3D8Object *d3d8_object_from_guest(uint32_t g) {
 
 /* ---- dispatch ---------------------------------------------------------- */
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
-
 /* The method currently executing, so d3d8_ret knows what to pop and so a
    diagnostic anywhere below can name where it is. */
 static const MethodRec *g_cur;
@@ -276,6 +276,14 @@ const char *d3d8_current_method(void) {
   snprintf(buf, sizeof buf, "%s::%s (slot %d)", g_iface[g_cur->id].name,
            g_cur->name, g_cur->slot);
   return buf;
+}
+
+void *d3d8_guest_ptr(uint32_t a, const char *what) {
+  if (!a) {
+    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
+    return NULL;
+  }
+  return guest_memory_pointer(a);
 }
 
 uint32_t d3d8_arg(CPU *C, int i) {

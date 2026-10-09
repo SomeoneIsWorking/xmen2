@@ -26,6 +26,9 @@ typedef enum {
 uint32_t dinput_device_new(DInputDeviceKind kind);
 uint32_t dinput_device_new_pad(const unsigned char guid[16]);
 
+/* "keyboard", "mouse" or "gamepad", for diagnostics. */
+const char *dinput_device_kind_name(DInputDeviceKind kind);
+
 /*
  * The system-device GUIDs, shared by both DirectInput stacks.
  *

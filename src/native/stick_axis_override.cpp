@@ -39,13 +39,13 @@
 #include "stick_axis_override.h"
 
 #include "guest_body.h"
+#include "guest_modules.h"
 #include "x2_log.h"
 #include "x86rt_native.h"
 
 #include <math.h>
 #include <stdint.h>
 
-#define EXE_PREFERRED 0x00400000u
 #define RESOLVE_ACTION 0x0061a4c0u
 #define FN_PADS 0x00551ed0u         /* the controller manager, a getter */
 #define PADS_PLAYER_BINDINGS 0x3cu  /* vtable slot: player -> binding row */
@@ -57,12 +57,8 @@
 static unsigned long g_axis_calls, g_axis_below_retail, g_other_calls;
 
 static uint32_t linked(uint32_t preferred) {
-  for (X86Module *module = x86_modules(); module; module = module->next) {
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base) {
-      return *module->base + (preferred - EXE_PREFERRED);
-    }
-  }
-  return 0;
+  uint32_t base = x2::native::guest_exe_base();
+  return base ? base + (preferred - x2::native::kExePreferred) : 0;
 }
 
 /* The action's bound value as the retail body reads it, through the same two

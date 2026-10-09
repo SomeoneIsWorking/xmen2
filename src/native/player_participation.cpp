@@ -2,36 +2,23 @@
 #include "player_participation_policy.h"
 #include "x2_log.h"
 
+#include "guest_call.hpp"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
 
-#define EXE_PREFERRED 0x00400000u
-#define PARTICIPATION_SINGLETON_RVA (0x0048de40u - EXE_PREFERRED)
+#define PARTICIPATION_SINGLETON_RVA (0x0048de40u - x2::native::kExePreferred)
 
 #define PARTICIPATION_ACTIVE 0x10u
 #define PARTICIPATION_JOIN 0x14u
 #define PARTICIPATION_LEAVE 0x18u
 #define PARTICIPATION_RECONCILE 0x68u
-#define PLAYER_MANAGER_RVA (0x00551ed0u - EXE_PREFERRED)
+#define PLAYER_MANAGER_RVA (0x00551ed0u - x2::native::kExePreferred)
 #define PLAYER_CONTROLLER_MAP 0x4u
 #define PLAYER_REMOTE_FLAGS 0x14u
 #define PLAYER_LOCAL_CONTROLLERS 0x30u
-
-static uint32_t exe_base(void) {
-  X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
-static uint32_t guest_call0(const CPU *source, uint32_t target) {
-  CPU call = *source;
-  x86_guest_call_args(&call, target, 0u);
-  return call.reg[kX86pEax];
-}
 
 static uint32_t thiscall_player(const CPU *source, uint32_t object,
                                 uint32_t slot, unsigned player) {
@@ -55,7 +42,8 @@ static void thiscall0(const CPU *source, uint32_t object, uint32_t slot) {
    (player_participation_policy.h). */
 static x2::input::PlayerSeatMap read_seat_map(const CPU *cpu) {
   x2::input::PlayerSeatMap map = {{0, 1, 2, 3}, 0x0fu};
-  const uint32_t players = guest_call0(cpu, exe_base() + PLAYER_MANAGER_RVA);
+  const uint32_t players = x2::guest::GuestCall(*cpu).cdecl_call(
+      x2::native::guest_exe_base() + PLAYER_MANAGER_RVA);
   unsigned i;
   int32_t local_count;
 
@@ -105,11 +93,12 @@ static void apply_to_manager(CPU *cpu, uint32_t manager,
 }
 
 static uint32_t participation_manager(const CPU *cpu) {
-  const uint32_t base = exe_base();
+  const uint32_t base = x2::native::guest_exe_base();
   uint32_t manager;
   if (!base)
     return 0;
-  manager = guest_call0(cpu, base + PARTICIPATION_SINGLETON_RVA);
+  manager =
+      x2::guest::GuestCall(*cpu).cdecl_call(base + PARTICIPATION_SINGLETON_RVA);
   return manager && RD32(manager) ? manager : 0;
 }
 

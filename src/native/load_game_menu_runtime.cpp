@@ -4,6 +4,7 @@
 #include "exact_save_load.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "load_game_menu_policy.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -19,7 +20,6 @@ namespace x2::native {
 namespace {
 
 enum {
-  EXE_PREFERRED = 0x00400000u,
   FN_INPUT_MANAGER = 0x001d8920u,
   FN_UPDATE_DIALOG_ORIGIN = 0x001e9c90u,
   FN_SCRIPT_ARGUMENT = 0x000d5830u,
@@ -73,19 +73,6 @@ static unsigned g_autosave_choices;
 static int g_active;
 static int g_last_manager_selection = -1;
 static char g_selected_leaf[32];
-
-static uint32_t exe_base(void) {
-  const X86Module *module;
-
-  if (g_exe)
-    return g_exe;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && *module->base) {
-      g_exe = *module->base;
-      break;
-    }
-  return g_exe;
-}
 
 static uint32_t dialog_page(uint32_t ui) {
   uint32_t index;
@@ -242,7 +229,8 @@ static void activate_projection(const CPU *source, uint32_t manager) {
 
   g_active = 0;
   g_selected_leaf[0] = 0;
-  if (!exe_base() || RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD)
+  g_exe = x2::native::guest_exe_base();
+  if (!g_exe || RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD)
     return;
   g_ui = RD32(g_exe + UI_SINGLETON);
   g_page = dialog_page(g_ui);

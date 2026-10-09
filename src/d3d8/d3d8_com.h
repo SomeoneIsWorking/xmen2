@@ -131,6 +131,10 @@ void d3d8_ret(struct X86pCpu *C, uint32_t hr);
 /* The interface and method currently executing, for diagnostics. */
 const char *d3d8_current_method(void);
 
+/* A guest address as a host pointer, or NULL with the offending METHOD named
+   so the call that passed the NULL can be traced. */
+void *d3d8_guest_ptr(uint32_t a, const char *what);
+
 /* ---- staging ----------------------------------------------------------- */
 
 /*

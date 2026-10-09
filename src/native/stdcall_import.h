@@ -22,4 +22,10 @@ static inline void ret_std(CPU *C, uint32_t eax, int nargs) {
   C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
+/* Return from a COM method: like ret_std, with `this` as one more popped
+   argument. */
+static inline void ret_com(CPU *C, uint32_t eax, int nargs) {
+  ret_std(C, eax, nargs + 1);
+}
+
 #endif

@@ -38,6 +38,7 @@
 #include "dinput_pad.h"
 #include "dinput_system.h"
 #include "guest_heap.h"
+#include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -45,12 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
-
-static void ret_com(CPU *C, uint32_t hr, int nargs) {
-  x2::native::dinput_device_return(C, hr, nargs);
-}
 
 #define S_OK 0x00000000u
 #define S_FALSE 0x00000001u
@@ -142,11 +138,11 @@ static Device *dev_of(uint32_t guest) {
   return x2::native::dinput_device_registry_find(guest);
 }
 
-static const char *kind_name(DInputDeviceKind k) {
-  return k == DINPUT_DEV_KEYBOARD   ? "keyboard"
-         : k == DINPUT_DEV_MOUSE    ? "mouse"
-         : k == DINPUT_DEV_JOYSTICK ? "gamepad"
-                                    : "(unknown)";
+const char *dinput_device_kind_name(DInputDeviceKind kind) {
+  return kind == DINPUT_DEV_KEYBOARD   ? "keyboard"
+         : kind == DINPUT_DEV_MOUSE    ? "mouse"
+         : kind == DINPUT_DEV_JOYSTICK ? "gamepad"
+                                       : "(unknown)";
 }
 
 static int pad_of(Device *device) {
@@ -168,7 +164,7 @@ static void m_EnumObjects(CPU *C) {
                  "not describe object by object. Nothing is offered, "
                  "and that is reported rather than passed off as an "
                  "empty device.\n",
-                 kind_name(d->kind));
+                 dinput_device_kind_name(d->kind));
     ret_com(C, S_OK, 3);
     return;
   }
@@ -218,13 +214,13 @@ static void m_SetDataFormat(CPU *C) {
     x2_log_error("DINPUT8: SetDataFormat on the %s declared a zero-byte "
                  "state. Refusing: GetDeviceState would then fill "
                  "nothing and the game would read its own stack.\n",
-                 kind_name(d->kind));
+                 dinput_device_kind_name(d->kind));
     ret_com(C, DIERR_INVALIDPARAM, 1);
     return;
   }
   x2_log_error("DINPUT8: the %s data format is %u byte(s) over %u "
                "object(s).\n",
-               kind_name(d->kind), d->data_size, RD32(df + 16u));
+               dinput_device_kind_name(d->kind), d->data_size, RD32(df + 16u));
   ret_com(C, S_OK, 1);
 }
 
@@ -242,7 +238,7 @@ static void m_SetCooperativeLevel(CPU *C) {
     x2_log_error("DINPUT8: SetCooperativeLevel asked for EXCLUSIVE "
                  "access to the %s (flags 0x%x); this host cannot take "
                  "the device from the desktop, so it stays shared.\n",
-                 d ? kind_name(d->kind) : "device", flags);
+                 d ? dinput_device_kind_name(d->kind) : "device", flags);
   ret_com(C, S_OK, 2);
 }
 
@@ -271,7 +267,7 @@ static void m_Acquire(CPU *C) {
        will be written at is not known yet. */
     d->n_acquire_fail++;
     x2_log_error("DINPUT8: Acquire on the %s before SetDataFormat.\n",
-                 kind_name(d->kind));
+                 dinput_device_kind_name(d->kind));
     ret_com(C, DIERR_INVALIDPARAM, 0);
     return;
   }
@@ -304,7 +300,7 @@ static void m_GetDeviceData(CPU *C) {
                  "events, every time. If the game relies on buffered "
                  "keys rather than GetDeviceState, that is the next "
                  "work item.\n",
-                 d ? kind_name(d->kind) : "device");
+                 d ? dinput_device_kind_name(d->kind) : "device");
   if (inout)
     WR32(inout, 0);
   ret_com(C, S_OK, 5);
@@ -567,8 +563,8 @@ static uint32_t device_alloc(DInputDeviceKind kind,
                  obj, pad, dinput_pad_name(pad) ? dinput_pad_name(pad) : "?");
     return obj;
   }
-  x2_log_error("DINPUT8: a native %s device at 0x%08x%s\n", kind_name(kind),
-               obj,
+  x2_log_error("DINPUT8: a native %s device at 0x%08x%s\n",
+               dinput_device_kind_name(kind), obj,
                dinput_system_available()
                    ? " (SDL-backed)"
                    : " -- with no SDL video subsystem up, so it will "
@@ -591,7 +587,7 @@ void dinput_device_report(void) {
     x2_log_info(
         "        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
         " %lu Acquire(s)%s\n",
-        kind_name(device->kind), device->data_size,
+        dinput_device_kind_name(device->kind), device->data_size,
         device->acquired ? "acquired" : "NOT acquired", device->polls,
         device->n_poll, device->n_acquire,
         (!device->polls && !device->n_poll && !device->n_acquire)

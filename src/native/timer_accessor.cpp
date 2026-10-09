@@ -7,6 +7,7 @@
  */
 #include "frame_limiter_wait.h"
 #include "guest_body.h"
+#include "guest_modules.h"
 #include "override_leaf.h"
 #include "threads.h"
 #include "x2_log.h"
@@ -78,17 +79,14 @@ static uint32_t s_timer_instance;
 
 static void timer_accessor_init(void) {
   s_timer_unpaced = lucent_cvar_flag("unpaced", 0) != 0;
-  X86Module *m;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == 0x00400000u && *m->base)
-      break;
-  if (m) {
-    s_timer_guard = *m->base + (0x007ac288u - 0x00400000u);
-    s_timer_instance = *m->base + (0x007ac248u - 0x00400000u);
-    s_app_object = *m->base + APP_OBJECT_RVA;
-    s_limiter_return = *m->base + LIMITER_RETURN_RVA;
+  uint32_t exe = x2::native::guest_exe_base();
+  if (exe) {
+    s_timer_guard = exe + (0x007ac288u - x2::native::kExePreferred);
+    s_timer_instance = exe + (0x007ac248u - x2::native::kExePreferred);
+    s_app_object = exe + APP_OBJECT_RVA;
+    s_limiter_return = exe + LIMITER_RETURN_RVA;
     if (s_timer_unpaced) {
-      s_timer_frame_cap = *m->base + APP_OBJECT_RVA + APP_FRAME_CAP;
+      s_timer_frame_cap = exe + APP_OBJECT_RVA + APP_FRAME_CAP;
       x2_log_info("X2_UNPACED: the game's frame cap at 0x%08x is zeroed "
                   "before every clock read, so the frame loop runs as "
                   "fast as it can. The clock is NOT scaled -- everything "

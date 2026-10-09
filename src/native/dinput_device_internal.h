@@ -26,11 +26,6 @@ static inline int dinput_device_pad(const DInputDevice *device) {
              : -1;
 }
 
-static inline void dinput_device_return(CPU *cpu, uint32_t result, int nargs) {
-  cpu->reg[kX86pEax] = result;
-  cpu->reg[kX86pEsp] += 4u + (uint32_t)(nargs + 1) * 4u;
-}
-
-void dinput_device_get_state(CPU *cpu, DInputDevice *device);
+void dinput_device_get_state(CPU *C, DInputDevice *device);
 
 } // namespace x2::native

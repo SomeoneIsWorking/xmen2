@@ -40,6 +40,7 @@
 
 #include "dinput8_controller_slots.h"
 #include "dinput_pad.h"
+#include "guest_modules.h"
 #include "pad_glyph_codes.h"
 #include "player_input.h"
 #include "prompt_glyphs.h"
@@ -50,7 +51,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define EXE_PREFERRED 0x00400000u
 #define NAME_BUFFER_RVA 0x0066aec8u /* original static at 0x00a6aec8 */
 
 #include "guest_body.h"
@@ -143,11 +143,8 @@ uint8_t pad_glyph_code(uint32_t code) {
    generated with the glyphs, because a hand-written range ending at whichever
    glyph is currently last stops covering the set the moment one is added. */
 static uint32_t name_buffer(void) {
-  X86Module *m;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == EXE_PREFERRED && m->base && *m->base)
-      return *m->base + NAME_BUFFER_RVA;
-  return 0;
+  uint32_t base = x2::native::guest_exe_base();
+  return base ? base + NAME_BUFFER_RVA : 0;
 }
 
 static int host_pad_for_kind(uint32_t kind) {

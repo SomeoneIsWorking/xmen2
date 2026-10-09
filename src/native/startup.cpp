@@ -27,6 +27,7 @@
 #include "boot_splash_policy.h"
 #include "continue_runtime.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "pe_map.h"
 #include "save_directory.h"
 #include "settings_store.h"
@@ -154,14 +155,6 @@ static void boot_console_line(const CPU *source, uint32_t exe_base,
   x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
 }
 
-static uint32_t mapped_exe_base(void) {
-  const X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == 0x00400000u && *module->base)
-      return *module->base;
-  return 0;
-}
-
 static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
   const x2::native::BootModeDecision *decision;
   x2::config::BootMode requested;
@@ -241,7 +234,7 @@ void x2_override_0055beb0(CPU *C) {
     if (mode) {
       char buf[128];
       int len;
-      exe_base = mapped_exe_base();
+      exe_base = x2::native::guest_exe_base();
       if (!exe_base) {
         x2_log_error("X2_BOOT_MAP: the exe is not mapped, so the "
                      "loadmap command could not be built. Booting "
@@ -272,7 +265,7 @@ void x2_override_0055beb0(CPU *C) {
   }
   if (!map_requested && phase == BOOT_MAP_WAITING_FOR_INTRO) {
     if (!exe_base)
-      exe_base = mapped_exe_base();
+      exe_base = x2::native::guest_exe_base();
     if (boot_to_host_mode(C, s, exe_base)) {
       x2::native::boot_splash_arm();
       x2::presentation::boot_blackout_arm(

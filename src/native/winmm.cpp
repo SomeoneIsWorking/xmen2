@@ -92,8 +92,6 @@ static int g_pumping;
    this read CLOCK_MONOTONIC directly, and the guest gates real logic on
    elapsed time, so any two of them disagreeing is a timing bug wearing a
    gameplay bug's clothes. */
-static double now_s(void) { return guest_clock_now_s(); }
-
 void imp_WINMM_timeSetEvent(CPU *C) {
   uint32_t delay = A(0), proc = A(2), user = A(3), flags = A(4);
   int i;
@@ -130,7 +128,7 @@ void imp_WINMM_timeSetEvent(CPU *C) {
   g_timer[i].proc = proc;
   g_timer[i].user = user;
   g_timer[i].delay_ms = delay ? delay : 1u;
-  g_timer[i].due = now_s() + (double)g_timer[i].delay_ms / 1000.0;
+  g_timer[i].due = guest_clock_now_s() + (double)g_timer[i].delay_ms / 1000.0;
   {
     static int said;
     if (!said++)
@@ -170,7 +168,7 @@ namespace x2::native {
  * which is the "nothing to wake up for" answer and not a timer at time zero.
  */
 uint32_t winmm_next_due_ms(uint32_t cap) {
-  double t = now_s(), best = -1.0;
+  double t = guest_clock_now_s(), best = -1.0;
   int i;
   for (i = 0; i < MAX_TIMERS; i++) {
     if (!g_timer[i].used)
@@ -189,7 +187,7 @@ uint32_t winmm_next_due_ms(uint32_t cap) {
 }
 
 /* For a caller with no instant of its own: read the guest clock, then pump. */
-void winmm_timers_pump(void) { winmm_timers_pump_at(now_s()); }
+void winmm_timers_pump(void) { winmm_timers_pump_at(guest_clock_now_s()); }
 
 /*
  * Run whatever is due, on the caller's thread, at an instant the caller

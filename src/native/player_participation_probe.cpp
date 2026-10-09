@@ -1,6 +1,8 @@
 #include "player_participation_probe.h"
 #include "guest_memory.h"
 
+#include "guest_call.hpp"
+#include "guest_modules.h"
 #include "text_put.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -11,29 +13,14 @@ namespace x2::native {
 
 namespace {
 
-#define EXE_PREFERRED 0x00400000u
-#define PARTICIPATION_SINGLETON_RVA (0x0048de40u - EXE_PREFERRED)
+#define PARTICIPATION_SINGLETON_RVA (0x0048de40u - x2::native::kExePreferred)
 #define PARTICIPATION_ACTIVE 0x10u
-#define PAD_MANAGER_RVA (0x00551ed0u - EXE_PREFERRED)
+#define PAD_MANAGER_RVA (0x00551ed0u - x2::native::kExePreferred)
 #define PAD_PLAYER 0x4cu
 #define PAD_COUNT 0x70u
 #define PLAYER_MASK 0x18u
 #define PLAYER_PHYSICAL 0x2fcu
 #define PLAYER_PHYSICAL_COUNT 30u
-
-static uint32_t exe_base(void) {
-  X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
-
-static uint32_t guest_call0(const CPU *source, uint32_t target) {
-  CPU call = *source;
-  x86_guest_call_args(&call, target, 0u);
-  return call.reg[kX86pEax];
-}
 
 static int active(const CPU *source, uint32_t manager, unsigned player) {
   CPU call = *source;
@@ -45,21 +32,10 @@ static int active(const CPU *source, uint32_t manager, unsigned player) {
   return (uint8_t)call.reg[kX86pEax] != 0;
 }
 
-static uint32_t thiscall(const CPU *source, uint32_t function, uint32_t object,
-                         int has_argument, uint32_t argument) {
-  CPU call = *source;
-  if (has_argument) {
-    call.reg[kX86pEsp] -= 4u;
-    WR32(call.reg[kX86pEsp], argument);
-  }
-  call.reg[kX86pEcx] = object;
-  x86_guest_call_args(&call, function, has_argument ? 4u : 0u);
-  return call.reg[kX86pEax];
-}
-
 static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,
                                size_t *at) {
-  uint32_t manager = base ? guest_call0(cpu, base + PAD_MANAGER_RVA) : 0u;
+  uint32_t manager =
+      base ? x2::guest::GuestCall(*cpu).cdecl_call(base + PAD_MANAGER_RVA) : 0u;
   uint32_t vtable = 0, function = 0, players = 0, player;
 
   if (!manager) {
@@ -74,7 +50,7 @@ static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,
              manager);
     return;
   }
-  players = thiscall(cpu, function, manager, 0, 0u);
+  players = x2::guest::GuestCall(*cpu).thiscall(function, manager);
   text_put(out, size, at, "pad manager 0x%08x: %u player input object(s)\n",
            manager, players);
   if (players > 4u)
@@ -83,7 +59,7 @@ static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,
     uint32_t object, player_vtable = 0, mask = 0, index, nonzero = 0;
     if (!guest_memory_try_read32(vtable + PAD_PLAYER, &function) || !function)
       continue;
-    object = thiscall(cpu, function, manager, 1, player);
+    object = x2::guest::GuestCall(*cpu).thiscall(function, manager, {player});
     if (!object) {
       text_put(out, size, at, "  player %u: no input object\n", player);
       continue;
@@ -91,7 +67,7 @@ static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,
     if (guest_memory_try_read32(object, &player_vtable) &&
         guest_memory_try_read32(player_vtable + PLAYER_MASK, &function) &&
         function)
-      mask = thiscall(cpu, function, object, 0, 0u);
+      mask = x2::guest::GuestCall(*cpu).thiscall(function, object);
     text_put(out, size, at,
              "  player %u object 0x%08x logical mask 0x%08x "
              "physical:",
@@ -121,8 +97,10 @@ size_t player_participation_probe_report(CPU *cpu, char *out, size_t size) {
 
   if (!cpu || !out || !size)
     return 0;
-  base = exe_base();
-  manager = base ? guest_call0(cpu, base + PARTICIPATION_SINGLETON_RVA) : 0u;
+  base = x2::native::guest_exe_base();
+  manager = base ? x2::guest::GuestCall(*cpu).cdecl_call(
+                       base + PARTICIPATION_SINGLETON_RVA)
+                 : 0u;
   if (!manager || !RD32(manager)) {
     text_put(out, size, &at,
              "\nretail participation manager: not constructed; "

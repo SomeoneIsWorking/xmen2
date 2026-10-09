@@ -113,14 +113,6 @@ static void current_desktop(uint32_t *w, uint32_t *h) {
   *h = 1024u;
 }
 
-static void *guest_ptr(uint32_t a, const char *what) {
-  if (!a) {
-    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
-    return NULL;
-  }
-  return guest_memory_pointer(a);
-}
-
 /* ---- IUnknown ---------------------------------------------------------- */
 
 /*
@@ -170,7 +162,7 @@ static void d3d8_GetAdapterCount(D3D8Object *self, CPU *C) {
 
 static void d3d8_GetAdapterIdentifier(D3D8Object *self, CPU *C) {
   D3DADAPTER_IDENTIFIER8 *id =
-      (D3DADAPTER_IDENTIFIER8 *)guest_ptr(d3d8_arg(C, 2), "identifier");
+      (D3DADAPTER_IDENTIFIER8 *)d3d8_guest_ptr(d3d8_arg(C, 2), "identifier");
   (void)self;
   if (!id) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
@@ -200,7 +192,8 @@ static void d3d8_GetAdapterModeCount(D3D8Object *self, CPU *C) {
 
 static void d3d8_EnumAdapterModes(D3D8Object *self, CPU *C) {
   uint32_t mode = d3d8_arg(C, 1);
-  D3DDISPLAYMODE *out = (D3DDISPLAYMODE *)guest_ptr(d3d8_arg(C, 2), "mode");
+  D3DDISPLAYMODE *out =
+      (D3DDISPLAYMODE *)d3d8_guest_ptr(d3d8_arg(C, 2), "mode");
   int imode;
   (void)self;
   if (!out) {
@@ -225,7 +218,8 @@ static void d3d8_EnumAdapterModes(D3D8Object *self, CPU *C) {
 }
 
 static void d3d8_GetAdapterDisplayMode(D3D8Object *self, CPU *C) {
-  D3DDISPLAYMODE *out = (D3DDISPLAYMODE *)guest_ptr(d3d8_arg(C, 1), "mode");
+  D3DDISPLAYMODE *out =
+      (D3DDISPLAYMODE *)d3d8_guest_ptr(d3d8_arg(C, 1), "mode");
   uint32_t w, h;
   (void)self;
   if (!out) {
@@ -302,7 +296,7 @@ static void d3d8_CheckDepthStencilMatch(D3D8Object *self, CPU *C) {
 
 static void d3d8_GetDeviceCaps(D3D8Object *self, CPU *C) {
   uint32_t adapter = d3d8_arg(C, 0), devtype = d3d8_arg(C, 1);
-  D3DCAPS8 *caps = (D3DCAPS8 *)guest_ptr(d3d8_arg(C, 2), "caps block");
+  D3DCAPS8 *caps = (D3DCAPS8 *)d3d8_guest_ptr(d3d8_arg(C, 2), "caps block");
   (void)self;
   if (!caps) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
@@ -338,8 +332,8 @@ static void d3d8_CreateDevice(D3D8Object *self, CPU *C) {
   uint32_t devtype = d3d8_arg(C, 1);
   uint32_t hwnd = d3d8_arg(C, 2);
   uint32_t behaviour = d3d8_arg(C, 3);
-  D3DPRESENT_PARAMETERS *pp =
-      (D3DPRESENT_PARAMETERS *)guest_ptr(d3d8_arg(C, 4), "present parameters");
+  D3DPRESENT_PARAMETERS *pp = (D3DPRESENT_PARAMETERS *)d3d8_guest_ptr(
+      d3d8_arg(C, 4), "present parameters");
   uint32_t out = d3d8_arg(C, 5);
   D3D8Object *dev;
 

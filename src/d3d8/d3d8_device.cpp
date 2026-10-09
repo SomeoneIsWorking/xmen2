@@ -122,14 +122,6 @@ D3D8State *d3d8_device_state(void) { return &g_dev.state; }
 static D3D8Object *g_dev_obj;
 static void up_vertices_destroy(void);
 
-void *d3d8_guest_ptr(uint32_t a, const char *what) {
-  if (!a) {
-    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
-    return NULL;
-  }
-  return guest_memory_pointer(a);
-}
-
 /* ---- IUnknown ---------------------------------------------------------- */
 
 static void dev_QueryInterface(D3D8Object *self, CPU *C) {

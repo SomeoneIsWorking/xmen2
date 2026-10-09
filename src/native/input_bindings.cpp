@@ -11,28 +11,20 @@
 #include "input_bindings.h"
 #include "guest_memory.h"
 
+#include "guest_modules.h"
 #include "input_binding_sets.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
 
-#define EXE_PREFERRED 0x00400000u
 #define CONTROLLER0_RVA 0x00668f40u   /* 0x00a68f40, controller[player]      */
 #define BINDINGS_OFFSET 0x18u         /* the binding object inside it        */
 #define SET_BINDING_RVA 0x002297a0u   /* FUN_006297a0(row, slot, kind, code) */
 #define ROW_OF_ACTION_RVA 0x00219c40u /* FUN_00619c40(action) -> row */
 
-static uint32_t exe_base(void) {
-  X86Module *m;
-  for (m = x86_modules(); m; m = m->next)
-    if (m->preferred == EXE_PREFERRED && m->base && *m->base)
-      return *m->base;
-  return 0;
-}
-
 uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn) {
-  uint32_t base = exe_base(), slot, controller = 0, object;
+  uint32_t base = x2::native::guest_exe_base(), slot, controller = 0, object;
 
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "(no reason recorded)");
@@ -104,7 +96,7 @@ int input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
 void input_bindings_write(CPU *cpu, uint32_t object, uint32_t row,
                           uint32_t slot, uint32_t kind, uint32_t code) {
   CPU call;
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
 
   if (!cpu || !base || !object)
     return;
@@ -148,7 +140,7 @@ unsigned input_bindings_write_player(CPU *cpu, uint32_t player, uint32_t row,
 
 int input_binding_row_of_action(CPU *cpu, uint32_t action) {
   CPU call;
-  uint32_t base = exe_base();
+  uint32_t base = x2::native::guest_exe_base();
 
   if (!cpu || !base || action >= INPUT_ACTION_MAX)
     return -1;

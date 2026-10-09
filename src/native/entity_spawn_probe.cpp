@@ -21,11 +21,11 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include "guest_modules.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define EXE_PREFERRED 0x00400000u
 #define CONSOLE_EXEC_RVA 0x0015c410u    /* FUN_0055c410, console +0x1c */
 #define CONSOLE_MANAGER_RVA 0x003ac290u /* DAT_007ac290 */
 #define SPAWN_HANDLER 0x004a4420u
@@ -44,14 +44,6 @@ static int g_waiting;
 static unsigned long g_spawn_handlers;
 static uint32_t g_spawned_entity;
 static uint32_t g_command_guest;
-
-static uint32_t mapped_exe_base(void) {
-  const X86Module *module;
-  for (module = x86_modules(); module; module = module->next)
-    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
-      return *module->base;
-  return 0;
-}
 
 static uint32_t copy_to_guest(const char *text) {
   uint32_t bytes = (uint32_t)strlen(text) + 1u;
@@ -100,7 +92,7 @@ void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
     return;
   g_submitted = 1;
 
-  base = mapped_exe_base();
+  base = x2::native::guest_exe_base();
   g_command_guest = copy_to_guest(g_command);
   if (!base || !g_command_guest) {
     x2_log_error("SPAWN PROBE: REFUSED -- could not prepare the retail "
