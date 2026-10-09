@@ -32,18 +32,19 @@ void guest_thread_state_report(void) {
      state -- it is a thread that keeps WAKING, which is the difference
      between a poll loop and a park and is the thing worth seeing. */
   double t = guest_clock_now_s();
-  GuestThread *table = guest_thread_table();
-  const GuestThread *self = guest_thread_self_record();
+  x2::native::GuestThread *table = x2::native::guest_thread_table();
+  const x2::native::GuestThread *self = x2::native::guest_thread_self_record();
   int i, live = 0;
-  for (i = 0; i <= MAX_THREADS; i++) {
-    GuestThread *g = &table[i];
+  for (i = 0; i <= x2::native::MAX_THREADS; i++) {
+    x2::native::GuestThread *g = &table[i];
     if (!g->used || g->finished)
       continue;
     live++;
-    x2_log_error("[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
-                 g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
-                 TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
-                 t - g->state_since, g == self ? "  <- running" : "");
+    x2_log_error(
+        "[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
+        g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
+        TS_NAME[g->state < 0 || g->state > x2::native::TS_DONE ? 0 : g->state],
+        t - g->state_since, g == self ? "  <- running" : "");
     /*
      * And what it last crossed into. A thread spinning inside compiled guest
      * code crosses nothing, so this is the last thing the host saw it ask
@@ -64,11 +65,11 @@ void guest_thread_state_report(void) {
 }
 
 void guest_thread_report(void) {
-  GuestThread *table = guest_thread_table();
-  GuestThreadTotals n;
+  x2::native::GuestThread *table = x2::native::guest_thread_table();
+  x2::native::GuestThreadTotals n;
   int i, live = 0;
-  guest_thread_totals(&n);
-  for (i = 0; i < MAX_THREADS; i++)
+  x2::native::guest_thread_totals(&n);
+  for (i = 0; i < x2::native::MAX_THREADS; i++)
     if (table[i].used && !table[i].finished)
       live++;
   if (!n.created) {
@@ -91,8 +92,8 @@ void guest_thread_report(void) {
                   "loop doing that is waiting for something that cannot "
                   "happen.\n",
                   n.resume_unknown, n.suspend_unknown);
-    for (i = 0; i < MAX_THREADS; i++) {
-      GuestThread *t = &table[i];
+    for (i = 0; i < x2::native::MAX_THREADS; i++) {
+      x2::native::GuestThread *t = &table[i];
       /* Reaped slots are printed too, until they are reused: their
          counters are the only record of where a spin loop's resumes
          went, and skipping them is what made 9,000,634 of them
@@ -135,7 +136,7 @@ void guest_thread_report(void) {
 
 int guest_thread_last_crossing(const char **what, uint32_t *guest_addr,
                                double *seconds_ago) {
-  const GuestThread *self = guest_thread_self_record();
+  const x2::native::GuestThread *self = x2::native::guest_thread_self_record();
   if (!self || !self->last_cross) {
     return 0;
   }

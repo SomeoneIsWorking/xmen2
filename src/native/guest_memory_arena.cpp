@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 #if GUEST_ARENA_WINDOW
 int guest_arena_acquire(GuestArena *arena) {
   /*
@@ -90,3 +92,5 @@ int guest_arena_acquire(GuestArena *arena) {
   return 0;
 }
 #endif
+
+} // namespace x2::native

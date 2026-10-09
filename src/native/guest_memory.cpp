@@ -34,7 +34,7 @@
    granule is larger.  Apple Silicon uses 16 KiB hardware pages: treating that
    as the guest page size made a MEM_DECOMMIT of one Windows page revoke access
    to three still-committed neighbours. */
-#define GUEST_PAGE_COUNT (GUEST_SPACE_SIZE / GUEST_PAGE_SIZE)
+#define GUEST_PAGE_COUNT (x2::native::GUEST_SPACE_SIZE / GUEST_PAGE_SIZE)
 #define PAGE_MAPPED 0x80u
 
 /* Both arenas are this process's own memory for the whole run: mapping and
@@ -135,7 +135,7 @@ static int span(uint32_t address, size_t size, uint32_t *first,
                 uint32_t *count) {
   uint64_t start = align_down(address);
   uint64_t end = align_up((uint64_t)address + size);
-  if (!size || end > GUEST_SPACE_SIZE || end <= start)
+  if (!size || end > x2::native::GUEST_SPACE_SIZE || end <= start)
     return -1;
   *first = (uint32_t)(start / GUEST_PAGE_SIZE);
   *count = (uint32_t)((end - start) / GUEST_PAGE_SIZE);
@@ -220,14 +220,14 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
 int guest_memory_init(void) {
   if (g_ready)
     return 0;
-  GuestArena arena;
-  if (guest_arena_acquire(&arena) != 0)
+  x2::native::GuestArena arena;
+  if (x2::native::guest_arena_acquire(&arena) != 0)
     return -1;
   g_guest_memory_base = arena.base;
   g_window.host = (uint8_t *)arena.base;
   g_window.guard_above = arena.guard_above;
 #if GUEST_ARENA_WINDOW
-  g_window.size = (uint32_t)GUEST_SPACE_SIZE;
+  g_window.size = (uint32_t)x2::native::GUEST_SPACE_SIZE;
   g_window.perms = g_perms;
   g_window.page_shift = GUEST_PAGE_SHIFT;
 #else
@@ -250,7 +250,7 @@ GuestMemoryWindow guest_memory_window(void) { return g_window; }
 int guest_memory_host_address(const void *pointer, uint32_t *address) {
   uintptr_t host = (uintptr_t)pointer;
   if (host < g_guest_memory_base ||
-      (uint64_t)(host - g_guest_memory_base) >= GUEST_SPACE_SIZE)
+      (uint64_t)(host - g_guest_memory_base) >= x2::native::GUEST_SPACE_SIZE)
     return 0;
   if (address)
     *address = (uint32_t)(host - g_guest_memory_base);
@@ -323,7 +323,7 @@ uint32_t guest_memory_run(uint32_t address, int *mapped) {
 GuestMemoryRegionUse guest_memory_region_use(uint32_t lo, uint32_t hi) {
   GuestMemoryRegionUse use = {0, 0, 0};
   uint64_t page;
-  const uint64_t end = hi ? (uint64_t)hi : GUEST_SPACE_SIZE;
+  const uint64_t end = hi ? (uint64_t)hi : x2::native::GUEST_SPACE_SIZE;
   pthread_mutex_lock(&g_pages_lock);
   for (page = lo / GUEST_PAGE_SIZE;
        page < end / GUEST_PAGE_SIZE && page < GUEST_PAGE_COUNT; page++) {
@@ -450,7 +450,8 @@ int guest_memory_try_read(uint32_t address, void *destination, size_t size) {
 void guest_memory_outside_window(uint32_t address) {
   x2_log_error("guest_memory: guest address 0x%08x is outside the %llu MB "
                "window; the layout in guest_layout.h ends at 0x%08x\n",
-               address, (unsigned long long)(GUEST_SPACE_SIZE >> 20),
+               address,
+               (unsigned long long)(x2::native::GUEST_SPACE_SIZE >> 20),
                (unsigned)GUEST_LAYOUT_LIMIT);
   abort();
 }

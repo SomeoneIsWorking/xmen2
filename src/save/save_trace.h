@@ -1,13 +1,14 @@
-#ifndef X2_SAVE_TRACE_H
-#define X2_SAVE_TRACE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-#define SAVE_TRACE_EVENT_CAPACITY 64u
-#define SAVE_TRACE_LABEL_CAPACITY 48u
+namespace x2::save {
 
-typedef enum {
+inline constexpr unsigned SAVE_TRACE_EVENT_CAPACITY = 64u;
+inline constexpr unsigned SAVE_TRACE_LABEL_CAPACITY = 48u;
+
+enum SaveTracePoint {
   SAVE_TRACE_MENU_BUILD,
   SAVE_TRACE_MENU_OPEN,
   SAVE_TRACE_MAIN_ENGB_OPEN,
@@ -24,30 +25,30 @@ typedef enum {
   SAVE_TRACE_LOCK_COMBAT,
   SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
   SAVE_TRACE_POINT_COUNT
-} SaveTracePoint;
+};
 
-typedef enum {
+enum SaveTraceAnswer {
   SAVE_TRACE_ANSWER_UNKNOWN,
   SAVE_TRACE_ANSWER_NO,
   SAVE_TRACE_ANSWER_YES
-} SaveTraceAnswer;
+};
 
-typedef enum {
+enum SaveTraceResult {
   SAVE_TRACE_RECORDED,
   SAVE_TRACE_REFUSED_DISABLED,
   SAVE_TRACE_REFUSED_INVALID,
   SAVE_TRACE_REFUSED_CAPACITY
-} SaveTraceResult;
+};
 
-typedef struct {
+struct SaveTracePointStats {
   uint64_t attempts;
   uint64_t recorded;
   uint64_t yes;
   uint64_t no;
   uint64_t unknown;
-} SaveTracePointStats;
+};
 
-typedef struct {
+struct SaveTraceEvent {
   uint64_t sequence;
   SaveTracePoint point;
   SaveTraceAnswer answer;
@@ -58,9 +59,9 @@ typedef struct {
   uint32_t buffer;
   int label_truncated;
   char label[SAVE_TRACE_LABEL_CAPACITY];
-} SaveTraceEvent;
+};
 
-typedef struct {
+struct SaveTrace {
   int enabled;
   uint64_t attempts;
   uint64_t recorded;
@@ -72,7 +73,7 @@ typedef struct {
   size_t retained;
   SaveTracePointStats point[SAVE_TRACE_POINT_COUNT];
   SaveTraceEvent event[SAVE_TRACE_EVENT_CAPACITY];
-} SaveTrace;
+};
 
 /* This collector is intentionally inert until enabled. Disabled observations
    retain no payload, but count as explicit refusals so an unwired capture and
@@ -111,4 +112,4 @@ int save_trace_event_at(const SaveTrace *trace, size_t chronological_index,
 SaveTraceResult save_trace_report(const SaveTrace *trace, char *out,
                                   size_t size, size_t *required);
 
-#endif
+} // namespace x2::save

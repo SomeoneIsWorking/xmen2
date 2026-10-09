@@ -8,21 +8,25 @@
 int main(void) {
   static const uint8_t black[4] = {0, 0, 0, 255};
   static const uint8_t white[4] = {255, 255, 255, 255};
-  D3D8TextureLumaStats stats;
+  x2::d3d8::D3D8TextureLumaStats stats;
   int failures = 0;
   /* Disarmed, the per-upload pass must not run: scanning every level-0 upload
      is the cost this gate exists to remove. */
   config_override_unset(x2::config::ConfigOverride::TextureLuma);
-  d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white, sizeof(white));
-  d3d8_texture_luma_note(12, 0, 1, 1, white, sizeof(white));
-  d3d8_texture_luma_get_stats(&stats);
+  x2::d3d8::d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white,
+                                   sizeof(white));
+  x2::d3d8::d3d8_texture_luma_note(12, 0, 1, 1, white, sizeof(white));
+  x2::d3d8::d3d8_texture_luma_get_stats(&stats);
   failures += stats.textures != 0 || stats.unreadable_uploads != 0;
   config_override_set(x2::config::ConfigOverride::TextureLuma, "1", 1);
-  d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, black, sizeof(black));
-  d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white, sizeof(white));
-  d3d8_texture_luma_note(11, D3DFMT_X8R8G8B8, 1, 1, black, sizeof(black));
-  d3d8_texture_luma_note(12, 0, 1, 1, white, sizeof(white));
-  d3d8_texture_luma_get_stats(&stats);
+  x2::d3d8::d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, black,
+                                   sizeof(black));
+  x2::d3d8::d3d8_texture_luma_note(10, D3DFMT_A8R8G8B8, 1, 1, white,
+                                   sizeof(white));
+  x2::d3d8::d3d8_texture_luma_note(11, D3DFMT_X8R8G8B8, 1, 1, black,
+                                   sizeof(black));
+  x2::d3d8::d3d8_texture_luma_note(12, 0, 1, 1, white, sizeof(white));
+  x2::d3d8::d3d8_texture_luma_get_stats(&stats);
   failures += stats.textures != 2;
   failures += stats.unreadable_uploads != 1 || stats.dropped_textures != 0;
   failures += stats.mean_luma < 127.4 || stats.mean_luma > 127.6;

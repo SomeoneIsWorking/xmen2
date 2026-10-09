@@ -62,8 +62,9 @@ static uint32_t call0(CPU *cpu, uint32_t object, uint32_t slot, int *readable) {
   return call.reg[kX86pEax];
 }
 
-static CutsceneSkipPublicationBank publication_at(uint32_t controller) {
-  CutsceneSkipPublicationBank result = {0};
+static x2::native::CutsceneSkipPublicationBank
+publication_at(uint32_t controller) {
+  x2::native::CutsceneSkipPublicationBank result = {0};
   uint32_t object;
   unsigned slot;
   char why[160];
@@ -93,8 +94,8 @@ static void report_publication(char *out, size_t size, size_t *at,
   const uint32_t controller[INPUT_BINDING_SETS] = {INPUT_SET_MASTER + player,
                                                    INPUT_SET_WORKING + player,
                                                    INPUT_SET_MENU + player};
-  CutsceneSkipPublicationBank found[INPUT_BINDING_SETS];
-  CutsceneSkipPublicationSummary summary;
+  x2::native::CutsceneSkipPublicationBank found[INPUT_BINDING_SETS];
+  x2::native::CutsceneSkipPublicationSummary summary;
   unsigned bank;
 
   for (bank = 0; bank < INPUT_BINDING_SETS; bank++) {
@@ -105,7 +106,7 @@ static void report_publication(char *out, size_t size, size_t *at,
            found[bank].start ? "yes" : "no",
            found[bank].readable ? "" : "  (UNREADABLE)");
   }
-  summary = cutscene_skip_publication_classify(found);
+  summary = x2::native::cutscene_skip_publication_classify(found);
   append(out, size, at,
          "  publication: Escape %u/%u banks%s; Start %u/%u banks%s; "
          "%u/%u readable\n",
@@ -122,14 +123,14 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
   static const char *const controls[] = {"unreadable", "locked", "released"};
   static const char *const conversations[] = {
       "inactive", "waiting", "deterministic", "choice", "unreadable"};
-  CutscenePlayerSnapshot player;
+  x2::native::CutscenePlayerSnapshot player;
   ConversationPlayerState conversation = conversation_player_state(cpu);
   unsigned payload = conversation >= CONVERSATION_PLAYER_INACTIVE &&
                              conversation <= CONVERSATION_PLAYER_CHOICE
                          ? (unsigned)conversation
                          : 4u;
 
-  cutscene_player_snapshot(cpu, &player);
+  x2::native::cutscene_player_snapshot(cpu, &player);
   cutscene_dialogue_snapshot(&dialogue);
   x2::native::cutscene_script_audio_snapshot(&audio);
   append(

@@ -51,7 +51,7 @@ void gpu_upload_batch_flush(SDL_GPUDevice *device) {
   /* Every byte these copies read is referenced now, so the ring's pages are
      cycled before they are written again rather than overwritten under a
      copy that has not run yet. */
-  gpu_staging_ring_submitted();
+  x2::gpu::gpu_staging_ring_submitted();
 }
 
 unsigned long gpu_upload_batch_submits(void) { return g_batches; }

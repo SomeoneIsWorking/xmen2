@@ -7,15 +7,14 @@
  * loading -- asks for the same thing. So this is the general answer rather
  * than a way around one caller.
  *
- * Exactly one guest thread executes at a time
- * here: the kernel32 handle table, the guest heap's free lists, the D3D8
- * object tables, the boundary ring and the CRT's statics are all
- * single-threaded by an assumption nobody wrote down, and auditing that at
- * once is how a threading change becomes a month of heisenbugs. Each guest
- * thread therefore has a pthread, but it may enter translated code only while
- * holding the global guest mutex. Condition variables release that mutex at
- * waits and suspend points, and the boundary quantum yields it for spinning
- * guest code.
+ * Exactly one guest thread executes at a time here: the kernel32 handle table,
+ * the guest heap's free lists, the D3D8 object tables, the boundary ring and
+ * the CRT's statics are all single-threaded by an assumption nobody wrote down,
+ * and auditing that at once is how a threading change becomes a month of
+ * heisenbugs. Each guest thread therefore has a pthread, but it may enter
+ * translated code only while holding the global guest mutex. Condition
+ * variables release that mutex at waits and suspend points, and the boundary
+ * quantum yields it for spinning guest code.
  *
  * PREEMPTION IS STILL REQUIRED, and this is why. libCriMovie's rendezvous, read
  * out of the guest (issue #57 has the addresses): the decoder loop works until
@@ -68,19 +67,18 @@ void k32_handle_thread_done(void *rec);
 void k32_tls_switch(int slot);
 /* ---- what each guest thread is doing ------------------------------------ */
 
-#define MAIN_SLOT MAX_THREADS /* the main thread's TLS slot */
+#define MAIN_SLOT x2::native::MAX_THREADS /* the main thread's TLS slot */
 /* kernel32.cpp has to know it too, and before this file gets to run. */
-#if MAIN_SLOT != GUEST_MAIN_TLS_SLOT
-#error                                                                         \
-    "MAIN_SLOT and GUEST_MAIN_TLS_SLOT disagree; kernel32 would give the main thread the wrong TLS"
-#endif
+static_assert(MAIN_SLOT == GUEST_MAIN_TLS_SLOT,
+              "MAIN_SLOT and GUEST_MAIN_TLS_SLOT disagree; kernel32 would give "
+              "the main thread the wrong TLS");
 #define HSTACK_BYTES (8u * 1024u * 1024u)
 
-static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
+static x2::native::GuestThread g_thread[MAIN_SLOT + 1]; /* +1: main thread */
 /* Records in g_thread that are used and not finished; see
    guest_thread_others_live. */
 static std::atomic<int> g_live_threads;
-static __thread GuestThread *g_self;
+static __thread x2::native::GuestThread *g_self;
 /* Declared in x86rt.h and naturally separated by the host pthreads. */
 extern __thread uint32_t g_fsbase, g_gsbase;
 
@@ -166,12 +164,12 @@ int scheduler_has_waiter(void) {
   if (!guest_thread_others_live(g_live_threads.load(std::memory_order_relaxed),
                                 g_self))
     return 0;
-  return guest_thread_any_ready(g_thread, MAX_THREADS + 1, g_self, now_s);
+  return guest_thread_any_ready(g_thread, MAIN_SLOT + 1, g_self, now_s);
 }
 
 /* Attach the process main thread to the same bookkeeping as created threads. */
 static void sched_attach_main(void) {
-  GuestThread *t = &g_thread[MAIN_SLOT];
+  x2::native::GuestThread *t = &g_thread[MAIN_SLOT];
   if (t->used)
     return;
   memset(t, 0, sizeof *t);
@@ -179,7 +177,7 @@ static void sched_attach_main(void) {
   t->is_main = 1;
   t->slot = MAIN_SLOT;
   t->tid = MAIN_TID;
-  t->state = TS_RUNNING;
+  t->state = x2::native::TS_RUNNING;
   t->state_since = now_s();
   g_live_threads.fetch_add(1, std::memory_order_relaxed);
   g_self = t;
@@ -194,7 +192,7 @@ void guest_lock(void) {
   if (pthread_mutex_trylock(&g_lock) != 0) {
     g_contended++;
     g_waiters++;
-    state_set(TS_LOCK);
+    state_set(x2::native::TS_LOCK);
     pthread_mutex_lock(&g_lock);
     g_waiters--;
   }
@@ -203,7 +201,7 @@ void guest_lock(void) {
   k32_tls_switch(g_self->slot);
   guest_suspend_point();
   g_self->n_ran++;
-  state_set(TS_RUNNING);
+  state_set(x2::native::TS_RUNNING);
 }
 
 void guest_unlock(void) {
@@ -244,7 +242,7 @@ unsigned long guest_quantum_count(void) { return g_quanta; }
  * pthread can make progress.
  */
 void guest_blocking_begin(void) {
-  state_set(TS_BLOCKING);
+  state_set(x2::native::TS_BLOCKING);
   guest_unlock();
 }
 void guest_blocking_end(void) {
@@ -265,14 +263,14 @@ void guest_blocking_end(void) {
  * created and destroyed with the handle.
  */
 void guest_cond_wait_us(uint64_t us) {
-  GuestThread *t = g_self;
+  x2::native::GuestThread *t = g_self;
   if (!t) {
     sched_attach_main();
     t = g_self;
   }
   x86_override_leaf_forbid("waited, releasing the guest lock");
   guest_thread_enter_cond_wait(t, us, now_s());
-  state_set(TS_COND);
+  state_set(x2::native::TS_COND);
   g_switches++;
   g_cond_waiters++;
   if (us == GUEST_WAIT_FOREVER) {
@@ -281,7 +279,7 @@ void guest_cond_wait_us(uint64_t us) {
     struct timespec now, ts;
     int rc;
     clock_gettime(CLOCK_REALTIME, &now);
-    guest_thread_wait_deadline(&now, us, &ts);
+    x2::native::guest_thread_wait_deadline(&now, us, &ts);
     rc = pthread_cond_timedwait(&g_cond, &g_lock, &ts);
     guest_yield_note_park(rc == ETIMEDOUT);
   }
@@ -291,7 +289,7 @@ void guest_cond_wait_us(uint64_t us) {
      fresh turn, and the hand-off promise has to hear about it. */
   guest_yield_turn_taken();
   k32_tls_switch(t->slot);
-  state_set(TS_RUNNING);
+  state_set(x2::native::TS_RUNNING);
   guest_suspend_point();
 }
 
@@ -300,7 +298,7 @@ void guest_cond_wait_us(uint64_t us) {
    and Win32's SetEvent does not yield either. */
 void guest_cond_broadcast(void) {
   /* The broadcast is what makes a parked thread READY: see threads_ready.h. */
-  guest_thread_mark_cond_ready(g_thread, MAX_THREADS + 1);
+  guest_thread_mark_cond_ready(g_thread, MAIN_SLOT + 1);
   if (g_cond_waiters > 0)
     pthread_cond_broadcast(&g_cond);
 }
@@ -330,20 +328,20 @@ void guest_sleep_ms(uint32_t ms) {
 /* ---- creating and ending threads ---------------------------------------- */
 
 static void *thread_main(void *argument) {
-  GuestThread *t = (GuestThread *)argument;
+  x2::native::GuestThread *t = (x2::native::GuestThread *)argument;
   CPU C;
 
   g_self = t;
   guest_lock();
   if (t->suspended)
-    state_set(TS_SUSPENDED);
+    state_set(x2::native::TS_SUSPENDED);
   while (t->suspended) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
     g_cond_waiters--;
     guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
-  state_set(TS_RUNNING);
+  state_set(x2::native::TS_RUNNING);
   /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
      Win32's end-of-chain marker; a zero would look like a record at 0 to
      anything that walked it. */
@@ -372,7 +370,7 @@ static void *thread_main(void *argument) {
 
   t->finished = 1;
   g_live_threads.fetch_sub(1, std::memory_order_relaxed);
-  t->state = TS_DONE;
+  t->state = x2::native::TS_DONE;
   t->state_since = now_s();
   g_exited++;
   k32_handle_thread_done(t);
@@ -389,13 +387,13 @@ uint32_t guest_thread_create(uint32_t start, uint32_t arg, uint32_t stack_bytes,
 uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
                                 uint32_t stack_bytes, int suspended,
                                 uint32_t *tid_out) {
-  GuestThread *t = NULL;
+  x2::native::GuestThread *t = NULL;
   pthread_attr_t attr;
   int i, result;
 
   if (!g_self)
     sched_attach_main();
-  for (i = 0; i < MAX_THREADS; i++)
+  for (i = 0; i < x2::native::MAX_THREADS; i++)
     if (!g_thread[i].used) {
       t = &g_thread[i];
       break;
@@ -404,7 +402,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
     x2_log_error("threads: all %d guest thread slots are live. This is "
                  "a fixed table, not a leak report -- raise MAX_THREADS "
                  "in src/native/threads.cpp.\n",
-                 MAX_THREADS);
+                 x2::native::MAX_THREADS);
     return 0;
   }
   memset(t, 0, sizeof *t);
@@ -416,7 +414,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
      not run yet reported its age as the process uptime -- 8,989 seconds on
      a 130-second run, which is the instrument lying rather than the thread
      being stuck. */
-  t->state = TS_NEW;
+  t->state = x2::native::TS_NEW;
   t->state_since = now_s();
   t->suspended = suspended;
   t->start = start;
@@ -443,10 +441,8 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   pthread_detach(t->thread);
   g_live_threads.fetch_add(1, std::memory_order_relaxed);
 
-  /*
-   * The creator still holds the guest mutex, so the pthread cannot enter
-   * translated code before CreateThread has returned its handle.
-   */
+  /* The creator still holds the guest mutex, so the pthread cannot enter
+     translated code before CreateThread has returned its handle. */
   g_created++;
   if (tid_out)
     *tid_out = t->tid;
@@ -478,7 +474,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
  * them until exit is a leak with a very short fuse.
  */
 void guest_thread_handle_closed(uint32_t handle) {
-  GuestThread *t = (GuestThread *)k32_thread_record(handle);
+  auto *t = static_cast<x2::native::GuestThread *>(k32_thread_record(handle));
   if (t && t->used) {
     if (t->handle == handle)
       t->handle = 0;
@@ -495,8 +491,8 @@ void guest_thread_handle_closed(uint32_t handle) {
   }
 }
 
-static GuestThread *by_handle(uint32_t h) {
-  GuestThread *t = (GuestThread *)k32_thread_record(h);
+static x2::native::GuestThread *by_handle(uint32_t h) {
+  x2::native::GuestThread *t = (x2::native::GuestThread *)k32_thread_record(h);
   return t && t->used ? t : NULL;
 }
 
@@ -505,7 +501,7 @@ int guest_thread_is_thread(uint32_t handle) {
 }
 
 int guest_thread_finished(uint32_t handle, uint32_t *exit_code) {
-  GuestThread *t = by_handle(handle);
+  x2::native::GuestThread *t = by_handle(handle);
   if (!t)
     return 0;
   if (exit_code)
@@ -514,7 +510,7 @@ int guest_thread_finished(uint32_t handle, uint32_t *exit_code) {
 }
 
 int guest_thread_join(uint32_t handle, uint32_t ms) {
-  GuestThread *t = by_handle(handle);
+  x2::native::GuestThread *t = by_handle(handle);
   if (!t)
     return 0;
   while (!t->finished) {
@@ -544,10 +540,10 @@ int guest_thread_join(uint32_t handle, uint32_t ms) {
  * thousands of calls and diagnostics per second.
  */
 static void guest_suspend_point(void) {
-  GuestThread *t = g_self;
+  x2::native::GuestThread *t = g_self;
   if (!t || !t->suspended)
     return;
-  state_set(TS_SUSPENDED);
+  state_set(x2::native::TS_SUSPENDED);
   while (t->suspended) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
@@ -555,11 +551,11 @@ static void guest_suspend_point(void) {
     guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
   k32_tls_switch(t->slot);
-  state_set(TS_RUNNING);
+  state_set(x2::native::TS_RUNNING);
 }
 
 int guest_thread_suspend(uint32_t handle) {
-  GuestThread *t = by_handle(handle);
+  x2::native::GuestThread *t = by_handle(handle);
   int previous;
   if (!t) {
     g_suspend_unknown++;
@@ -586,7 +582,7 @@ int guest_thread_suspend(uint32_t handle) {
 
 /* ResumeThread returns the previous suspend count and removes one level. */
 int guest_thread_resume(uint32_t handle) {
-  GuestThread *t = by_handle(handle);
+  x2::native::GuestThread *t = by_handle(handle);
   int was;
   if (!t) {
     g_resume_unknown++;
@@ -633,7 +629,7 @@ int guest_thread_resume(uint32_t handle) {
 }
 
 void guest_thread_exit(uint32_t code) {
-  GuestThread *t = g_self;
+  x2::native::GuestThread *t = g_self;
   if (!t || t->is_main) {
     x2_log_error("threads: _endthreadex on the MAIN thread, which Win32 "
                  "does not allow and this host cannot honour -- the main "
@@ -643,7 +639,7 @@ void guest_thread_exit(uint32_t code) {
   t->exit_code = code;
   t->finished = 1;
   g_live_threads.fetch_sub(1, std::memory_order_relaxed);
-  t->state = TS_DONE;
+  t->state = x2::native::TS_DONE;
   g_exited++;
   k32_handle_thread_done(t);
   guest_cond_broadcast();
@@ -653,6 +649,7 @@ void guest_thread_exit(uint32_t code) {
 
 /* ---- what a report may see (threads_internal.h) ------------------------- */
 
+namespace x2::native {
 GuestThread *guest_thread_table(void) { return g_thread; }
 
 const GuestThread *guest_thread_self_record(void) { return g_self; }
@@ -671,3 +668,4 @@ void guest_thread_totals(GuestThreadTotals *out) {
   out->quantum = guest_quantum_size();
   out->contended = g_contended;
 }
+} // namespace x2::native

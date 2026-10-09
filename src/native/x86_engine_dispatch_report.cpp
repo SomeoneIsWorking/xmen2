@@ -8,6 +8,8 @@
 
 #include <lucent/log_c.h>
 
+namespace x2::native {
+
 /*
  * Issue #166. The static exit census says how many of a block's exits NAME a
  * constant successor; this says how many of the dispatches actually paid went
@@ -122,3 +124,5 @@ void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
                     100.0 * (double)top[i].entries / (double)total);
   }
 }
+
+} // namespace x2::native

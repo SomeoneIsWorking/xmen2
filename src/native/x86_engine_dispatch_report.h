@@ -5,12 +5,13 @@
  * Both are armed diagnostics and silent otherwise; the heartbeat and the
  * shutdown report call them with a line prefix.
  */
-#ifndef X2_X86_ENGINE_DISPATCH_REPORT_H
-#define X2_X86_ENGINE_DISPATCH_REPORT_H
+#pragma once
 
 #include "x86_engine_jit_pool.h"
 
 #include "jit_profile.h"
+
+namespace x2::native {
 
 /* Issue #166: of the dispatches actually paid, how many a chaining backend
    would have removed. Silent unless jit.chain armed the census. */
@@ -49,4 +50,4 @@ void x86_engine_report_hot_blocks(const X86EngineJitPool *jit, const char *tag);
 void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
                                        const char *tag);
 
-#endif
+} // namespace x2::native

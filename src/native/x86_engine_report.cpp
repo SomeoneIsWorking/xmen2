@@ -286,9 +286,9 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
   report_compaction(&js, refusal_reason(jit), "[HB] ");
   report_invalidation(&js);
   report_block_cache(&js);
-  x86_engine_report_chain_census(jit, "[HB] ");
-  x86_engine_x87_census_report("[HB] ");
-  x86_engine_report_hot_blocks(jit, "[HB] ");
+  x2::native::x86_engine_report_chain_census(jit, "[HB] ");
+  x2::native::x86_engine_x87_census_report("[HB] ");
+  x2::native::x86_engine_report_hot_blocks(jit, "[HB] ");
 }
 
 /*
@@ -440,7 +440,7 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         100.0 * (double)js.simd_inline / (double)js.simd_translated,
         (unsigned long long)(js.simd_translated - js.simd_inline));
   report_compaction(&js, refusal_reason(jit), "");
-  x86_engine_report_chain_census(jit, "");
-  x86_engine_x87_census_report("");
-  x86_engine_report_hot_blocks(jit, "");
+  x2::native::x86_engine_report_chain_census(jit, "");
+  x2::native::x86_engine_x87_census_report("");
+  x2::native::x86_engine_report_hot_blocks(jit, "");
 }

@@ -70,7 +70,7 @@ int main() {
   /* Not armed at all: the arming decision is reported once at startup, so a
      heartbeat repeating it every five seconds would bury what changes. */
   g_lines.clear();
-  x86_engine_report_hot_blocks_from(nullptr, "[HB] ");
+  x2::native::x86_engine_report_hot_blocks_from(nullptr, "[HB] ");
   check(g_lines.empty(), "an unarmed histogram prints nothing");
 
   X86pJitProfile *profile = x86p_jit_profile_create(64u);
@@ -81,7 +81,7 @@ int main() {
 
   /* Armed and empty. The whole point of the file. */
   g_lines.clear();
-  x86_engine_report_hot_blocks_from(profile, "[HB] ");
+  x2::native::x86_engine_report_hot_blocks_from(profile, "[HB] ");
   check(g_lines.size() == 1, "armed and empty says exactly one thing");
   check(said("armed and has recorded no block entry"),
         "armed and empty names itself rather than printing a bare table head");
@@ -92,7 +92,7 @@ int main() {
   x86p_jit_profile_hit(profile, 0x00401000u);
   x86p_jit_profile_hit(profile, 0x00402000u);
   g_lines.clear();
-  x86_engine_report_hot_blocks_from(profile, "[HB] ");
+  x2::native::x86_engine_report_hot_blocks_from(profile, "[HB] ");
   check(!said("recorded no block entry"),
         "a populated histogram does not claim to be empty");
   check(said("2 distinct, 3 entries total"), "the header counts what went in");
@@ -104,7 +104,7 @@ int main() {
 
   /* The tag is what tells a running snapshot from the final one. */
   g_lines.clear();
-  x86_engine_report_hot_blocks_from(profile, "");
+  x2::native::x86_engine_report_hot_blocks_from(profile, "");
   check(g_lines.size() == 3, "the untagged form prints the same rows");
   check(!said("[HB] "), "the untagged form carries no heartbeat prefix");
 

@@ -1,11 +1,12 @@
 /* End-of-frame mechanics private to the GPU subsystem. */
-#ifndef X2_GPU_CAPTURE_INTERNAL_H
-#define X2_GPU_CAPTURE_INTERNAL_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
+
+namespace x2::gpu {
 
 /* Redirect final presentation into a retained texture while capture is armed.
    `fallback` remains the target when no request exists or allocation fails. */
@@ -29,6 +30,6 @@ int gpu_capture_submit_frame(SDL_GPUDevice *device,
                              SDL_GPUCommandBuffer *command, int windowless,
                              SDL_GPUTexture *rendered, SDL_GPUTexture *output,
                              uint32_t width, uint32_t height);
-#endif
 
+} // namespace x2::gpu
 #endif

@@ -12,6 +12,8 @@
 
 #include <stdio.h>
 
+namespace x2::native {
+
 /*
  * The game's controller enumeration, as recovered metadata: XMen2.exe
  * FUN_00628e20, __thiscall(BOOL bRecordNew) on the input manager, whose
@@ -189,3 +191,5 @@ void dinput8_hotplug_enumerated(unsigned long long generation, int connected,
 }
 
 unsigned long dinput8_hotplug_admissions(void) { return g_hotplug.admissions; }
+
+} // namespace x2::native

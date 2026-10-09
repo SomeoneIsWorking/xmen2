@@ -1,8 +1,9 @@
-#ifndef X2_D3D8_TEXTURE_STAGE_H
-#define X2_D3D8_TEXTURE_STAGE_H
+#pragma once
 
 #include "d3d8_state.h"
 #include "gpu_draw.h"
+
+namespace x2::d3d8 {
 
 int d3d8_texture_arg(uint32_t value, const char *what);
 
@@ -16,4 +17,4 @@ void d3d8_texture_stage_unresolved(unsigned long *count);
 int d3d8_texture_stage1_lower(const D3D8State *state, GpuTexture texture,
                               GpuDraw *draw);
 
-#endif
+} // namespace x2::d3d8

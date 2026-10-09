@@ -49,13 +49,13 @@ static const float SHADOW_DARKNESS = 0.55f;
 /* What the shadow pass has bound; see gpu_pass_binds.h. */
 static GpuPassBinds g_binds;
 
-static const GpuShaderWord shadow_depth_vert_code[] =
+static const x2::gpu::GpuShaderWord shadow_depth_vert_code[] =
 #include "shaders/shadow_depth_vert.inc"
     ;
-static const GpuShaderWord shadow_depth_frag_code[] =
+static const x2::gpu::GpuShaderWord shadow_depth_frag_code[] =
 #include "shaders/shadow_depth_frag.inc"
     ;
-static const GpuShaderWord shadow_vs11_vert_code[] =
+static const x2::gpu::GpuShaderWord shadow_vs11_vert_code[] =
 #include "shaders/shadow_vs11_vert.inc"
     ;
 
@@ -114,7 +114,7 @@ static SDL_GPUShader *load_shader(const void *code, size_t size,
   info.code = (const Uint8 *)code;
   info.code_size = size;
   info.entrypoint = "main";
-  info.format = X2_GPU_SHADER_FORMAT;
+  info.format = x2::gpu::X2_GPU_SHADER_FORMAT;
   info.stage = stage;
   info.num_samplers = samplers;
   info.num_uniform_buffers = uniforms;
@@ -138,13 +138,15 @@ static int resources_ready(void) {
     return 0;
   }
   if (!g_vertex_shader)
-    g_vertex_shader = load_shader(shadow_depth_vert_code,
-                                  X2_GPU_SHADER_SIZE(shadow_depth_vert_code),
-                                  SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
+    g_vertex_shader =
+        load_shader(shadow_depth_vert_code,
+                    x2::gpu::X2_GPU_SHADER_SIZE(shadow_depth_vert_code),
+                    SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
   if (!g_fragment_shader)
-    g_fragment_shader = load_shader(shadow_depth_frag_code,
-                                    X2_GPU_SHADER_SIZE(shadow_depth_frag_code),
-                                    SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    g_fragment_shader =
+        load_shader(shadow_depth_frag_code,
+                    x2::gpu::X2_GPU_SHADER_SIZE(shadow_depth_frag_code),
+                    SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
   if (!g_vertex_shader || !g_fragment_shader) {
     x2_log_error("gpu shadow: depth shaders could not be created: %s\n",
                  SDL_GetError());
@@ -201,9 +203,10 @@ static int resources_ready(void) {
    two blocks. Made on the first such caster. */
 static int vs11_shader_ready(void) {
   if (!g_vs11_shader)
-    g_vs11_shader = load_shader(shadow_vs11_vert_code,
-                                X2_GPU_SHADER_SIZE(shadow_vs11_vert_code),
-                                SDL_GPU_SHADERSTAGE_VERTEX, 0, 3);
+    g_vs11_shader =
+        load_shader(shadow_vs11_vert_code,
+                    x2::gpu::X2_GPU_SHADER_SIZE(shadow_vs11_vert_code),
+                    SDL_GPU_SHADERSTAGE_VERTEX, 0, 3);
   if (!g_vs11_shader) {
     x2_log_error("gpu shadow: the VS 1.1 depth shader could not be created: "
                  "%s\n",

@@ -3,28 +3,29 @@
  * and advapi32_host_store.cpp (the one boot-time host publication). Nothing
  * outside ADVAPI32 may include this.
  */
-#ifndef X2_ADVAPI32_INTERNAL_H
-#define X2_ADVAPI32_INTERNAL_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-#define MAX_PATH_ 256
-#define MAX_NAME_ 96
-#define MAX_DATA_ 512
+namespace x2::native {
 
-typedef struct {
+inline constexpr int MAX_PATH_ = 256;
+inline constexpr int MAX_NAME_ = 96;
+inline constexpr int MAX_DATA_ = 512;
+
+struct RegValue {
   int used;
   char path[MAX_PATH_]; /* HIVE\key\subkey, no trailing sep */
   char name[MAX_NAME_]; /* "" is the key's default value */
   uint32_t type;
   uint32_t len;
   unsigned char data[MAX_DATA_];
-} RegValue;
+};
 
 /* Keys that exist but hold no value still have to be findable, or a
    RegCreateKey followed by RegOpenKey reports the key missing. They are
    recorded as a value row with a name of "\x01" that nothing enumerates. */
-#define KEY_MARK "\001"
+inline constexpr const char *KEY_MARK = "\001";
 
 /* The store, owned by advapi32.cpp. Lazy-loading on first touch is part of the
    contract -- every entry point here may run before any other. */
@@ -39,4 +40,4 @@ RegValue *advapi32_store_put(const char *path, const char *name);
    would, so a published value survives like one the game saved itself. */
 void advapi32_store_note_write(void);
 
-#endif /* X2_ADVAPI32_INTERNAL_H */
+} // namespace x2::native

@@ -115,7 +115,7 @@ int gpu_device_create(void) {
                 "EVERY draw; a timing measured with it on is not a timing of "
                 "this renderer.\n",
                 debug ? "ON" : "off", e && *e ? e : "unset");
-    g_gpu = SDL_CreateGPUDevice(X2_GPU_SHADER_FORMAT, debug, NULL);
+    g_gpu = SDL_CreateGPUDevice(x2::gpu::X2_GPU_SHADER_FORMAT, debug, NULL);
   }
   if (!g_gpu) {
     x2_log_error("gpu: SDL_CreateGPUDevice FAILED: %s\n"
@@ -515,7 +515,8 @@ int gpu_frame_begin(void) {
       return 0;
     }
   } else
-    g_swap = gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
+    g_swap = x2::gpu::gpu_capture_frame_target(g_gpu, g_output, g_output_w,
+                                               g_output_h);
   gpu_shadow_frame_begin();
   g_clear.mask = 0;
   gpu_host_timer_frame_reset();
@@ -548,8 +549,8 @@ void gpu_frame_end(void) {
   }
   final_output = g_output;
   if (!g_offscreen && g_output && gpu_present_is_configured())
-    final_output =
-        gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
+    final_output = x2::gpu::gpu_capture_frame_target(g_gpu, g_output,
+                                                     g_output_w, g_output_h);
   else if (!g_offscreen && g_output && g_swap != g_output)
     final_output = g_swap;
   if (!g_offscreen && g_output && gpu_present_is_configured() &&
@@ -573,7 +574,7 @@ void gpu_frame_end(void) {
   if (x2::presentation::boot_blackout_active())
     gpu_present_boot_blackout(
         g_cmd, x2::gpu::gpu_headless_active() ? g_swap : final_output);
-  gpu_capture_submit_frame(
+  x2::gpu::gpu_capture_submit_frame(
       g_gpu, g_cmd, x2::gpu::gpu_headless_active(),
       x2::gpu::gpu_headless_active() ? g_swap : final_output,
       x2::gpu::gpu_headless_active() ? NULL : g_output,

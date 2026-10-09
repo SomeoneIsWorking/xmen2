@@ -77,7 +77,7 @@ typedef struct {
   D3D8Object **level_surface;
   unsigned long uploads;
   uint32_t last_upload_level;
-  D3D8TextureProvenance provenance;
+  x2::d3d8::D3D8TextureProvenance provenance;
 } Resource;
 
 static unsigned long g_textures, g_cubetextures, g_vbuffers, g_ibuffers;
@@ -307,7 +307,8 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
   r->usage = usage;
   r->pool = pool;
   r->faces = faces;
-  d3d8_texture_provenance_init(&r->provenance, w, h, format, levels, faces);
+  x2::d3d8::d3d8_texture_provenance_init(&r->provenance, w, h, format, levels,
+                                         faces);
   r->chain_bytes = total;
   total *= faces;
   r->gtex = (faces == 6) ? gpu_texture_create_cube(w, gf, levels)
@@ -425,7 +426,7 @@ int d3d8_resource_index_is_32bit(D3D8Object *o) {
 }
 
 int d3d8_resource_texture_provenance(const D3D8Object *o,
-                                     D3D8TextureProvenance *out) {
+                                     x2::d3d8::D3D8TextureProvenance *out) {
   const Resource *r;
   D3D8IfaceId iface;
   if (!out)
@@ -694,11 +695,12 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
                    r->gtex, sub / r->levels, sub % r->levels, r->levels, lw, lh,
                    level_bytes(r->format, lw, lh));
   }
-  d3d8_texture_provenance_uploaded(&r->provenance, sub / r->levels,
-                                   sub % r->levels, bytes, byte_count);
+  x2::d3d8::d3d8_texture_provenance_uploaded(
+      &r->provenance, sub / r->levels, sub % r->levels, bytes, byte_count);
   if ((sub % r->levels) == 0)
-    d3d8_texture_luma_note(static_cast<uint32_t>(r->gtex), r->format, lw, lh,
-                           static_cast<const uint8_t *>(bytes), byte_count);
+    x2::d3d8::d3d8_texture_luma_note(
+        static_cast<uint32_t>(r->gtex), r->format, lw, lh,
+        static_cast<const uint8_t *>(bytes), byte_count);
   if ((sub % r->levels) == 0 &&
       (r->format == D3DFMT_A8R8G8B8 || r->format == D3DFMT_X8R8G8B8))
     x2::media::fmv_probe_upload(static_cast<const uint8_t *>(bytes), byte_count,
@@ -1040,5 +1042,5 @@ void d3d8_resource_report(void) {
       "  d3d8 resources: %lu texture(s), %lu cube texture(s), %lu vertex "
       "buffer(s), %lu index buffer(s)\n",
       g_textures, g_cubetextures, g_vbuffers, g_ibuffers);
-  d3d8_texture_luma_report();
+  x2::d3d8::d3d8_texture_luma_report();
 }

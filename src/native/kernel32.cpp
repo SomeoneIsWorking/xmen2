@@ -2381,7 +2381,7 @@ void imp_KERNEL32_GetCommandLineA(CPU *C) {
      guest_command_line.cpp for the measurement that showed what that costs. */
   static uint32_t p;
   if (!p)
-    p = guest_strdup(guest_command_line());
+    p = guest_strdup(x2::native::guest_command_line());
   ret_std(C, p, 0);
 }
 

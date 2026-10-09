@@ -4,6 +4,8 @@
 
 #include <string.h>
 
+namespace x2::native {
+
 /* One line at a time. Longer than this is logged in pieces rather than
    truncated: the guest's own messages are short, and a message that is cut
    off is worse than one that wraps. */
@@ -42,3 +44,5 @@ size_t crt_console_write(const char *bytes, size_t n) {
 }
 
 void crt_console_flush(void) { emit(); }
+
+} // namespace x2::native

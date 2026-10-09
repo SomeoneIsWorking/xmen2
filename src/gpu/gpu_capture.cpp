@@ -133,6 +133,8 @@ void gpu_capture_discard(void) {
 void gpu_capture_set_frame_observer(void (*fn)(void)) { g_frame_observer = fn; }
 
 #ifdef X2_WITH_SDL
+namespace x2::gpu {
+
 static int capture_reserve_pixels(uint32_t width, uint32_t height) {
   unsigned char *larger;
   char reason[192];
@@ -324,6 +326,8 @@ int gpu_capture_submit_frame(SDL_GPUDevice *device,
     g_frame_observer();
   return submitted;
 }
+
+} // namespace x2::gpu
 #endif
 
 void gpu_capture_shutdown(void) {

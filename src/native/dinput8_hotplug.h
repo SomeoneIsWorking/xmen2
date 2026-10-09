@@ -1,5 +1,4 @@
-#ifndef X2_DINPUT8_HOTPLUG_H
-#define X2_DINPUT8_HOTPLUG_H
+#pragma once
 
 /* Hotswap: keeping the game's controller table in step with the live pad
    inventory. The game enumerates controllers once at startup and has no
@@ -9,6 +8,8 @@
    have. See dinput8.cpp for the IDirectInput8 object it belongs to. */
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* Remembered from the game's first IDirectInput8::EnumDevices(GAMECTRL):
    the callback to invoke, its pvRef (the input manager), and which function
@@ -32,4 +33,4 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu);
 /* How many admissions have run (shutdown report denominator). */
 unsigned long dinput8_hotplug_admissions(void);
 
-#endif /* X2_DINPUT8_HOTPLUG_H */
+} // namespace x2::native

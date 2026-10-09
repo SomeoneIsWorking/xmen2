@@ -3,6 +3,8 @@
 
 #include <math.h>
 
+namespace x2::native {
+
 int guest_thread_ready_to_run(const GuestThread *t, double now) {
   if (!t->used || t->finished) {
     return 0;
@@ -75,3 +77,5 @@ void guest_thread_wait_deadline(const struct timespec *base, uint64_t us,
     out->tv_nsec -= 1000000000L;
   }
 }
+
+} // namespace x2::native

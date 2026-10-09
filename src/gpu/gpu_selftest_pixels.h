@@ -1,5 +1,4 @@
-#ifndef GPU_SELFTEST_PIXELS_H
-#define GPU_SELFTEST_PIXELS_H
+#pragma once
 
 /*
  * The off-screen target the pixel-reading self-tests share, and the one check
@@ -13,26 +12,28 @@
  * A failing check PRINTS what it got against what it wanted, so a failure
  * names the wrong colour instead of only saying that a test failed.
  */
-#include "../native/x2_log.h"
+#include <lucent/log_c.h>
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-#define OFF_W 64
-#define OFF_H 64
+namespace x2::gpu {
+
+inline constexpr int OFF_W = 64;
+inline constexpr int OFF_H = 64;
 
 #ifdef X2_WITH_SDL
-static inline int px_is(const uint32_t *img, int x, int y, uint32_t bgra,
-                        const char *what) {
+inline int px_is(const uint32_t *img, int x, int y, uint32_t bgra,
+                 const char *what) {
   uint32_t got = img[(size_t)y * OFF_W + x];
   if (got == bgra)
     return 1;
-  x2_log_error(
-      "gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
-      "(%s)\n",
+  lucent_log_error(
+      "x2",
+      "gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x (%s)",
       x, y, got, bgra, what);
   return 0;
 }
 #endif
 
-#endif /* GPU_SELFTEST_PIXELS_H */
+} // namespace x2::gpu

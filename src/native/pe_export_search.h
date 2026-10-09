@@ -1,8 +1,9 @@
 /* Finding an export by name in a PE image's sorted export name table. */
-#ifndef PE_EXPORT_SEARCH_H
-#define PE_EXPORT_SEARCH_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /*
  * The index in the export name pointer table of `name`, or -1.
@@ -17,4 +18,4 @@
 long pe_export_name_index(const unsigned char *image, uint32_t names,
                           uint32_t count, const char *name);
 
-#endif
+} // namespace x2::native

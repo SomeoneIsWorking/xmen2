@@ -82,7 +82,7 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
   out->diffuse_source = rs(s, D3DRS_DIFFUSEMATERIALSOURCE, 1);
   out->ambient_source = rs(s, D3DRS_AMBIENTMATERIALSOURCE, 0);
   out->emissive_source = rs(s, D3DRS_EMISSIVEMATERIALSOURCE, 0);
-  d3d8_light_note_ambient(rs(s, D3DRS_AMBIENT, 0));
+  x2::d3d8::d3d8_light_note_ambient(rs(s, D3DRS_AMBIENT, 0));
   d3d8_argb_to_rgba(rs(s, D3DRS_AMBIENT, 0), out->global_ambient);
   /* The survey has to see the UNLIT draws too, and this early return is why
      it could not: its "0 unlit" was true by construction, not measured -- a
@@ -117,7 +117,7 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
       break;
     }
     if (out->nlights < 8)
-      d3d8_light_note_source(out->nlights, (int)i);
+      x2::d3d8::d3d8_light_note_source(out->nlights, (int)i);
     g = &out->light[out->nlights++];
     memset(g, 0, sizeof *g);
     g->type = (int)((const uint32_t *)L)[0];
@@ -171,9 +171,9 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
   {
     float wv[16];
     d3d8_worldview_transform(s, wv);
-    d3d8_light_note_viewpos(wv[12], wv[13], wv[14]);
+    x2::d3d8::d3d8_light_note_viewpos(wv[12], wv[13], wv[14]);
   }
-  d3d8_light_dump(out);
+  x2::d3d8::d3d8_light_dump(out);
   x2::d3d8::d3d8_light_survey(out);
 }
 
@@ -193,7 +193,7 @@ static void light_table_report(void) {
  * itself, which meant the run report had to know which diagnostics exist.
  */
 void d3d8_lighting_report(void) {
-  d3d8_light_dump_report();
+  x2::d3d8::d3d8_light_dump_report();
   light_table_report();
   x2::d3d8::d3d8_light_survey_report();
 }

@@ -27,6 +27,8 @@
 
 #include <stdio.h>
 
+namespace x2::native {
+
 const char *guest_command_line(void) {
   static char line[128];
   static int built;
@@ -45,3 +47,5 @@ const char *guest_command_line(void) {
   }
   return line;
 }
+
+} // namespace x2::native

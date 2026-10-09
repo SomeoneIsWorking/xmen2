@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 #define D3DTS_TEXTURE0 16
 
 #define D3DTSS_COLOROP 1
@@ -167,3 +169,5 @@ int d3d8_texture_stage1_lower(const D3D8State *state, GpuTexture texture,
     }
   return 1;
 }
+
+} // namespace x2::d3d8

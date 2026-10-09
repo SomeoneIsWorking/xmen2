@@ -46,7 +46,7 @@ int gpu_cube_texgen_selftest(void) {
     float x, y, z, rhw, nx, ny, nz;
   };
   static struct Vtx quad[6];
-  static uint32_t img[OFF_W * OFF_H];
+  static uint32_t img[x2::gpu::OFF_W * x2::gpu::OFF_H];
   /* One texel per face, in D3D8's face order: +X, -X, +Y, -Y, +Z, -Z. */
   static const uint32_t FACE[6] = {
       0xFFFF0000u, /* +X red    */
@@ -95,10 +95,15 @@ int gpu_cube_texgen_selftest(void) {
   }
 
   for (i = 0; i < 2; i++) {
-    static const float X[6] = {0.0f, (float)OFF_W, 0.0f,
-                               0.0f, (float)OFF_W, (float)OFF_W};
-    static const float Y[6] = {0.0f,         0.0f, (float)OFF_H,
-                               (float)OFF_H, 0.0f, (float)OFF_H};
+    static const float X[6] = {
+        0.0f, (float)x2::gpu::OFF_W, 0.0f,
+        0.0f, (float)x2::gpu::OFF_W, (float)x2::gpu::OFF_W};
+    static const float Y[6] = {0.0f,
+                               0.0f,
+                               (float)x2::gpu::OFF_H,
+                               (float)x2::gpu::OFF_H,
+                               0.0f,
+                               (float)x2::gpu::OFF_H};
     for (k = 0; k < 6; k++) {
       quad[k].x = X[k];
       quad[k].y = Y[k];
@@ -130,7 +135,8 @@ int gpu_cube_texgen_selftest(void) {
     d.cull = GPU_CULL_NONE;
     d.depth_func = GPU_CMP_ALWAYS;
 
-    if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 0.0f, 1.0f) ||
+    if (!gpu_offscreen_begin(x2::gpu::OFF_W, x2::gpu::OFF_H, 0.0f, 0.0f, 0.0f,
+                             1.0f) ||
         !gpu_draw(&d) || !gpu_offscreen_read(img, sizeof img)) {
       x2_log_info("gpu cube texgen selftest: FAILED -- draw %d did not "
                   "happen, so nothing was compared.\n",
@@ -140,7 +146,7 @@ int gpu_cube_texgen_selftest(void) {
       return 1;
     }
     gpu_offscreen_end();
-    got[i] = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
+    got[i] = img[(x2::gpu::OFF_H / 2) * x2::gpu::OFF_W + x2::gpu::OFF_W / 2];
     if (got[i] != WANT[i]) {
       x2_log_info("gpu cube texgen selftest: FAILED -- a normal of "
                   "(%g,%g,%g) sampled 0x%08x; the face pointing that way is "
@@ -162,7 +168,8 @@ int gpu_cube_texgen_selftest(void) {
   /* The refusal: no generator means no direction, and face 0 is not an
      answer. */
   d.texgen = GPU_TEXGEN_NONE;
-  if (gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 0.0f, 1.0f)) {
+  if (gpu_offscreen_begin(x2::gpu::OFF_W, x2::gpu::OFF_H, 0.0f, 0.0f, 0.0f,
+                          1.0f)) {
     if (gpu_draw(&d)) {
       x2_log_info("gpu cube texgen selftest: FAILED -- a cube with NO "
                   "texture-coordinate generator was DRAWN. There is no "
@@ -209,7 +216,7 @@ int gpu_tfactor_selftest(void) {
     uint32_t color;
   };
   static struct Vtx quad[6];
-  static uint32_t img[OFF_W * OFF_H];
+  static uint32_t img[x2::gpu::OFF_W * x2::gpu::OFF_H];
   GpuBuffer vb;
   GpuTexture white;
   GpuDraw d;
@@ -224,10 +231,15 @@ int gpu_tfactor_selftest(void) {
     return 1;
   }
   {
-    static const float X[6] = {0.0f, (float)OFF_W, 0.0f,
-                               0.0f, (float)OFF_W, (float)OFF_W};
-    static const float Y[6] = {0.0f,         0.0f, (float)OFF_H,
-                               (float)OFF_H, 0.0f, (float)OFF_H};
+    static const float X[6] = {
+        0.0f, (float)x2::gpu::OFF_W, 0.0f,
+        0.0f, (float)x2::gpu::OFF_W, (float)x2::gpu::OFF_W};
+    static const float Y[6] = {0.0f,
+                               0.0f,
+                               (float)x2::gpu::OFF_H,
+                               (float)x2::gpu::OFF_H,
+                               0.0f,
+                               (float)x2::gpu::OFF_H};
     for (k = 0; k < 6; k++) {
       quad[k].x = X[k];
       quad[k].y = Y[k];
@@ -279,7 +291,8 @@ int gpu_tfactor_selftest(void) {
        what this stage did before the factor was read at all. */
     d.color_arg1 = k ? GPU_TA_DEFAULT : GPU_TA_DIFFUSE;
     d.color_arg2 = k ? GPU_TA_DEFAULT : GPU_TA_TFACTOR;
-    if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f) ||
+    if (!gpu_offscreen_begin(x2::gpu::OFF_W, x2::gpu::OFF_H, 0.0f, 0.0f, 1.0f,
+                             1.0f) ||
         !gpu_draw(&d) || !gpu_offscreen_read(img, sizeof img)) {
       x2_log_info("gpu tfactor selftest: FAILED -- draw %d did not happen.\n",
                   k);
@@ -289,9 +302,11 @@ int gpu_tfactor_selftest(void) {
     }
     gpu_offscreen_end();
     if (k)
-      with_default = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
+      with_default =
+          img[(x2::gpu::OFF_H / 2) * x2::gpu::OFF_W + x2::gpu::OFF_W / 2];
     else
-      with_factor = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
+      with_factor =
+          img[(x2::gpu::OFF_H / 2) * x2::gpu::OFF_W + x2::gpu::OFF_W / 2];
   }
 
   /* Green modulated by a factor with no green in it is BLACK. */
@@ -336,12 +351,15 @@ int gpu_bc1_texture_selftest(void) {
     float x, y, z, rhw, u, v;
   };
   static const struct Vertex quad[6] = {
-      {0, 0, 0.5f, 1, .5f, .5f},     {OFF_W, 0, 0.5f, 1, .5f, .5f},
-      {0, OFF_H, 0.5f, 1, .5f, .5f}, {0, OFF_H, 0.5f, 1, .5f, .5f},
-      {OFF_W, 0, 0.5f, 1, .5f, .5f}, {OFF_W, OFF_H, 0.5f, 1, .5f, .5f}};
+      {0, 0, 0.5f, 1, .5f, .5f},
+      {x2::gpu::OFF_W, 0, 0.5f, 1, .5f, .5f},
+      {0, x2::gpu::OFF_H, 0.5f, 1, .5f, .5f},
+      {0, x2::gpu::OFF_H, 0.5f, 1, .5f, .5f},
+      {x2::gpu::OFF_W, 0, 0.5f, 1, .5f, .5f},
+      {x2::gpu::OFF_W, x2::gpu::OFF_H, 0.5f, 1, .5f, .5f}};
   /* One opaque-red DXT1 block: c0 = RGB565 red, every index selects c0. */
   static const uint8_t red_block[8] = {0x00, 0xf8, 0, 0, 0, 0, 0, 0};
-  static uint32_t image[OFF_W * OFF_H];
+  static uint32_t image[x2::gpu::OFF_W * x2::gpu::OFF_H];
   GpuBuffer vertices;
   GpuTexture texture;
   GpuDraw draw;
@@ -382,7 +400,8 @@ int gpu_bc1_texture_selftest(void) {
   draw.texop = GPU_TEXOP_SELECT_TEXTURE;
   draw.cull = GPU_CULL_NONE;
   draw.depth_func = GPU_CMP_ALWAYS;
-  if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f) ||
+  if (!gpu_offscreen_begin(x2::gpu::OFF_W, x2::gpu::OFF_H, 0.0f, 0.0f, 1.0f,
+                           1.0f) ||
       !gpu_draw(&draw) || !gpu_offscreen_read(image, sizeof image)) {
     x2_log_info("gpu BC1 texture selftest: FAILED -- draw/readback did not "
                 "complete.\n");
@@ -393,7 +412,7 @@ int gpu_bc1_texture_selftest(void) {
     return 1;
   }
   gpu_offscreen_end();
-  centre = image[(OFF_H / 2) * OFF_W + OFF_W / 2];
+  centre = image[(x2::gpu::OFF_H / 2) * x2::gpu::OFF_W + x2::gpu::OFF_W / 2];
   gpu_texture_destroy(texture);
   gpu_buffer_destroy(vertices);
   gpu_device_destroy();

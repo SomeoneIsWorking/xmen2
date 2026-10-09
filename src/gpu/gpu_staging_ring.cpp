@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 /*
  * A page is big enough that an ordinary frame's uploads fit in one or two of
  * them -- a measured gameplay frame moves about 550 KB -- and small enough
@@ -189,3 +191,5 @@ void gpu_staging_ring_stats(unsigned long *pages, unsigned long long *allocs,
 }
 
 uint32_t gpu_staging_ring_page_bytes(void) { return (uint32_t)kPageBytes; }
+
+} // namespace x2::gpu

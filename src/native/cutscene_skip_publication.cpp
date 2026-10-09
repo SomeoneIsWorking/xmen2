@@ -1,5 +1,7 @@
 #include "cutscene_skip_publication.h"
 
+namespace x2::native {
+
 CutsceneSkipPublicationSummary cutscene_skip_publication_classify(
     const CutsceneSkipPublicationBank bank[CUTSCENE_SKIP_PUBLICATION_BANKS]) {
   CutsceneSkipPublicationSummary result = {0};
@@ -18,3 +20,5 @@ CutsceneSkipPublicationSummary cutscene_skip_publication_classify(
   }
   return result;
 }
+
+} // namespace x2::native

@@ -1,5 +1,6 @@
-#ifndef X2_GUEST_COMMAND_LINE_H
-#define X2_GUEST_COMMAND_LINE_H
+#pragma once
+
+namespace x2::native {
 
 /*
  * The command line the GUEST process sees.
@@ -12,4 +13,4 @@
  */
 const char *guest_command_line(void);
 
-#endif /* X2_GUEST_COMMAND_LINE_H */
+} // namespace x2::native

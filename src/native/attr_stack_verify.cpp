@@ -17,6 +17,8 @@
 
 #include <lucent/cvar_c.h>
 
+namespace x2::native {
+
 static int verify_enabled(void) {
   static int cached = -1;
   if (cached < 0)
@@ -157,3 +159,5 @@ void attr_stack_verify_end(const CPU *C, AttrStackVerify *v, uint32_t self) {
   if (v->p28)
     assert(RD32(v->p28 + 0x8u) == native_p28_f8);
 }
+
+} // namespace x2::native

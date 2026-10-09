@@ -12,11 +12,12 @@
  * and Reset do not qualify. The runtime guard in override_leaf.cpp aborts,
  * naming the method, if one named here ever does.
  */
-#ifndef X2_D3D8_LEAF_METHODS_H
-#define X2_D3D8_LEAF_METHODS_H
+#pragma once
+
+namespace x2::d3d8 {
 
 /* Register the named methods' thunks as leaves. Called once the interfaces'
    vtables exist. */
 void d3d8_leaf_methods_install(void);
 
-#endif
+} // namespace x2::d3d8

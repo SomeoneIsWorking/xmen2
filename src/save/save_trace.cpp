@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::save {
+
 static const char *const POINT_NAME[SAVE_TRACE_POINT_COUNT] = {
     "menu_build",    "menu_open",     "main_engb_open",
     "load_0055fcd0", "load_004aed10", "load_0046e2b0",
@@ -237,3 +239,5 @@ SaveTraceResult save_trace_report(const SaveTrace *trace, char *out,
   render_report(trace, &writer);
   return SAVE_TRACE_RECORDED;
 }
+
+} // namespace x2::save

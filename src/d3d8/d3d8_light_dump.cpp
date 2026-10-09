@@ -1,4 +1,5 @@
 #include "../config/environment.h"
+#include "../native/win_path.h"
 #include "../native/x2_log.h"
 /*
  * X2_LIGHT_DUMP: the lighting INPUTS of the first n lit draws, printed.
@@ -20,6 +21,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+namespace x2::d3d8 {
 
 /*
  * X2_LIGHT_DUMP=<n> -- the lighting INPUTS of the first n lit draws.
@@ -97,11 +100,8 @@ void d3d8_light_dump(const GpuDraw *d) {
    * dumped and three readings had to be retracted. X2_SHOT_AFTER_FILE names
    * the scene by the file the game opens, so the two instruments aim at the
    * same frame and a dump can be held until the level is on screen. */
-  {
-    extern int k32_file_gate_open(void);
-    if (!k32_file_gate_open())
-      return;
-  }
+  if (!k32_file_gate_open())
+    return;
   /*
    * ONLY IN A FRAME THAT IS ALREADY DRAWING A LOT.
    *
@@ -273,3 +273,5 @@ void d3d8_light_dump_report(void) {
         g_ld_done ? "."
                   : " -- so this run's dump says NOTHING about the lighting.");
 }
+
+} // namespace x2::d3d8

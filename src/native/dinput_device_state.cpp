@@ -19,6 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 #define A(i) RD32(cpu->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 #define S_OK 0x00000000u
@@ -103,7 +105,7 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
   if (device->kind == DINPUT_DEV_KEYBOARD) {
     unsigned long frame = gpu_frames_presented();
     dinput_pad_virtual_tick(frame);
-    dinput8_hotplug_pump(cpu);
+    x2::native::dinput8_hotplug_pump(cpu);
   }
   if (x2::ui::ui_captures_input()) {
     if (device->kind == DINPUT_DEV_JOYSTICK)
@@ -133,3 +135,5 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
   record_state(device, out, bytes);
   ret_get_state(cpu, S_OK);
 }
+
+} // namespace x2::native

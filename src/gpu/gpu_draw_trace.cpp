@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::gpu {
+
 static unsigned long g_range_index, g_range_skipped;
 
 typedef struct FrameDumpTrace {
@@ -394,3 +396,5 @@ void gpu_draw_trace_report(void) {
         "FRAME, not the frame.\n",
         g_range_skipped);
 }
+
+} // namespace x2::gpu

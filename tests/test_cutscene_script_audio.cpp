@@ -32,10 +32,14 @@ void x2_write_watch_fire(uint32_t address, uint32_t value) {
   (void)value;
 }
 
+namespace x2::native {
+
 int cutscene_player_silences_current_context(uint32_t *context) {
   *context = current_context;
   return silent && *context == OWNED_CONTEXT;
 }
+
+} // namespace x2::native
 
 static void guest_body_004a7130(CPU *cpu) {
   super_calls++;

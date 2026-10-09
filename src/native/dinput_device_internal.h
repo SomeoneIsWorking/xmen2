@@ -1,11 +1,12 @@
-#ifndef X2_DINPUT_DEVICE_INTERNAL_H
-#define X2_DINPUT_DEVICE_INTERNAL_H
+#pragma once
 
 #include "controller_instance.h"
 #include "dinput_device.h"
 #include "x86rt.h"
 
-typedef struct {
+namespace x2::native {
+
+struct DInputDevice {
   DInputDeviceKind kind;
   uint32_t guest;
   uint32_t refs;
@@ -17,7 +18,7 @@ typedef struct {
   x2::input::ControllerInstance controller;
   int32_t axis_lo, axis_hi;
   int range_set;
-} DInputDevice;
+};
 
 static inline int dinput_device_pad(const DInputDevice *device) {
   return device && device->kind == DINPUT_DEV_JOYSTICK
@@ -32,4 +33,4 @@ static inline void dinput_device_return(CPU *cpu, uint32_t result, int nargs) {
 
 void dinput_device_get_state(CPU *cpu, DInputDevice *device);
 
-#endif /* X2_DINPUT_DEVICE_INTERNAL_H */
+} // namespace x2::native

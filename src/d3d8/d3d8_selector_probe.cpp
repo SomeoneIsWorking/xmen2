@@ -142,7 +142,7 @@ int d3d8_selector_request_matches(const D3D8SelectorDrawEvidence *evidence,
                                   uint32_t texture_width,
                                   uint32_t texture_height) {
   const D3D8DrawRequest *req;
-  const D3D8TextureProvenance *texture;
+  const x2::d3d8::D3D8TextureProvenance *texture;
   if (!evidence || !evidence->request)
     return 0;
   req = evidence->request;
@@ -347,7 +347,7 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
   D3D8SelectorBounds bounds;
   const D3D8DrawRequest *req;
   const D3D8State *state;
-  const D3D8TextureProvenance *texture;
+  const x2::d3d8::D3D8TextureProvenance *texture;
   FILE *output;
   int valid;
   if (ticket)

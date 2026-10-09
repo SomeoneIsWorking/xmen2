@@ -44,7 +44,7 @@ int gpu_lit_mvp_selftest(void) {
   } tri[3] = {{0.0f, 0.8f, 0.5f}, {0.8f, -0.8f, 0.5f}, {-0.8f, -0.8f, 0.5f}};
   static const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0,
                                      0, 0, 1, 0, 0, 0, 0, 1};
-  static uint32_t img[OFF_W * OFF_H];
+  static uint32_t img[x2::gpu::OFF_W * x2::gpu::OFF_H];
   GpuBuffer vb;
   GpuDraw d;
   int fails = 0;
@@ -69,7 +69,8 @@ int gpu_lit_mvp_selftest(void) {
   }
   /* Cleared to opaque BLUE; the expected lit colour (~0.2, 0.4, 0.8) cannot
      be confused with it or with black. */
-  if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f)) {
+  if (!gpu_offscreen_begin(x2::gpu::OFF_W, x2::gpu::OFF_H, 0.0f, 0.0f, 1.0f,
+                           1.0f)) {
     x2_log_info("gpu lit/mvp draw selftest: FAILED -- no off-screen "
                 "target.\n");
     gpu_device_destroy();
@@ -117,7 +118,8 @@ int gpu_lit_mvp_selftest(void) {
   gpu_offscreen_end();
 
   {
-    uint32_t px = img[(OFF_H / 2) * OFF_W + (OFF_W / 2)];
+    uint32_t px =
+        img[(x2::gpu::OFF_H / 2) * x2::gpu::OFF_W + (x2::gpu::OFF_W / 2)];
     int got_b = (int)(px & 0xffu);
     int got_g = (int)((px >> 8) & 0xffu);
     int got_r = (int)((px >> 16) & 0xffu);
@@ -137,9 +139,10 @@ int gpu_lit_mvp_selftest(void) {
       fails++;
     }
   }
-  fails += !px_is(img, 1, 1, 0xFF0000FFu,
-                  "a corner OUTSIDE the triangle, which must still be the "
-                  "clear colour");
+  fails +=
+      !x2::gpu::px_is(img, 1, 1, 0xFF0000FFu,
+                      "a corner OUTSIDE the triangle, which must still be the "
+                      "clear colour");
 
   gpu_draw_report();
   gpu_device_destroy();

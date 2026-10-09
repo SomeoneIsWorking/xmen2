@@ -13,7 +13,8 @@ static int test_texture_dimension_matcher(void) {
   memset(&request, 0, sizeof request);
   memset(&evidence, 0, sizeof evidence);
   request.texture_guest = 0x12345678u;
-  d3d8_texture_provenance_init(&request.texture_provenance, 128, 32, 21, 1, 1);
+  x2::d3d8::d3d8_texture_provenance_init(&request.texture_provenance, 128, 32,
+                                         21, 1, 1);
   evidence.request = &request;
   if (!d3d8_selector_request_matches(&evidence, 128, 32))
     return 1;
@@ -58,31 +59,36 @@ static int test_texture_target_parser(void) {
 static int test_texture_provenance_lifecycle(void) {
   static const unsigned char hello[] = {'h', 'e', 'l', 'l', 'o'};
   static const unsigned char jello[] = {'j', 'e', 'l', 'l', 'o'};
-  D3D8TextureProvenance provenance;
+  x2::d3d8::D3D8TextureProvenance provenance;
   uint64_t first;
-  d3d8_texture_provenance_init(&provenance, 37, 19, 21, 4, 1);
+  x2::d3d8::d3d8_texture_provenance_init(&provenance, 37, 19, 21, 4, 1);
   if (!provenance.metadata_valid || provenance.width != 37 ||
       provenance.height != 19 || provenance.format != 21 ||
       provenance.levels != 4 || provenance.faces != 1 ||
       provenance.level0_fingerprint_valid || provenance.level0_revision != 0)
     return 1;
-  d3d8_texture_provenance_uploaded(&provenance, 0, 1, hello, sizeof hello);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&provenance, 0, 1, hello,
+                                             sizeof hello);
   if (provenance.level0_fingerprint_valid)
     return 1;
-  d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello, sizeof hello);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello,
+                                             sizeof hello);
   if (!provenance.level0_fingerprint_valid ||
       provenance.level0_fingerprint != UINT64_C(0xa430d84680aabd0b) ||
       provenance.level0_revision != 1)
     return 1;
   first = provenance.level0_fingerprint;
-  d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello, sizeof hello);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello,
+                                             sizeof hello);
   if (provenance.level0_fingerprint != first || provenance.level0_revision != 2)
     return 1;
-  d3d8_texture_provenance_uploaded(&provenance, 0, 0, jello, sizeof jello);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&provenance, 0, 0, jello,
+                                             sizeof jello);
   if (provenance.level0_fingerprint == first || provenance.level0_revision != 3)
     return 1;
-  d3d8_texture_provenance_init(&provenance, 32, 32, 21, 1, 6);
-  d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello, sizeof hello);
+  x2::d3d8::d3d8_texture_provenance_init(&provenance, 32, 32, 21, 1, 6);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&provenance, 0, 0, hello,
+                                             sizeof hello);
   return provenance.level0_fingerprint_valid ? 1 : 0;
 }
 
@@ -190,9 +196,10 @@ static int exercise_runtime_writer_when_armed(void) {
   request.texture_guest = 0x12345678u;
   request.primitive_type = D3DPT_TRIANGLELIST;
   request.primitive_count = 1;
-  d3d8_texture_provenance_init(&request.texture_provenance, 128, 32, 21, 1, 1);
-  d3d8_texture_provenance_uploaded(&request.texture_provenance, 0, 0, bytes,
-                                   sizeof bytes);
+  x2::d3d8::d3d8_texture_provenance_init(&request.texture_provenance, 128, 32,
+                                         21, 1, 1);
+  x2::d3d8::d3d8_texture_provenance_uploaded(&request.texture_provenance, 0, 0,
+                                             bytes, sizeof bytes);
   draw.vertex_stride = sizeof vertices[0];
   draw.pretransformed = 1;
   evidence.request = &request;
