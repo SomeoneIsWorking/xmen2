@@ -52,3 +52,12 @@ flushing.
 
 Frame-time percentiles in the fight window vary more between runs than between
 configurations, so no steady-state gain is claimed. The phone is not measured.
+
+## What remains
+
+With the flushes gone, a perf profile of the fight puts 67% of samples in
+translated guest code and no host function above 3.6%. `jit.profile=65536` on
+`combat-bench` is flat as well: the hottest guest block is 0.9% of entries, and
+the top 40 are Alchemy scene-graph traversal (`igTraversal::dispatch`,
+`igFrustCullNode`, `igAttrStackManager::updateAttrUpdateList`,
+`igVec4f::distance`) and a few game loops near `0x5fcf70` and `0x596890`.
