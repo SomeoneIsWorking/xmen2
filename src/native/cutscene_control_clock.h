@@ -12,12 +12,13 @@
  * A NEGATIVE deadline is the game's "no release scheduled" sentinel, not a
  * time in the past -- which is why this cannot be a plain `deadline <= now`.
  */
-#ifndef X2_CUTSCENE_CONTROL_CLOCK_H
-#define X2_CUTSCENE_CONTROL_CLOCK_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-typedef enum X2CutsceneClockState {
+namespace x2::native {
+
+enum X2CutsceneClockState {
   /* The clock could not be read at all: no address, or unmapped guest
      memory. Distinct from "locked" on purpose -- a run that could not look
      must not be recorded as a run that looked and saw a cinematic. */
@@ -25,7 +26,7 @@ typedef enum X2CutsceneClockState {
   kX2CutsceneClockLocked,   /* Release not yet scheduled, or still ahead. */
   kX2CutsceneClockReleased, /* The deadline has passed. */
   kX2CutsceneClockCount
-} X2CutsceneClockState;
+};
 
 const char *cutscene_control_clock_name(int state);
 
@@ -44,4 +45,4 @@ int cutscene_control_clock_release_now(uint32_t clock);
 /* Guest float bits as seconds. */
 float cutscene_control_clock_seconds(uint32_t bits);
 
-#endif
+} // namespace x2::native

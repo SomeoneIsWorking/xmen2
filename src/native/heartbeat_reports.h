@@ -1,5 +1,4 @@
-#ifndef X2_HEARTBEAT_REPORTS_H
-#define X2_HEARTBEAT_REPORTS_H
+#pragma once
 
 /*
  * The subsystems that account for themselves on every beat.
@@ -14,6 +13,8 @@
  * that goes quiet when it has nothing to say cannot be told apart from one
  * nobody wired up.
  */
+namespace x2::native {
+
 void heartbeat_subsystem_reports(void);
 
 /* The multimedia-timer line on the beat; prints nothing only when no timer
@@ -23,4 +24,4 @@ void heartbeat_winmm_report(void);
 /* The blocking waits, the lock hand-offs, and which guest code called Sleep. */
 void heartbeat_wait_report(void);
 
-#endif /* X2_HEARTBEAT_REPORTS_H */
+} // namespace x2::native

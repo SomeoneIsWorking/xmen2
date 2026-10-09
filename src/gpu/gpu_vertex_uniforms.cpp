@@ -67,6 +67,8 @@ typedef struct {
    block, is rebuilt from zero every draw). The pads stay zero from here. */
 static VertexUniforms g_vu;
 
+namespace x2::gpu {
+
 void gpu_vertex_uniforms_push(SDL_GPUCommandBuffer *command, const GpuDraw *d,
                               const GpuShadowSample *shadow) {
   memcpy(g_vu.mvp, d->mvp, sizeof g_vu.mvp);
@@ -125,5 +127,7 @@ void gpu_vertex_uniforms_push(SDL_GPUCommandBuffer *command, const GpuDraw *d,
   SDL_PushGPUVertexUniformData(command, 0, &g_vu, sizeof g_vu);
   if (d->vs_program)
     gpu_vs_program_push(command, d->vs_program, d->vs_constants);
-}
+
+} // namespace x2::gpu
+} // namespace x2::gpu
 #endif /* X2_WITH_SDL */

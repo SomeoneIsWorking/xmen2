@@ -29,7 +29,11 @@
  * directions: a discriminator only trusted after it has been run against both
  * classes has been run against neither.
  */
-static void write_ramp(uint32_t base, int curved) {
+namespace x2::d3d8 {
+
+namespace {
+
+void write_ramp(uint32_t base, int curved) {
   int ch, i;
   for (ch = 0; ch < 3; ch++)
     for (i = 0; i < 256; i++) {
@@ -39,6 +43,8 @@ static void write_ramp(uint32_t base, int curved) {
       WR16(base + (uint32_t)(ch * 256 + i) * 2u, (uint16_t)v);
     }
 }
+
+} // namespace
 
 int d3d8_gamma_selftest(void) {
   D3D8Object *dev;
@@ -96,3 +102,5 @@ int d3d8_gamma_selftest(void) {
               "curved in both directions");
   return fails;
 }
+
+} // namespace x2::d3d8

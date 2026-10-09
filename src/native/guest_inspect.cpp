@@ -5,22 +5,26 @@
 
 #include <lucent/log_c.h>
 
+namespace x2::native {
+
+namespace {
+
 /* Bounded so a report stays readable and cannot flood the log of a wedged
    run: 256 words is 1 KiB of stack, well past any frame this is used on. */
 enum { kGuestInspectMaxWords = 256u };
 
-static unsigned bounded(unsigned words) {
+unsigned bounded(unsigned words) {
   if (words == 0u) {
     return 1u;
   }
   return words > kGuestInspectMaxWords ? kGuestInspectMaxWords : words;
 }
 
-static int word_at(uint32_t address, uint32_t *out) {
+int word_at(uint32_t address, uint32_t *out) {
   return guest_memory_try_read(address, out, sizeof *out);
 }
 
-static void dump_rows(const char *tag, uint32_t address, unsigned words) {
+void dump_rows(const char *tag, uint32_t address, unsigned words) {
   unsigned i;
   for (i = 0; i < words; i += 8u) {
     uint32_t row[8];
@@ -44,6 +48,8 @@ static void dump_rows(const char *tag, uint32_t address, unsigned words) {
                      have > 6u ? row[6] : 0u, have > 7u ? row[7] : 0u);
   }
 }
+
+} // namespace
 
 void guest_inspect_words(uint32_t address, unsigned words, const char *tag) {
   uint32_t probe;
@@ -102,3 +108,5 @@ void guest_inspect_stack(uint32_t esp, unsigned words, const char *tag) {
                    "and they are printed above whether or not they could be",
                    tag, named, words);
 }
+
+} // namespace x2::native

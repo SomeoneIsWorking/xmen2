@@ -59,16 +59,17 @@ static void watch_report(void *user, uint32_t addr, uint32_t previous,
    * size there came from an object that appears on the stack as a bare heap
    * pointer, and a report that showed only mapped words threw it away.
    */
-  guest_inspect_stack(cpu->reg[kX86pEsp], X2_WATCH_STACK_WORDS, "jit.watch:  ");
+  x2::native::guest_inspect_stack(cpu->reg[kX86pEsp], X2_WATCH_STACK_WORDS,
+                                  "jit.watch:  ");
   {
     /* One address to follow, for the run after the one that named a pointer
        worth reading. Zero means nothing was asked for. */
     long peek = lucent_cvar_number("jit.peek", 0);
     if (peek > 0) {
       long peek_words = lucent_cvar_number("jit.peekn", 16);
-      guest_inspect_words((uint32_t)peek,
-                          peek_words > 0 ? (unsigned)peek_words : 16u,
-                          "jit.peek:  ");
+      x2::native::guest_inspect_words(
+          (uint32_t)peek, peek_words > 0 ? (unsigned)peek_words : 16u,
+          "jit.peek:  ");
     }
   }
   if (guest_thread_last_crossing(&what, &import_at, &ago)) {
@@ -136,6 +137,8 @@ static int map_configure(struct X86pJitEngine *jit, char *reason,
   return 1;
 }
 
+namespace x2::native {
+
 int x86_engine_jit_diag_configure(struct X86pJitEngine *jit, char *reason,
                                   unsigned reason_len) {
   if (!jit)
@@ -189,3 +192,5 @@ int x86_engine_jit_diag_configure(struct X86pJitEngine *jit, char *reason,
   }
   return 1;
 }
+
+} // namespace x2::native

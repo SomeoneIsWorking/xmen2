@@ -8,6 +8,8 @@
 
 #include <stdio.h>
 
+namespace x2::gpu {
+
 /*
  * The fences of windowless frames still in flight, oldest at g_next once the
  * ring is full. A swapchain blocks acquisition while its images are in flight;
@@ -17,10 +19,12 @@
  * ago supplies that bound without serialising the guest's CPU work against
  * the GPU's, which waiting for the frame just submitted did.
  */
-static SDL_GPUFence *g_in_flight[kGpuFramesInFlight];
-static unsigned g_next;
+namespace {
 
-static int wait_and_release(SDL_GPUDevice *device, SDL_GPUFence *fence) {
+SDL_GPUFence *g_in_flight[kGpuFramesInFlight];
+unsigned g_next;
+
+int wait_and_release(SDL_GPUDevice *device, SDL_GPUFence *fence) {
   const int done = SDL_WaitForGPUFences(device, true, &fence, 1);
   if (!done)
     x2_log_error("gpu: waiting for a windowless frame failed: %s\n",
@@ -28,6 +32,8 @@ static int wait_and_release(SDL_GPUDevice *device, SDL_GPUFence *fence) {
   SDL_ReleaseGPUFence(device, fence);
   return done;
 }
+
+} // namespace
 
 void gpu_frame_submit_drain(SDL_GPUDevice *device) {
   for (unsigned i = 0; i < kGpuFramesInFlight; i++) {
@@ -68,3 +74,5 @@ int gpu_frame_submit(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command,
   g_next = (g_next + 1u) % kGpuFramesInFlight;
   return oldest ? wait_and_release(device, oldest) : 1;
 }
+
+} // namespace x2::gpu

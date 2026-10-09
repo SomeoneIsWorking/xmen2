@@ -47,18 +47,18 @@ int main(void) {
     }
 
   /* The negative FIRST: an empty image must produce nothing at all. */
-  if (control_png_from_bgra(bgra, 0, H, &len) != NULL) {
+  if (x2::native::control_png_from_bgra(bgra, 0, H, &len) != NULL) {
     fprintf(stderr, "FAIL: a 0-wide image produced a PNG. An encoder that "
                     "answers for every input cannot fail the real test "
                     "either.\n");
     return 1;
   }
-  if (control_png_from_bgra(bgra, W, 0, &len) != NULL) {
+  if (x2::native::control_png_from_bgra(bgra, W, 0, &len) != NULL) {
     fprintf(stderr, "FAIL: a 0-high image produced a PNG.\n");
     return 1;
   }
 
-  png = control_png_from_bgra(bgra, W, H, &len);
+  png = x2::native::control_png_from_bgra(bgra, W, H, &len);
   if (!png || !len) {
     fprintf(stderr, "FAIL: encoding %dx%d produced nothing.\n", W, H);
     return 1;

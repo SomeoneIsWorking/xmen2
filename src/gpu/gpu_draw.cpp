@@ -547,7 +547,7 @@ static int refuse(const char *why) {
 }
 
 int gpu_draw(const GpuDraw *d) {
-  PipeKey key;
+  x2::gpu::PipeKey key;
   SDL_GPUGraphicsPipeline *pipe;
   SDL_GPUBufferBinding vb, ib;
   SDL_GPUTextureSamplerBinding tsb;
@@ -730,8 +730,8 @@ int gpu_draw(const GpuDraw *d) {
     key.vs_inputs = d->vs_program->inputs;
   }
 
-  if (d->blend_enable && (!gpu_blend_supported(d->src_blend) ||
-                          !gpu_blend_supported(d->dst_blend)))
+  if (d->blend_enable && (!x2::gpu::gpu_blend_supported(d->src_blend) ||
+                          !x2::gpu::gpu_blend_supported(d->dst_blend)))
     return refuse("a blend factor this backend does not have");
   if (depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
       !g_depth_ignored++)
@@ -742,20 +742,20 @@ int gpu_draw(const GpuDraw *d) {
   if (!gpu_draw_trace_consider(d, gpu_frames_presented()))
     return 1;
 
-  if (!(pipe = gpu_pipeline_for(&key))) {
+  if (!(pipe = x2::gpu::gpu_pipeline_for(&key))) {
     g_refused++;
     return 0;
   }
-  if (!(smp = gpu_sampler_for(
+  if (!(smp = x2::gpu::gpu_sampler_for(
             d->texture_clamp, d->texture_point, d->texture_min_filter,
             d->texture_mip, d->texture_lod_bias, d->texture_max_anisotropy))) {
     g_refused++;
     return 0;
   }
-  if (!(smp1 = gpu_sampler_for(d->texture_clamp1, d->texture_point1,
-                               d->texture_min_filter1, d->texture_mip1,
-                               d->texture_lod_bias1,
-                               d->texture_max_anisotropy1))) {
+  if (!(smp1 = x2::gpu::gpu_sampler_for(d->texture_clamp1, d->texture_point1,
+                                        d->texture_min_filter1, d->texture_mip1,
+                                        d->texture_lod_bias1,
+                                        d->texture_max_anisotropy1))) {
     g_refused++;
     return 0;
   }
@@ -781,7 +781,7 @@ int gpu_draw(const GpuDraw *d) {
     SDL_BindGPUVertexBuffers(g_pass, 0, &vb, 1);
   }
 
-  gpu_vertex_uniforms_push(g_cmd, d, &shadow);
+  x2::gpu::gpu_vertex_uniforms_push(g_cmd, d, &shadow);
 
   memset(&pu, 0, sizeof pu);
   pu.texture_op = (uint32_t)d->texop;
@@ -936,7 +936,8 @@ void gpu_draw_report(void) {
       "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
       "(%d still cached; the device teardown empties the cache, so these "
       "differ whenever the engine released the device first)\n",
-      g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
+      g_draws, g_refused, x2::gpu::gpu_pipelines_built(),
+      x2::gpu::gpu_pipelines_cached());
   x2_log_info("        of those draws, %lu kept the pass's pipeline, %lu "
               "its vertex buffer, %lu its index buffer and %lu its samplers, "
               "none bound again\n",
@@ -977,7 +978,7 @@ void gpu_draw_shutdown(void) {
     return;
   gpu_shadow_shutdown();
   gpu_offscreen_end();
-  gpu_pipeline_shutdown();
+  x2::gpu::gpu_pipeline_shutdown();
   /* The staging pages belong to the device that is going away, and this is
      the upload owner: the device teardown does not need to know they
      exist. */

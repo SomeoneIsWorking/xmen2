@@ -1,11 +1,12 @@
 /* Submission policy for swapchain-backed and windowless frames. */
-#ifndef GPU_FRAME_SUBMIT_H
-#define GPU_FRAME_SUBMIT_H
+#pragma once
 
 struct SDL_GPUCommandBuffer;
 struct SDL_GPUDevice;
 
-typedef enum GpuFrameWait {
+namespace x2::gpu {
+
+enum GpuFrameWait {
   /* A swapchain bounds the frames in flight by blocking acquisition. */
   kGpuFrameWaitNone,
   /* A windowless target has no acquisition, so submission applies the same
@@ -14,7 +15,7 @@ typedef enum GpuFrameWait {
   kGpuFrameWaitBounded,
   /* The caller reads this frame back, so it must have finished. */
   kGpuFrameWaitComplete,
-} GpuFrameWait;
+};
 
 int gpu_frame_submit(struct SDL_GPUDevice *device,
                      struct SDL_GPUCommandBuffer *command, GpuFrameWait wait);
@@ -23,4 +24,4 @@ int gpu_frame_submit(struct SDL_GPUDevice *device,
    the device is destroyed. */
 void gpu_frame_submit_drain(struct SDL_GPUDevice *device);
 
-#endif
+} // namespace x2::gpu

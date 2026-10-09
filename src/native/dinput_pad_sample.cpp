@@ -128,9 +128,9 @@ int dinput_pad_button_uncounted(int pad, int button) {
 static int read_button(int pad, int button, int counted) {
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
-  X2PadSlotState slot = dinput_pad_handle(pad, &gp);
+  x2::native::X2PadSlotState slot = x2::native::dinput_pad_handle(pad, &gp);
   int down;
-  if (slot == X2_PAD_SLOT_EMPTY) {
+  if (slot == x2::native::X2_PAD_SLOT_EMPTY) {
     if (counted) {
       g_btn_no_pad++;
     }
@@ -138,7 +138,7 @@ static int read_button(int pad, int button, int counted) {
   }
   if (button < 0 || button >= 10)
     return 0;
-  if (slot == X2_PAD_SLOT_NO_HANDLE) {
+  if (slot == x2::native::X2_PAD_SLOT_NO_HANDLE) {
     if (counted) {
       g_btn_unreadable++;
     }
@@ -161,7 +161,8 @@ float dinput_pad_trigger_pressure(int pad, int trigger) {
   SDL_Gamepad *gp = NULL;
   int raw;
   SDL_GamepadAxis axis;
-  if (dinput_pad_handle(pad, &gp) != X2_PAD_SLOT_READY ||
+  if (x2::native::dinput_pad_handle(pad, &gp) !=
+          x2::native::X2_PAD_SLOT_READY ||
       (trigger != 0 && trigger != 1))
     return 0.0f;
   axis = trigger == 0 ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER
@@ -228,7 +229,7 @@ static int32_t read_axis(int pad, int axis, int32_t lo, int32_t hi,
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
   int raw = 0;
-  if (dinput_pad_handle(pad, &gp) != X2_PAD_SLOT_READY)
+  if (x2::native::dinput_pad_handle(pad, &gp) != x2::native::X2_PAD_SLOT_READY)
     return mid;
   switch (axis) {
   case DINPUT_PAD_AXIS_X:
@@ -283,8 +284,9 @@ static int32_t read_axis(int pad, int axis, int32_t lo, int32_t hi,
 int dinput_pad_open_gamepad_button(int pad, int gamepad_button) {
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
-  if (dinput_pad_handle(pad, &gp) != X2_PAD_SLOT_READY || gamepad_button < 0 ||
-      gamepad_button >= SDL_GAMEPAD_BUTTON_COUNT)
+  if (x2::native::dinput_pad_handle(pad, &gp) !=
+          x2::native::X2_PAD_SLOT_READY ||
+      gamepad_button < 0 || gamepad_button >= SDL_GAMEPAD_BUTTON_COUNT)
     return -1;
   return SDL_GetGamepadButton(gp, (SDL_GamepadButton)gamepad_button) ? 1 : 0;
 #else
@@ -297,8 +299,9 @@ int dinput_pad_open_gamepad_button(int pad, int gamepad_button) {
 int dinput_pad_open_gamepad_axis(int pad, int gamepad_axis) {
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
-  if (dinput_pad_handle(pad, &gp) != X2_PAD_SLOT_READY || gamepad_axis < 0 ||
-      gamepad_axis >= SDL_GAMEPAD_AXIS_COUNT)
+  if (x2::native::dinput_pad_handle(pad, &gp) !=
+          x2::native::X2_PAD_SLOT_READY ||
+      gamepad_axis < 0 || gamepad_axis >= SDL_GAMEPAD_AXIS_COUNT)
     return 0;
   return SDL_GetGamepadAxis(gp, (SDL_GamepadAxis)gamepad_axis);
 #else
@@ -315,7 +318,7 @@ static uint32_t pov_of(int pad) {
 #ifdef X2_WITH_SDL
   SDL_Gamepad *gp = NULL;
   int up, down, left, right;
-  if (dinput_pad_handle(pad, &gp) != X2_PAD_SLOT_READY)
+  if (x2::native::dinput_pad_handle(pad, &gp) != x2::native::X2_PAD_SLOT_READY)
     return 0xFFFFFFFFu;
   up = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_DPAD_UP);
   down = SDL_GetGamepadButton(gp, SDL_GAMEPAD_BUTTON_DPAD_DOWN);

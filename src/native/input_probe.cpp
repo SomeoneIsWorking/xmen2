@@ -188,7 +188,8 @@ static const char *kind_name(uint32_t kind) {
   return "?";
 }
 
-size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
+size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
+                                      size_t n) {
   char why[192];
   size_t at = 0;
   uint32_t object, manager = 0, base = exe_base();
@@ -394,11 +395,10 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
       }
 
       /*
-       * And the accessor itself, asked directly, over its WHOLE
-       * vocabulary. If this reads 1.0 for a button the block above shows
-       * down, then everything up to and including the physical read
-       * works and the fault is that nothing ASKED -- which is a
-       * different repair from a broken read.
+       * And the accessor itself, asked directly, over its WHOLE vocabulary. If
+       * this reads 1.0 for a button the block above shows down, then everything
+       * up to and including the physical read works and the fault is that
+       * nothing ASKED -- which is a different repair from a broken read.
        *
        * Every code is printed with its MAGNITUDE, not a down/up bit, and
        * that is the point of sampling the axes here rather than the four

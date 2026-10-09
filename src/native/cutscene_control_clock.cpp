@@ -5,11 +5,17 @@
 
 #include <string.h>
 
+namespace x2::native {
+
+namespace {
+
 /* Offsets into the guest clock object. */
 enum { CLOCK_NOW = 0x3e8u, CLOCK_CONTROL_DEADLINE = 0x3f4u };
 
-static const char *const kStateNames[kX2CutsceneClockCount] = {
-    "unreadable", "locked", "released"};
+const char *const kStateNames[kX2CutsceneClockCount] = {"unreadable", "locked",
+                                                        "released"};
+
+} // namespace
 
 const char *cutscene_control_clock_name(int state) {
   if (state < 0 || state >= kX2CutsceneClockCount)
@@ -24,9 +30,13 @@ float cutscene_control_clock_seconds(uint32_t bits) {
   return value;
 }
 
-static int read_float_bits(uint32_t address, uint32_t *bits) {
+namespace {
+
+int read_float_bits(uint32_t address, uint32_t *bits) {
   return address && guest_memory_try_read32(address, bits);
 }
+
+} // namespace
 
 int cutscene_control_clock_now_bits(uint32_t clock, uint32_t *bits) {
   if (!bits)
@@ -58,3 +68,5 @@ int cutscene_control_clock_release_now(uint32_t clock) {
   WR32(clock + CLOCK_CONTROL_DEADLINE, now_bits);
   return 1;
 }
+
+} // namespace x2::native

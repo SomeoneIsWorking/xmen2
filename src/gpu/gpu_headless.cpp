@@ -40,6 +40,8 @@ void gpu_device_headless(int on, uint32_t w, uint32_t h) {
         g_headless_w, g_headless_h);
 }
 
+namespace x2::gpu {
+
 #ifdef X2_WITH_SDL
 SDL_GPUTexture *gpu_headless_target(void) {
   SDL_GPUTextureCreateInfo ci;
@@ -83,6 +85,8 @@ void gpu_headless_follow_backbuffer(uint32_t width, uint32_t height) {
   (void)height;
 #endif
 }
+
+} // namespace x2::gpu
 
 /*
  * How big a readback would be, and whether one is possible at all.

@@ -207,10 +207,10 @@ control_state(void *context, x2::native::CutsceneSequence sequence) {
   (void)context;
   if (!g_player.active || sequence != g_player.sequence)
     return x2::native::CutsceneControlState::Unreadable;
-  switch (cutscene_control_clock_state(g_player.clock)) {
-  case kX2CutsceneClockLocked:
+  switch (x2::native::cutscene_control_clock_state(g_player.clock)) {
+  case x2::native::kX2CutsceneClockLocked:
     return x2::native::CutsceneControlState::Locked;
-  case kX2CutsceneClockReleased:
+  case x2::native::kX2CutsceneClockReleased:
     return x2::native::CutsceneControlState::Released;
   default:
     return x2::native::CutsceneControlState::Unreadable;
@@ -219,7 +219,8 @@ control_state(void *context, x2::native::CutsceneSequence sequence) {
 
 static void retire_released_sequence(void) {
   if (!g_player.active || !g_player.release_pending || g_player.owned_count ||
-      cutscene_control_clock_state(g_player.clock) != kX2CutsceneClockReleased)
+      x2::native::cutscene_control_clock_state(g_player.clock) !=
+          x2::native::kX2CutsceneClockReleased)
     return;
   g_player.active = 0;
   g_player.release_pending = 0;
@@ -335,13 +336,15 @@ static x2::native::CutscenePlayerResult finish(CPU *cpu) {
   unsigned long frame_before = gpu_frames_presented();
   uint32_t time_before = 0, time_after = 1;
 
-  (void)cutscene_control_clock_now_bits(g_player.clock, &time_before);
+  (void)x2::native::cutscene_control_clock_now_bits(g_player.clock,
+                                                    &time_before);
   cutscene_dialogue_skip_begin();
   g_player.finishing = 1;
   result = x2::native::cutscene_player_finish(&g_player.policy, &ops, cpu);
   g_player.finishing = 0;
   cutscene_dialogue_skip_end(cpu);
-  (void)cutscene_control_clock_now_bits(g_player.clock, &time_after);
+  (void)x2::native::cutscene_control_clock_now_bits(g_player.clock,
+                                                    &time_after);
   if (gpu_frames_presented() == frame_before)
     g_player.same_frame++;
   if (time_after == time_before)
@@ -361,7 +364,7 @@ static x2::native::CutscenePlayerResult finish(CPU *cpu) {
 
 void x2_override_00469130(CPU *cpu) {
   uint32_t bits = RD32(cpu->reg[kX86pEsp] + 4u);
-  float seconds = cutscene_control_clock_seconds(bits);
+  float seconds = x2::native::cutscene_control_clock_seconds(bits);
   uint32_t context = current_context();
 
   if (seconds < 0.0f && context) {
@@ -374,7 +377,7 @@ void x2_override_00469130(CPU *cpu) {
     g_player.release_pending = 1;
     g_player.releases++;
     if (g_player.finishing &&
-        cutscene_control_clock_release_now(g_player.clock))
+        x2::native::cutscene_control_clock_release_now(g_player.clock))
       g_player.private_releases++;
   }
 }

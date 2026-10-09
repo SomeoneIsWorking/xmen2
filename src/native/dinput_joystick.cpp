@@ -13,6 +13,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
                            uint32_t size) {
   x2::input::DirectInputControllerSample sample;
@@ -37,8 +39,9 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
       &sample, guest_memory_as<unsigned char>(out), size);
   x2::input::alchemy_controller_observe(pad, &sample, lo, hi);
 }
+namespace {
 
-static void object_guid(unsigned char guid[16], unsigned char low) {
+void object_guid(unsigned char guid[16], unsigned char low) {
   static const unsigned char REST[15] = {0x02, 0x6D, 0xA3, 0xF3, 0xC9,
                                          0xCF, 0x11, 0xBF, 0xC7, 0x44,
                                          0x45, 0x53, 0x54, 0x00, 0x00};
@@ -51,10 +54,9 @@ static void object_guid(unsigned char guid[16], unsigned char low) {
 #define DIDFT_POV 0x00000010u
 #define DIOBJ_BYTES 0x13Cu
 
-static void enum_object(CPU *cpu, uint32_t callback, uint32_t context,
-                        uint32_t buffer, unsigned char guid_low,
-                        uint32_t offset, uint32_t type, const char *name,
-                        int *stop) {
+void enum_object(CPU *cpu, uint32_t callback, uint32_t context, uint32_t buffer,
+                 unsigned char guid_low, uint32_t offset, uint32_t type,
+                 const char *name, int *stop) {
   CPU call;
   unsigned char guid[16];
 
@@ -76,6 +78,8 @@ static void enum_object(CPU *cpu, uint32_t callback, uint32_t context,
   if (call.reg[kX86pEax] == 0u)
     *stop = 1;
 }
+
+} // namespace
 
 uint32_t dinput_joystick_enum_objects(CPU *cpu, int pad, uint32_t callback,
                                       uint32_t context, uint32_t filter) {
@@ -110,3 +114,5 @@ uint32_t dinput_joystick_enum_objects(CPU *cpu, int pad, uint32_t callback,
     }
   return 0;
 }
+
+} // namespace x2::native

@@ -3,7 +3,9 @@
 #include "control.h"
 #include "control_command_bridge.h"
 
-void control_save_route(x2::native::Socket fd) {
+namespace x2::native {
+
+void control_save_route(Socket fd) {
   char reason[192];
   const char *report;
   size_t report_size;
@@ -21,3 +23,5 @@ void control_save_route(x2::native::Socket fd) {
     control_reply_text(fd, 200, "OK", "%.*s", (int)report_size, report);
   }
 }
+
+} // namespace x2::native

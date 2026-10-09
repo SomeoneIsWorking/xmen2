@@ -2,6 +2,8 @@
 
 #include "input_bindings.h"
 
+namespace x2::native {
+
 unsigned input_binding_sets_for_player(uint32_t player,
                                        InputBindingSetVisitor visit,
                                        void *context) {
@@ -15,3 +17,5 @@ unsigned input_binding_sets_for_player(uint32_t player,
     visit(BANK[bank] + player, context);
   return INPUT_BINDING_SETS;
 }
+
+} // namespace x2::native

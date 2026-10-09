@@ -19,10 +19,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-static unsigned long crc_table[256];
-static int crc_ready;
+namespace x2::native {
 
-static void crc_init(void) {
+namespace {
+
+unsigned long crc_table[256];
+int crc_ready;
+
+void crc_init(void) {
   unsigned long c;
   int n, k;
   for (n = 0; n < 256; n++) {
@@ -34,7 +38,7 @@ static void crc_init(void) {
   crc_ready = 1;
 }
 
-static unsigned long crc32_of(const unsigned char *b, size_t n) {
+unsigned long crc32_of(const unsigned char *b, size_t n) {
   unsigned long c = 0xffffffffUL;
   size_t i;
   if (!crc_ready)
@@ -44,7 +48,7 @@ static unsigned long crc32_of(const unsigned char *b, size_t n) {
   return c ^ 0xffffffffUL;
 }
 
-static void put_be32(unsigned char *p, unsigned long v) {
+void put_be32(unsigned char *p, unsigned long v) {
   p[0] = (unsigned char)(v >> 24);
   p[1] = (unsigned char)(v >> 16);
   p[2] = (unsigned char)(v >> 8);
@@ -52,8 +56,8 @@ static void put_be32(unsigned char *p, unsigned long v) {
 }
 
 /* One chunk: length, type, data, CRC over type+data. */
-static unsigned char *chunk(unsigned char *p, const char *type,
-                            const unsigned char *data, size_t n) {
+unsigned char *chunk(unsigned char *p, const char *type,
+                     const unsigned char *data, size_t n) {
   put_be32(p, (unsigned long)n);
   memcpy(p + 4, type, 4);
   if (n)
@@ -61,6 +65,8 @@ static unsigned char *chunk(unsigned char *p, const char *type,
   put_be32(p + 8 + n, crc32_of(p + 4, n + 4));
   return p + 12 + n;
 }
+
+} // namespace
 
 unsigned char *control_png_from_bgra(const unsigned char *bgra, unsigned w,
                                      unsigned h, size_t *out_len) {
@@ -140,3 +146,5 @@ unsigned char *control_png_from_bgra(const unsigned char *bgra, unsigned w,
   free(z);
   return png;
 }
+
+} // namespace x2::native

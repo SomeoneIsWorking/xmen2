@@ -17,6 +17,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+namespace x2::d3d8 {
+
+namespace {
+
 enum {
   SLOT_SET_TEXTURE = 61,
   SLOT_SET_STREAM_SOURCE = 83,
@@ -30,21 +34,18 @@ typedef struct BindingCase {
   uint32_t (*bound)(const D3D8State *state);
 } BindingCase;
 
-static uint32_t bound_texture(const D3D8State *state) {
-  return state->texture[1];
-}
+uint32_t bound_texture(const D3D8State *state) { return state->texture[1]; }
 
-static uint32_t bound_stream(const D3D8State *state) {
+uint32_t bound_stream(const D3D8State *state) {
   return state->stream[1].guest_ptr;
 }
 
-static uint32_t bound_indices(const D3D8State *state) { return state->indices; }
+uint32_t bound_indices(const D3D8State *state) { return state->indices; }
 
 /* SetTexture(stage, t) and SetStreamSource(stream, b, stride) take the
    object second, SetIndices(b, base) first. Stage and stream 1 keep the draw
    selftests' stage and stream 0 out of it. */
-static uint32_t bind(D3D8Object *device, const BindingCase *c,
-                     uint32_t object) {
+uint32_t bind(D3D8Object *device, const BindingCase *c, uint32_t object) {
   uint32_t args[3];
   if (c->slot == SLOT_SET_INDICES) {
     args[0] = object;
@@ -58,13 +59,13 @@ static uint32_t bind(D3D8Object *device, const BindingCase *c,
                             c->slot == SLOT_SET_TEXTURE ? 2 : 3);
 }
 
-static int expect(const BindingCase *c, const char *step, int ok) {
+int expect(const BindingCase *c, const char *step, int ok) {
   if (!ok)
     x2_log_info("d3d8 binding selftest: FAILED -- %s: %s.\n", c->name, step);
   return ok ? 0 : 1;
 }
 
-static int binding_case(D3D8Object *device, const BindingCase *c) {
+int binding_case(D3D8Object *device, const BindingCase *c) {
   const D3D8State *state = d3d8_device_state();
   D3D8Object *a = d3d8_object_new(static_cast<D3D8IfaceId>(c->iface), NULL);
   D3D8Object *b = d3d8_object_new(static_cast<D3D8IfaceId>(c->iface), NULL);
@@ -96,6 +97,8 @@ static int binding_case(D3D8Object *device, const BindingCase *c) {
   return fails;
 }
 
+} // namespace
+
 int d3d8_binding_selftest(void) {
   const BindingCase cases[] = {
       {"SetTexture", SLOT_SET_TEXTURE, D3D8_IF_IDirect3DTexture8,
@@ -124,3 +127,5 @@ int d3d8_binding_selftest(void) {
                 (unsigned)(sizeof cases / sizeof cases[0]));
   return fails;
 }
+
+} // namespace x2::d3d8

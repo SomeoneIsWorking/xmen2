@@ -152,6 +152,8 @@ void dinput_script_start(void) {
                  "seconds from here.\n");
 }
 
+namespace x2::native {
+
 void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size) {
   double now;
   int i;
@@ -181,3 +183,5 @@ void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size) {
     key->down = down;
   }
 }
+
+} // namespace x2::native

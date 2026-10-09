@@ -1,5 +1,4 @@
-#ifndef GPU_PIPELINE_H
-#define GPU_PIPELINE_H
+#pragma once
 
 /*
  * The pipeline and sampler caches.
@@ -14,8 +13,12 @@
 #include "gpu_draw.h"
 
 #include <SDL3/SDL.h>
-#include <stdint.h>
+#include <cstdint>
+#endif
 
+namespace x2::gpu {
+
+#ifdef X2_WITH_SDL
 /*
  * The pipeline cache.
  *
@@ -25,7 +28,7 @@
  * memset to zero before its fields are filled, so padding cannot differ
  * between two otherwise-identical keys.
  */
-typedef struct {
+struct PipeKey {
   uint32_t stride;
   int pos_offset, color_offset, specular_offset, uv_offset, normal_offset;
   int pos_is_float4, color_is_float4, specular_is_float4;
@@ -39,7 +42,7 @@ typedef struct {
      place of the offsets above. */
   int vs_program;
   GpuVsInputLayout vs_inputs;
-} PipeKey;
+};
 
 /* The cached pipeline for this state, built on first use. NULL means it could
    not be built, and that has been reported. */
@@ -64,6 +67,7 @@ int gpu_pipelines_cached(void);
 void gpu_pipeline_shutdown(void);
 
 #endif /* X2_WITH_SDL */
+
 /*
  * Does this backend have that blend factor at all?
  *
@@ -73,4 +77,4 @@ void gpu_pipeline_shutdown(void);
  */
 int gpu_blend_supported(GpuBlend b);
 
-#endif /* GPU_PIPELINE_H */
+} // namespace x2::gpu

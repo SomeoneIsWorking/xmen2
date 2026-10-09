@@ -171,7 +171,8 @@ static void m_EnumObjects(CPU *C) {
     return;
   }
   ret_com(C,
-          dinput_joystick_enum_objects(C, pad_of(d), callback, context, filter),
+          x2::native::dinput_joystick_enum_objects(C, pad_of(d), callback,
+                                                   context, filter),
           3);
 }
 

@@ -1,5 +1,6 @@
-#ifndef X2_X86_ENGINE_DIAGNOSTIC_H
-#define X2_X86_ENGINE_DIAGNOSTIC_H
+#pragma once
+
+namespace x2::native {
 
 /*
  * Route x86port's own diagnostics into this port's logger. Call once during
@@ -8,4 +9,4 @@
  */
 void x86_engine_diagnostic_install(void);
 
-#endif
+} // namespace x2::native

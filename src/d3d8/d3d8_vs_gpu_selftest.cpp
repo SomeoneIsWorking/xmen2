@@ -39,6 +39,10 @@
 #include <stdint.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
+namespace {
+
 enum { TARGET = 64, VERTICES = 6, TEXELS = 4 };
 
 /* Register types and source modifiers of the VS 1.1 token stream. */
@@ -54,13 +58,13 @@ enum { MOV = 1, ADD = 2, SUB = 3, MAD = 4, MUL = 5, DP3 = 8, DP4 = 9 };
   (0x80000000u | ((uint32_t)(type) << 28) | ((uint32_t)(swizzle) << 16) | (reg))
 
 /* v0 float3 position, v1 D3DCOLOR, v2 float2 uv, v3 UBYTE4 selector. */
-static const uint32_t kDeclaration[] = {0x20000000u, 0x40020000u, 0x40040001u,
-                                        0x40010002u, 0x40050003u, 0xffffffffu};
+const uint32_t kDeclaration[] = {0x20000000u, 0x40020000u, 0x40040001u,
+                                 0x40010002u, 0x40050003u, 0xffffffffu};
 
 /* DP3 writes oD0.w before MAD writes oD0.xyz, so the MAD's mask is what keeps
    the alpha: a write mask ignored anywhere shows in the pixels. */
 // clang-format off
-static const uint32_t kProgram[] = {
+const uint32_t kProgram[] = {
     0xfffe0101u,
     MOV, DST(R_ADDR, 0, 1), SRC(R_INPUT, 3, XXXX),
     DP4, DST(R_POS, 0, 1), SRC(R_INPUT, 0, XYZW), SRC(R_CONST, 0, XYZW) | RELATIVE,
@@ -85,7 +89,7 @@ typedef struct {
 
 /* The left triangle takes c0..c3, the identity; the right one c4..c7, which
    halves x and moves it right. */
-static const Vertex kVertices[VERTICES] = {
+const Vertex kVertices[VERTICES] = {
     {{-0.9f, -0.9f, 0.5f}, 0xFFFF0000u, {0.0f, 0.0f}, {0, 0, 0, 0}},
     {{-0.1f, -0.9f, 0.5f}, 0xFF00FF00u, {1.0f, 0.0f}, {0, 0, 0, 0}},
     {{-0.5f, 0.9f, 0.5f}, 0xFF0000FFu, {0.5f, 1.0f}, {0, 0, 0, 0}},
@@ -93,23 +97,23 @@ static const Vertex kVertices[VERTICES] = {
     {{0.8f, -0.8f, 0.5f}, 0xFF00FFFFu, {1.0f, 1.0f}, {4, 0, 0, 0}},
     {{0.0f, 0.8f, 0.5f}, 0xFFFFFFFFu, {0.5f, 0.0f}, {4, 0, 0, 0}}};
 
-static const float kConstants[13][4] = {{1, 0, 0, 0},
-                                        {0, 1, 0, 0},
-                                        {0, 0, 1, 0},
-                                        {0, 0, 0, 1},
-                                        {0.5f, 0, 0, 0.5f},
-                                        {0, 1, 0, 0},
-                                        {0, 0, 1, 0},
-                                        {0, 0, 0, 1},
-                                        {1, 0.5f, 1, 1},
-                                        {0.5f, 0, 0, 0},
-                                        {-0.25f, 0, 0.25f, 0},
-                                        {0.25f, 0.25f, 0.5f, 0.25f},
-                                        {0.25f, 0.25f, 0.25f, 0}};
+const float kConstants[13][4] = {{1, 0, 0, 0},
+                                 {0, 1, 0, 0},
+                                 {0, 0, 1, 0},
+                                 {0, 0, 0, 1},
+                                 {0.5f, 0, 0, 0.5f},
+                                 {0, 1, 0, 0},
+                                 {0, 0, 1, 0},
+                                 {0, 0, 0, 1},
+                                 {1, 0.5f, 1, 1},
+                                 {0.5f, 0, 0, 0},
+                                 {-0.25f, 0, 0.25f, 0},
+                                 {0.25f, 0.25f, 0.5f, 0.25f},
+                                 {0.25f, 0.25f, 0.25f, 0}};
 
 /* The vertices in a vertex buffer, locked and filled through its vtable as
    the engine fills one; the guest address of the bytes, or 0. */
-static uint32_t fill_vertex_buffer(D3D8Object *vb) {
+uint32_t fill_vertex_buffer(D3D8Object *vb) {
   uint32_t args[3], locked;
   args[0] = 0;
   args[1] = 0;
@@ -123,7 +127,7 @@ static uint32_t fill_vertex_buffer(D3D8Object *vb) {
   return locked;
 }
 
-static GpuTexture make_texture(void) {
+GpuTexture make_texture(void) {
   uint32_t texels[TEXELS * TEXELS];
   GpuTexture t = gpu_texture_create(TEXELS, TEXELS, GPU_FMT_BGRA8, 1);
   for (unsigned i = 0; i < TEXELS * TEXELS; i++) {
@@ -138,7 +142,7 @@ static GpuTexture make_texture(void) {
 }
 
 /* The draw, textured, into `image`. */
-static int render(GpuDraw *draw, GpuTexture texture, uint32_t *image) {
+int render(GpuDraw *draw, GpuTexture texture, uint32_t *image) {
   int ok;
   draw->texture = texture;
   draw->texop = GPU_TEXOP_MODULATE;
@@ -153,7 +157,7 @@ static int render(GpuDraw *draw, GpuTexture texture, uint32_t *image) {
 }
 
 /* Coverage and variety: identical images must also be informative ones. */
-static int image_informative(const uint32_t *image) {
+int image_informative(const uint32_t *image) {
   unsigned covered = 0, distinct = 0;
   uint32_t seen[32];
   for (unsigned i = 0; i < TARGET * TARGET; i++) {
@@ -179,7 +183,7 @@ static int image_informative(const uint32_t *image) {
   return 1;
 }
 
-static int compare(const uint32_t *gpu, const uint32_t *cpu) {
+int compare(const uint32_t *gpu, const uint32_t *cpu) {
   unsigned differ = 0, first = 0;
   for (unsigned i = 0; i < TARGET * TARGET; i++) {
     if (gpu[i] != cpu[i] && !differ++) {
@@ -198,9 +202,8 @@ static int compare(const uint32_t *gpu, const uint32_t *cpu) {
 }
 
 /* Both draws, from one device state; 0 when either could not be made. */
-static int draw_both(D3D8State *st, D3D8Object *vb, uint32_t guest_bytes,
-                     GpuTexture texture, uint32_t *gpu_image,
-                     uint32_t *cpu_image) {
+int draw_both(D3D8State *st, D3D8Object *vb, uint32_t guest_bytes,
+              GpuTexture texture, uint32_t *gpu_image, uint32_t *cpu_image) {
   D3D8DrawRequest req;
   GpuDraw gpu, cpu;
   int ok;
@@ -239,6 +242,8 @@ static int draw_both(D3D8State *st, D3D8Object *vb, uint32_t guest_bytes,
   }
   return ok;
 }
+
+} // namespace
 
 int d3d8_vs_gpu_selftest(void) {
   uint32_t gpu_image[TARGET * TARGET], cpu_image[TARGET * TARGET];
@@ -291,3 +296,5 @@ int d3d8_vs_gpu_selftest(void) {
                       "the same pixels");
   return fails;
 }
+
+} // namespace x2::d3d8

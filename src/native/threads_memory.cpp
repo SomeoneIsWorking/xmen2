@@ -8,6 +8,8 @@
 #define TIB_BYTES 0x1000u
 #define STACK_DEFAULT (256u * 1024u)
 
+namespace x2::native {
+
 int guest_thread_memory_alloc(GuestThread *t, uint32_t stack_bytes) {
   t->stack_bytes =
       stack_bytes ? ((stack_bytes + 0xFFFu) & ~0xFFFu) : STACK_DEFAULT;
@@ -38,3 +40,5 @@ void guest_thread_memory_free(GuestThread *t) {
   }
   t->stack_base = t->tib = 0;
 }
+
+} // namespace x2::native

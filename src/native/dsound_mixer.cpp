@@ -19,19 +19,23 @@
 #include <SDL3/SDL.h>
 #endif
 
-static DSBuffer *g_buf;
-static int g_nbuf, g_capbuf;
-static unsigned long g_mix_callbacks, g_mix_frames, g_silent_advances;
-static unsigned long g_mix_nonzero;
-static float g_mix_peak;
-static int g_primary_rate = 22050;
-static int g_audio_attempted, g_audio_silent;
-static double g_silent_time;
+namespace x2::native {
+
+namespace {
+
+DSBuffer *g_buf;
+int g_nbuf, g_capbuf;
+unsigned long g_mix_callbacks, g_mix_frames, g_silent_advances;
+unsigned long g_mix_nonzero;
+float g_mix_peak;
+int g_primary_rate = 22050;
+int g_audio_attempted, g_audio_silent;
+double g_silent_time;
 
 #ifdef X2_WITH_SDL
-static SDL_AudioStream *g_stream;
-static float *g_mix_scratch;
-static int g_mix_scratch_frames;
+SDL_AudioStream *g_stream;
+float *g_mix_scratch;
+int g_mix_scratch_frames;
 
 #endif
 
@@ -39,7 +43,9 @@ static int g_mix_scratch_frames;
    this read CLOCK_MONOTONIC directly, and the guest gates real logic on
    elapsed time, so any two of them disagreeing is a timing bug wearing a
    gameplay bug's clothes. */
-static double now_s(void) { return guest_clock_now_s(); }
+double now_s(void) { return guest_clock_now_s(); }
+
+} // namespace
 
 void dsound_mixer_lock(void) {
 #ifdef X2_WITH_SDL
@@ -54,7 +60,10 @@ void dsound_mixer_unlock(void) {
     SDL_UnlockAudioStream(g_stream);
 #endif
 }
-static float sample_at(const DSBuffer *b, uint64_t frame, int channel) {
+
+namespace {
+
+float sample_at(const DSBuffer *b, uint64_t frame, int channel) {
   const unsigned char *p;
   uint64_t frames;
   int srcch;
@@ -79,8 +88,8 @@ static float sample_at(const DSBuffer *b, uint64_t frame, int channel) {
   return 0.0f;
 }
 
-static void advance_buffer(DSBuffer *b, double out_frames, double out_rate,
-                           float *mix) {
+void advance_buffer(DSBuffer *b, double out_frames, double out_rate,
+                    float *mix) {
   uint64_t nsrc;
   double step;
   float gain, gl, gr;
@@ -126,7 +135,7 @@ static void advance_buffer(DSBuffer *b, double out_frames, double out_rate,
   }
 }
 
-static void mix_frames(float *mix, int frames, int rate) {
+void mix_frames(float *mix, int frames, int rate) {
   int i;
   if (mix)
     memset(mix, 0, (size_t)frames * 2u * sizeof(float));
@@ -148,8 +157,8 @@ static void mix_frames(float *mix, int frames, int rate) {
   }
 }
 #ifdef X2_WITH_SDL
-static void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
-                               int additional_amount, int total_amount) {
+void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
+                        int additional_amount, int total_amount) {
   int frames = additional_amount / (int)(2u * sizeof(float));
   float *mix;
   (void)userdata;
@@ -170,6 +179,9 @@ static void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
   g_mix_callbacks++;
   g_mix_frames += (unsigned long)frames;
 }
+
+} // namespace
+
 #endif
 void dsound_mixer_open_device(void) {
   if (g_audio_attempted)
@@ -283,13 +295,17 @@ DSBuffer *dsound_mixer_voice_of(uint32_t guest) {
   return NULL;
 }
 
-static DSBuffer *claim(DSBuffer *b) {
+namespace {
+
+DSBuffer *claim(DSBuffer *b) {
   memset(b, 0, sizeof *b);
   b->used = 1;
   b->refs = 1;
   b->volume = 0;
   return b;
 }
+
+} // namespace
 
 DSBuffer *dsound_mixer_alloc_voice(void) {
   int i;
@@ -414,3 +430,5 @@ int dsound_mixer_selftest(void) {
       fails ? "FAILED" : "PASSED");
   return fails;
 }
+
+} // namespace x2::native

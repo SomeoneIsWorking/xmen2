@@ -19,8 +19,11 @@
 
 #include "diagnostic.h"
 
-static void engine_diagnostic_sink(const X86pDiagnostic *diagnostic,
-                                   void *user) {
+namespace x2::native {
+
+namespace {
+
+void engine_diagnostic_sink(const X86pDiagnostic *diagnostic, void *user) {
   const char *component = "library";
   const char *message = "unspecified diagnostic";
   (void)user;
@@ -40,6 +43,10 @@ static void engine_diagnostic_sink(const X86pDiagnostic *diagnostic,
   x2_log_error("x86port[%s]: %s\n", component, message);
 }
 
+} // namespace
+
 void x86_engine_diagnostic_install(void) {
   x86p_diagnostic_set_sink(engine_diagnostic_sink, NULL);
 }
+
+} // namespace x2::native

@@ -409,7 +409,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   }
   memset(t, 0, sizeof *t);
   t->slot = i;
-  if (!guest_thread_memory_alloc(t, stack_bytes))
+  if (!x2::native::guest_thread_memory_alloc(t, stack_bytes))
     return 0;
   t->used = 1;
   /* Stamped at creation, not at the first state change: a thread that has
@@ -437,7 +437,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
                  "told the thread could not be created.\n",
                  strerror(result));
     t->used = 0;
-    guest_thread_memory_free(t);
+    x2::native::guest_thread_memory_free(t);
     return 0;
   }
   pthread_detach(t->thread);
@@ -486,7 +486,7 @@ void guest_thread_handle_closed(uint32_t handle) {
       /* This call happens before kernel32 clears the closing alias, so
          one means it is the LAST open handle to this thread object. */
       if (k32_thread_handle_count(t) == 1) {
-        guest_thread_memory_free(t);
+        x2::native::guest_thread_memory_free(t);
         t->reaped = 1;
         t->used = 0; /* slot is free for the next thread */
         g_reaped++;

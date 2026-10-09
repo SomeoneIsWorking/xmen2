@@ -1,5 +1,4 @@
-#ifndef X2_DINPUT_PAD_INTERNAL_H
-#define X2_DINPUT_PAD_INTERNAL_H
+#pragma once
 
 /*
  * The seam between the pad INVENTORY (dinput_pad.cpp, which owns when a device
@@ -9,15 +8,22 @@
  * get one, because they are different defects that produce the same "not
  * pressed".
  */
-typedef enum {
+namespace x2::native {
+
+enum X2PadSlotState {
   X2_PAD_SLOT_EMPTY = 0, /* no device in that slot at all */
   X2_PAD_SLOT_NO_HANDLE, /* a device, but SDL gave us no gamepad handle */
   X2_PAD_SLOT_READY
-} X2PadSlotState;
+};
+
+} // namespace x2::native
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
-X2PadSlotState dinput_pad_handle(int pad, SDL_Gamepad **out);
-#endif
 
+namespace x2::native {
+
+X2PadSlotState dinput_pad_handle(int pad, SDL_Gamepad **out);
+
+} // namespace x2::native
 #endif

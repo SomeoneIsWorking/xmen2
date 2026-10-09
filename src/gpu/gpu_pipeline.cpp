@@ -17,32 +17,41 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::gpu {
+
+namespace {
+
 /* Compiled from the vertex and fragment files in src/gpu/shaders at build time.
    The host format determines whether the generated data is SPIR-V or WGSL. */
-static const GpuShaderWord d3d8_fixed_vert_code[] =
+const GpuShaderWord d3d8_fixed_vert_code[] =
 #include "shaders/d3d8_fixed_vert.inc"
     ;
-static const GpuShaderWord d3d8_fixed_frag_code[] =
+const GpuShaderWord d3d8_fixed_frag_code[] =
 #include "shaders/d3d8_fixed_frag.inc"
     ;
-static const GpuShaderWord d3d8_vs11_vert_code[] =
+const GpuShaderWord d3d8_vs11_vert_code[] =
 #include "shaders/d3d8_vs11_vert.inc"
     ;
 
-static SDL_GPUShader *g_vs, *g_fs, *g_vs11;
+SDL_GPUShader *g_vs, *g_fs, *g_vs11;
+
+} // namespace
+
 typedef struct {
   int clamp, mag_point, min_filter, mip, max_anisotropy;
   float lod_bias;
   SDL_GPUSampler *sampler;
 } SamplerEntry;
 
-#define MAX_SAMPLERS 64
-static SamplerEntry g_sampler[MAX_SAMPLERS];
-static int g_nsamplers;
+namespace {
 
-static SDL_GPUShader *load_shader(const void *code, size_t len,
-                                  SDL_GPUShaderStage stage, int nsamplers,
-                                  int nuniforms) {
+#define MAX_SAMPLERS 64
+SamplerEntry g_sampler[MAX_SAMPLERS];
+int g_nsamplers;
+
+SDL_GPUShader *load_shader(const void *code, size_t len,
+                           SDL_GPUShaderStage stage, int nsamplers,
+                           int nuniforms) {
   SDL_GPUShaderCreateInfo ci;
   SDL_GPUShader *s;
 
@@ -60,7 +69,7 @@ static SDL_GPUShader *load_shader(const void *code, size_t len,
   return s;
 }
 
-static int shaders_ready(void) {
+int shaders_ready(void) {
   if (g_vs && g_fs)
     return 1;
   g_vs = load_shader(d3d8_fixed_vert_code,
@@ -79,7 +88,7 @@ static int shaders_ready(void) {
 }
 
 /* The VS 1.1 entry: its own uniform block, the program and the constants. */
-static int vs11_shader_ready(void) {
+int vs11_shader_ready(void) {
   if (!g_vs11)
     g_vs11 = load_shader(d3d8_vs11_vert_code,
                          X2_GPU_SHADER_SIZE(d3d8_vs11_vert_code),
@@ -92,7 +101,7 @@ static int vs11_shader_ready(void) {
    pointed at the position's bytes and neutralised by the uniforms instead. A
    missing binding would be a validation error, and a zero stride would read
    the same vertex. */
-static int fixed_attributes(const PipeKey *k, SDL_GPUVertexAttribute at[5]) {
+int fixed_attributes(const PipeKey *k, SDL_GPUVertexAttribute at[5]) {
   int nat = 0;
   at[nat].location = 0;
   at[nat].buffer_slot = 0;
@@ -129,13 +138,17 @@ static int fixed_attributes(const PipeKey *k, SDL_GPUVertexAttribute at[5]) {
   return nat;
 }
 
-static SDL_GPUBlendFactor sdl_blend(GpuBlend b);
+SDL_GPUBlendFactor sdl_blend(GpuBlend b);
+
+} // namespace
 
 int gpu_blend_supported(GpuBlend b) {
   return sdl_blend(b) != SDL_GPU_BLENDFACTOR_INVALID;
 }
 
-static SDL_GPUBlendFactor sdl_blend(GpuBlend b) {
+namespace {
+
+SDL_GPUBlendFactor sdl_blend(GpuBlend b) {
   switch (b) {
   case GPU_BLEND_ZERO:
     return SDL_GPU_BLENDFACTOR_ZERO;
@@ -161,7 +174,7 @@ static SDL_GPUBlendFactor sdl_blend(GpuBlend b) {
   return SDL_GPU_BLENDFACTOR_INVALID;
 }
 
-static SDL_GPUCompareOp sdl_compare(GpuCompare c) {
+SDL_GPUCompareOp sdl_compare(GpuCompare c) {
   switch (c) {
   case GPU_CMP_NEVER:
     return SDL_GPU_COMPAREOP_NEVER;
@@ -183,14 +196,18 @@ static SDL_GPUCompareOp sdl_compare(GpuCompare c) {
   return SDL_GPU_COMPAREOP_INVALID;
 }
 
+} // namespace
+
 typedef struct {
   PipeKey key;
   SDL_GPUGraphicsPipeline *pipe;
 } PipeEntry;
 
+namespace {
+
 #define MAX_PIPES 128
-static PipeEntry g_pipes[MAX_PIPES];
-static int g_npipes;
+PipeEntry g_pipes[MAX_PIPES];
+int g_npipes;
 /*
  * How many were EVER built, which is not g_npipes.
  *
@@ -200,7 +217,9 @@ static int g_npipes;
  * a million draws. That is not a small number, it is the wrong question asked
  * after the answer was destroyed. This one only ever goes up.
  */
-static unsigned long g_pipes_built;
+unsigned long g_pipes_built;
+
+} // namespace
 
 SDL_GPUGraphicsPipeline *gpu_pipeline_for(const PipeKey *k) {
   SDL_GPUGraphicsPipelineCreateInfo ci;
@@ -384,4 +403,6 @@ void gpu_pipeline_shutdown(void) {
     g_vs11 = NULL;
   }
 }
+
+} // namespace x2::gpu
 #endif /* X2_WITH_SDL */

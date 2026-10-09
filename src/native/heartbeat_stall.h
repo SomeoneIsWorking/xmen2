@@ -1,5 +1,4 @@
-#ifndef X2_HEARTBEAT_STALL_H
-#define X2_HEARTBEAT_STALL_H
+#pragma once
 
 /*
  * What a frozen counter on the beat means, and the one ring dump that says
@@ -12,6 +11,8 @@
  * block crosses nothing -- so "crossings unchanged" is stopped, blocked in
  * host code, or spinning, and this must not pick one of the three.
  */
+
+namespace x2::native {
 
 /*
  * Report the beat's frozen counters and dump the boundary ring once when the
@@ -26,4 +27,4 @@ int heartbeat_stall_observe(double t, double period, unsigned long cross,
 /* Forget the run's stall state; the reporter is a singleton per process. */
 void heartbeat_stall_reset(void);
 
-#endif /* X2_HEARTBEAT_STALL_H */
+} // namespace x2::native

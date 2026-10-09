@@ -1,5 +1,4 @@
-#ifndef X2_X86_ENGINE_JIT_DIAG_H
-#define X2_X86_ENGINE_JIT_DIAG_H
+#pragma once
 
 /*
  * The JIT's runtime diagnostic knobs, read from the layered CVar config and
@@ -16,8 +15,10 @@
 struct X86pJitEngine;
 struct X86pJitEngineStats;
 
+namespace x2::native {
+
 /* Apply product-safe JIT diagnostics, returning a reason on setup failure. */
 int x86_engine_jit_diag_configure(struct X86pJitEngine *jit, char *reason,
                                   unsigned reason_len);
 
-#endif /* X2_X86_ENGINE_JIT_DIAG_H */
+} // namespace x2::native

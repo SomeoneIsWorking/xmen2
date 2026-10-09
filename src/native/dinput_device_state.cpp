@@ -117,11 +117,12 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
   }
   if (device->kind == DINPUT_DEV_KEYBOARD) {
     dinput_system_keyboard_state(out, bytes);
-    dinput_script_apply(cpu, out, bytes);
+    x2::native::dinput_script_apply(cpu, out, bytes);
     x2::input::player_input_note_keyboard_state(
         guest_memory_as<const unsigned char>(out), bytes);
   } else if (device->kind == DINPUT_DEV_JOYSTICK) {
-    dinput_joystick_state(pad, device->axis_lo, device->axis_hi, out, bytes);
+    x2::native::dinput_joystick_state(pad, device->axis_lo, device->axis_hi,
+                                      out, bytes);
     if (joystick_active(out, bytes, device->axis_lo, device->axis_hi))
       x2::input::player_input_note_gamepad_activity(pad);
     x2::input::player_input_note_gamepad_state(

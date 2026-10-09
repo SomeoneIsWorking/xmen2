@@ -85,6 +85,8 @@ static void x2_spawn_probe_handler(CPU *C) {
   g_command_guest = 0;
 }
 
+namespace x2::native {
+
 void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
   CPU call;
   uint32_t base;
@@ -120,6 +122,8 @@ void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
   call.reg[kX86pEcx] = base + CONSOLE_MANAGER_RVA;
   x86_guest_call_args(&call, base + CONSOLE_EXEC_RVA, 4u);
 }
+
+} // namespace x2::native
 
 __attribute__((constructor)) static void entity_spawn_probe_register(void) {
   x86_register_override("XMen2.exe", SPAWN_HANDLER, x2_spawn_probe_handler);

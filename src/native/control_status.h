@@ -1,11 +1,12 @@
-#ifndef X2_CONTROL_STATUS_H
-#define X2_CONTROL_STATUS_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
+
+namespace x2::native {
 
 size_t control_status_format(char *body, size_t capacity,
                              unsigned long requests, unsigned long keys_pressed,
                              unsigned long keys_refused,
                              unsigned long screenshots);
 
-#endif /* X2_CONTROL_STATUS_H */
+} // namespace x2::native

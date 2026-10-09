@@ -26,17 +26,18 @@
  * state it expected to keep -- so those are refused by name rather than
  * approximated with a full copy.
  */
-#ifndef D3D8_STATEBLOCK_H
-#define D3D8_STATEBLOCK_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "d3d8_state.h"
 
+namespace x2::d3d8 {
+
 /* D3DSTATEBLOCKTYPE */
-#define D3DSBT_ALL 1u
-#define D3DSBT_PIXELSTATE 2u
-#define D3DSBT_VERTEXSTATE 3u
+inline constexpr unsigned D3DSBT_ALL = 1u;
+inline constexpr unsigned D3DSBT_PIXELSTATE = 2u;
+inline constexpr unsigned D3DSBT_VERTEXSTATE = 3u;
 
 /*
  * Capture `now` into a new block and hand back its token.
@@ -65,4 +66,4 @@ int d3d8_sb_delete(uint32_t token);
    near here. */
 void d3d8_sb_report(void);
 
-#endif /* D3D8_STATEBLOCK_H */
+} // namespace x2::d3d8

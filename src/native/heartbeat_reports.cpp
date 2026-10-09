@@ -16,6 +16,8 @@
 
 #include "x2_log.h"
 
+namespace x2::native {
+
 void heartbeat_subsystem_reports(void) {
   /* Whatever `peek` names, on EVERY beat -- a spin is a loop over
      state the ring cannot show, and one dump at the stall shows the
@@ -98,3 +100,5 @@ void heartbeat_wait_report(void) {
   p_tmo = tmo;
   p_handoff = handoffs;
 }
+
+} // namespace x2::native
