@@ -158,19 +158,21 @@ static void report_invalidation(const X86pJitEngineStats *js) {
                       ? "[HB] the engine evicted: %llu time(s) dropping %llu "
                         "block(s) of %llu translated -- the code arena is too "
                         "small for the working set by exactly that much "
-                        "(holding %llu KiB of %llu KiB across %llu block "
-                        "record(s), so the caps a run was started with are "
-                        "beside what it reached)"
+                        "(holding %llu KiB of %llu KiB in %llu chunk(s) "
+                        "across %llu block record(s), %llu whole-cache "
+                        "flush(es))"
                       : "[HB] the engine evicted: %llu time(s), %llu block(s), "
-                        "of %llu translated -- the code arena holds the whole "
-                        "working set reached so far (%llu KiB of %llu KiB, "
-                        "%llu block record(s))",
+                        "of %llu translated; %llu KiB of %llu KiB in %llu "
+                        "chunk(s), %llu block record(s), %llu whole-cache "
+                        "flush(es)",
                   (unsigned long long)js->evictions,
                   (unsigned long long)js->eviction_blocks_dropped,
                   (unsigned long long)js->blocks_translated,
                   (unsigned long long)(js->code_bytes_used / 1024u),
                   (unsigned long long)(js->code_bytes_limit / 1024u),
-                  (unsigned long long)js->block_records);
+                  (unsigned long long)js->code_chunks,
+                  (unsigned long long)js->block_records,
+                  (unsigned long long)js->cache_flushes);
   if (js->evictions > 0u) {
     lucent_log_info("engine",
                     "[HB]   asked for by: %llu the byte budget, %llu the "

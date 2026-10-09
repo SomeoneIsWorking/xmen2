@@ -73,9 +73,10 @@ struct X86EngineJitPool {
 enum { kCodeBytesDefault = 128u << 20, kCacheBlocksDefault = 65536u };
 static _Thread_local X86EngineJitNode *current_node;
 #else
-/* A full block table flushes the whole cache; one Danger Room boss fight
-   after Sanctuary needs 91,356 blocks and 31.6 MB (issue #194). */
-enum { kCodeBytesDefault = 128u << 20, kCacheBlocksDefault = 262144u };
+/* Ceilings, not allocations: code memory, the block table and chain slots
+   grow with the working set, and only reaching a ceiling flushes (issue #194).
+ */
+enum { kCodeBytesDefault = 512u << 20, kCacheBlocksDefault = 1u << 21 };
 #endif
 
 /*
