@@ -33,7 +33,7 @@
 #include <time.h>
 
 static X86Module *g_head;
-static ModuleNameMemo g_module_names;
+static x2::native::ModuleNameMemo g_module_names;
 
 /* Native overrides: (module, linked entry point) -> C implementation.
    Registered from the subsystem files by x86_register_override; the dispatcher
@@ -202,14 +202,14 @@ uint32_t x86_module_base(const char *image) {
 
 int x86_override_resolve_check(const char *module, uint32_t linked_ep,
                                uint32_t *mapped_out, char *why, size_t whyn) {
-  X86Module *m = module_name_memo_get(&g_module_names, module);
+  X86Module *m = x2::native::module_name_memo_get(&g_module_names, module);
   uint32_t mapped;
   if (!m) {
     for (m = g_head; m; m = m->next)
       if (!strcmp(m->name, module))
         break;
     if (m)
-      module_name_memo_put(&g_module_names, module, m);
+      x2::native::module_name_memo_put(&g_module_names, module, m);
   }
   if (!m) {
     snprintf(why, whyn,

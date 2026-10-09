@@ -37,7 +37,7 @@ uint32_t d3d8_resource_bytes(D3D8Object *o);
 uint32_t d3d8_resource_guest_bytes(D3D8Object *o);
 int d3d8_resource_index_is_32bit(D3D8Object *o);
 int d3d8_resource_texture_provenance(const D3D8Object *o,
-                                     D3D8TextureProvenance *out);
+                                     x2::d3d8::D3D8TextureProvenance *out);
 
 /*
  * One SUB-RESOURCE of a texture has been unlocked -- upload it.

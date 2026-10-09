@@ -9,13 +9,14 @@
  * default) gives the same precision to the other hosts with no x87 unit.
  * An x87 host keeps its exact unit: the mode is refused there.
  */
-#ifndef X2_X86_ENGINE_X87_PRECISION_H
-#define X2_X86_ENGINE_X87_PRECISION_H
+#pragma once
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* Selects `cpu`'s arithmetic from `x87.double`. Called for every CPU that
    runs guest code, beside the census attach. */
 void x86_engine_x87_precision_attach(struct X86pCpu *cpu);
 
-#endif
+} // namespace x2::native

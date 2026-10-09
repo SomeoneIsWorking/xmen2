@@ -1,9 +1,14 @@
-#ifndef X2_GPU_TEXTURE_FORMAT_H
-#define X2_GPU_TEXTURE_FORMAT_H
+#pragma once
 
 #include "gpu_draw.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+#ifdef X2_WITH_SDL
+#include <SDL3/SDL.h>
+#endif
+
+namespace x2::gpu {
 
 /* D3DFMT_R8G8B8 is stored as B, G, R bytes on little-endian x86. SDL_GPU
    has no portable 24-bit sampled format, so uploads expand it to BGRA8. */
@@ -19,10 +24,8 @@ uint32_t gpu_texture_level_bytes(GpuFormat format, uint32_t width,
                                  uint32_t height);
 
 #ifdef X2_WITH_SDL
-#include <SDL3/SDL.h>
-
 /* The SDL_GPU format a GpuFormat is sampled as; INVALID for none. */
 SDL_GPUTextureFormat gpu_texture_sdl_format(GpuFormat format);
 #endif
 
-#endif
+} // namespace x2::gpu

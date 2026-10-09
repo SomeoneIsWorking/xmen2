@@ -1,8 +1,9 @@
-#ifndef X2_CRT_CONSOLE_H
-#define X2_CRT_CONSOLE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdio.h>
+#include <cstddef>
+#include <cstdio>
+
+namespace x2::native {
 
 /*
  * The guest's own standard output, routed to this port's log.
@@ -41,4 +42,4 @@ size_t crt_console_write(const char *bytes, size_t n);
 /* Log whatever line is being assembled, if any. */
 void crt_console_flush(void);
 
-#endif /* X2_CRT_CONSOLE_H */
+} // namespace x2::native

@@ -1,21 +1,22 @@
-#ifndef X2_CUTSCENE_SKIP_PUBLICATION_H
-#define X2_CUTSCENE_SKIP_PUBLICATION_H
+#pragma once
 
-#define CUTSCENE_SKIP_PUBLICATION_BANKS 3u
+namespace x2::native {
 
-typedef struct {
+inline constexpr unsigned CUTSCENE_SKIP_PUBLICATION_BANKS = 3u;
+
+struct CutsceneSkipPublicationBank {
   int readable;
   int escape;
   int start;
-} CutsceneSkipPublicationBank;
+};
 
-typedef struct {
+struct CutsceneSkipPublicationSummary {
   unsigned readable;
   unsigned escape;
   unsigned start;
-} CutsceneSkipPublicationSummary;
+};
 
 CutsceneSkipPublicationSummary cutscene_skip_publication_classify(
     const CutsceneSkipPublicationBank bank[CUTSCENE_SKIP_PUBLICATION_BANKS]);
 
-#endif
+} // namespace x2::native

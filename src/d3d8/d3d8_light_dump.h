@@ -1,10 +1,11 @@
-#ifndef D3D8_LIGHT_DUMP_H
-#define D3D8_LIGHT_DUMP_H
+#pragma once
 
 /* X2_LIGHT_DUMP -- see d3d8_light_dump.cpp. */
 #include "gpu_draw.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::d3d8 {
 
 /* Called with the finished draw, once its lighting is filled in. */
 void d3d8_light_dump(const GpuDraw *d);
@@ -26,4 +27,4 @@ int d3d8_light_source_index(int slot);
 /* Always printed, including when the dump fired zero times. */
 void d3d8_light_dump_report(void);
 
-#endif /* D3D8_LIGHT_DUMP_H */
+} // namespace x2::d3d8

@@ -11,9 +11,9 @@ struct X86Module {
   int id;
 };
 
-enum { NAMES = MODULE_NAME_MEMO_SLOTS + 1 };
+enum { NAMES = x2::native::MODULE_NAME_MEMO_SLOTS + 1 };
 
-static ModuleNameMemo g_memo;
+static x2::native::ModuleNameMemo g_memo;
 static struct X86Module g_modules[NAMES];
 static char g_names[NAMES][2];
 static int failures;
@@ -32,24 +32,29 @@ int main(void) {
     g_modules[i].id = i;
     g_names[i][0] = 'm';
   }
-  expect("a name never put", module_name_memo_get(&g_memo, g_names[0]), NULL);
-  module_name_memo_put(&g_memo, g_names[0], &g_modules[0]);
-  expect("a name put", module_name_memo_get(&g_memo, g_names[0]),
+  expect("a name never put",
+         x2::native::module_name_memo_get(&g_memo, g_names[0]), NULL);
+  x2::native::module_name_memo_put(&g_memo, g_names[0], &g_modules[0]);
+  expect("a name put", x2::native::module_name_memo_get(&g_memo, g_names[0]),
          &g_modules[0]);
   expect("the same text at another address",
-         module_name_memo_get(&g_memo, g_names[1]), NULL);
-  module_name_memo_put(&g_memo, g_names[0], &g_modules[0]);
-  for (int i = 1; i < MODULE_NAME_MEMO_SLOTS; i++)
-    module_name_memo_put(&g_memo, g_names[i], &g_modules[i]);
-  for (int i = 0; i < MODULE_NAME_MEMO_SLOTS; i++) {
+         x2::native::module_name_memo_get(&g_memo, g_names[1]), NULL);
+  x2::native::module_name_memo_put(&g_memo, g_names[0], &g_modules[0]);
+  for (int i = 1; i < x2::native::MODULE_NAME_MEMO_SLOTS; i++)
+    x2::native::module_name_memo_put(&g_memo, g_names[i], &g_modules[i]);
+  for (int i = 0; i < x2::native::MODULE_NAME_MEMO_SLOTS; i++) {
     char what[48];
     snprintf(what, sizeof what, "name %d of a full memo", i);
-    expect(what, module_name_memo_get(&g_memo, g_names[i]), &g_modules[i]);
+    expect(what, x2::native::module_name_memo_get(&g_memo, g_names[i]),
+           &g_modules[i]);
   }
-  module_name_memo_put(&g_memo, g_names[MODULE_NAME_MEMO_SLOTS],
-                       &g_modules[MODULE_NAME_MEMO_SLOTS]);
+  x2::native::module_name_memo_put(
+      &g_memo, g_names[x2::native::MODULE_NAME_MEMO_SLOTS],
+      &g_modules[x2::native::MODULE_NAME_MEMO_SLOTS]);
   expect("one more than a full memo holds",
-         module_name_memo_get(&g_memo, g_names[MODULE_NAME_MEMO_SLOTS]), NULL);
+         x2::native::module_name_memo_get(
+             &g_memo, g_names[x2::native::MODULE_NAME_MEMO_SLOTS]),
+         NULL);
   if (failures) {
     fprintf(stderr, "%d failure(s)\n", failures);
     return 1;

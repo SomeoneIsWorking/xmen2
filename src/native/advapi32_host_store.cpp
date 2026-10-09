@@ -20,11 +20,11 @@
  */
 int advapi32_host_get_string(const char *path, const char *name, char *out,
                              int cap) {
-  RegValue *v;
-  advapi32_store_load();
+  x2::native::RegValue *v;
+  x2::native::advapi32_store_load();
   if (!path || !name || !out || cap <= 0)
     return 0;
-  v = advapi32_store_find(path, name);
+  v = x2::native::advapi32_store_find(path, name);
   if (!v || v->type != 1u /* REG_SZ */ || v->len >= (uint32_t)cap)
     return 0;
   memcpy(out, v->data, v->len);
@@ -34,23 +34,23 @@ int advapi32_host_get_string(const char *path, const char *name, char *out,
 
 int advapi32_host_set_string(const char *path, const char *name,
                              const char *value) {
-  RegValue *v;
+  x2::native::RegValue *v;
   size_t n;
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!path || !name || !value)
     return 0;
   n = strlen(value);
-  if (n >= MAX_DATA_) {
+  if (n >= x2::native::MAX_DATA_) {
     x2_log_error("advapi32: host publication of \"%s|%s\" is %d bytes "
                  "and this store holds %d -- REFUSED.\n",
-                 path, name, (int)n, MAX_DATA_);
+                 path, name, (int)n, x2::native::MAX_DATA_);
     return 0;
   }
-  v = advapi32_store_put(path, name);
+  v = x2::native::advapi32_store_put(path, name);
   v->type = 1u; /* REG_SZ */
   v->len = (uint32_t)n;
   memcpy(v->data, value, n);
-  advapi32_store_note_write();
-  advapi32_store_save();
+  x2::native::advapi32_store_note_write();
+  x2::native::advapi32_store_save();
   return 1;
 }

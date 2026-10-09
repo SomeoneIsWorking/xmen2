@@ -307,7 +307,8 @@ static void m_EnumDevices(CPU *C) {
      * rules.
      */
     dinput8_controller_slots_set_manager(pvref);
-    dinput8_hotplug_note_game_enumeration(cb, pvref, RD32(C->reg[kX86pEsp]));
+    x2::native::dinput8_hotplug_note_game_enumeration(cb, pvref,
+                                                      RD32(C->reg[kX86pEsp]));
   }
 
   /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
@@ -330,7 +331,8 @@ static void m_EnumDevices(CPU *C) {
     }
   }
   if (cls == DI8DEVCLASS_GAMECTRL)
-    dinput8_hotplug_enumerated(dinput_pad_generation(), npad, reported);
+    x2::native::dinput8_hotplug_enumerated(dinput_pad_generation(), npad,
+                                           reported);
   enum_seen(cls, flags, cb, reported);
   ret_com(C, S_OK, 4);
 }
@@ -513,7 +515,7 @@ void dinput8_report(void) {
   x2_log_info(
       "; %d distinct EnumDevices signature(s); %lu controller inventory "
       "generation admission(s):\n",
-      g_nenum, dinput8_hotplug_admissions());
+      g_nenum, x2::native::dinput8_hotplug_admissions());
   for (i = 0; i < g_nenum; i++) {
     const char *nm = x86_native_name_at(g_enum[i].cb);
     x2_log_info("        class %u %-9s flags 0x%-4x  x%-5lu  offered "

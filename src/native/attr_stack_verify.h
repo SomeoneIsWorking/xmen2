@@ -1,11 +1,12 @@
-#ifndef X2_ATTR_STACK_VERIFY_H
-#define X2_ATTR_STACK_VERIFY_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-typedef struct {
+namespace x2::native {
+
+struct AttrStackVerify {
   int active;
   uint32_t self;
   int count;
@@ -28,10 +29,10 @@ typedef struct {
   uint32_t orig_p24_f8;
   uint32_t p28;
   uint32_t orig_p28_f8;
-} AttrStackVerify;
+};
 
 void attr_stack_verify_begin(AttrStackVerify *v, uint32_t self);
 void attr_stack_verify_end(const struct X86pCpu *C, AttrStackVerify *v,
                            uint32_t self);
 
-#endif /* X2_ATTR_STACK_VERIFY_H */
+} // namespace x2::native

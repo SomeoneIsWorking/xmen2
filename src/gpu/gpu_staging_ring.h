@@ -22,19 +22,20 @@
  * stops scaling with the number of uploads and becomes the number of pages in
  * flight.
  */
-#ifndef GPU_STAGING_RING_H
-#define GPU_STAGING_RING_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct SDL_GPUDevice;
 struct SDL_GPUTransferBuffer;
 
+namespace x2::gpu {
+
 /* Where an upload's bytes landed: SDL copy commands take both. */
-typedef struct GpuStagingWrite {
+struct GpuStagingWrite {
   struct SDL_GPUTransferBuffer *buffer;
   uint32_t offset;
-} GpuStagingWrite;
+};
 
 /*
  * Copy `bytes` into the ring and say where they landed.
@@ -73,4 +74,4 @@ void gpu_staging_ring_stats(unsigned long *pages, unsigned long long *allocs,
 /* Test seam: the page size the ring bump-allocates within. */
 uint32_t gpu_staging_ring_page_bytes(void);
 
-#endif
+} // namespace x2::gpu

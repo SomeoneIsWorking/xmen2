@@ -93,14 +93,14 @@ bool configure_performance_trace(jboolean enabled) {
  */
 bool configure_draw_dump(jboolean enabled) {
   if (enabled == JNI_TRUE) {
-    gpu_draw_trace_arm_busy_frame(100u);
+    x2::gpu::gpu_draw_trace_arm_busy_frame(100u);
     d3d8_device_trace_texture_factor(1);
     gpu_draw_diagnostic_disable_depth(1);
     gpu_texture_request_format_support_report();
     __android_log_print(ANDROID_LOG_INFO, "XMen2",
                         "armed renderer busy-frame dump and TFACTOR trace");
   } else {
-    gpu_draw_trace_disarm_frame_dump();
+    x2::gpu::gpu_draw_trace_disarm_frame_dump();
     d3d8_device_trace_texture_factor(0);
     gpu_draw_diagnostic_disable_depth(0);
   }

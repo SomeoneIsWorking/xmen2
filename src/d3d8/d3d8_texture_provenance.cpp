@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+namespace x2::d3d8 {
+
 static uint64_t fnv1a64(const void *bytes, size_t count) {
   const uint8_t *p = static_cast<const uint8_t *>(bytes);
   uint64_t value = UINT64_C(14695981039346656037);
@@ -44,3 +46,5 @@ void d3d8_texture_provenance_uploaded(D3D8TextureProvenance *provenance,
   provenance->level0_fingerprint_valid = 1;
   provenance->level0_revision++;
 }
+
+} // namespace x2::d3d8

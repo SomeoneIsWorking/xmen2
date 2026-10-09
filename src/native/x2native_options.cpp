@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 /*
  * `--env NAME=VALUE`: set one of the diagnostic overrides the configuration
  * owner knows, from the command line.
@@ -152,3 +154,5 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
 int x2native_options_uses_project_env(const X2NativeOptions *options) {
   return options && !options->appimage;
 }
+
+} // namespace x2::native

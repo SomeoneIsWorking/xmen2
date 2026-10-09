@@ -1002,7 +1002,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
       const GpuLight *L = &out->light[li3];
       at += (size_t)snprintf(lphrase + at, sizeof lphrase - at,
                              "%s#%d t%d %.2f", li3 ? ", " : "",
-                             d3d8_light_source_index(li3), L->type,
+                             x2::d3d8::d3d8_light_source_index(li3), L->type,
                              0.299 * L->diffuse[0] + 0.587 * L->diffuse[1] +
                                  0.114 * L->diffuse[2]);
     }
@@ -1360,10 +1360,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
           g_arg_first[3] = b2;
         }
       }
-      out->color_arg1 = d3d8_texture_arg(a1, "COLORARG1");
-      out->color_arg2 = d3d8_texture_arg(a2, "COLORARG2");
-      out->alpha_arg1 = d3d8_texture_arg(b1, "ALPHAARG1");
-      out->alpha_arg2 = d3d8_texture_arg(b2, "ALPHAARG2");
+      out->color_arg1 = x2::d3d8::d3d8_texture_arg(a1, "COLORARG1");
+      out->color_arg2 = x2::d3d8::d3d8_texture_arg(a2, "COLORARG2");
+      out->alpha_arg1 = x2::d3d8::d3d8_texture_arg(b1, "ALPHAARG1");
+      out->alpha_arg2 = x2::d3d8::d3d8_texture_arg(b2, "ALPHAARG2");
       if (out->color_arg1 < 0 || out->color_arg2 < 0 || out->alpha_arg1 < 0 ||
           out->alpha_arg2 < 0)
         return 0;
@@ -1465,7 +1465,7 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
     }
   }
 
-  if (!d3d8_texture_stage1_lower(s, req->texture1, out))
+  if (!x2::d3d8::d3d8_texture_stage1_lower(s, req->texture1, out))
     return 0;
 
   out->blend_enable = rs(s, D3DRS_ALPHABLENDENABLE, 0) != 0;

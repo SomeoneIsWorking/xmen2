@@ -27,7 +27,7 @@ enum {
   X2_MANAGER_BUFFER = 0xe0u
 };
 
-SaveTrace g_trace;
+x2::save::SaveTrace g_trace;
 
 int g_trace_enabled;
 
@@ -51,49 +51,53 @@ void copy_guest_string(char *out, size_t capacity, uint32_t address) {
   out[i] = 0;
 }
 
-void mark_with_u32(SaveTracePoint point, SaveTraceAnswer answer,
-                   const char *name, uint32_t value) {
-  char label[SAVE_TRACE_LABEL_CAPACITY];
+void mark_with_u32(x2::save::SaveTracePoint point,
+                   x2::save::SaveTraceAnswer answer, const char *name,
+                   uint32_t value) {
+  char label[x2::save::SAVE_TRACE_LABEL_CAPACITY];
 
   snprintf(label, sizeof label, "%s=0x%08x", name, value);
-  save_trace_mark(&g_trace, point, answer, label);
+  x2::save::save_trace_mark(&g_trace, point, answer, label);
 }
 
 void capture_mode_cycle(uint32_t manager, uint32_t before) {
-  save_trace_mode_cycle(&g_trace, before,
-                        manager ? RD32(manager + X2_MANAGER_MODE) : 0u);
+  x2::save::save_trace_mode_cycle(
+      &g_trace, before, manager ? RD32(manager + X2_MANAGER_MODE) : 0u);
 }
 
 void x2_trace_005c9970(CPU *C) {
-  save_trace_mark(&g_trace, SAVE_TRACE_MENU_BUILD, SAVE_TRACE_ANSWER_UNKNOWN,
-                  "CMenuMain::Build");
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_MENU_BUILD,
+                            x2::save::SAVE_TRACE_ANSWER_UNKNOWN,
+                            "CMenuMain::Build");
   x86_guest_body(C, "XMen2.exe", 0x005c9970u);
 }
 
 } // namespace
 
 void save_trace_menu_open(void) {
-  save_trace_mark(&g_trace, SAVE_TRACE_MENU_OPEN, SAVE_TRACE_ANSWER_UNKNOWN,
-                  "CMenuMain::Show");
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_MENU_OPEN,
+                            x2::save::SAVE_TRACE_ANSWER_UNKNOWN,
+                            "CMenuMain::Show");
 }
 
 namespace {
 
 void x2_trace_0055fcd0(CPU *C) {
-  char leaf[SAVE_TRACE_LABEL_CAPACITY];
+  char leaf[x2::save::SAVE_TRACE_LABEL_CAPACITY];
 
   copy_guest_string(leaf, sizeof leaf, stack_arg(C, 1u));
-  save_trace_mark(&g_trace, SAVE_TRACE_LOAD_0055FCD0, SAVE_TRACE_ANSWER_UNKNOWN,
-                  leaf);
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_LOAD_0055FCD0,
+                            x2::save::SAVE_TRACE_ANSWER_UNKNOWN, leaf);
   x86_guest_body(C, "XMen2.exe", 0x0055fcd0u);
 }
 
 void x2_trace_004aed10(CPU *C) {
   uint32_t manager = C->reg[kX86pEcx];
 
-  save_trace_load_manager(
+  x2::save::save_trace_load_manager(
       &g_trace,
-      RD8(X2_SAVE_METADATA) ? SAVE_TRACE_ANSWER_YES : SAVE_TRACE_ANSWER_NO,
+      RD8(X2_SAVE_METADATA) ? x2::save::SAVE_TRACE_ANSWER_YES
+                            : x2::save::SAVE_TRACE_ANSWER_NO,
       RD32(manager + X2_MANAGER_MODE), RD32(manager + X2_MANAGER_STATE),
       RD8(manager + X2_MANAGER_DEVICE),
       (uint32_t)(int32_t)(int8_t)RD8(manager + X2_MANAGER_SELECTION),
@@ -102,17 +106,18 @@ void x2_trace_004aed10(CPU *C) {
 }
 
 void x2_trace_0046e2b0(CPU *C) {
-  char label[SAVE_TRACE_LABEL_CAPACITY];
+  char label[x2::save::SAVE_TRACE_LABEL_CAPACITY];
 
   snprintf(label, sizeof label, "buffer=0x%08x kind=%u", stack_arg(C, 0u),
            stack_arg(C, 1u));
-  save_trace_mark(&g_trace, SAVE_TRACE_LOAD_0046E2B0, SAVE_TRACE_ANSWER_UNKNOWN,
-                  label);
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_LOAD_0046E2B0,
+                            x2::save::SAVE_TRACE_ANSWER_UNKNOWN, label);
   x86_guest_body(C, "XMen2.exe", 0x0046e2b0u);
 }
 
 void x2_trace_0049f140(CPU *C) {
-  mark_with_u32(SAVE_TRACE_LOAD_0049F140, SAVE_TRACE_ANSWER_UNKNOWN, "state",
+  mark_with_u32(x2::save::SAVE_TRACE_LOAD_0049F140,
+                x2::save::SAVE_TRACE_ANSWER_UNKNOWN, "state",
                 RD32(X2_SAVE_MANAGER + X2_MANAGER_STATE));
   x86_guest_body(C, "XMen2.exe", 0x0049f140u);
 }
@@ -121,8 +126,9 @@ void x2_trace_004aeb80(CPU *C) {
   uint32_t manager = C->reg[kX86pEcx];
   uint32_t before = RD32(manager + X2_MANAGER_MODE);
 
-  mark_with_u32(SAVE_TRACE_SAVE_004AEB80, SAVE_TRACE_ANSWER_UNKNOWN,
-                "requested-mode", stack_arg(C, 0u));
+  mark_with_u32(x2::save::SAVE_TRACE_SAVE_004AEB80,
+                x2::save::SAVE_TRACE_ANSWER_UNKNOWN, "requested-mode",
+                stack_arg(C, 0u));
   x86_guest_body(C, "XMen2.exe", 0x004aeb80u);
   capture_mode_cycle(manager, before);
 }
@@ -138,8 +144,9 @@ void x2_trace_004ae990(CPU *C) {
 void x2_trace_004b15b0(CPU *C) {
   uint32_t state = RD32(C->reg[kX86pEcx] + X2_MANAGER_STATE);
 
-  mark_with_u32(SAVE_TRACE_SAVE_004B15B0,
-                state == 27u ? SAVE_TRACE_ANSWER_YES : SAVE_TRACE_ANSWER_NO,
+  mark_with_u32(x2::save::SAVE_TRACE_SAVE_004B15B0,
+                state == 27u ? x2::save::SAVE_TRACE_ANSWER_YES
+                             : x2::save::SAVE_TRACE_ANSWER_NO,
                 "state", state);
   x86_guest_body(C, "XMen2.exe", 0x004b15b0u);
 }
@@ -147,9 +154,9 @@ void x2_trace_004b15b0(CPU *C) {
 void x2_trace_0046baf0(CPU *C) {
   uint32_t caller = RD32(C->reg[kX86pEsp]);
 
-  mark_with_u32(SAVE_TRACE_SAVE_004B1746,
-                caller == 0x004b174cu ? SAVE_TRACE_ANSWER_YES
-                                      : SAVE_TRACE_ANSWER_NO,
+  mark_with_u32(x2::save::SAVE_TRACE_SAVE_004B1746,
+                caller == 0x004b174cu ? x2::save::SAVE_TRACE_ANSWER_YES
+                                      : x2::save::SAVE_TRACE_ANSWER_NO,
                 "return", caller);
   x86_guest_body(C, "XMen2.exe", 0x0046baf0u);
 }
@@ -157,9 +164,9 @@ void x2_trace_0046baf0(CPU *C) {
 void x2_trace_0055fe70(CPU *C) {
   uint32_t caller = RD32(C->reg[kX86pEsp]);
 
-  mark_with_u32(SAVE_TRACE_SAVE_004B177A,
-                caller == 0x004b177du ? SAVE_TRACE_ANSWER_YES
-                                      : SAVE_TRACE_ANSWER_NO,
+  mark_with_u32(x2::save::SAVE_TRACE_SAVE_004B177A,
+                caller == 0x004b177du ? x2::save::SAVE_TRACE_ANSWER_YES
+                                      : x2::save::SAVE_TRACE_ANSWER_NO,
                 "return", caller);
   x86_guest_body(C, "XMen2.exe", 0x0055fe70u);
 }
@@ -167,32 +174,35 @@ void x2_trace_0055fe70(CPU *C) {
 } // namespace
 
 void save_trace_map_return(uint32_t map, int succeeded) {
-  char label[SAVE_TRACE_LABEL_CAPACITY];
+  char label[x2::save::SAVE_TRACE_LABEL_CAPACITY];
 
   snprintf(label, sizeof label, "map=0x%08x", map);
-  save_trace_mark(&g_trace, SAVE_TRACE_MAP_00484CE0,
-                  succeeded ? SAVE_TRACE_ANSWER_YES : SAVE_TRACE_ANSWER_NO,
-                  label);
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_MAP_00484CE0,
+                            succeeded ? x2::save::SAVE_TRACE_ANSWER_YES
+                                      : x2::save::SAVE_TRACE_ANSWER_NO,
+                            label);
 }
 
 namespace {
 
 void x2_trace_0049f860(CPU *C) {
-  save_trace_mark(&g_trace, SAVE_TRACE_LOCK_COMBAT, SAVE_TRACE_ANSWER_UNKNOWN,
-                  "lockCombat");
+  x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_LOCK_COMBAT,
+                            x2::save::SAVE_TRACE_ANSWER_UNKNOWN, "lockCombat");
   x86_guest_body(C, "XMen2.exe", 0x0049f860u);
 }
 
 void x2_trace_004a6b50(CPU *C) {
-  save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
-                  SAVE_TRACE_ANSWER_UNKNOWN, "extractionPoint entry");
+  x2::save::save_trace_mark(
+      &g_trace, x2::save::SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
+      x2::save::SAVE_TRACE_ANSWER_UNKNOWN, "extractionPoint entry");
   x86_guest_body(C, "XMen2.exe", 0x004a6b50u);
 }
 
 void x2_trace_005604f0(CPU *C) {
   if (RD32(C->reg[kX86pEsp]) == 0x004a6d01u)
-    save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
-                    SAVE_TRACE_ANSWER_YES, "queued saveloadProcess(4)");
+    x2::save::save_trace_mark(
+        &g_trace, x2::save::SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
+        x2::save::SAVE_TRACE_ANSWER_YES, "queued saveloadProcess(4)");
   x86_guest_body(C, "XMen2.exe", 0x005604f0u);
 }
 
@@ -220,9 +230,10 @@ int path_is_main_engb(const char *path) {
 
 void save_trace_asset_open(const char *guest_path, int succeeded) {
   if (path_is_main_engb(guest_path))
-    save_trace_mark(&g_trace, SAVE_TRACE_MAIN_ENGB_OPEN,
-                    succeeded ? SAVE_TRACE_ANSWER_YES : SAVE_TRACE_ANSWER_NO,
-                    guest_path);
+    x2::save::save_trace_mark(&g_trace, x2::save::SAVE_TRACE_MAIN_ENGB_OPEN,
+                              succeeded ? x2::save::SAVE_TRACE_ANSWER_YES
+                                        : x2::save::SAVE_TRACE_ANSWER_NO,
+                              guest_path);
 }
 
 size_t save_trace_runtime_report(char *out, size_t capacity) {
@@ -232,11 +243,12 @@ size_t save_trace_runtime_report(char *out, size_t capacity) {
   size_t combined_size;
   size_t load_menu_size;
 
-  if (save_trace_report(&g_trace, NULL, 0, &required) !=
-          SAVE_TRACE_REFUSED_CAPACITY ||
+  if (x2::save::save_trace_report(&g_trace, NULL, 0, &required) !=
+          x2::save::SAVE_TRACE_REFUSED_CAPACITY ||
       !required || !out || capacity < required)
     return 0;
-  if (save_trace_report(&g_trace, out, capacity, NULL) != SAVE_TRACE_RECORDED)
+  if (x2::save::save_trace_report(&g_trace, out, capacity, NULL) !=
+      x2::save::SAVE_TRACE_RECORDED)
     return 0;
   trace_size = required - 1u;
   autosave_size = x2::native::autosave_runtime_report(out + trace_size,
@@ -255,8 +267,8 @@ void save_trace_runtime_print(void) {
   char *report;
   size_t required = 0;
 
-  if (save_trace_report(&g_trace, NULL, 0, &required) !=
-          SAVE_TRACE_REFUSED_CAPACITY ||
+  if (x2::save::save_trace_report(&g_trace, NULL, 0, &required) !=
+          x2::save::SAVE_TRACE_REFUSED_CAPACITY ||
       !required)
     return;
   report = (char *)malloc(required);
@@ -265,8 +277,8 @@ void save_trace_runtime_print(void) {
                  required);
     return;
   }
-  if (save_trace_report(&g_trace, report, required, NULL) ==
-      SAVE_TRACE_RECORDED)
+  if (x2::save::save_trace_report(&g_trace, report, required, NULL) ==
+      x2::save::SAVE_TRACE_RECORDED)
     x2_log_error("%s", report);
   free(report);
 }
@@ -278,7 +290,7 @@ __attribute__((constructor)) static void x2_save_trace_register(void) {
       config_override_get(x2::config::ConfigOverride::SaveTrace);
 
   g_trace_enabled = !(enabled && strcmp(enabled, "0") == 0);
-  save_trace_init(&g_trace, g_trace_enabled);
+  x2::save::save_trace_init(&g_trace, g_trace_enabled);
   if (!g_trace_enabled)
     return;
   x86_register_override("XMen2.exe", 0x005c9970u, x2_trace_005c9970);

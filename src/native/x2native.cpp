@@ -1475,7 +1475,7 @@ int main(int argc, char **argv) {
   int window, i, rc, mapped = 0, run, arkprobe, vk;
   int vkselftest, vkpermissive, d3d8, d3d8selftest, d3d8permissive;
   int dialogselftest;
-  X2NativeOptions options;
+  x2::native::X2NativeOptions options;
   int packaged_bundle = 0;
   X86Module *m;
   /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them.
@@ -1492,7 +1492,7 @@ int main(int argc, char **argv) {
      names on Linux. Each publishes its own resources. */
   packaged_bundle = x2::native::macos_bundle_init(argv[0]) ||
                     x2::native::windows_package_init();
-  if ((rc = x2native_options_parse(argc, argv, &options)) != 0)
+  if ((rc = x2::native::x2native_options_parse(argc, argv, &options)) != 0)
     return rc;
   if (packaged_bundle)
     options.appimage = 1;
@@ -1500,7 +1500,7 @@ int main(int argc, char **argv) {
      Packaged --appimage setup (also used by Android) categorically may not:
      its Browse flow and persisted OS user-data selection are the sole player
      authority. Explicit environment variables still remain diagnostics. */
-  if (x2native_options_uses_project_env(&options) &&
+  if (x2::native::x2native_options_uses_project_env(&options) &&
       x2::native::load_project_env(argv[0]) < 0)
     return 2;
   x2::diagnostics::Startup::begin(x2::config::config_directory());

@@ -9,18 +9,16 @@
 #include <string.h>
 
 /* ---- the draw path, proved by reading the pixels back ------------------ */
-
 /*
- * A frame path that presents and a frame path that DRAWS are different
- * claims, and the first has been true here for a while without the second.
- * So this does not check that gpu_draw returned 1 -- that is a mechanism
- * check. It renders into an off-screen target, copies it back, and looks at
- * the pixels.
+ * A frame path that presents and a frame path that DRAWS are different claims,
+ * and the first has been true here for a while without the second. So this does
+ * not check that gpu_draw returned 1 -- that is a mechanism check. It renders
+ * into an off-screen target, copies it back, and looks at the pixels.
  *
  * Designed around its NEGATIVE: the target is cleared to a colour that is not
- * the triangle's, so "the triangle is there" and "the clear is there" cannot
- * be confused, and the test fails if the centre is still the clear colour.
- * Two corners are checked too -- a shader that filled the whole target would
+ * the triangle's, so "the triangle is there" and "the clear is there" cannot be
+ * confused, and the test fails if the centre is still the clear colour. Two
+ * corners are checked too -- a shader that filled the whole target would
  * otherwise pass.
  */
 
@@ -46,6 +44,7 @@ int gpu_midframe_clear_selftest(void) {
       "is not a pass.\n");
   return 77;
 #else
+  using x2::gpu::OFF_H, x2::gpu::OFF_W, x2::gpu::px_is;
   struct {
     float x, y, z, rhw;
     uint32_t color;
@@ -142,6 +141,7 @@ int gpu_draw_selftest(void) {
               "pass.\n");
   return 77;
 #else
+  using x2::gpu::OFF_H, x2::gpu::OFF_W, x2::gpu::px_is;
   /* A big clockwise triangle covering the middle, pre-transformed so no
      matrix is involved: this is testing the draw path, not the maths. */
   struct {

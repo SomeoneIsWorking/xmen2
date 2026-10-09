@@ -1,5 +1,4 @@
-#ifndef MODULE_NAME_MEMO_H
-#define MODULE_NAME_MEMO_H
+#pragma once
 
 /*
  * An insert-only map from a module-name POINTER to the module it named.
@@ -20,12 +19,14 @@
 
 struct X86Module;
 
-enum { MODULE_NAME_MEMO_SLOTS = 256 };
+namespace x2::native {
 
-typedef struct ModuleNameMemo {
+inline constexpr int MODULE_NAME_MEMO_SLOTS = 256;
+
+struct ModuleNameMemo {
   std::atomic<const char *> key[MODULE_NAME_MEMO_SLOTS];
   std::atomic<struct X86Module *> module[MODULE_NAME_MEMO_SLOTS];
-} ModuleNameMemo;
+};
 
 /* The module `name` was remembered to name, or NULL. */
 struct X86Module *module_name_memo_get(ModuleNameMemo *memo, const char *name);
@@ -34,4 +35,4 @@ struct X86Module *module_name_memo_get(ModuleNameMemo *memo, const char *name);
 void module_name_memo_put(ModuleNameMemo *memo, const char *name,
                           struct X86Module *module);
 
-#endif /* MODULE_NAME_MEMO_H */
+} // namespace x2::native

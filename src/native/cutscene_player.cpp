@@ -432,6 +432,8 @@ void x2_override_004a00d0(CPU *cpu) {
   g_player.skip_down = (unsigned)down;
 }
 
+namespace x2::native {
+
 void cutscene_player_snapshot(CPU *cpu, CutscenePlayerSnapshot *out) {
   x2::native::CutsceneControlState controls =
       g_player.active ? control_state(cpu, g_player.sequence)
@@ -474,6 +476,8 @@ int cutscene_player_silences_current_context(uint32_t *context) {
   *context = current_context();
   return g_player.finishing && owns_context(*context, NULL);
 }
+
+} // namespace x2::native
 
 __attribute__((constructor)) static void
 x2_cutscene_player_register_overrides(void) {

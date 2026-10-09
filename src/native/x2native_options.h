@@ -1,7 +1,8 @@
-#ifndef X2NATIVE_OPTIONS_H
-#define X2NATIVE_OPTIONS_H
+#pragma once
 
-typedef struct {
+namespace x2::native {
+
+struct X2NativeOptions {
   const char *install_dir;
   /* Non-NULL records the exact DirectInput snapshots. Empty = unique path. */
   const char *input_record;
@@ -29,10 +30,10 @@ typedef struct {
   int fault_selftest;
   /* --fault-selftest-child=N: one case of that battery, -1 = not one. */
   int fault_selftest_child;
-} X2NativeOptions;
+};
 
 int x2native_options_parse(int argc, char **argv, X2NativeOptions *options);
 /* Developer launches may use the checkout's .env. Packaged setup never may. */
 int x2native_options_uses_project_env(const X2NativeOptions *options);
 
-#endif /* X2NATIVE_OPTIONS_H */
+} // namespace x2::native

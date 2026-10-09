@@ -10,17 +10,18 @@ static int checks;
     checks++;                                                                  \
   } while (0)
 
-static void check_summary(const CutsceneSkipPublicationBank bank[3],
+static void check_summary(const x2::native::CutsceneSkipPublicationBank bank[3],
                           unsigned readable, unsigned escape, unsigned start) {
-  CutsceneSkipPublicationSummary summary =
-      cutscene_skip_publication_classify(bank);
+  x2::native::CutsceneSkipPublicationSummary summary =
+      x2::native::cutscene_skip_publication_classify(bank);
   CHECK(summary.readable == readable);
   CHECK(summary.escape == escape);
   CHECK(summary.start == start);
 }
 
 int main(void) {
-  CutsceneSkipPublicationBank bank[3] = {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}};
+  x2::native::CutsceneSkipPublicationBank bank[3] = {
+      {1, 1, 1}, {1, 1, 1}, {1, 1, 1}};
   unsigned i;
 
   check_summary(bank, 3, 3, 3);

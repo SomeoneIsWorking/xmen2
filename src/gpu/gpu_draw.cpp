@@ -134,7 +134,7 @@ void gpu_draw_diagnostic_disable_depth(int enabled) {
    any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
    reads it; see gpu_frame_draws_so_far(). */
 unsigned long gpu_frame_draws_so_far(void) {
-  return gpu_draw_trace_draws_so_far();
+  return x2::gpu::gpu_draw_trace_draws_so_far();
 }
 
 int gpu_frame_had_programmable(void) {
@@ -238,7 +238,7 @@ static unsigned long g_uploads;
  */
 static int upload_bytes(Res *r, uint32_t offset, const void *data,
                         uint32_t bytes) {
-  GpuStagingWrite staged;
+  x2::gpu::GpuStagingWrite staged;
   SDL_GPUCopyPass *cp;
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
@@ -251,7 +251,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
     r->buf = r->index.buffer;
     base = r->index.region.offset;
   }
-  staged = gpu_staging_write(g_gpu, data, bytes);
+  staged = x2::gpu::gpu_staging_write(g_gpu, data, bytes);
   if (!staged.buffer)
     return 0;
   t1 = gpu_host_timer_ns();
@@ -331,7 +331,7 @@ void gpu_buffer_destroy(GpuBuffer b) {
 static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
                                  uint32_t levels, uint32_t faces) {
   SDL_GPUTextureCreateInfo ci;
-  SDL_GPUTextureFormat sf = gpu_texture_sdl_format(fmt);
+  SDL_GPUTextureFormat sf = x2::gpu::gpu_texture_sdl_format(fmt);
   uint32_t handle;
   Res *r;
 
@@ -376,7 +376,7 @@ static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
   }
   r->w = w;
   r->h = h;
-  r->bytes = gpu_texture_level_bytes(fmt, w, h);
+  r->bytes = x2::gpu::gpu_texture_level_bytes(fmt, w, h);
   r->fmt = fmt;
   r->levels = ci.num_levels;
   r->faces = faces;
@@ -402,7 +402,7 @@ int gpu_texture_is_cube(GpuTexture t) {
 
 int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                             const void *data, uint32_t bytes) {
-  GpuStagingWrite staged;
+  x2::gpu::GpuStagingWrite staged;
   SDL_GPUCopyPass *cp;
   SDL_GPUTextureTransferInfo src;
   SDL_GPUTextureRegion dr;
@@ -443,12 +443,13 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     expanded = static_cast<uint8_t *>(malloc(upload_bytes));
     if (!expanded)
       return 0;
-    gpu_bgr8_to_bgra8(static_cast<const uint8_t *>(data), expanded, lw * lh);
+    x2::gpu::gpu_bgr8_to_bgra8(static_cast<const uint8_t *>(data), expanded,
+                               lw * lh);
     upload_data = expanded;
   }
   t0 = gpu_host_timer_ns();
 
-  staged = gpu_staging_write(g_gpu, upload_data, upload_bytes);
+  staged = x2::gpu::gpu_staging_write(g_gpu, upload_data, upload_bytes);
   free(expanded);
   if (!staged.buffer)
     return 0;
@@ -739,7 +740,7 @@ int gpu_draw(const GpuDraw *d) {
                  "no depth format, so it is IGNORED. Everything draws "
                  "in submission order. Reported once.\n");
 
-  if (!gpu_draw_trace_consider(d, gpu_frames_presented()))
+  if (!x2::gpu::gpu_draw_trace_consider(d, gpu_frames_presented()))
     return 1;
 
   if (!(pipe = x2::gpu::gpu_pipeline_for(&key))) {
@@ -917,7 +918,7 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
   *upload_record_ns = times.upload_record_ns;
   /* The ring owns the allocation count, so the report cannot drift from what
      the driver was actually asked for. */
-  gpu_staging_ring_stats(NULL, transfer_creates, NULL);
+  x2::gpu::gpu_staging_ring_stats(NULL, transfer_creates, NULL);
   *uploads = g_uploads;
   *submits = gpu_upload_batch_submits();
 }
@@ -925,7 +926,7 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
 /* What the driver was asked to allocate for staging, from its owner. */
 static unsigned long staging_allocs(void) {
   unsigned long long allocs = 0;
-  gpu_staging_ring_stats(NULL, &allocs, NULL);
+  x2::gpu::gpu_staging_ring_stats(NULL, &allocs, NULL);
   return (unsigned long)allocs;
 }
 
@@ -967,7 +968,7 @@ void gpu_draw_report(void) {
     x2_log_info("        %lu draw(s) asked for a depth test there is no target "
                 "for; they drew in submission order.\n",
                 g_depth_ignored);
-  gpu_draw_trace_report();
+  x2::gpu::gpu_draw_trace_report();
   gpu_shadow_report();
   gpu_index_storage_report();
 }
@@ -982,7 +983,7 @@ void gpu_draw_shutdown(void) {
   /* The staging pages belong to the device that is going away, and this is
      the upload owner: the device teardown does not need to know they
      exist. */
-  gpu_staging_ring_destroy(g_gpu);
+  x2::gpu::gpu_staging_ring_destroy(g_gpu);
   for (i = 0; i < g_nres; i++)
     if (g_res[i].live) {
       if (g_res[i].buf && g_res[i].kind != GPU_BUF_INDEX)

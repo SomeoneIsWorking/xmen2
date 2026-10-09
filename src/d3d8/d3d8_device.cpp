@@ -1210,11 +1210,10 @@ static void dev_GetPixelShader(D3D8Object *self, CPU *C) {
  * backend take its indexed path for a non-indexed draw, so a 202-primitive
  * strip -- 204 vertices -- was drawn as 204 INDICES out of whatever index
  * buffer happened to be bound, which held 76. That was issue #38: one draw per
- * frame reading off the end of a buffer, and it was the game's missing
- * caption.
+ * frame reading off the end of a buffer, and it was the game's missing caption.
  */
 void d3d8_device_texture_unresolved(unsigned long *n) {
-  d3d8_texture_stage_unresolved(n);
+  x2::d3d8::d3d8_texture_stage_unresolved(n);
 }
 
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
@@ -1248,6 +1247,7 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
     req->index_guest_bytes = d3d8_resource_guest_bytes(ib);
     req->index_bytes = d3d8_resource_bytes(ib);
   }
+  using x2::d3d8::d3d8_texture_stage_resolve;
   req->texture = d3d8_texture_stage_resolve(0, g_dev.state.texture[0]);
   req->texture1 = d3d8_texture_stage_resolve(1, g_dev.state.texture[1]);
   if (tx0)
@@ -1615,7 +1615,7 @@ void d3d8_device_report(void) {
    * untextured surface. This is the second half of that number, and stating
    * it as 0 of N is what makes the first half readable.
    */
-  d3d8_texture_stage_unresolved(&unresolved);
+  x2::d3d8::d3d8_texture_stage_unresolved(&unresolved);
   x2_log_info(
       "        %lu draw(s) had a texture BOUND that this host could not "
       "resolve (of %lu draws) -- those are untextured with nothing to "

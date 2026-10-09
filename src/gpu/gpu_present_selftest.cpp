@@ -154,7 +154,8 @@ static int composite_case(uint32_t scene_width, uint32_t scene_height,
     goto done;
   if (!gpu_capture_request(why, sizeof why))
     goto done;
-  target = gpu_capture_frame_target(g_gpu, output, OUTPUT_SIZE, OUTPUT_SIZE);
+  target = x2::gpu::gpu_capture_frame_target(g_gpu, output, OUTPUT_SIZE,
+                                             OUTPUT_SIZE);
   if (target == output)
     goto done;
   command_buffer = SDL_AcquireGPUCommandBuffer(g_gpu);
@@ -165,16 +166,16 @@ static int composite_case(uint32_t scene_width, uint32_t scene_height,
     SDL_CancelGPUCommandBuffer(command_buffer);
     goto done;
   }
-  if (!gpu_capture_frame_record(g_gpu, command_buffer, target, output,
-                                OUTPUT_SIZE, OUTPUT_SIZE)) {
+  if (!x2::gpu::gpu_capture_frame_record(g_gpu, command_buffer, target, output,
+                                         OUTPUT_SIZE, OUTPUT_SIZE)) {
     SDL_CancelGPUCommandBuffer(command_buffer);
     goto done;
   }
   if (!submit_and_wait(command_buffer)) {
-    gpu_capture_frame_complete(g_gpu, 0);
+    x2::gpu::gpu_capture_frame_complete(g_gpu, 0);
     goto done;
   }
-  gpu_capture_frame_complete(g_gpu, 1);
+  x2::gpu::gpu_capture_frame_complete(g_gpu, 1);
   if (gpu_capture_result(&captured, &captured_width, &captured_height, why,
                          sizeof why) != 1 ||
       captured_width != OUTPUT_SIZE || captured_height != OUTPUT_SIZE ||
@@ -233,11 +234,12 @@ int gpu_present_selftest(void) {
             pixel(output, 7, 1) == 0xff00ff00u &&
             pixel(output, 4, 10) == 0xff0000ffu &&
             pixel(output, 7, 10) == 0xffffffffu;
-  bound_ok = gpu_capture_request(why, sizeof why) &&
-             gpu_capture_frame_target(g_gpu, NULL, 8192u, 8192u) == NULL &&
-             gpu_capture_result(&unused, &unused_width, &unused_height, why,
-                                sizeof why) < 0 &&
-             strstr(why, "bound") != NULL;
+  bound_ok =
+      gpu_capture_request(why, sizeof why) &&
+      x2::gpu::gpu_capture_frame_target(g_gpu, NULL, 8192u, 8192u) == NULL &&
+      gpu_capture_result(&unused, &unused_width, &unused_height, why,
+                         sizeof why) < 0 &&
+      strstr(why, "bound") != NULL;
   gpu_capture_discard();
   if (!wide_ok || !tall_ok || !bound_ok) {
     x2_log_info("gpu present selftest: FAILED -- wide=%d tall=%d bound=%d; "

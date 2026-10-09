@@ -257,7 +257,7 @@ uint32_t pe_export_rva(uint32_t base, const char *name) {
   funcs = RD32_(p, dir + 0x1C);
   names = RD32_(p, dir + 0x20);
   ords = RD32_(p, dir + 0x24);
-  found = pe_export_name_index(p, names, n, name);
+  found = x2::native::pe_export_name_index(p, names, n, name);
   if (found < 0)
     return 0;
   i = (uint32_t)found;

@@ -17,6 +17,8 @@
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
 
+namespace x2::native {
+
 void attr_stack_verify_begin(AttrStackVerify *v, uint32_t self) {
   (void)self;
   memset(v, 0, sizeof *v);
@@ -26,6 +28,8 @@ void attr_stack_verify_end(const CPU *C, AttrStackVerify *v, uint32_t self) {
   (void)v;
   (void)self;
 }
+
+} // namespace x2::native
 
 /* Stubs for x86_guest_body and x86_guest_call_args in test */
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {

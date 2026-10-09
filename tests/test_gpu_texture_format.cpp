@@ -10,16 +10,16 @@ int main(void) {
                                      0xaa, 0xbb, 0xcc, 0xff};
   uint8_t actual[sizeof expected] = {0};
 
-  gpu_bgr8_to_bgra8(source, actual, 2);
+  x2::gpu::gpu_bgr8_to_bgra8(source, actual, 2);
   if (memcmp(actual, expected, sizeof expected) != 0) {
     fprintf(stderr, "gpu texture format: BGR8 expansion changed channel "
                     "order or did not supply opaque alpha\n");
     return 1;
   }
-  if (gpu_texture_level_bytes(GPU_FMT_BGR8, 3, 2) != 24u ||
-      gpu_texture_level_bytes(GPU_FMT_BC1, 5, 4) != 16u ||
-      gpu_texture_level_bytes(GPU_FMT_BC3, 5, 5) != 64u ||
-      gpu_texture_level_bytes(GPU_FMT_RGBA8, 3, 3) != 36u) {
+  if (x2::gpu::gpu_texture_level_bytes(GPU_FMT_BGR8, 3, 2) != 24u ||
+      x2::gpu::gpu_texture_level_bytes(GPU_FMT_BC1, 5, 4) != 16u ||
+      x2::gpu::gpu_texture_level_bytes(GPU_FMT_BC3, 5, 5) != 64u ||
+      x2::gpu::gpu_texture_level_bytes(GPU_FMT_RGBA8, 3, 3) != 36u) {
     fprintf(stderr, "gpu texture format: a level's byte count is wrong -- "
                     "BGR8 is stored expanded and BC formats round up to "
                     "whole 4x4 blocks\n");

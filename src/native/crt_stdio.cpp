@@ -150,15 +150,15 @@ void imp_MSVCR71__mkdir(CPU *C) {
 
 void imp_MSVCR71_fflush(CPU *C) {
   FILE *f = A(0) ? x2::native::crt_file(A(0)) : NULL;
-  if (!f || crt_console_is(f)) {
-    crt_console_flush();
+  if (!f || x2::native::crt_console_is(f)) {
+    x2::native::crt_console_flush();
   }
-  ret_c(C, (uint32_t)(f && !crt_console_is(f) ? fflush(f) : 0));
+  ret_c(C, (uint32_t)(f && !x2::native::crt_console_is(f) ? fflush(f) : 0));
 }
 /* The two formatted writers share this; the console is a log, not a stream. */
 static void console_or_stream(FILE *f, const char *text) {
-  if (crt_console_is(f)) {
-    crt_console_write(text, strlen(text));
+  if (x2::native::crt_console_is(f)) {
+    x2::native::crt_console_write(text, strlen(text));
     return;
   }
   fputs(text, f);
@@ -167,8 +167,8 @@ static void console_or_stream(FILE *f, const char *text) {
 void imp_MSVCR71_fputc(CPU *C) {
   FILE *f = x2::native::crt_file(A(1));
   char c = (char)A(0);
-  if (crt_console_is(f)) {
-    crt_console_write(&c, 1u);
+  if (x2::native::crt_console_is(f)) {
+    x2::native::crt_console_write(&c, 1u);
     ret_c(C, A(0));
     return;
   }
@@ -177,8 +177,8 @@ void imp_MSVCR71_fputc(CPU *C) {
 void imp_MSVCR71_fputs(CPU *C) {
   const char *text = ACS(0);
   FILE *f = x2::native::crt_file(A(1));
-  if (crt_console_is(f)) {
-    crt_console_write(text, strlen(text));
+  if (x2::native::crt_console_is(f)) {
+    x2::native::crt_console_write(text, strlen(text));
     ret_c(C, 0);
     return;
   }
@@ -192,11 +192,11 @@ void imp_MSVCR71_ungetc(CPU *C) {
 }
 void imp_MSVCR71_fwrite(CPU *C) {
   FILE *f = x2::native::crt_file(A(3));
-  if (crt_console_is(f)) {
+  if (x2::native::crt_console_is(f)) {
     const char *bytes = (const char *)guest_memory_const_pointer(A(0));
     size_t total = A(1) * A(2);
     if (bytes) {
-      crt_console_write(bytes, total);
+      x2::native::crt_console_write(bytes, total);
     }
     ret_c(C, A(2));
     return;

@@ -49,7 +49,7 @@
 #define THIS A(0)
 
 static void ret_com(CPU *C, uint32_t hr, int nargs) {
-  dinput_device_return(C, hr, nargs);
+  x2::native::dinput_device_return(C, hr, nargs);
 }
 
 #define S_OK 0x00000000u
@@ -134,7 +134,7 @@ static const char *const VT_NAME[VT_COUNT] = {"QueryInterface",
                                               "SetActionMap",
                                               "GetImageInfo"};
 
-typedef DInputDevice Device;
+typedef x2::native::DInputDevice Device;
 
 static uint32_t g_vtable;
 
@@ -149,7 +149,9 @@ static const char *kind_name(DInputDeviceKind k) {
                                     : "(unknown)";
 }
 
-static int pad_of(Device *device) { return dinput_device_pad(device); }
+static int pad_of(Device *device) {
+  return x2::native::dinput_device_pad(device);
+}
 
 /* State translation and joystick metadata have focused module owners. */
 
@@ -285,7 +287,7 @@ static void m_Unacquire(CPU *C) {
 }
 
 static void m_GetDeviceState(CPU *C) {
-  dinput_device_get_state(C, dev_of(THIS));
+  x2::native::dinput_device_get_state(C, dev_of(THIS));
 }
 
 static void m_GetDeviceData(CPU *C) {

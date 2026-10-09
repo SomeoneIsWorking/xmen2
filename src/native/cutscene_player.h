@@ -1,11 +1,12 @@
-#ifndef X2_CUTSCENE_PLAYER_H
-#define X2_CUTSCENE_PLAYER_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-typedef struct CutscenePlayerSnapshot {
+namespace x2::native {
+
+struct CutscenePlayerSnapshot {
   uint32_t sequence;
   unsigned active;
   unsigned owned_contexts;
@@ -33,7 +34,7 @@ typedef struct CutscenePlayerSnapshot {
   unsigned long same_guest_time;
   unsigned long event_insertion_faults;
   unsigned long results[6];
-} CutscenePlayerSnapshot;
+};
 
 /* Read-only publication for the live input probe. */
 void cutscene_player_snapshot(struct X86pCpu *cpu, CutscenePlayerSnapshot *out);
@@ -42,4 +43,4 @@ void cutscene_player_snapshot(struct X86pCpu *cpu, CutscenePlayerSnapshot *out);
  * context is owned by the synchronous player. Used by exact presenters. */
 int cutscene_player_silences_current_context(uint32_t *context);
 
-#endif
+} // namespace x2::native

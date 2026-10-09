@@ -6,6 +6,8 @@
 #include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
 
+namespace x2::native {
+
 /* Shared by every guest thread; see the header for why one is enough. */
 static X86pX87OpCensus g_census;
 /* -1 until the cvar has been read; a CPU can be built before any engine
@@ -113,3 +115,5 @@ void x86_engine_x87_census_report(const char *tag) {
     }
   }
 }
+
+} // namespace x2::native

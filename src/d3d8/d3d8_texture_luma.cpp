@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+namespace x2::d3d8 {
+
 typedef struct {
   uint32_t handle;
   uint32_t format;
@@ -174,3 +176,5 @@ void d3d8_texture_luma_get_stats(D3D8TextureLumaStats *stats) {
   stats->dropped_textures = g_luma_dropped;
   stats->mean_luma = g_luma_count ? total / g_luma_count : 0.0;
 }
+
+} // namespace x2::d3d8

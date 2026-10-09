@@ -105,6 +105,33 @@ const char *guest_memory_remap_cause_name(GuestMemoryRemapCause cause);
 #define GUEST_ARENA_WINDOW 0
 #endif
 
+/*
+ * Whether the host refuses to hand this process the low 4 GB one-to-one, so
+ * the guest space must be reserved up front and every address rebased into it.
+ * Apple Silicon refuses those addresses outright; on Android the loader and
+ * ART already occupy them, and a fixed map of the guest heap at 0x71000000
+ * fails with the arena having nowhere to live. Windows places the process's
+ * own heaps, stacks, PEB/TEBs and its shared user data page there.
+ *
+ * Such a host must also never munmap inside the arena -- it drops protection
+ * instead, so that nothing else can claim the hole it would leave. This is a
+ * separate question from the host page size: both Apple and Android can use
+ * a 16 KiB granule, while a 4 KiB host needs no protection grouping.
+ */
+/* X2_GUEST_ARENA_RESERVED forces the answer either way. It exists for the
+ * sanitizers: AddressSanitizer's own shadow lives at low addresses and
+ * collides with an identity-mapped guest at 0x00400000, so a desktop build
+ * that wants ASan has to take the rebased path -- the same path Apple and
+ * Android take in production, not a debug-only variant of it. */
+#if defined(X2_GUEST_ARENA_RESERVED)
+#define GUEST_ARENA_RESERVED X2_GUEST_ARENA_RESERVED
+#elif (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__) ||  \
+    defined(_WIN32)
+#define GUEST_ARENA_RESERVED 1
+#else
+#define GUEST_ARENA_RESERVED 0
+#endif
+
 #if GUEST_ARENA_WINDOW
 /*
  * The browser's guest space is one window inside the program's own memory, so

@@ -38,8 +38,8 @@ static const char *const kPortTokens[] = {
 };
 
 int main(int argc, char **argv) {
-  const char *line = guest_command_line();
-  const char *again = guest_command_line();
+  const char *line = x2::native::guest_command_line();
+  const char *again = x2::native::guest_command_line();
   char expected[128];
   unsigned i;
 

@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+namespace x2::native {
+
 static uint32_t read32(const unsigned char *p, uint32_t at) {
   return (uint32_t)p[at] | (uint32_t)p[at + 1u] << 8 |
          (uint32_t)p[at + 2u] << 16 | (uint32_t)p[at + 3u] << 24;
@@ -25,3 +27,5 @@ long pe_export_name_index(const unsigned char *image, uint32_t names,
   }
   return -1;
 }
+
+} // namespace x2::native

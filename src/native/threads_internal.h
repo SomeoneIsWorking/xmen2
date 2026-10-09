@@ -1,5 +1,4 @@
-#ifndef X2_THREADS_INTERNAL_H
-#define X2_THREADS_INTERNAL_H
+#pragma once
 
 /*
  * The seam between the thread table and the things that only READ it.
@@ -12,23 +11,23 @@
  * the whole of what they are allowed to touch.
  */
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "platform_threads.h"
 
-#define MAX_THREADS 16
+namespace x2::native {
 
-enum {
-  TS_NEW = 0,
-  TS_RUNNING,
-  TS_LOCK,
-  TS_COND,
-  TS_BLOCKING,
-  TS_SUSPENDED,
-  TS_DONE
-};
+inline constexpr int MAX_THREADS = 16;
 
-typedef struct {
+inline constexpr int TS_NEW = 0;
+inline constexpr int TS_RUNNING = 1;
+inline constexpr int TS_LOCK = 2;
+inline constexpr int TS_COND = 3;
+inline constexpr int TS_BLOCKING = 4;
+inline constexpr int TS_SUSPENDED = 5;
+inline constexpr int TS_DONE = 6;
+
+struct GuestThread {
   int used, finished, suspended;
   int slot; /* index in the table; also the TLS slot */
   int is_main;
@@ -78,7 +77,7 @@ typedef struct {
   pthread_t thread;
   int depth;        /* guest_lock nesting, for guest_quantum */
   int32_t priority; /* SetThreadPriority, per thread */
-} GuestThread;
+};
 
 /* The whole table, MAX_THREADS + 1 entries; the last one is the main thread. */
 GuestThread *guest_thread_table(void);
@@ -92,13 +91,13 @@ const GuestThread *guest_thread_self_record(void);
  * observe half of a pair -- the suspend/resume counts are only meaningful
  * against each other.
  */
-typedef struct {
+struct GuestThreadTotals {
   unsigned long created, exited, reaped;
   unsigned long suspends, resumes;
   unsigned long resume_noop, resume_unknown, suspend_unknown;
   unsigned long switches, quanta, quantum;
   unsigned long contended;
-} GuestThreadTotals;
+};
 void guest_thread_totals(GuestThreadTotals *out);
 
-#endif /* X2_THREADS_INTERNAL_H */
+} // namespace x2::native

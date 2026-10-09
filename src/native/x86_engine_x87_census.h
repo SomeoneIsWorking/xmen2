@@ -14,10 +14,11 @@
  * not a ledger, and the guest lock serialises the overwhelming majority of the
  * increments anyway.
  */
-#ifndef X2_X86_ENGINE_X87_CENSUS_H
-#define X2_X86_ENGINE_X87_CENSUS_H
+#pragma once
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* Gives `cpu`'s x87 unit the shared census, or leaves it alone when disarmed.
    Called from cpu_reset, so every guest thread is covered by construction. */
@@ -27,4 +28,4 @@ void x86_engine_x87_census_attach(struct X86pCpu *cpu);
    report. `tag` prefixes each line, as the heartbeat's "[HB] " does. */
 void x86_engine_x87_census_report(const char *tag);
 
-#endif
+} // namespace x2::native

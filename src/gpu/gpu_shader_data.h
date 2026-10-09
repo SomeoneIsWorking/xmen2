@@ -1,20 +1,31 @@
-#ifndef X2_GPU_SHADER_DATA_H
-#define X2_GPU_SHADER_DATA_H
+#pragma once
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
+#include <cstddef>
+
+namespace x2::gpu {
+
 /* The embedded representation and requested device format share one contract.
  */
 #ifdef __EMSCRIPTEN__
-typedef char GpuShaderWord;
-#define X2_GPU_SHADER_FORMAT SDL_GPU_SHADERFORMAT_WGSL
-#define X2_GPU_SHADER_SIZE(data) (sizeof(data) - 1)
+using GpuShaderWord = char;
+inline constexpr SDL_GPUShaderFormat X2_GPU_SHADER_FORMAT =
+    SDL_GPU_SHADERFORMAT_WGSL;
+template <typename Word, std::size_t Count>
+constexpr std::size_t X2_GPU_SHADER_SIZE(const Word (&)[Count]) {
+  return sizeof(Word[Count]) - 1;
+}
 #else
-typedef unsigned int GpuShaderWord;
-#define X2_GPU_SHADER_FORMAT SDL_GPU_SHADERFORMAT_SPIRV
-#define X2_GPU_SHADER_SIZE(data) sizeof(data)
-#endif
+using GpuShaderWord = unsigned int;
+inline constexpr SDL_GPUShaderFormat X2_GPU_SHADER_FORMAT =
+    SDL_GPU_SHADERFORMAT_SPIRV;
+template <typename Word, std::size_t Count>
+constexpr std::size_t X2_GPU_SHADER_SIZE(const Word (&)[Count]) {
+  return sizeof(Word[Count]);
+}
 #endif
 
+} // namespace x2::gpu
 #endif

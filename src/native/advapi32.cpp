@@ -66,7 +66,7 @@ static void ret_std(CPU *C, uint32_t eax, int nargs) {
 /* ---- the store ---------------------------------------------------------- */
 
 /* A deque keeps a handed-out RegValue* valid while the store grows. */
-static std::deque<RegValue> g_val;
+static std::deque<x2::native::RegValue> g_val;
 static int g_dirty;
 static unsigned long g_reads, g_misses, g_writes;
 
@@ -109,7 +109,7 @@ static const char *hive_name(uint32_t h) {
  */
 typedef struct {
   int used;
-  char path[MAX_PATH_];
+  char path[x2::native::MAX_PATH_];
 } KeyRec;
 static KeyRec *g_key;
 static int g_key_cap;
@@ -192,6 +192,8 @@ static const char *store_path(void) {
     snprintf(p, sizeof p, "%s/registry.txt", x2::native::save_dir());
   return p;
 }
+
+namespace x2::native {
 
 void advapi32_store_note_write(void) {
   g_writes++;
@@ -300,6 +302,8 @@ RegValue *advapi32_store_put(const char *path, const char *name) {
   return &g_val[i];
 }
 
+} // namespace x2::native
+
 /* Does any value live at or under this path? That is what "the key exists"
    means in a flat store. */
 static int key_exists(const char *path) {
@@ -322,10 +326,10 @@ static void reg_open(CPU *C, int ex) {
   const char *parent = key_path(A(0));
   const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t out = ex ? A(4) : A(2);
-  char full[MAX_PATH_];
+  char full[x2::native::MAX_PATH_];
   int nargs = ex ? 5 : 3;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!parent) {
     ret_std(C, ERROR_ACCESS_DENIED, nargs);
     return;
@@ -364,10 +368,10 @@ static void reg_create(CPU *C, int ex) {
   const char *parent = key_path(A(0));
   const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t out = ex ? A(7) : A(2), disp = ex ? A(8) : 0;
-  char full[MAX_PATH_];
+  char full[x2::native::MAX_PATH_];
   int nargs = ex ? 9 : 3, existed;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!parent) {
     ret_std(C, ERROR_ACCESS_DENIED, nargs);
     return;
@@ -375,11 +379,12 @@ static void reg_create(CPU *C, int ex) {
   path_join(full, sizeof full, parent, sub);
   existed = key_exists(full);
   if (!existed) {
-    RegValue *v = advapi32_store_put(full, KEY_MARK);
+    x2::native::RegValue *v =
+        x2::native::advapi32_store_put(full, x2::native::KEY_MARK);
     v->type = REG_BINARY;
     v->len = 0;
     g_dirty = 1;
-    advapi32_store_save();
+    x2::native::advapi32_store_save();
   }
   {
     uint32_t h = key_open(full);
@@ -403,15 +408,15 @@ void imp_ADVAPI32_RegQueryValueExA(CPU *C) {
   const char *path = key_path(A(0));
   const char *name = A(1) ? guest_memory_as<const char>(A(1)) : "";
   uint32_t ptype = A(3), data = A(4), pcb = A(5);
-  RegValue *v;
+  x2::native::RegValue *v;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   g_reads++;
   if (!path) {
     ret_std(C, ERROR_ACCESS_DENIED, 6);
     return;
   }
-  v = advapi32_store_find(path, name);
+  v = x2::native::advapi32_store_find(path, name);
   if (!v) {
     g_misses++;
     ret_std(C, ERROR_FILE_NOT_FOUND, 6);
@@ -446,17 +451,17 @@ void imp_ADVAPI32_RegQueryValueA(CPU *C) {
   const char *parent = key_path(A(0));
   const char *sub = A(1) ? guest_memory_as<const char>(A(1)) : NULL;
   uint32_t data = A(2), pcb = A(3);
-  char full[MAX_PATH_];
-  RegValue *v;
+  char full[x2::native::MAX_PATH_];
+  x2::native::RegValue *v;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   g_reads++;
   if (!parent) {
     ret_std(C, ERROR_ACCESS_DENIED, 4);
     return;
   }
   path_join(full, sizeof full, parent, sub);
-  v = advapi32_store_find(full, "");
+  v = x2::native::advapi32_store_find(full, "");
   if (!v) {
     g_misses++;
     if (pcb)
@@ -486,31 +491,31 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C) {
   const char *path = key_path(A(0));
   const char *name = A(1) ? guest_memory_as<const char>(A(1)) : "";
   uint32_t type = A(3), data = A(4), cb = A(5);
-  RegValue *v;
+  x2::native::RegValue *v;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!path) {
     ret_std(C, ERROR_ACCESS_DENIED, 6);
     return;
   }
-  if (cb > MAX_DATA_) {
+  if (cb > x2::native::MAX_DATA_) {
     /* Refused, not truncated: a truncated REG_BINARY blob reads back as a
        valid short one and the caller has no way to tell. */
     x2_log_error("advapi32: RegSetValueExA(\"%s\\%s\") is %u bytes and "
                  "this store holds %d -- REFUSED rather than truncated, "
                  "because a short blob reads back as a valid one.\n",
-                 path, name, cb, MAX_DATA_);
+                 path, name, cb, x2::native::MAX_DATA_);
     ret_std(C, ERROR_ACCESS_DENIED, 6);
     return;
   }
-  v = advapi32_store_put(path, name);
+  v = x2::native::advapi32_store_put(path, name);
   v->type = type;
   v->len = cb;
   if (cb && data)
     memcpy(v->data, guest_memory_const_pointer(data), cb);
   g_writes++;
   g_dirty = 1;
-  advapi32_store_save(); /* durable now, not at exit: a crash
+  x2::native::advapi32_store_save(); /* durable now, not at exit: a crash
                    must not lose a setting the game
                    has already told the player it saved */
   ret_std(C, ERROR_SUCCESS, 6);
@@ -529,7 +534,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C) {
   size_t n;
   int i, seen = 0;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!path) {
     ret_std(C, ERROR_ACCESS_DENIED, 8);
     return;
@@ -537,7 +542,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C) {
   n = strlen(path);
   for (i = 0; i < static_cast<int>(g_val.size()); i++) {
     const char *p, *sep;
-    char child[MAX_NAME_];
+    char child[x2::native::MAX_NAME_];
     int j, dup = 0;
     if (!g_val[i].used)
       continue;
@@ -552,7 +557,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C) {
        and one that is goes unvisited. */
     for (j = 0; j < i; j++) {
       const char *q, *qs;
-      char other[MAX_NAME_];
+      char other[x2::native::MAX_NAME_];
       if (!g_val[j].used)
         continue;
       if (strncasecmp(g_val[j].path, path, n) != 0 || g_val[j].path[n] != '\\')
@@ -594,16 +599,16 @@ void imp_ADVAPI32_RegEnumValueA(CPU *C) {
   uint32_t ptype = A(5), data = A(6), pcb = A(7);
   int i, seen = 0;
 
-  advapi32_store_load();
+  x2::native::advapi32_store_load();
   if (!path) {
     ret_std(C, ERROR_ACCESS_DENIED, 8);
     return;
   }
   for (i = 0; i < static_cast<int>(g_val.size()); i++) {
-    RegValue *v = &g_val[i];
+    x2::native::RegValue *v = &g_val[i];
     if (!v->used || strcasecmp(v->path, path) != 0)
       continue;
-    if (strcmp(v->name, KEY_MARK) == 0)
+    if (strcmp(v->name, x2::native::KEY_MARK) == 0)
       continue; /* not a real value */
     if ((uint32_t)seen++ != idx)
       continue;
@@ -666,12 +671,12 @@ void advapi32_install(void) {
 void advapi32_report(void) {
   int i, n = 0, leaked = 0;
   for (i = 0; i < static_cast<int>(g_val.size()); i++)
-    if (g_val[i].used && strcmp(g_val[i].name, KEY_MARK) != 0)
+    if (g_val[i].used && strcmp(g_val[i].name, x2::native::KEY_MARK) != 0)
       n++;
   for (i = 0; i < g_key_cap; i++)
     if (g_key[i].used)
       leaked++;
-  advapi32_store_save();
+  x2::native::advapi32_store_save();
   if (!g_reads && !g_writes) {
     x2_log_info("  advapi32: the registry was never touched.\n");
     return;

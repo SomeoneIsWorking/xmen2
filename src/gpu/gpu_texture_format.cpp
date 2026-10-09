@@ -1,5 +1,12 @@
 #include "gpu_texture_format.h"
 
+#ifdef X2_WITH_SDL
+#include "../native/x2_log.h"
+#include "gpu_internal.h"
+#endif
+
+namespace x2::gpu {
+
 void gpu_bgr8_to_bgra8(const uint8_t *source, uint8_t *destination,
                        uint32_t pixels) {
   uint32_t i;
@@ -47,9 +54,6 @@ uint32_t gpu_texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h) {
 }
 
 #ifdef X2_WITH_SDL
-#include "../native/x2_log.h"
-#include "gpu_internal.h"
-
 SDL_GPUTextureFormat gpu_texture_sdl_format(GpuFormat f) {
   switch (f) {
   case GPU_FMT_BGRA8:
@@ -68,6 +72,12 @@ SDL_GPUTextureFormat gpu_texture_sdl_format(GpuFormat f) {
   return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
+#endif
+
+} // namespace x2::gpu
+
+#ifdef X2_WITH_SDL
+
 static int g_format_support_report_requested;
 
 void gpu_texture_request_format_support_report(void) {
@@ -82,14 +92,14 @@ void gpu_texture_request_format_support_report(void) {
   }
   g_format_support_report_requested = 0;
   for (i = 0; i < sizeof formats / sizeof formats[0]; ++i) {
-    SDL_GPUTextureFormat format = gpu_texture_sdl_format(formats[i]);
+    SDL_GPUTextureFormat format = x2::gpu::gpu_texture_sdl_format(formats[i]);
     int supported =
         SDL_GPUTextureSupportsFormat(g_gpu, format, SDL_GPU_TEXTURETYPE_2D,
                                      SDL_GPU_TEXTUREUSAGE_SAMPLER)
             ? 1
             : 0;
     x2_log_error("gpu: texture format %s (%d) 2D sampler: %s\n",
-                 gpu_texture_format_name(formats[i]), (int)format,
+                 x2::gpu::gpu_texture_format_name(formats[i]), (int)format,
                  supported ? "supported" : "UNSUPPORTED");
   }
 }

@@ -6,6 +6,8 @@
 #include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
 
+namespace x2::native {
+
 /* -1 until the cvar has been read, as the census does: a CPU can be built
    before any engine configuration runs. */
 static int g_double = -1;
@@ -29,3 +31,5 @@ void x86_engine_x87_precision_attach(struct X86pCpu *cpu) {
     x86p_x87_set_double_arith(&cpu->x87, wanted());
   }
 }
+
+} // namespace x2::native

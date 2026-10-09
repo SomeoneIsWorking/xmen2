@@ -34,19 +34,19 @@ int main(void) {
     at += (unsigned)length;
   }
   for (i = 0; i < kCount; i++) {
-    all_found &=
-        pe_export_name_index(image, kTable, kCount, names[i]) == (long)i;
+    all_found &= x2::native::pe_export_name_index(image, kTable, kCount,
+                                                  names[i]) == (long)i;
   }
   check(all_found, "every exported name is found at its own index");
-  check(pe_export_name_index(image, kTable, kCount, "??") == -1,
+  check(x2::native::pe_export_name_index(image, kTable, kCount, "??") == -1,
         "a name sorting before the first export is not found");
-  check(pe_export_name_index(image, kTable, kCount, "Alloca") == -1,
+  check(x2::native::pe_export_name_index(image, kTable, kCount, "Alloca") == -1,
         "a name between two exports is not found");
-  check(pe_export_name_index(image, kTable, kCount, "zzz") == -1,
+  check(x2::native::pe_export_name_index(image, kTable, kCount, "zzz") == -1,
         "a name sorting after the last export is not found");
-  check(pe_export_name_index(image, kTable, kCount, "Fre") == -1,
+  check(x2::native::pe_export_name_index(image, kTable, kCount, "Fre") == -1,
         "a prefix of an export is not that export");
-  check(pe_export_name_index(image, kTable, 0u, "Alloc") == -1,
+  check(x2::native::pe_export_name_index(image, kTable, 0u, "Alloc") == -1,
         "an empty table finds nothing");
   printf("test_pe_export_search: %d failure(s)\n", failures);
   return failures ? 1 : 0;

@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 typedef struct LeafMethods {
   D3D8IfaceId iface;
   const char *const *names;
@@ -62,3 +64,5 @@ void d3d8_leaf_methods_install(void) {
     }
   }
 }
+
+} // namespace x2::d3d8

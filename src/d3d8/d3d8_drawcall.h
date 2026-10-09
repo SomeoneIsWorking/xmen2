@@ -58,7 +58,7 @@ typedef struct {
   GpuTexture texture;     /* 0 for untextured */
   GpuTexture texture1;    /* texture stage 1, when enabled */
   uint32_t texture_guest; /* bound stage-0 COM pointer, even unresolved */
-  D3D8TextureProvenance texture_provenance;
+  x2::d3d8::D3D8TextureProvenance texture_provenance;
   uint32_t primitive_type; /* D3DPRIMITIVETYPE */
   uint32_t primitive_count;
 } D3D8DrawRequest;

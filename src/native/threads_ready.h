@@ -1,9 +1,10 @@
-#ifndef X2_THREADS_READY_H
-#define X2_THREADS_READY_H
+#pragma once
 
 #include "threads_internal.h"
 
-#include <time.h>
+#include <ctime>
+
+namespace x2::native {
 
 /*
  * Is this thread able to take the guest lock NOW?
@@ -60,4 +61,4 @@ void guest_thread_wait_deadline(const struct timespec *base, uint64_t us,
  */
 void guest_thread_mark_cond_ready(GuestThread *table, int count);
 
-#endif
+} // namespace x2::native
