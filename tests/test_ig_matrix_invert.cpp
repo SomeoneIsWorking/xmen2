@@ -32,8 +32,9 @@ static void test_inverse(void) {
   const float m[16] = {2, 0, 0, 0, 1, 3, 0, 0, 0, 0, 4, 0, 5, 6, 7, 1};
   float inv[16];
   uint16_t codes = 0xffff;
-  expect("verdict", ig_matrix44_invert(inv, m, &codes), kIgInvertInverted);
-  expect("codes", codes, kIgInvertCompareGreater);
+  expect("verdict", x2::native::ig_matrix44_invert(inv, m, &codes),
+         x2::native::kIgInvertInverted);
+  expect("codes", codes, x2::native::kIgInvertCompareGreater);
   for (unsigned r = 0; r < 4u; r++) {
     for (unsigned c = 0; c < 4u; c++) {
       double sum = 0;
@@ -48,7 +49,7 @@ static void test_inverse(void) {
   }
   float self[16];
   memcpy(self, m, sizeof self);
-  ig_matrix44_invert(self, self, &codes);
+  x2::native::ig_matrix44_invert(self, self, &codes);
   expect("in place gives the same inverse", memcmp(self, inv, sizeof inv), 0);
 }
 
@@ -58,12 +59,14 @@ static void test_singular(void) {
   uint16_t codes = 0;
   diagonal(m, 1, 1, 1, 0);
   memset(out, 0x5a, sizeof out);
-  expect("singular", ig_matrix44_invert(out, m, &codes), kIgInvertSingular);
-  expect("singular codes", codes, kIgInvertCompareLess);
+  expect("singular", x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertSingular);
+  expect("singular codes", codes, x2::native::kIgInvertCompareLess);
   expect("singular leaves out alone", out[0] == out[1] && out[3] != 0.0f, 1);
   diagonal(m, 1, 1, 1, FLT_MIN / 2);
   expect("a denormal determinant is singular",
-         ig_matrix44_invert(out, m, &codes), kIgInvertSingular);
+         x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertSingular);
 }
 
 static void test_boundary(void) {
@@ -71,9 +74,10 @@ static void test_boundary(void) {
   float out[16];
   uint16_t codes = 0;
   diagonal(m, 1, 1, 1, FLT_MIN);
-  expect("exactly FLT_MIN inverts", ig_matrix44_invert(out, m, &codes),
-         kIgInvertInverted);
-  expect("with C3", codes, kIgInvertCompareEqual);
+  expect("exactly FLT_MIN inverts",
+         x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertInverted);
+  expect("with C3", codes, x2::native::kIgInvertCompareEqual);
 }
 
 static void test_non_finite(void) {
@@ -82,15 +86,16 @@ static void test_non_finite(void) {
   uint16_t codes = 0;
   diagonal(m, 1, 1, 1, 1);
   m[6] = NAN;
-  expect("NaN declined", ig_matrix44_invert(out, m, &codes),
-         kIgInvertUndecided);
+  expect("NaN declined", x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertUndecided);
   diagonal(m, 1, 1, 1, 1);
   m[9] = INFINITY;
-  expect("infinity declined", ig_matrix44_invert(out, m, &codes),
-         kIgInvertUndecided);
+  expect("infinity declined", x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertUndecided);
   diagonal(m, 1e30f, 1e30f, 1e30f, 1);
   expect("an adjoint that overflows a float is declined",
-         ig_matrix44_invert(out, m, &codes), kIgInvertUndecided);
+         x2::native::ig_matrix44_invert(out, m, &codes),
+         x2::native::kIgInvertUndecided);
 }
 
 int main(void) {

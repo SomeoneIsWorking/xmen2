@@ -5,6 +5,8 @@
 #include "guest_memory.h"
 #include "x86rt.h"
 
+namespace x2::d3d8 {
+
 uint32_t d3d8_selftest_call(D3D8Object *object, int slot, const uint32_t *args,
                             int nargs) {
   CPU C;
@@ -23,3 +25,5 @@ uint32_t d3d8_selftest_call(D3D8Object *object, int slot, const uint32_t *args,
   x86_dispatch(&C, RD32(vt + (uint32_t)slot * 4u));
   return C.reg[kX86pEax];
 }
+
+} // namespace x2::d3d8

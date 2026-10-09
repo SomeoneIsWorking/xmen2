@@ -119,7 +119,7 @@ static int multiply_native(CPU *C) {
   float out[16];
   guest_memory_read(a, ma, MATRIX_BYTES);
   guest_memory_read(b, mb, MATRIX_BYTES);
-  ig_matrix44_multiply(out, ma, mb);
+  x2::native::ig_matrix44_multiply(out, ma, mb);
   CPU native = *C;
   native.reg[kX86pEsp] = esp + 12u;
   if (aliased) {

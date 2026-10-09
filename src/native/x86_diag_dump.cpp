@@ -9,6 +9,7 @@
  * Order matters: where execution is comes before what it did, and the boundary
  * ring is last because it is the longest.
  */
+#include "winmm.h"
 #include "x86_engine.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -28,8 +29,7 @@ void x86_diag_dump(void) {
      callback that would have ended this wait has never run" is invisible
      unless the fire count is printed where the stall is. */
   {
-    extern void winmm_report(void);
-    winmm_report();
+    x2::native::winmm_report();
   }
   x2::native::engine_where();
   x86_peek_report();

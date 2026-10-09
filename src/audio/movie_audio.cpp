@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::audio {
+
 typedef struct {
   float *samples;
   size_t capacity_frames;
@@ -200,3 +202,5 @@ void movie_audio_report(void) {
               g_movie_audio.active ? " -- ACTIVE" : "");
   pthread_mutex_unlock(&g_movie_audio_lock);
 }
+
+} // namespace x2::audio

@@ -24,7 +24,7 @@ void d3d8_vs_draw_gpu_counts(unsigned long *draws, unsigned long *vertices) {
  * did for the executor's output buffer, so the stage treats both alike.
  */
 static int gpu_source(const D3D8State *s, const D3D8DrawRequest *req,
-                      const GpuVsProgram *program, uint32_t input_end,
+                      const x2::gpu::GpuVsProgram *program, uint32_t input_end,
                       GpuDraw *out) {
   if (!req->stride) {
     x2_log_error("d3d8: programmable draw has a stream-0 stride of zero.\n");
@@ -108,7 +108,7 @@ static int cpu_source(const D3D8State *s, const D3D8DrawRequest *req,
 int d3d8_vs_draw_source(const D3D8State *s, const D3D8DrawRequest *req,
                         GpuDraw *out) {
   uint32_t input_end = 0;
-  const GpuVsProgram *program =
+  const x2::gpu::GpuVsProgram *program =
       d3d8_vs_gpu_program(s->vertex_shader, &input_end);
   return program ? gpu_source(s, req, program, input_end, out)
                  : cpu_source(s, req, out);
@@ -117,7 +117,7 @@ int d3d8_vs_draw_source(const D3D8State *s, const D3D8DrawRequest *req,
 int d3d8_vs_draw_source_on(const D3D8State *s, const D3D8DrawRequest *req,
                            D3D8VsExecutor executor, GpuDraw *out) {
   uint32_t input_end = 0;
-  const GpuVsProgram *program;
+  const x2::gpu::GpuVsProgram *program;
   if (executor == D3D8_VS_ON_CPU) {
     return cpu_source(s, req, out);
   }

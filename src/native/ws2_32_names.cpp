@@ -22,8 +22,8 @@
    MAX_ADDRESSES address pointers plus the terminator, the addresses, and the
    inet_ntoa text. */
 enum {
-  MAX_ADDRESSES = WINSOCK_HOST_ADDRESSES,
-  NAME_BYTES = WINSOCK_HOST_NAME_BYTES,
+  MAX_ADDRESSES = x2::native::WINSOCK_HOST_ADDRESSES,
+  NAME_BYTES = x2::native::WINSOCK_HOST_NAME_BYTES,
   HOSTENT = 0,
   HOST_NAME = HOSTENT + 16,
   ALIASES = HOST_NAME + NAME_BYTES,
@@ -82,7 +82,7 @@ void imp_WS2_32__11(CPU *C) {
   char text[64];
   uint32_t parsed = 0;
   const int valid = A(0) && guest_text(A(0), text, sizeof text) &&
-                    winsock_parse_ipv4(text, &parsed);
+                    x2::native::winsock_parse_ipv4(text, &parsed);
   ret_std(C, valid ? parsed : 0xffffffffu, 1);
 }
 
@@ -101,15 +101,15 @@ void imp_WS2_32__12(CPU *C) {
 void imp_WS2_32__57(CPU *C) {
   char name[NAME_BYTES];
   const uint32_t out = A(0), size = A(1);
-  if (!winsock_host_name(name, sizeof name)) {
-    winsock_set_last_error(WINSOCK_ENETDOWN);
-    ret_std(C, WINSOCK_SOCKET_ERROR, 2);
+  if (!x2::native::winsock_host_name(name, sizeof name)) {
+    x2::native::winsock_set_last_error(x2::native::WINSOCK_ENETDOWN);
+    ret_std(C, x2::native::WINSOCK_SOCKET_ERROR, 2);
     return;
   }
   name[sizeof name - 1] = 0;
   if (strlen(name) + 1 > size || !guest_memory_span(out, size)) {
-    winsock_set_last_error(WINSOCK_EFAULT);
-    ret_std(C, WINSOCK_SOCKET_ERROR, 2);
+    x2::native::winsock_set_last_error(x2::native::WINSOCK_EFAULT);
+    ret_std(C, x2::native::WINSOCK_SOCKET_ERROR, 2);
     return;
   }
   guest_memory_write(out, name, strlen(name) + 1);
@@ -120,18 +120,18 @@ void imp_WS2_32__57(CPU *C) {
    with Windows' answers for the machine's own names (winsock_resolve.h). */
 void imp_WS2_32__52(CPU *C) {
   char name[NAME_BYTES];
-  WinsockHost host;
+  x2::native::WinsockHost host;
   uint32_t error = 0;
   if (!A(0) || !guest_text(A(0), name, sizeof name)) {
-    winsock_set_last_error(WINSOCK_EFAULT);
+    x2::native::winsock_set_last_error(x2::native::WINSOCK_EFAULT);
     ret_std(C, 0, 1);
     return;
   }
   guest_blocking_begin();
-  const int found = winsock_resolve(name, &host, &error);
+  const int found = x2::native::winsock_resolve(name, &host, &error);
   guest_blocking_end();
   if (!found) {
-    winsock_set_last_error(error);
+    x2::native::winsock_set_last_error(error);
     ret_std(C, 0, 1);
     return;
   }

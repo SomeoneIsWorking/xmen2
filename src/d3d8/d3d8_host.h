@@ -34,10 +34,11 @@
  * earns its place again, for that class only. The two are not exclusive; the
  * device is simply the cheaper cut for the overwhelming majority.
  */
-#ifndef D3D8_HOST_H
-#define D3D8_HOST_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::d3d8 {
 
 /*
  * Take over d3d8.dll!Direct3DCreate8.
@@ -69,4 +70,4 @@ unsigned d3d8_the_direct3d8_refs(void);
 void d3d8_the_direct3d8_ensure(void);
 int d3d8_the_direct3d8_addref(void);
 
-#endif /* D3D8_HOST_H */
+} // namespace x2::d3d8

@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 void gpu_matrix_multiply(const float a[16], const float b[16], float out[16]) {
   float result[16];
   int row, column, k;
@@ -14,3 +16,5 @@ void gpu_matrix_multiply(const float a[16], const float b[16], float out[16]) {
     }
   memcpy(out, result, sizeof result);
 }
+
+} // namespace x2::gpu

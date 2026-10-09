@@ -66,13 +66,13 @@ static void record_state(const DInputDevice *device, uint32_t out,
   double now = guest_clock_elapsed_s();
   int pad = dinput_device_pad(device);
   if (device->kind == DINPUT_DEV_KEYBOARD)
-    input_record_keyboard(state, bytes, frame, now);
+    x2::input::input_record_keyboard(state, bytes, frame, now);
   else if (device->kind == DINPUT_DEV_JOYSTICK)
-    input_record_gamepad((unsigned)(pad < 0 ? 0 : pad),
-                         dinput_pad_persistent_id(pad), state, bytes, frame,
-                         now);
+    x2::input::input_record_gamepad((unsigned)(pad < 0 ? 0 : pad),
+                                    dinput_pad_persistent_id(pad), state, bytes,
+                                    frame, now);
   else
-    input_record_mouse(state, bytes, frame, now);
+    x2::input::input_record_mouse(state, bytes, frame, now);
 }
 
 void dinput_device_get_state(CPU *cpu, DInputDevice *device) {

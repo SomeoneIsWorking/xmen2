@@ -28,6 +28,7 @@
 #include "d3d8_host.h"
 #include "diagnostics_startup.hpp"
 #include "dinput_device.h"
+#include "dsound.h"
 #include "env_file.h"
 #include "fault_report.h"
 #include "gpu_device.h"
@@ -52,6 +53,7 @@
 #include "threads.h"
 #include "win32_sdl.h"
 #include "windows_package.h"
+#include "winmm.h"
 #include "x2native_options.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
@@ -1504,7 +1506,7 @@ int main(int argc, char **argv) {
       x2::native::load_project_env(argv[0]) < 0)
     return 2;
   x2::diagnostics::Startup::begin(x2::config::config_directory());
-  if (!sdl_host_setup(options.window))
+  if (!x2::native::sdl_host_setup(options.window))
     return 1;
   /* Runtime CVars (engine selection, JIT knobs): compiled default < the
      x2native-runtime.conf file < environment X2_* < --set. Must precede the
@@ -1556,7 +1558,7 @@ int main(int argc, char **argv) {
       char artifacts[512];
       const char *config = x2::config::config_directory();
       snprintf(artifacts, sizeof artifacts, "%s/recordings", config);
-      input_record_set_directory(artifacts);
+      x2::input::input_record_set_directory(artifacts);
       snprintf(artifacts, sizeof artifacts, "%s/run", config);
       x2::native::live_session_set_directory(artifacts);
     }
@@ -1564,7 +1566,8 @@ int main(int argc, char **argv) {
       x2::native::live_session_set_directory(
           lucent_cvar_text("live.directory"));
     }
-    if (options.input_record && !input_record_start(options.input_record)) {
+    if (options.input_record &&
+        !x2::input::input_record_start(options.input_record)) {
       x2_log_error("x2native: input recording was requested but "
                    "could not start. REFUSING an unrecorded run.\n");
       return 2;
@@ -1573,8 +1576,8 @@ int main(int argc, char **argv) {
     /* The live session publishes THIS run's control port for tools/x2ctl.py to
        discover. With no channel open there is nothing to discover and nothing
        has gone wrong, so a player's launch does not depend on it either. */
-    if (control_port &&
-        !x2::native::live_session_start(control_port, input_record_path()))
+    if (control_port && !x2::native::live_session_start(
+                            control_port, x2::input::input_record_path()))
       return 2;
 #else
     (void)control_port;
@@ -1628,7 +1631,7 @@ int main(int argc, char **argv) {
   if (d3d8selftest) {
     if (guest_heap_init(GUEST_HEAP_BASE, GUEST_HEAP_SIZE) != 0)
       return 1;
-    return d3d8_host_selftest();
+    return x2::d3d8::d3d8_host_selftest();
   }
 
   if (!dir)
@@ -1716,11 +1719,8 @@ int main(int argc, char **argv) {
     dinput8_install();
     atexit(dinput8_report);
   }
-  {
-    extern void dsound_install(void), dsound_report(void);
-    dsound_install();
-    atexit(dsound_report);
-  }
+  x2::native::dsound_install();
+  atexit(x2::native::dsound_report);
   /* SHELL32: the save directory. Installed with the other native system
      modules, because LoadLibraryA may only hand back a handle for a module
      this host actually implements, and that answer comes from the export
@@ -1740,10 +1740,7 @@ int main(int argc, char **argv) {
     extern void kernel32_narrowing_report(void);
     atexit(kernel32_narrowing_report);
   }
-  {
-    extern void winmm_report(void);
-    atexit(winmm_report);
-  }
+  atexit(x2::native::winmm_report);
   atexit(guest_thread_report);
   {
     extern void gdi32_report(void);
@@ -1882,8 +1879,8 @@ int main(int argc, char **argv) {
                   "Anything drawn is missing whatever those methods do; the "
                   "list is printed at exit.\n");
     }
-    d3d8_host_enable();
-    atexit(d3d8_host_report);
+    x2::d3d8::d3d8_host_enable();
+    atexit(x2::d3d8::d3d8_host_report);
     x2_log_info("d3d8: host Direct3D 8 armed on d3d8.dll!Direct3DCreate8\n");
     d3d8_frame_table_install_signal();
     x2_log_info("d3d8: press F9 (or send SIGUSR1) to dump every draw of the "

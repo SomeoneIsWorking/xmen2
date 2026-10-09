@@ -124,11 +124,13 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
   static const char *const conversations[] = {
       "inactive", "waiting", "deterministic", "choice", "unreadable"};
   x2::native::CutscenePlayerSnapshot player;
-  ConversationPlayerState conversation = conversation_player_state(cpu);
-  unsigned payload = conversation >= CONVERSATION_PLAYER_INACTIVE &&
-                             conversation <= CONVERSATION_PLAYER_CHOICE
-                         ? (unsigned)conversation
-                         : 4u;
+  x2::native::ConversationPlayerState conversation =
+      x2::native::conversation_player_state(cpu);
+  unsigned payload =
+      conversation >= x2::native::CONVERSATION_PLAYER_INACTIVE &&
+              conversation <= x2::native::CONVERSATION_PLAYER_CHOICE
+          ? (unsigned)conversation
+          : 4u;
 
   x2::native::cutscene_player_snapshot(cpu, &player);
   x2::native::cutscene_dialogue_snapshot(&dialogue);

@@ -85,8 +85,8 @@ static unsigned rgb_sum(uint32_t pixel) {
  * cannot set the frame's light, and the product's frames have a lit
  * fixed-function draw ahead of their skinned casters in the same way.
  */
-static GpuVsProgram g_caster_program;
-static float g_caster_constants[GPU_VS_CONSTANTS][4];
+static x2::gpu::GpuVsProgram g_caster_program;
+static float g_caster_constants[x2::gpu::GPU_VS_CONSTANTS][4];
 static uint32_t g_fixed_caster[SHADOW_TEST_W * SHADOW_TEST_H];
 static uint32_t g_program_caster[SHADOW_TEST_W * SHADOW_TEST_H];
 
@@ -105,12 +105,14 @@ static int render_receiver_first(GpuDraw *receiver, GpuDraw *caster,
 }
 
 static void describe_program(void) {
-  const uint32_t position =
-      (uint32_t)GPU_VS_REG_INPUT | 0xe4u << GPU_VS_SOURCE_SWIZZLE_SHIFT;
+  const uint32_t position = (uint32_t)x2::gpu::GPU_VS_REG_INPUT |
+                            0xe4u << x2::gpu::GPU_VS_SOURCE_SWIZZLE_SHIFT;
   memset(&g_caster_program, 0, sizeof g_caster_program);
-  gpu_vs_program_set_input(&g_caster_program, 0, GPU_VS_INPUT_FLOAT3, 0);
+  x2::gpu::gpu_vs_program_set_input(&g_caster_program, 0,
+                                    x2::gpu::GPU_VS_INPUT_FLOAT3, 0);
   g_caster_program.block.insn[0][0] =
-      (uint32_t)GPU_VS_OP_MOV | 0xfu << 8 | (uint32_t)GPU_VS_REG_OUT_POS << 16;
+      (uint32_t)x2::gpu::GPU_VS_OP_MOV | 0xfu << 8 |
+      (uint32_t)x2::gpu::GPU_VS_REG_OUT_POS << 16;
   g_caster_program.block.insn[0][1] = position;
   g_caster_program.block.insn[0][2] = position;
   g_caster_program.block.insn[0][3] = position;

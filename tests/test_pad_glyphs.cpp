@@ -40,11 +40,13 @@ uint32_t guest_malloc(uint32_t bytes) {
 }
 
 X86Module *x86_modules(void) { return &module; }
+namespace x2::native {
 int dinput8_controller_host_pad_for_slot(int controller_slot) {
   return controller_slot >= 0 && controller_slot < 10
              ? host_pad_for_slot[controller_slot]
              : -1;
 }
+} // namespace x2::native
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
 namespace x2::input {
 int player_input_pad_is_active_source(int pad) { return pad == active_pad; }

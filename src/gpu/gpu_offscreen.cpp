@@ -138,8 +138,8 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
       SDL_ReleaseGPUFence(g_gpu, fence);
     }
   }
-  return gpu_readback_texture_rgba(g_gpu, g_off_tex, g_off_w, g_off_h, out,
-                                   bytes);
+  return x2::gpu::gpu_readback_texture_rgba(g_gpu, g_off_tex, g_off_w, g_off_h,
+                                            out, bytes);
 }
 
 void gpu_offscreen_end(void) {

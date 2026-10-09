@@ -20,15 +20,16 @@
  * Disarmed, the clock reads 0 and nothing accumulates, and the reports say the
  * host share was not timed rather than printing a zero that looks measured.
  */
-#ifndef X2_GPU_HOST_TIMER_H
-#define X2_GPU_HOST_TIMER_H
+#pragma once
 
-typedef struct GpuHostTimes {
+namespace x2::gpu {
+
+struct GpuHostTimes {
   unsigned long long draw_ns;
   unsigned long long upload_ns;
   unsigned long long upload_alloc_ns;  /* reserve + map + copy + unmap */
   unsigned long long upload_record_ns; /* recording the copy into the batch */
-} GpuHostTimes;
+};
 
 /* Nonzero when `gpu.host_timing` is set. Read once, at the first call. */
 int gpu_host_timer_armed(void);
@@ -49,4 +50,4 @@ GpuHostTimes gpu_host_timer_totals(void);
 void gpu_host_timer_frame_reset(void);
 GpuHostTimes gpu_host_timer_frame(void);
 
-#endif /* X2_GPU_HOST_TIMER_H */
+} // namespace x2::gpu

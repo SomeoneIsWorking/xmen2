@@ -39,6 +39,7 @@
  */
 #include "guest_clock.h"
 #include "guest_memory.h"
+#include "kernel32_handles.h"
 #include "override_leaf.h"
 #include "pe_map.h"
 #include "threads.h"
@@ -59,11 +60,7 @@
 #include <string.h>
 #include <time.h>
 
-/* kernel32 owns the handle table and the TLS arrays; these are the hooks. */
-uint32_t k32_handle_for_thread(void *rec);
-void *k32_thread_record(uint32_t handle);
-unsigned k32_thread_handle_count(void *rec);
-void k32_handle_thread_done(void *rec);
+/* kernel32 owns the TLS arrays; this is the hook. */
 void k32_tls_switch(int slot);
 /* ---- what each guest thread is doing ------------------------------------ */
 
@@ -373,7 +370,7 @@ static void *thread_main(void *argument) {
   t->state = x2::native::TS_DONE;
   t->state_since = now_s();
   g_exited++;
-  k32_handle_thread_done(t);
+  x2::native::k32_handle_thread_done(t);
   guest_cond_broadcast();
   guest_unlock();
   return NULL;
@@ -420,7 +417,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   t->start = start;
   t->arg = arg;
   t->tid = g_next_tid++;
-  t->handle = k32_handle_for_thread(t);
+  t->handle = x2::native::k32_handle_for_thread(t);
   if (!t->handle) {
     t->used = 0;
     return 0;
@@ -474,14 +471,15 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
  * them until exit is a leak with a very short fuse.
  */
 void guest_thread_handle_closed(uint32_t handle) {
-  auto *t = static_cast<x2::native::GuestThread *>(k32_thread_record(handle));
+  auto *t = static_cast<x2::native::GuestThread *>(
+      x2::native::k32_thread_record(handle));
   if (t && t->used) {
     if (t->handle == handle)
       t->handle = 0;
     if (t->finished) {
       /* This call happens before kernel32 clears the closing alias, so
          one means it is the LAST open handle to this thread object. */
-      if (k32_thread_handle_count(t) == 1) {
+      if (x2::native::k32_thread_handle_count(t) == 1) {
         x2::native::guest_thread_memory_free(t);
         t->reaped = 1;
         t->used = 0; /* slot is free for the next thread */
@@ -492,7 +490,8 @@ void guest_thread_handle_closed(uint32_t handle) {
 }
 
 static x2::native::GuestThread *by_handle(uint32_t h) {
-  x2::native::GuestThread *t = (x2::native::GuestThread *)k32_thread_record(h);
+  x2::native::GuestThread *t =
+      (x2::native::GuestThread *)x2::native::k32_thread_record(h);
   return t && t->used ? t : NULL;
 }
 
@@ -641,7 +640,7 @@ void guest_thread_exit(uint32_t code) {
   g_live_threads.fetch_sub(1, std::memory_order_relaxed);
   t->state = x2::native::TS_DONE;
   g_exited++;
-  k32_handle_thread_done(t);
+  x2::native::k32_handle_thread_done(t);
   guest_cond_broadcast();
   guest_unlock();
   pthread_exit(NULL);

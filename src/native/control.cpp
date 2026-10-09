@@ -193,7 +193,7 @@ void control_pump(CPU *cpu, double now) {
     g_cmd_work(g_cmd_context);
     g_cmd_ok = 1;
   } else if (cmd == CMD_PERFORMANCE_RESET) {
-    gpu_frame_timing_reset();
+    x2::gpu::gpu_frame_timing_reset();
     g_cmd_ok = 1;
     snprintf(
         g_cmd_why, sizeof g_cmd_why,

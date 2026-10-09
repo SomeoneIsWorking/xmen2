@@ -8,6 +8,8 @@
 
 #include <lucent/log_c.h>
 
+namespace x2::native {
+
 static LucentLogLevel level_for(SDL_LogPriority priority) {
   switch (priority) {
   case SDL_LOG_PRIORITY_ERROR:
@@ -53,9 +55,15 @@ int sdl_host_setup(int window) {
 #endif
   return 1;
 }
+
+} // namespace x2::native
 #else
+namespace x2::native {
+
 int sdl_host_setup(int window) {
   (void)window;
   return 1;
 }
+
+} // namespace x2::native
 #endif

@@ -31,28 +31,27 @@
  * never shrunk. Nothing here touches a device: the owner creates each chunk
  * when asked, through `make_chunk`, so the policy is testable without a GPU.
  */
-#ifndef GPU_INDEX_ARENA_H
-#define GPU_INDEX_ARENA_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-enum {
-  kGpuIndexArenaMinRegion = 256,
-  kGpuIndexArenaChunkBytes = 8 * 1024 * 1024,
-  kGpuIndexArenaMaxChunks = 256
-};
+namespace x2::gpu {
 
-typedef struct GpuIndexRegion {
+inline constexpr int kGpuIndexArenaMinRegion = 256;
+inline constexpr int kGpuIndexArenaChunkBytes = 8 * 1024 * 1024;
+inline constexpr int kGpuIndexArenaMaxChunks = 256;
+
+struct GpuIndexRegion {
   uint32_t chunk;  /* index of the chunk that holds it */
   uint32_t offset; /* bytes from the chunk's start */
   uint32_t bytes;  /* its capacity: the class size, at least what was asked */
-} GpuIndexRegion;
+};
 
 /* Create chunk `chunk` of `bytes` bytes; 0 on failure, which the allocation
    that asked for it reports as its own. */
-typedef int (*GpuIndexChunkFn)(void *user, uint32_t chunk, uint32_t bytes);
+using GpuIndexChunkFn = int (*)(void *user, uint32_t chunk, uint32_t bytes);
 
-typedef struct GpuIndexArena GpuIndexArena;
+struct GpuIndexArena;
 
 GpuIndexArena *gpu_index_arena_create(GpuIndexChunkFn make_chunk, void *user);
 void gpu_index_arena_destroy(GpuIndexArena *arena);
@@ -69,15 +68,15 @@ int gpu_index_arena_alloc(GpuIndexArena *arena, uint32_t bytes, uint64_t closed,
 void gpu_index_arena_retire(GpuIndexArena *arena, GpuIndexRegion region,
                             uint64_t epoch);
 
-typedef struct GpuIndexArenaStats {
+struct GpuIndexArenaStats {
   uint32_t chunks;      /* created */
   uint64_t chunk_bytes; /* their total size */
   uint64_t allocs;      /* regions handed out */
   uint64_t reused;      /* ... of which came from a free list */
   uint64_t retired;     /* regions given back */
   uint64_t waiting;     /* ... of which still wait for their epoch */
-} GpuIndexArenaStats;
+};
 
 void gpu_index_arena_stats(const GpuIndexArena *arena, GpuIndexArenaStats *out);
 
-#endif
+} // namespace x2::gpu

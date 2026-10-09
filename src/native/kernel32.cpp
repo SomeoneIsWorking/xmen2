@@ -64,115 +64,10 @@ static void k32_unimpl(const char *sym, const char *why) {
   abort();
 }
 
-/* ---- handles ----------------------------------------------------------- */
-
-static Handle g_h[MAX_HANDLES];
-
-static uint32_t h_alloc(int kind) {
-  int i;
-  for (i = 0; i < MAX_HANDLES; i++)
-    if (!g_h[i].kind) {
-      memset(&g_h[i], 0, sizeof g_h[i]);
-      g_h[i].kind = kind;
-      g_h[i].fd = -1;
-      return (uint32_t)(i + 1);
-    }
-  x2_log_error("kernel32: more than %d handles open at once\n", MAX_HANDLES);
-  abort();
-}
-
-Handle *k32_handle_get(uint32_t h, int kind) {
-  if (h == 0 || h > MAX_HANDLES || !g_h[h - 1].kind) {
-    x2_log_error("kernel32: handle %u is not open\n", h);
-    x86_diag_dump();
-    abort();
-  }
-  if (kind && g_h[h - 1].kind != kind) {
-    x2_log_error("kernel32: handle %u is the wrong kind (%d, wanted %d)"
-                 "\n",
-                 h, g_h[h - 1].kind, kind);
-    abort();
-  }
-  return &g_h[h - 1];
-}
-
-/* ---- guest threads: the handle-table half ------------------------------
- *
- * threads.cpp owns the thread; the handle table owns handles, and a thread
- * handle has to be one of these because the guest waits on it with
- * WaitForSingleObject and closes it with CloseHandle like any other.
- *
- * The thread is signalled when it EXITS, which is what Win32 means by a
- * signalled thread handle, so `count` is the same field the events and
- * semaphores use and sync_try_take works on it unchanged.
- */
-uint32_t k32_handle_for_thread(void *rec) {
-  uint32_t h = h_alloc(H_THREAD);
-  g_h[h - 1].thread_rec = rec;
-  g_h[h - 1].count = 0;  /* not signalled: still running */
-  g_h[h - 1].manual = 1; /* a thread stays signalled once done */
-  snprintf(g_h[h - 1].name, sizeof g_h[h - 1].name, "guest thread");
-  return h;
-}
-
-void *k32_thread_record(uint32_t handle) {
-  if (!handle || handle > MAX_HANDLES || g_h[handle - 1].kind != H_THREAD)
-    return NULL;
-  return g_h[handle - 1].thread_rec;
-}
-
-unsigned k32_thread_handle_count(void *rec) {
-  unsigned i, n = 0;
-  for (i = 0; i < MAX_HANDLES; ++i)
-    if (g_h[i].kind == H_THREAD && g_h[i].thread_rec == rec)
-      n++;
-  return n;
-}
-
-void k32_handle_thread_done(void *rec) {
-  unsigned i;
-  for (i = 0; i < MAX_HANDLES; ++i)
-    if (g_h[i].kind == H_THREAD && g_h[i].thread_rec == rec)
-      g_h[i].count = 1; /* every alias stays signalled */
-}
-
-/* Proves the shipping handle table preserves thread OBJECT identity across
-   numeric aliases. This is the exact operation libCriMovie uses for its
-   self-suspend/resume handle; testing only the original handle missed #57. */
-int kernel32_thread_alias_selftest(void) {
-  void *rec = guest_thread_current_record();
-  uint32_t original = k32_handle_for_thread(rec);
-  uint32_t alias = h_alloc(H_THREAD);
-  int fails = 0;
-
-  g_h[alias - 1] = g_h[original - 1];
-  if (k32_thread_record(original) != rec || k32_thread_record(alias) != rec ||
-      !guest_thread_is_thread(alias) || guest_thread_resume(alias) < 0) {
-    x2_log_info("kernel32 thread-alias selftest: FAILED -- duplicated handle "
-                "%u did not control the same thread as %u.\n",
-                alias, original);
-    fails++;
-  }
-  guest_thread_handle_closed(alias);
-  g_h[alias - 1].kind = 0;
-  if (!guest_thread_is_thread(original)) {
-    x2_log_info("kernel32 thread-alias selftest: FAILED -- closing one alias "
-                "detached the still-open original.\n");
-    fails++;
-  }
-  guest_thread_handle_closed(original);
-  g_h[original - 1].kind = 0;
-  x2_log_info("kernel32 thread-alias selftest: %s -- two numeric handles %s "
-              "one guest thread object\n",
-              fails ? "FAILED" : "PASSED",
-              fails ? "did not preserve" : "preserved");
-  return fails;
-}
-
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
-void k32_set_last_error(uint32_t error) { g_last_error = error; }
+void x2::native::k32_set_last_error(uint32_t error) { g_last_error = error; }
 
 /* Counted so the report can say how many were never shown. */
 static unsigned long g_failed_opens;
@@ -221,7 +116,7 @@ void imp_KERNEL32_QueryPerformanceCounter(CPU *C) {
      waiting for one does constantly, which is exactly why it must not cost
      two clock reads. */
   const uint64_t v = guest_clock_ns();
-  winmm_timers_pump_at((double)v / 1e9);
+  x2::native::winmm_timers_pump_at((double)v / 1e9);
   WR32(A(0), (uint32_t)v);
   WR32(A(0) + 4u, (uint32_t)(v >> 32));
   ret_std(C, 1, 1);
@@ -638,8 +533,8 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
     ret_std(C, INVALID_HANDLE, 7);
     return;
   }
-  h = h_alloc(H_FILE);
-  g_h[h - 1].fd = fd;
+  h = x2::native::k32_handle_alloc(x2::native::H_FILE);
+  x2::native::k32_handle_get(h, 0)->fd = fd;
   k32_file_trace("CreateFile", ACS(0), path,
                  (access_ & GENERIC_WRITE) ? "opened for WRITING"
                                            : "opened for reading");
@@ -647,7 +542,7 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
 }
 
 void imp_KERNEL32_ReadFile(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   ssize_t n = x2::native::guest_read_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
@@ -655,7 +550,7 @@ void imp_KERNEL32_ReadFile(CPU *C) {
 }
 
 void imp_KERNEL32_WriteFile(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   ssize_t n = x2::native::guest_write_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
@@ -663,7 +558,7 @@ void imp_KERNEL32_WriteFile(CPU *C) {
 }
 
 void imp_KERNEL32_GetFileSize(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   struct stat st;
   if (fstat(hh->fd, &st) != 0) {
     ret_std(C, 0xFFFFFFFFu, 2);
@@ -675,7 +570,7 @@ void imp_KERNEL32_GetFileSize(CPU *C) {
 }
 
 void imp_KERNEL32_SetEndOfFile(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   off_t at = lseek(hh->fd, 0, SEEK_CUR);
   ret_std(C, ftruncate(hh->fd, at) == 0 ? 1u : 0u, 1);
 }
@@ -688,7 +583,7 @@ void imp_KERNEL32_SetEndOfFile(CPU *C) {
 #define WAIT_TIMEOUT 0x00000102u
 #define WAIT_FAILED 0xFFFFFFFFu
 
-static void sync_name(Handle *hh, uint32_t namep) {
+static void sync_name(x2::native::Handle *hh, uint32_t namep) {
   if (namep)
     snprintf(hh->name, sizeof hh->name, "%s",
              (const char *)guest_memory_const_pointer(namep));
@@ -698,8 +593,8 @@ static void sync_name(Handle *hh, uint32_t namep) {
 
 void imp_KERNEL32_CreateSemaphoreA(CPU *C) {
   /* (attrs, lInitialCount, lMaximumCount, name) */
-  uint32_t h = h_alloc(H_SEM);
-  Handle *hh = &g_h[h - 1];
+  uint32_t h = x2::native::k32_handle_alloc(x2::native::H_SEM);
+  x2::native::Handle *hh = x2::native::k32_handle_get(h, 0);
   hh->count = (int32_t)A(1);
   hh->maxcount = (int32_t)A(2);
   sync_name(hh, A(3));
@@ -708,7 +603,7 @@ void imp_KERNEL32_CreateSemaphoreA(CPU *C) {
 
 void imp_KERNEL32_ReleaseSemaphore(CPU *C) {
   /* (handle, lReleaseCount, lpPreviousCount) */
-  Handle *hh = k32_handle_get(A(0), H_SEM);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_SEM);
   int32_t prev = hh->count;
   if (A(1) == 0 || (int64_t)hh->count + (int32_t)A(1) > hh->maxcount) {
     g_last_error = 87u; /* ERROR_INVALID_PARAMETER */
@@ -725,8 +620,8 @@ void imp_KERNEL32_ReleaseSemaphore(CPU *C) {
 
 void imp_KERNEL32_CreateEventA(CPU *C) {
   /* (attrs, bManualReset, bInitialState, name) */
-  uint32_t h = h_alloc(H_EVENT);
-  Handle *hh = &g_h[h - 1];
+  uint32_t h = x2::native::k32_handle_alloc(x2::native::H_EVENT);
+  x2::native::Handle *hh = x2::native::k32_handle_get(h, 0);
   hh->manual = (int)A(1);
   hh->count = A(2) ? 1 : 0;
   /* [ESP] is the caller's return address: the one thing that distinguishes
@@ -737,7 +632,8 @@ void imp_KERNEL32_CreateEventA(CPU *C) {
 }
 
 void imp_KERNEL32_SetEvent(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_EVENT);
+  x2::native::Handle *hh =
+      x2::native::k32_handle_get(A(0), x2::native::H_EVENT);
   hh->n_set++;
   hh->count = 1;
   if (hh->waiters > 0)
@@ -781,13 +677,15 @@ void imp_KERNEL32_SetEvent(CPU *C) {
  */
 static unsigned long g_pulse_sent, g_pulse_lost;
 
-void kernel32_pulse_counts(unsigned long *sent, unsigned long *lost) {
+void x2::native::kernel32_pulse_counts(unsigned long *sent,
+                                       unsigned long *lost) {
   *sent = g_pulse_sent;
   *lost = g_pulse_lost;
 }
 
 void imp_KERNEL32_PulseEvent(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_EVENT);
+  x2::native::Handle *hh =
+      x2::native::k32_handle_get(A(0), x2::native::H_EVENT);
   static unsigned long lost;
   g_pulse_sent++;
   hh->n_pulse_sent++;
@@ -816,21 +714,22 @@ void imp_KERNEL32_PulseEvent(CPU *C) {
 }
 
 void imp_KERNEL32_ResetEvent(CPU *C) {
-  k32_handle_get(A(0), H_EVENT)->count = 0;
+  x2::native::k32_handle_get(A(0), x2::native::H_EVENT)->count = 0;
   ret_std(C, 1, 1);
 }
 
 void imp_KERNEL32_CreateMutexA(CPU *C) {
   /* (attrs, bInitialOwner, name) */
-  uint32_t h = h_alloc(H_MUTEX);
-  Handle *hh = &g_h[h - 1];
+  uint32_t h = x2::native::k32_handle_alloc(x2::native::H_MUTEX);
+  x2::native::Handle *hh = x2::native::k32_handle_get(h, 0);
   hh->count = A(1) ? 1 : 0; /* recursion depth held */
   sync_name(hh, A(2));
   ret_std(C, h, 3);
 }
 
 void imp_KERNEL32_ReleaseMutex(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_MUTEX);
+  x2::native::Handle *hh =
+      x2::native::k32_handle_get(A(0), x2::native::H_MUTEX);
   uint32_t me = guest_current_tid();
   if (hh->count <= 0 || hh->owner_tid != me) {
     x2_log_error("kernel32: ReleaseMutex on \"%s\" by guest thread %u, "
@@ -1177,23 +1076,25 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
      either handle break the other, which is precisely the bug a duplicate is
      asked for to avoid. */
   uint32_t src = A(1), dstp = A(3), options = A(6);
-  Handle *sh;
+  x2::native::Handle *sh;
   if (src == PSEUDO_THREAD || src == PSEUDO_PROCESS) {
-    uint32_t nh = h_alloc(H_THREAD);
+    uint32_t nh = x2::native::k32_handle_alloc(x2::native::H_THREAD);
     if (src == PSEUDO_THREAD)
-      g_h[nh - 1].thread_rec = guest_thread_current_record();
-    snprintf(g_h[nh - 1].name, sizeof g_h[nh - 1].name, "%s",
+      x2::native::k32_handle_get(nh, 0)->thread_rec =
+          guest_thread_current_record();
+    snprintf(x2::native::k32_handle_get(nh, 0)->name,
+             sizeof(x2::native::Handle::name), "%s",
              src == PSEUDO_THREAD ? "current thread" : "current process");
     if (dstp)
       WR32(dstp, nh);
     ret_std(C, 1, 7);
     return;
   }
-  sh = k32_handle_get(src, 0);
-  uint32_t nh = h_alloc(sh->kind);
-  Handle *dh = &g_h[nh - 1];
+  sh = x2::native::k32_handle_get(src, 0);
+  uint32_t nh = x2::native::k32_handle_alloc(sh->kind);
+  x2::native::Handle *dh = x2::native::k32_handle_get(nh, 0);
   *dh = *sh;
-  if (sh->kind == H_FILE && sh->fd >= 0) {
+  if (sh->kind == x2::native::H_FILE && sh->fd >= 0) {
     dh->fd = dup(sh->fd);
     if (dh->fd < 0) {
       x2_log_error("kernel32: DuplicateHandle could not dup fd %d: %s\n",
@@ -1203,22 +1104,22 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
       ret_std(C, 0, 7);
       return;
     }
-  } else if (sh->kind == H_FIND || sh->kind == H_MAP) {
+  } else if (sh->kind == x2::native::H_FIND || sh->kind == x2::native::H_MAP) {
     /* A directory stream and a mapping cannot be shared by copying the
        struct -- both would close the same resource. Refuse rather than
        hand back a handle that breaks on the second close. */
     x2_log_error("kernel32: DuplicateHandle on a %s handle is not "
                  "implemented; copying the struct would double-close\n",
-                 sh->kind == H_FIND ? "find" : "file-mapping");
+                 sh->kind == x2::native::H_FIND ? "find" : "file-mapping");
     dh->kind = 0;
     abort();
   }
   if (dstp)
     WR32(dstp, nh);
   if (options & 1u) { /* DUPLICATE_CLOSE_SOURCE */
-    if (sh->kind == H_FILE && sh->fd >= 0)
+    if (sh->kind == x2::native::H_FILE && sh->fd >= 0)
       close(sh->fd);
-    if (sh->kind == H_THREAD)
+    if (sh->kind == x2::native::H_THREAD)
       guest_thread_handle_closed(src);
     sh->kind = 0;
   }
@@ -1226,20 +1127,20 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
 }
 
 void imp_KERNEL32_CloseHandle(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), 0);
-  if (hh->kind == H_FILE && hh->fd >= 0)
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), 0);
+  if (hh->kind == x2::native::H_FILE && hh->fd >= 0)
     close(hh->fd);
-  if (hh->kind == H_FIND && hh->dir)
+  if (hh->kind == x2::native::H_FIND && hh->dir)
     closedir(hh->dir);
   /* A mapping handle owns its duplicated descriptor. Its VIEWS are not
      unmapped here: on Windows a view outlives the mapping handle, and the
      guest unmaps it explicitly. */
-  if (hh->kind == H_MAP && hh->fd >= 0)
+  if (hh->kind == x2::native::H_MAP && hh->fd >= 0)
     close(hh->fd);
   /* A thread handle names a GuestThread, and this index is about to be
      handed to something else -- so the thread must stop answering to it.
      See guest_thread_handle_closed() for what it cost not to. */
-  if (hh->kind == H_THREAD)
+  if (hh->kind == x2::native::H_THREAD)
     guest_thread_handle_closed(A(0));
   hh->kind = 0;
   ret_std(C, 1, 1);
@@ -1801,7 +1702,7 @@ static struct {
 } g_views[MAX_VIEWS];
 
 void imp_KERNEL32_CreateFileMappingA(CPU *C) {
-  Handle *hf = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hf = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   uint32_t size_hi = A(3), size_lo = A(4);
   struct stat st;
   uint32_t h;
@@ -1833,14 +1734,15 @@ void imp_KERNEL32_CreateFileMappingA(CPU *C) {
     return;
   }
 
-  h = h_alloc(H_MAP);
-  g_h[h - 1].fd = fd;
-  g_h[h - 1].maplen = size_lo ? (size_t)size_lo : (size_t)st.st_size;
+  h = x2::native::k32_handle_alloc(x2::native::H_MAP);
+  x2::native::k32_handle_get(h, 0)->fd = fd;
+  x2::native::k32_handle_get(h, 0)->maplen =
+      size_lo ? (size_t)size_lo : (size_t)st.st_size;
   ret_std(C, h, 6);
 }
 
 void imp_KERNEL32_MapViewOfFile(CPU *C) {
-  Handle *hm = k32_handle_get(A(0), H_MAP);
+  x2::native::Handle *hm = x2::native::k32_handle_get(A(0), x2::native::H_MAP);
   uint32_t off_hi = A(2), off_lo = A(3), want = A(4);
   long page = sysconf(_SC_PAGESIZE);
   uint32_t aligned = off_lo & ~(uint32_t)(page - 1);
@@ -2054,7 +1956,7 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name) {
 }
 
 /* Advance the handle to the next matching entry. 0 at end of directory. */
-static int find_next(Handle *hh, uint32_t data) {
+static int find_next(x2::native::Handle *hh, uint32_t data) {
   struct dirent *e;
   while ((e = readdir(hh->dir)) != NULL) {
     if (!win_match(hh->pattern, e->d_name))
@@ -2071,7 +1973,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
   char win[1024], *slash;
   const char *pattern;
   const char *dirpath;
-  Handle *hh;
+  x2::native::Handle *hh;
 
   if (!spec || !data) {
     g_last_error = ERROR_FILE_NOT_FOUND;
@@ -2095,8 +1997,8 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
     dirpath = win_path(".");
   }
 
-  h = h_alloc(H_FIND);
-  hh = &g_h[h - 1];
+  h = x2::native::k32_handle_alloc(x2::native::H_FIND);
+  hh = x2::native::k32_handle_get(h, 0);
   snprintf(hh->pattern, sizeof hh->pattern, "%s", pattern);
   snprintf(hh->dirpath, sizeof hh->dirpath, "%s", dirpath);
   hh->dir = opendir(hh->dirpath);
@@ -2124,7 +2026,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
 }
 
 void imp_KERNEL32_FindNextFileA(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FIND);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FIND);
   uint32_t data = A(1);
   if (!data || !find_next(hh, data)) {
     g_last_error = ERROR_NO_MORE_FILES;
@@ -2135,7 +2037,7 @@ void imp_KERNEL32_FindNextFileA(CPU *C) {
 }
 
 void imp_KERNEL32_FindClose(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FIND);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FIND);
   if (hh->dir)
     closedir(hh->dir);
   hh->dir = NULL;
@@ -2504,8 +2406,8 @@ void imp_KERNEL32_GetStdHandle(CPU *C) {
     return;
   }
   if (!g_std[fd]) {
-    g_std[fd] = h_alloc(H_FILE);
-    k32_handle_get(g_std[fd], H_FILE)->fd = fd;
+    g_std[fd] = x2::native::k32_handle_alloc(x2::native::H_FILE);
+    x2::native::k32_handle_get(g_std[fd], x2::native::H_FILE)->fd = fd;
   }
   ret_std(C, g_std[fd], 1);
 }
@@ -2527,7 +2429,7 @@ void imp_KERNEL32_SetStdHandle(CPU *C) {
    the CRT to decide whether a stream is line-buffered; answered from the real
    fd, so a redirected run and a terminal run differ as they should. */
 void imp_KERNEL32_GetFileType(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   struct stat st;
   uint32_t t = 0;
   if (fstat(hh->fd, &st) == 0) {
@@ -2547,7 +2449,7 @@ void imp_KERNEL32_GetFileType(CPU *C) {
 void imp_KERNEL32_SetHandleCount(CPU *C) { ret_std(C, A(0), 1); }
 
 void imp_KERNEL32_FlushFileBuffers(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   ret_std(C, fsync(hh->fd) == 0 ? 1u : 0u, 1);
 }
 
@@ -2555,7 +2457,7 @@ void imp_KERNEL32_FlushFileBuffers(CPU *C) {
    64-bit when phi is given, and the two halves must come from ONE lseek --
    computing them separately is how a large-file seek lands somewhere else. */
 void imp_KERNEL32_SetFilePointer(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), H_FILE);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FILE);
   uint32_t phi = A(2), method = A(3);
   int64_t off = (int32_t)A(1);
   off_t r;

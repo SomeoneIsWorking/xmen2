@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::native {
+
 #define RETAIL_CONTROLLER_SLOTS 10
 #define RETAIL_ATTACHED_OFFSET 0x4e4u
 #define RETAIL_INSTANCE_OFFSET 0x27e8u
@@ -132,3 +134,5 @@ size_t dinput8_controller_slots_probe(char *out, size_t size) {
   }
   return at;
 }
+
+} // namespace x2::native

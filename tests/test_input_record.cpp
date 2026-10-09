@@ -20,16 +20,17 @@ int main(void) {
   FILE *file;
   int keyboard_lines, mouse_lines, pad_lines;
 
-  if (!input_record_start(path))
+  if (!x2::input::input_record_start(path))
     return 1;
-  input_record_keyboard(keyboard, sizeof keyboard, 1, 0.1);
-  input_record_keyboard(keyboard, sizeof keyboard, 2, 0.2);
+  x2::input::input_record_keyboard(keyboard, sizeof keyboard, 1, 0.1);
+  x2::input::input_record_keyboard(keyboard, sizeof keyboard, 2, 0.2);
   keyboard[0x11] = 0x80;
-  input_record_keyboard(keyboard, sizeof keyboard, 3, 0.3);
-  input_record_mouse(mouse, sizeof mouse, 3, 0.3);
+  x2::input::input_record_keyboard(keyboard, sizeof keyboard, 3, 0.3);
+  x2::input::input_record_mouse(mouse, sizeof mouse, 3, 0.3);
   pad[48] = 0x80;
-  input_record_gamepad(0, "test-\"pad\\one", pad, sizeof pad, 3, 0.3);
-  input_record_report();
+  x2::input::input_record_gamepad(0, "test-\"pad\\one", pad, sizeof pad, 3,
+                                  0.3);
+  x2::input::input_record_report();
 
   file = fopen(path, "r");
   if (!file)

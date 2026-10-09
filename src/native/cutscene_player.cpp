@@ -231,7 +231,7 @@ static int next_owned_fiber(void *context,
                             x2::native::CutsceneSequence sequence,
                             x2::native::CutsceneFiber *fiber) {
   CPU *cpu = static_cast<CPU *>(context);
-  ConversationPlayerState conversation;
+  x2::native::ConversationPlayerState conversation;
   uint32_t selected = 0;
   int available;
 
@@ -249,13 +249,13 @@ static int next_owned_fiber(void *context,
     if (available < 0)
       return -1;
   }
-  conversation = conversation_player_state(cpu);
-  if (conversation == CONVERSATION_PLAYER_DETERMINISTIC ||
-      conversation == CONVERSATION_PLAYER_CHOICE) {
+  conversation = x2::native::conversation_player_state(cpu);
+  if (conversation == x2::native::CONVERSATION_PLAYER_DETERMINISTIC ||
+      conversation == x2::native::CONVERSATION_PLAYER_CHOICE) {
     *fiber = CONVERSATION_FIBER;
     return 1;
   }
-  if (conversation == CONVERSATION_PLAYER_UNREADABLE)
+  if (conversation == x2::native::CONVERSATION_PLAYER_UNREADABLE)
     return -1;
   available =
       x2::native::behaved_player_next_owned(cpu, owns_context, NULL, &selected);
@@ -290,11 +290,12 @@ step_owned_fiber(void *context, x2::native::CutsceneSequence sequence,
                : x2::native::CutsceneFiberStep::Error;
   }
   if (fiber == CONVERSATION_FIBER) {
-    ConversationPlayerState state = conversation_player_state(cpu);
+    x2::native::ConversationPlayerState state =
+        x2::native::conversation_player_state(cpu);
     *conversation = 1;
-    if (state == CONVERSATION_PLAYER_DETERMINISTIC)
+    if (state == x2::native::CONVERSATION_PLAYER_DETERMINISTIC)
       return x2::native::CutsceneFiberStep::DeterministicConversation;
-    if (state == CONVERSATION_PLAYER_CHOICE)
+    if (state == x2::native::CONVERSATION_PLAYER_CHOICE)
       return x2::native::CutsceneFiberStep::Choice;
     return x2::native::CutsceneFiberStep::NoProgress;
   }

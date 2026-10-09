@@ -251,14 +251,14 @@ static void dev_GetDirect3D(D3D8Object *self, CPU *C) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
-  if (!d3d8_the_direct3d8_addref()) {
+  if (!x2::d3d8::d3d8_the_direct3d8_addref()) {
     x2_log_error("d3d8: GetDirect3D, but no IDirect3D8 exists in this "
                  "process -- this device was not made by one.\n");
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
-  WR32(out, d3d8_the_direct3d8());
+  WR32(out, x2::d3d8::d3d8_the_direct3d8());
   d3d8_ret(C, D3D_OK);
 }
 
@@ -387,14 +387,14 @@ static void dev_SetRenderTarget(D3D8Object *self, CPU *C) {
   g_render_depth = ds_obj;
 
   {
-    D3D8Surface *s = d3d8_surface_of(g_render_target);
+    x2::d3d8::D3D8Surface *s = x2::d3d8::d3d8_surface_of(g_render_target);
     /*
      * src/gpu has exactly one destination, the swapchain. Anything else is
      * an off-screen target it does not have, and drawing would silently go
      * to the wrong place -- so it is reported rather than ignored. This is
      * the same gap the --vk path reported as "render destination 3".
      */
-    gpu_frame_bind_target(s->kind == D3D8_SURF_BACKBUFFER ? 0u : 1u);
+    gpu_frame_bind_target(s->kind == x2::d3d8::D3D8_SURF_BACKBUFFER ? 0u : 1u);
   }
   d3d8_ret(C, D3D_OK);
 }
@@ -411,7 +411,7 @@ static void dev_CreateImageSurface(D3D8Object *self, CPU *C) {
   }
   /* D3DPOOL_SYSTEMMEM: an image surface is host memory the guest fills and
      then copies from, which is exactly what this host can do honestly. */
-  s = d3d8_surface_new(D3D8_SURF_SYSTEM, w, h, fmt, 0, 2);
+  s = d3d8_surface_new(x2::d3d8::D3D8_SURF_SYSTEM, w, h, fmt, 0, 2);
   if (!s) {
     WR32(out, 0);
     d3d8_ret(C, E_OUTOFMEMORY);
@@ -1553,7 +1553,7 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
    * for a reason the engine has to handle.
    */
   g_backbuffer = d3d8_surface_new(
-      D3D8_SURF_BACKBUFFER, pp->BackBufferWidth, pp->BackBufferHeight,
+      x2::d3d8::D3D8_SURF_BACKBUFFER, pp->BackBufferWidth, pp->BackBufferHeight,
       pp->BackBufferFormat, 1u /* RENDERTARGET */, 0u /* D3DPOOL_DEFAULT */);
   if (!g_backbuffer) {
     x2_log_error("d3d8: the back buffer surface could not be made.\n");
@@ -1561,9 +1561,10 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
   }
   g_render_target = g_backbuffer;
   if (pp->EnableAutoDepthStencil) {
-    g_depth = d3d8_surface_new(D3D8_SURF_DEPTHSTENCIL, pp->BackBufferWidth,
-                               pp->BackBufferHeight, pp->AutoDepthStencilFormat,
-                               2u /* DEPTHSTENCIL */, 0u);
+    g_depth =
+        d3d8_surface_new(x2::d3d8::D3D8_SURF_DEPTHSTENCIL, pp->BackBufferWidth,
+                         pp->BackBufferHeight, pp->AutoDepthStencilFormat,
+                         2u /* DEPTHSTENCIL */, 0u);
     if (!g_depth) {
       x2_log_error("d3d8: the automatic depth/stencil surface could "
                    "not be made.\n");
@@ -1572,10 +1573,9 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
     g_render_depth = g_depth;
   }
 
-  x2::d3d8::d3d8_live_resolution_bind(&g_dev.pp, d3d8_surface_of(g_backbuffer),
-                                      g_depth ? d3d8_surface_of(g_depth) : NULL,
-                                      &g_dev.state);
-
+  x2::d3d8::d3d8_live_resolution_bind(
+      &g_dev.pp, x2::d3d8::d3d8_surface_of(g_backbuffer),
+      g_depth ? x2::d3d8::d3d8_surface_of(g_depth) : NULL, &g_dev.state);
   g_dev_obj = d3d8_object_new(D3D8_IF_IDirect3DDevice8, &g_dev);
   d3d8_object_set_destructor(g_dev_obj, device_destroyed);
   x2_log_info("d3d8: IDirect3DDevice8 at 0x%08x\n",
@@ -1624,7 +1624,7 @@ void d3d8_device_report(void) {
   d3d8_state_report(&g_dev.state);
   x2::d3d8::d3d8_sb_report();
   d3d8_vs_report();
-  d3d8_surface_report();
+  x2::d3d8::d3d8_surface_report();
   d3d8_resource_report();
   d3d8_drawcall_report();
   gpu_draw_report();

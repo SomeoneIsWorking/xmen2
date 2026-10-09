@@ -36,7 +36,7 @@ uint64_t random_instance() {
 
 std::string machine_name() {
   std::string name(kHostNameBytes, '\0');
-  if (!winsock_host_name(name.data(), name.size())) {
+  if (!x2::native::winsock_host_name(name.data(), name.size())) {
     return "X-Men Legends II";
   }
   name.resize(name.find('\0') == std::string::npos ? name.size()

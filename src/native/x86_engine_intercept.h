@@ -16,12 +16,13 @@
  * boot-splash and prompt-glyph overrides never fired; the native FMV override
  * did not either, so the intro played through the guest's MMX decoder).
  */
-#ifndef X2_X86_ENGINE_INTERCEPT_H
-#define X2_X86_ENGINE_INTERCEPT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * True when `eip` is host code this dispatcher owns -- an import thunk, the
@@ -63,4 +64,4 @@ int x86_engine_jit_boundary(uint32_t eip, void *user);
  */
 uint32_t x86_engine_jit_run_stop(void *run_user);
 
-#endif /* X2_X86_ENGINE_INTERCEPT_H */
+} // namespace x2::native

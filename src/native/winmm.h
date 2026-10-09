@@ -4,10 +4,11 @@
  * See winmm.cpp for why they are deferred rather than threaded, and what that
  * costs in resolution.
  */
-#ifndef X2_WINMM_H
-#define X2_WINMM_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /*
  * Run any timer callback that is due. Called from places the guest reaches
@@ -32,4 +33,4 @@ void winmm_counts(unsigned long *fires, unsigned long *pumps, int *live);
 
 void winmm_report(void);
 
-#endif /* X2_WINMM_H */
+} // namespace x2::native

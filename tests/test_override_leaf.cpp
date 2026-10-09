@@ -79,6 +79,8 @@ int x86_native_thunk_call(uint32_t addr, CPU *C) {
   return s_thunk_answer;
 }
 
+namespace x2::native {
+
 int x86_import_fastpath_leaf_safe(uint32_t addr) {
   return addr == thunk_at(FASTPATH_SLOT);
 }
@@ -88,6 +90,8 @@ int x86_import_fastpath_dispatch(CPU *cpu) {
   cpu->reg[kX86pEsp] += 4u;
   return 1;
 }
+
+} // namespace x2::native
 
 /* ---- cases ------------------------------------------------------------ */
 

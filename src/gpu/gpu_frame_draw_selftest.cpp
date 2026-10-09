@@ -187,8 +187,9 @@ int gpu_frame_draw_selftest(void) {
                 "and %s, so the draw's own target cannot be read.\n",
                 scene_w, scene_h, scene ? "present" : "absent");
     fails++;
-  } else if (!gpu_readback_texture_rgba(g_gpu, scene, scene_w, scene_h,
-                                        scene_image, sizeof scene_image)) {
+  } else if (!x2::gpu::gpu_readback_texture_rgba(g_gpu, scene, scene_w, scene_h,
+                                                 scene_image,
+                                                 sizeof scene_image)) {
     x2_log_info("gpu frame-draw selftest: FAILED -- the scene could not be "
                 "read back, so nothing about its pixels is known.\n");
     fails++;

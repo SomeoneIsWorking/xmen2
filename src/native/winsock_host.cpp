@@ -6,6 +6,8 @@
 #include <mutex>
 #include <string.h>
 
+namespace x2::native {
+
 namespace {
 
 /* Slot 0 stays empty so a zeroed handle is never a socket. */
@@ -626,3 +628,5 @@ int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
          keep_ready(except, x2::native::kPollExcept | x2::native::kPollErr,
                     &poll);
 }
+
+} // namespace x2::native

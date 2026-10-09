@@ -40,7 +40,7 @@ static void check_row_orders(const char *name, const float sequence[4],
       a[kRowOrder[row][k]] = sequence[k];
     }
   }
-  ig_matrix44_multiply(out, a, b);
+  x2::native::ig_matrix44_multiply(out, a, b);
   for (unsigned row = 0; row < 4u; row++) {
     char what[64];
     snprintf(what, sizeof what, "%s, row %u", name, row);
@@ -69,7 +69,7 @@ static void test_extended_partials(void) {
   a[3] = 1.0f;
   a[2] = ldexpf(1.0f, -40);
   a[0] = -1.0f;
-  ig_matrix44_multiply(out, a, b);
+  x2::native::ig_matrix44_multiply(out, a, b);
   expect_float("partial sums stay extended", out[0], ldexpf(1.0f, -40));
 }
 

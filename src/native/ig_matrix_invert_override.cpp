@@ -130,17 +130,18 @@ static int invert_native(CPU *C) {
   float out[16];
   uint16_t codes = 0;
   guest_memory_read(RD32(esp + 8u), m, MATRIX_BYTES);
-  const IgInvertVerdict verdict = ig_matrix44_invert(out, m, &codes);
-  if (verdict == kIgInvertUndecided) {
+  const x2::native::IgInvertVerdict verdict =
+      x2::native::ig_matrix44_invert(out, m, &codes);
+  if (verdict == x2::native::kIgInvertUndecided) {
     return 0;
   }
   CPU native = *C;
   native.reg[kX86pEsp] = esp + 12u;
   native.reg[kX86pEax] = result;
   native.x87.status =
-      (uint16_t)((C->x87.status & ~kIgInvertCompareMask) | codes);
+      (uint16_t)((C->x87.status & ~x2::native::kIgInvertCompareMask) | codes);
   uint32_t code;
-  if (verdict == kIgInvertInverted) {
+  if (verdict == x2::native::kIgInvertInverted) {
     code = RD32(RD32(libigmath_mapped(SUCCESS_SLOT_LINKED)));
     native.reg[kX86pEcx] = code;
     native.reg[kX86pEdx] = esp - TEMP_BELOW_ENTRY - self;
@@ -154,7 +155,7 @@ static int invert_native(CPU *C) {
   if (s_verify) {
     verify_or_abort(C, &native, out, code);
   }
-  if (verdict == kIgInvertInverted) {
+  if (verdict == x2::native::kIgInvertInverted) {
     guest_memory_write(self, out, MATRIX_BYTES);
   }
   WR32(result, code);

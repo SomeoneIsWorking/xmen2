@@ -1,7 +1,8 @@
-#ifndef X2_MOVIE_AUDIO_H
-#define X2_MOVIE_AUDIO_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
+
+namespace x2::audio {
 
 /* One streaming stereo-F32 voice owned by the audio subsystem. The media
    decoder never sees SDL; DirectSound's existing device callback asks this
@@ -17,4 +18,4 @@ double movie_audio_queued_seconds(void);
 int movie_audio_active(void);
 void movie_audio_report(void);
 
-#endif
+} // namespace x2::audio

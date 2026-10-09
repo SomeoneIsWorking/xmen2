@@ -2089,6 +2089,7 @@ set(X2_NATIVE_SOURCES
     src/native/audio_channel_poll_verify.cpp
     src/runtime/x86_abi/x87crt.cpp
     src/native/kernel32.cpp
+    src/native/kernel32_handle_table.cpp
     src/native/kernel32_wait.cpp
     src/native/kernel32_virtual.cpp
     src/native/win_path.cpp

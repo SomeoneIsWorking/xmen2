@@ -468,7 +468,7 @@ static void res_destroyed(D3D8Object *o) {
      frees an object: a stale guest pointer must stay diagnosable. */
   for (i = 0; r->level_surface && i < sub_count(r); i++)
     if (r->level_surface[i])
-      d3d8_surface_storage_gone(r->level_surface[i]);
+      x2::d3d8::d3d8_surface_storage_gone(r->level_surface[i]);
   if (r->gtex)
     gpu_texture_destroy(r->gtex);
   if (r->gbuf)
@@ -571,7 +571,7 @@ static void lock_sub(D3D8Object *self, CPU *C, uint32_t face, uint32_t level,
        arithmetic rather than a refusal. */
     const uint32_t *q = guest_memory_as<const uint32_t>(rect);
     uint32_t left = q[0], top = q[1], right = q[2], bottom = q[3];
-    uint32_t bpp = d3d8_format_bpp(r->format);
+    uint32_t bpp = x2::d3d8::d3d8_format_bpp(r->format);
 
     if (right <= left || bottom <= top || right > lw || bottom > lh) {
       x2_log_error("d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
@@ -641,7 +641,7 @@ static void get_surface_sub(D3D8Object *self, CPU *C, uint32_t face,
   sub = sub_index(r, face, level);
   if (!r->level_surface[sub]) {
     sub_dims(r, sub, &lw, &lh);
-    r->level_surface[sub] = d3d8_surface_new_texlevel(
+    r->level_surface[sub] = x2::d3d8::d3d8_surface_new_texlevel(
         self, sub, lw, lh, r->format, r->usage, r->pool,
         row_pitch(r->format, lw), level_bytes(r->format, lw, lh),
         r->guest_bytes + sub_offset(r, sub));

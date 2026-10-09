@@ -40,24 +40,24 @@ static unsigned long g_startups, g_cleanups, g_sent, g_received, g_refused;
 static void ret_result(CPU *C, int ok, uint32_t value, uint32_t error,
                        int nargs) {
   if (!ok) {
-    winsock_set_last_error(error);
-    value = WINSOCK_SOCKET_ERROR;
+    x2::native::winsock_set_last_error(error);
+    value = x2::native::WINSOCK_SOCKET_ERROR;
   }
   ret_std(C, value, nargs);
 }
 
 static int not_socket(CPU *C, uint32_t handle, int nargs) {
-  if (winsock_is_socket(handle)) {
+  if (x2::native::winsock_is_socket(handle)) {
     return 0;
   }
-  ret_result(C, 0, 0, WINSOCK_ENOTSOCK, nargs);
+  ret_result(C, 0, 0, x2::native::WINSOCK_ENOTSOCK, nargs);
   return 1;
 }
 
 /* Blocking host calls give the guest lock up; a non-blocking one returns at
    once and keeps it. */
 static int wait_begin(uint32_t handle) {
-  if (!winsock_blocking(handle)) {
+  if (!x2::native::winsock_blocking(handle)) {
     return 0;
   }
   guest_blocking_begin();
@@ -76,9 +76,10 @@ void imp_WS2_32__115(CPU *C) {
   uint8_t info[WIN_GUEST_WSADATA];
   memset(info, 0, sizeof info);
 #ifdef __EMSCRIPTEN__
-  const uint32_t result = WINSOCK_SYSNOTREADY;
+  const uint32_t result = x2::native::WINSOCK_SYSNOTREADY;
 #else
-  const uint32_t result = winsock_host_ready() ? 0u : WINSOCK_SYSNOTREADY;
+  const uint32_t result =
+      x2::native::winsock_host_ready() ? 0u : x2::native::WINSOCK_SYSNOTREADY;
   info[0] = (uint8_t)want;
   info[1] = (uint8_t)(want >> 8);
   info[2] = 2;
@@ -103,16 +104,18 @@ void imp_WS2_32__116(CPU *C) {
 }
 
 /* int WSAGetLastError(void) */
-void imp_WS2_32__111(CPU *C) { ret_std(C, winsock_last_error(), 0); }
+void imp_WS2_32__111(CPU *C) {
+  ret_std(C, x2::native::winsock_last_error(), 0);
+}
 
 /* SOCKET socket(int af, int type, int protocol) */
 void imp_WS2_32__23(CPU *C) {
   uint32_t error = 0;
-  const int fd =
-      winsock_socket_open((int32_t)A(0), (int32_t)A(1), (int32_t)A(2), &error);
+  const int fd = x2::native::winsock_socket_open((int32_t)A(0), (int32_t)A(1),
+                                                 (int32_t)A(2), &error);
   if (fd < 0) {
-    winsock_set_last_error(error);
-    ret_std(C, WINSOCK_INVALID_SOCKET, 3);
+    x2::native::winsock_set_last_error(error);
+    ret_std(C, x2::native::WINSOCK_INVALID_SOCKET, 3);
     return;
   }
   ret_std(C, (uint32_t)fd, 3);
@@ -121,7 +124,7 @@ void imp_WS2_32__23(CPU *C) {
 /* int closesocket(SOCKET s) */
 void imp_WS2_32__3(CPU *C) {
   uint32_t error = 0;
-  ret_result(C, winsock_close(A(0), &error), 0, error, 1);
+  ret_result(C, x2::native::winsock_close(A(0), &error), 0, error, 1);
 }
 
 /* bind(s, name, namelen) and connect(s, name, namelen) share their address
@@ -133,21 +136,22 @@ static void address_call(CPU *C, int connecting) {
   if (not_socket(C, s, 3)) {
     return;
   }
-  if (!winsock_sockaddr_to_host(static_cast<const uint8_t *>(
-                                    guest_memory_span(A(1), WIN_SOCKADDR_IN)),
-                                (int32_t)A(2), &host, &error)) {
+  if (!x2::native::winsock_sockaddr_to_host(
+          static_cast<const uint8_t *>(
+              guest_memory_span(A(1), WIN_SOCKADDR_IN)),
+          (int32_t)A(2), &host, &error)) {
     ret_result(C, 0, 0, error, 3);
     return;
   }
   if (!connecting) {
-    const int bound = winsock_bind(s, &host, &error);
+    const int bound = x2::native::winsock_bind(s, &host, &error);
     x2_log_info("ws2_32: bind(%u, port %u) -> %s", s, ntohs(host.sin_port),
                 bound ? "bound" : "refused");
     ret_result(C, bound, 0, error, 3);
     return;
   }
   const int waited = wait_begin(s);
-  const int connected = winsock_connect(s, &host, &error);
+  const int connected = x2::native::winsock_connect(s, &host, &error);
   wait_end(waited);
   ret_result(C, connected, 0, error, 3);
 }
@@ -167,14 +171,14 @@ void imp_WS2_32__6(CPU *C) {
   if (!guest_memory_try_read32(length, &available) ||
       available < WIN_SOCKADDR_IN ||
       !guest_memory_span(name, WIN_SOCKADDR_IN)) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 3);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 3);
     return;
   }
-  if (!winsock_getsockname(s, &host, &error)) {
+  if (!x2::native::winsock_getsockname(s, &host, &error)) {
     ret_result(C, 0, 0, error, 3);
     return;
   }
-  winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(name));
+  x2::native::winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(name));
   WR32(length, WIN_SOCKADDR_IN);
   ret_std(C, 0, 3);
 }
@@ -182,7 +186,8 @@ void imp_WS2_32__6(CPU *C) {
 /* int shutdown(SOCKET s, int how): SD_RECEIVE/SEND/BOTH are SHUT_RD/WR/RDWR. */
 void imp_WS2_32__22(CPU *C) {
   uint32_t error = 0;
-  ret_result(C, winsock_shutdown(A(0), (int)A(1), &error), 0, error, 2);
+  ret_result(C, x2::native::winsock_shutdown(A(0), (int)A(1), &error), 0, error,
+             2);
 }
 
 /* int ioctlsocket(SOCKET s, long cmd, u_long *argp) */
@@ -194,12 +199,13 @@ void imp_WS2_32__10(CPU *C) {
     return;
   }
   if (!guest_memory_try_read32(argp, &value)) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 3);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 3);
   } else if (cmd == WIN_FIONBIO) {
-    ret_result(C, winsock_set_blocking(s, value == 0, &error), 0, error, 3);
+    ret_result(C, x2::native::winsock_set_blocking(s, value == 0, &error), 0,
+               error, 3);
   } else if (cmd == WIN_FIONREAD) {
     uint32_t pending = 0;
-    const int ok = winsock_pending(s, &pending, &error);
+    const int ok = x2::native::winsock_pending(s, &pending, &error);
     if (ok) {
       WR32(argp, pending);
     }
@@ -208,7 +214,7 @@ void imp_WS2_32__10(CPU *C) {
     g_refused++;
     x2_log_error("ws2_32: ioctlsocket command 0x%08x is not translated\n",
                  (unsigned)cmd);
-    ret_result(C, 0, 0, WINSOCK_EINVAL, 3);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EINVAL, 3);
   }
 }
 
@@ -223,20 +229,23 @@ void imp_WS2_32__21(CPU *C) {
   if (not_socket(C, s, 5)) {
     return;
   }
-  if (!winsock_sockopt_to_host(level, name, &host_level, &host_name)) {
+  if (!x2::native::winsock_sockopt_to_host(level, name, &host_level,
+                                           &host_name)) {
     g_refused++;
     x2_log_error("ws2_32: setsockopt level 0x%x option 0x%x is not "
                  "translated\n",
                  (unsigned)level, (unsigned)name);
-    ret_result(C, 0, 0, WINSOCK_ENOPROTOOPT, 5);
+    ret_result(C, 0, 0, x2::native::WINSOCK_ENOPROTOOPT, 5);
     return;
   }
   if (!optlen || optlen > 4 || !guest_memory_try_read(optval, &value, optlen)) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 5);
     return;
   }
-  ret_result(C, winsock_set_option(s, host_level, host_name, value, &error), 0,
-             error, 5);
+  ret_result(
+      C,
+      x2::native::winsock_set_option(s, host_level, host_name, value, &error),
+      0, error, 5);
 }
 
 /* send(s, buf, len, flags) and recv(s, buf, len, flags). */
@@ -247,14 +256,15 @@ static void stream_call(CPU *C, int sending) {
   }
   void *host = length ? guest_memory_span(buffer, length) : NULL;
   if (length && !host) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 4);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 4);
     return;
   }
   const int flags = (int)(A(3) & 7u);
   uint32_t error = 0;
   const int waited = wait_begin(s);
-  const int64_t n = sending ? winsock_send(s, host, length, flags, &error)
-                            : winsock_recv(s, host, length, flags, &error);
+  const int64_t n =
+      sending ? x2::native::winsock_send(s, host, length, flags, &error)
+              : x2::native::winsock_recv(s, host, length, flags, &error);
   wait_end(waited);
   if (n > 0) {
     *(sending ? &g_sent : &g_received) += 1;
@@ -276,16 +286,16 @@ void imp_WS2_32__20(CPU *C) {
     return;
   }
   const void *data = length ? guest_memory_span(buffer, length) : NULL;
-  if ((length && !data) ||
-      !winsock_sockaddr_to_host(static_cast<const uint8_t *>(
-                                    guest_memory_span(A(4), WIN_SOCKADDR_IN)),
-                                (int32_t)A(5), &host, &error)) {
-    ret_result(C, 0, 0, error ? error : WINSOCK_EFAULT, 6);
+  if ((length && !data) || !x2::native::winsock_sockaddr_to_host(
+                               static_cast<const uint8_t *>(
+                                   guest_memory_span(A(4), WIN_SOCKADDR_IN)),
+                               (int32_t)A(5), &host, &error)) {
+    ret_result(C, 0, 0, error ? error : x2::native::WINSOCK_EFAULT, 6);
     return;
   }
   const int waited = wait_begin(s);
-  const int64_t n =
-      winsock_sendto(s, data, length, (int)(A(3) & 7u), &host, &error);
+  const int64_t n = x2::native::winsock_sendto(s, data, length,
+                                               (int)(A(3) & 7u), &host, &error);
   wait_end(waited);
   g_sent += n >= 0;
   ret_result(C, n >= 0, (uint32_t)n, error, 6);
@@ -306,15 +316,16 @@ void imp_WS2_32__17(CPU *C) {
       (from && (!guest_memory_try_read32(fromlen, &available) ||
                 available < WIN_SOCKADDR_IN ||
                 !guest_memory_span(from, WIN_SOCKADDR_IN)))) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 6);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 6);
     return;
   }
   const int waited = wait_begin(s);
-  const int64_t n =
-      winsock_recvfrom(s, data, length, (int)(A(3) & 7u), &host, &error);
+  const int64_t n = x2::native::winsock_recvfrom(
+      s, data, length, (int)(A(3) & 7u), &host, &error);
   wait_end(waited);
   if (n >= 0 && from) {
-    winsock_sockaddr_from_host(&host, guest_memory_as<uint8_t>(from));
+    x2::native::winsock_sockaddr_from_host(&host,
+                                           guest_memory_as<uint8_t>(from));
     WR32(fromlen, WIN_SOCKADDR_IN);
   }
   g_received += n >= 0;
@@ -325,21 +336,21 @@ void imp_WS2_32__17(CPU *C) {
               const struct timeval *timeout) -- nfds is ignored, as on
               Windows. */
 void imp_WS2_32__18(CPU *C) {
-  WinsockFdSet *sets[3] = {NULL, NULL, NULL};
+  x2::native::WinsockFdSet *sets[3] = {NULL, NULL, NULL};
   int32_t timeval[2] = {0, 0};
   uint32_t error = 0;
   for (int i = 0; i < 3; ++i) {
     const uint32_t set = A(1 + i);
-    sets[i] = set ? static_cast<WinsockFdSet *>(
-                        guest_memory_span(set, sizeof(WinsockFdSet)))
+    sets[i] = set ? static_cast<x2::native::WinsockFdSet *>(guest_memory_span(
+                        set, sizeof(x2::native::WinsockFdSet)))
                   : NULL;
     if (set && !sets[i]) {
-      ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
+      ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 5);
       return;
     }
   }
   if (A(4) && !guest_memory_try_read(A(4), timeval, sizeof timeval)) {
-    ret_result(C, 0, 0, WINSOCK_EFAULT, 5);
+    ret_result(C, 0, 0, x2::native::WINSOCK_EFAULT, 5);
     return;
   }
   const int64_t timeout_us =
@@ -349,17 +360,19 @@ void imp_WS2_32__18(CPU *C) {
     guest_blocking_begin();
   }
   const int ready =
-      winsock_select(sets[0], sets[1], sets[2], timeout_us, &error);
+      x2::native::winsock_select(sets[0], sets[1], sets[2], timeout_us, &error);
   wait_end(waited);
   ret_result(C, ready >= 0, (uint32_t)ready, error, 5);
 }
 
 /* int __WSAFDIsSet(SOCKET s, fd_set *set) */
 void imp_WS2_32__151(CPU *C) {
-  const WinsockFdSet *set = static_cast<const WinsockFdSet *>(
-      guest_memory_span(A(1), sizeof(WinsockFdSet)));
+  const x2::native::WinsockFdSet *set =
+      static_cast<const x2::native::WinsockFdSet *>(
+          guest_memory_span(A(1), sizeof(x2::native::WinsockFdSet)));
   uint32_t found = 0;
-  for (uint32_t i = 0; set && i < set->count && i < WINSOCK_FD_SETSIZE; ++i) {
+  for (uint32_t i = 0;
+       set && i < set->count && i < x2::native::WINSOCK_FD_SETSIZE; ++i) {
     found |= set->handles[i] == A(0);
   }
   ret_std(C, found, 2);
@@ -371,6 +384,6 @@ void ws2_report(void) {
   x2_log_info("  ws2_32: %lu WSAStartup call(s), %lu WSACleanup; %u socket(s) "
               "open; %lu send(s), %lu receive(s); %lu untranslated request(s) "
               "refused\n",
-              g_startups, g_cleanups, winsock_open_count(), g_sent, g_received,
-              g_refused);
+              g_startups, g_cleanups, x2::native::winsock_open_count(), g_sent,
+              g_received, g_refused);
 }

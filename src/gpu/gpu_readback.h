@@ -10,11 +10,12 @@
  * helper reports its own failure with the SDL message; silence here is the
  * exact lie these probes exist to avoid.
  */
-#ifndef X2_GPU_READBACK_H
-#define X2_GPU_READBACK_H
+#pragma once
 
 #include <SDL3/SDL_gpu.h>
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::gpu {
 
 /* Download a width x height texture (one subresource, 4 bytes per pixel) into
    `out`, where out_bytes >= width*height*4, submitting and waiting its own
@@ -24,4 +25,4 @@ int gpu_readback_texture_rgba(SDL_GPUDevice *device, SDL_GPUTexture *texture,
                               uint32_t width, uint32_t height, void *out,
                               uint32_t out_bytes);
 
-#endif /* X2_GPU_READBACK_H */
+} // namespace x2::gpu

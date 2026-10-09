@@ -14,7 +14,7 @@ void d3d8_worldview_transform(const D3D8State *s, float out[16]) {
       s->transform_set[D3DTS_WORLD] ? s->transform[D3DTS_WORLD].m : ident;
   const float *v =
       s->transform_set[D3DTS_VIEW] ? s->transform[D3DTS_VIEW].m : ident;
-  gpu_matrix_multiply(w, v, out);
+  x2::gpu::gpu_matrix_multiply(w, v, out);
 }
 
 /*
@@ -37,6 +37,6 @@ void d3d8_combine_transform(const D3D8State *s, float out[16]) {
                        ? s->transform[D3DTS_PROJECTION].m
                        : ident;
   float wv[16];
-  gpu_matrix_multiply(w, v, wv);
-  gpu_matrix_multiply(wv, p, out);
+  x2::gpu::gpu_matrix_multiply(w, v, wv);
+  x2::gpu::gpu_matrix_multiply(wv, p, out);
 }

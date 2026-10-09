@@ -1,5 +1,4 @@
-#ifndef X2_WINSOCK_HOST_H
-#define X2_WINSOCK_HOST_H
+#pragma once
 
 /*
  * Winsock semantics over the host's sockets, with no guest in sight.
@@ -21,46 +20,46 @@
  * `host_sockaddr_in` arguments are the host's struct sockaddr_in.
  */
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-#define WINSOCK_SOCKET_ERROR 0xffffffffu
-#define WINSOCK_INVALID_SOCKET 0xffffffffu
+namespace x2::native {
+
+inline constexpr unsigned WINSOCK_SOCKET_ERROR = 0xffffffffu;
+inline constexpr unsigned WINSOCK_INVALID_SOCKET = 0xffffffffu;
 
 /* The guest's WSA codes; Win32 ABI values, whatever the host is. */
-enum {
-  WINSOCK_EINTR = 10004,
-  WINSOCK_EBADF = 10009,
-  WINSOCK_EACCES = 10013,
-  WINSOCK_EFAULT = 10014,
-  WINSOCK_EINVAL = 10022,
-  WINSOCK_EMFILE = 10024,
-  WINSOCK_EWOULDBLOCK = 10035,
-  WINSOCK_EINPROGRESS = 10036,
-  WINSOCK_EALREADY = 10037,
-  WINSOCK_ENOTSOCK = 10038,
-  WINSOCK_EDESTADDRREQ = 10039,
-  WINSOCK_EMSGSIZE = 10040,
-  WINSOCK_EPROTOTYPE = 10041,
-  WINSOCK_ENOPROTOOPT = 10042,
-  WINSOCK_EPROTONOSUPPORT = 10043,
-  WINSOCK_EOPNOTSUPP = 10045,
-  WINSOCK_EAFNOSUPPORT = 10047,
-  WINSOCK_EADDRINUSE = 10048,
-  WINSOCK_EADDRNOTAVAIL = 10049,
-  WINSOCK_ENETDOWN = 10050,
-  WINSOCK_ENETUNREACH = 10051,
-  WINSOCK_ECONNABORTED = 10053,
-  WINSOCK_ECONNRESET = 10054,
-  WINSOCK_ENOBUFS = 10055,
-  WINSOCK_EISCONN = 10056,
-  WINSOCK_ENOTCONN = 10057,
-  WINSOCK_ETIMEDOUT = 10060,
-  WINSOCK_ECONNREFUSED = 10061,
-  WINSOCK_EHOSTUNREACH = 10065,
-  WINSOCK_SYSNOTREADY = 10091,
-  WINSOCK_HOST_NOT_FOUND = 11001
-};
+inline constexpr int WINSOCK_EINTR = 10004;
+inline constexpr int WINSOCK_EBADF = 10009;
+inline constexpr int WINSOCK_EACCES = 10013;
+inline constexpr int WINSOCK_EFAULT = 10014;
+inline constexpr int WINSOCK_EINVAL = 10022;
+inline constexpr int WINSOCK_EMFILE = 10024;
+inline constexpr int WINSOCK_EWOULDBLOCK = 10035;
+inline constexpr int WINSOCK_EINPROGRESS = 10036;
+inline constexpr int WINSOCK_EALREADY = 10037;
+inline constexpr int WINSOCK_ENOTSOCK = 10038;
+inline constexpr int WINSOCK_EDESTADDRREQ = 10039;
+inline constexpr int WINSOCK_EMSGSIZE = 10040;
+inline constexpr int WINSOCK_EPROTOTYPE = 10041;
+inline constexpr int WINSOCK_ENOPROTOOPT = 10042;
+inline constexpr int WINSOCK_EPROTONOSUPPORT = 10043;
+inline constexpr int WINSOCK_EOPNOTSUPP = 10045;
+inline constexpr int WINSOCK_EAFNOSUPPORT = 10047;
+inline constexpr int WINSOCK_EADDRINUSE = 10048;
+inline constexpr int WINSOCK_EADDRNOTAVAIL = 10049;
+inline constexpr int WINSOCK_ENETDOWN = 10050;
+inline constexpr int WINSOCK_ENETUNREACH = 10051;
+inline constexpr int WINSOCK_ECONNABORTED = 10053;
+inline constexpr int WINSOCK_ECONNRESET = 10054;
+inline constexpr int WINSOCK_ENOBUFS = 10055;
+inline constexpr int WINSOCK_EISCONN = 10056;
+inline constexpr int WINSOCK_ENOTCONN = 10057;
+inline constexpr int WINSOCK_ETIMEDOUT = 10060;
+inline constexpr int WINSOCK_ECONNREFUSED = 10061;
+inline constexpr int WINSOCK_EHOSTUNREACH = 10065;
+inline constexpr int WINSOCK_SYSNOTREADY = 10091;
+inline constexpr int WINSOCK_HOST_NOT_FOUND = 11001;
 
 #if !defined(_WIN32)
 /* The WSA code Win32 reports for a host errno; WINSOCK_EINVAL for one with
@@ -141,15 +140,15 @@ int64_t winsock_recvfrom(uint32_t handle, void *data, size_t size, int flags,
    host-addressable arrays; each set is rewritten to hold only its ready
    handles. timeout_us < 0 waits forever. Returns the ready total or -1 with
    *error set. */
-#define WINSOCK_FD_SETSIZE 64
-typedef struct WinsockFdSet {
+inline constexpr int WINSOCK_FD_SETSIZE = 64;
+struct WinsockFdSet {
   uint32_t count;
   uint32_t handles[WINSOCK_FD_SETSIZE];
-} WinsockFdSet;
+};
 int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
                    WinsockFdSet *except, int64_t timeout_us, uint32_t *error);
 
 /* How many sockets are open, for the shutdown report. */
 unsigned winsock_open_count(void);
 
-#endif /* X2_WINSOCK_HOST_H */
+} // namespace x2::native

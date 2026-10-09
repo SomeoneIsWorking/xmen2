@@ -196,7 +196,7 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
   uint32_t row, slot, action;
   unsigned populated = 0, pad_rows = 0, kb_rows = 0;
   unsigned resolved = 0, unmapped = 0, down = 0;
-  int rows_down[INPUT_BINDING_ROWS];
+  int rows_down[x2::input::INPUT_BINDING_ROWS];
 
   if (!out || n < 64u)
     return 0;
@@ -213,7 +213,7 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
              "0 of %u binding rows and 0 of %u actions could be read for "
              "controller %u. This is the probe saying it cannot see, not the "
              "game saying nothing is bound.\n",
-             why, INPUT_BINDING_ROWS, INPUT_ACTION_MAX, controller);
+             why, x2::input::INPUT_BINDING_ROWS, INPUT_ACTION_MAX, controller);
     return at;
   }
   if (!cpu) {
@@ -228,19 +228,19 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
   manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
   at += x2::native::cutscene_skip_probe_report(cpu, controller, manager,
                                                out + at, n - at);
-  text_put(out, n, &at,
-           "controller %u binding table 0x%08x -- %u rows x %u "
-           "slots%s\n\n",
-           controller, object, INPUT_BINDING_ROWS, INPUT_BINDING_SLOTS,
-           controller < 4u
-               ? "  (a MASTER set: edited and persisted, copied into "
-                 "4..7 and 12..15)"
-               : "");
+  text_put(
+      out, n, &at,
+      "controller %u binding table 0x%08x -- %u rows x %u "
+      "slots%s\n\n",
+      controller, object, x2::input::INPUT_BINDING_ROWS, INPUT_BINDING_SLOTS,
+      controller < 4u ? "  (a MASTER set: edited and persisted, copied into "
+                        "4..7 and 12..15)"
+                      : "");
   text_put(out, n, &at,
            "action  row  name              slot0     slot1     slot2/pad  "
            "slot3     state\n");
 
-  for (row = 0; row < INPUT_BINDING_ROWS; row++) {
+  for (row = 0; row < x2::input::INPUT_BINDING_ROWS; row++) {
     uint32_t kind, code;
     int has_pad = 0, has_kb = 0;
     for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
@@ -263,13 +263,13 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
     const char *name;
     uint32_t state = 0;
 
-    if (r < 0 || (uint32_t)r >= INPUT_BINDING_ROWS) {
+    if (r < 0 || (uint32_t)r >= x2::input::INPUT_BINDING_ROWS) {
       unmapped++;
       continue;
     }
     resolved++;
     row = (uint32_t)r;
-    name = input_binding_row_storage_key(row);
+    name = x2::input::input_binding_row_storage_key(row);
     for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
       uint32_t kind = 0, code = 0;
       if (!input_bindings_read(object, row, slot, &kind, &code))
@@ -294,12 +294,12 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
              action, row, name ? name : "(unnamed)", cells[0], cells[1],
              cells[2], cells[3], state ? "DOWN" : ".");
   }
-
   text_put(
       out, n, &at,
       "\n%u of %u slots populated: %u row(s) carry a pad binding, %u carry a "
       "keyboard one.\n",
-      populated, INPUT_BINDING_ROWS * INPUT_BINDING_SLOTS, pad_rows, kb_rows);
+      populated, x2::input::INPUT_BINDING_ROWS * INPUT_BINDING_SLOTS, pad_rows,
+      kb_rows);
   text_put(out, n, &at,
            "%u of %u actions resolve to a row; %u resolve to none.\n", resolved,
            INPUT_ACTION_MAX, unmapped);
@@ -526,7 +526,7 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
       if (!obj)
         continue;
       live++;
-      for (row = 0; row < INPUT_BINDING_ROWS; row++) {
+      for (row = 0; row < x2::input::INPUT_BINDING_ROWS; row++) {
         int has_pad = 0, has_kb = 0;
         for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
           uint32_t kind = 0, code = 0;
@@ -592,6 +592,6 @@ size_t x2::native::input_probe_report(CPU *cpu, unsigned controller, char *out,
      describes what the host and the binding tables believe, and this
      describes what FUN_006285c0 actually walks. */
   if (at < n)
-    at += dinput8_controller_slots_probe(out + at, n - at);
+    at += x2::native::dinput8_controller_slots_probe(out + at, n - at);
   return at;
 }

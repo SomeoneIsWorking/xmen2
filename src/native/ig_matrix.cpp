@@ -2,6 +2,8 @@
 #include "ig_matrix.h"
 #include "x87_exact.h"
 
+namespace x2::native {
+
 typedef x87_real X87;
 
 /* The four products of one element, in the order the guest adds them:
@@ -22,3 +24,5 @@ void ig_matrix44_multiply(float out[16], const float a[16], const float b[16]) {
     out[12u + j] = sum4(a[15] * b12, a[13] * b4, a[14] * b8, a[12] * b0);
   }
 }
+
+} // namespace x2::native

@@ -31,6 +31,7 @@
 #include "gpu_draw.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "kernel32_handles.h"
 #include "x86rt.h"
 
 #include <stdio.h>
@@ -155,7 +156,7 @@ static int d3d8_draw_selftest(void) {
   args[0] = 0;
   args[1] = 0;
   args[2] = guest_malloc(4);
-  d3d8_selftest_call(vb, 11, args, 4);
+  x2::d3d8::d3d8_selftest_call(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
     x2_log_info("d3d8 draw selftest: FAILED -- Lock returned no pointer.\n");
@@ -163,7 +164,7 @@ static int d3d8_draw_selftest(void) {
     return 1;
   }
   memcpy(guest_memory_pointer(locked), tri, sizeof tri);
-  d3d8_selftest_call(vb, 12, NULL, 0); /* Unlock */
+  x2::d3d8::d3d8_selftest_call(vb, 12, NULL, 0); /* Unlock */
 
   /* The device state the engine would have set. */
   d3d8_state_reset(&st);
@@ -227,7 +228,7 @@ static int d3d8_draw_selftest(void) {
     args[0] = 0;
     args[1] = 0;
     args[2] = guest_malloc(4);
-    d3d8_selftest_call(model_vb, 11, args, 4);
+    x2::d3d8::d3d8_selftest_call(model_vb, 11, args, 4);
     locked = RD32(args[2]);
   }
   if (!locked) {
@@ -236,7 +237,7 @@ static int d3d8_draw_selftest(void) {
     fails++;
   } else {
     memcpy(guest_memory_pointer(locked), model_tri, sizeof model_tri);
-    d3d8_selftest_call(model_vb, 12, NULL, 0);
+    x2::d3d8::d3d8_selftest_call(model_vb, 12, NULL, 0);
     d3d8_state_reset(&st);
     st.vertex_shader = 0x0042u;
     st.stream[0].guest_ptr = d3d8_object_guest(model_vb);
@@ -343,7 +344,7 @@ static int depth_selftest(void) {
   args[0] = 0;
   args[1] = 0;
   args[2] = guest_malloc(4);
-  d3d8_selftest_call(vb, 11, args, 4);
+  x2::d3d8::d3d8_selftest_call(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
     x2_log_info("d3d8 depth selftest: FAILED -- Lock returned no pointer.\n");
@@ -351,7 +352,7 @@ static int depth_selftest(void) {
     return 1;
   }
   memcpy(guest_memory_pointer(locked), quad, sizeof quad);
-  d3d8_selftest_call(vb, 12, NULL, 0);
+  x2::d3d8::d3d8_selftest_call(vb, 12, NULL, 0);
 
   d3d8_state_reset(&st);
   st.vertex_shader = 0x0044u;
@@ -535,7 +536,7 @@ static int fan_selftest(void) {
   args[0] = 0;
   args[1] = 0;
   args[2] = guest_malloc(4);
-  d3d8_selftest_call(vb, 11, args, 4);
+  x2::d3d8::d3d8_selftest_call(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
     x2_log_info("d3d8 fan selftest: FAILED -- Lock returned no pointer.\n");
@@ -543,7 +544,7 @@ static int fan_selftest(void) {
     return 1;
   }
   memcpy(guest_memory_pointer(locked), fan, sizeof fan);
-  d3d8_selftest_call(vb, 12, NULL, 0);
+  x2::d3d8::d3d8_selftest_call(vb, 12, NULL, 0);
 
   d3d8_state_reset(&st);
   st.vertex_shader = 0x0044u;
@@ -695,7 +696,7 @@ static int lighting_selftest(void) {
     args[0] = 0;
     args[1] = 0;
     args[2] = guest_malloc(4);
-    d3d8_selftest_call(vb, 11, args, 4);
+    x2::d3d8::d3d8_selftest_call(vb, 11, args, 4);
     locked = RD32(args[2]);
     if (!locked) {
       x2_log_info("d3d8 lighting selftest: FAILED -- Lock returned nothing.\n");
@@ -703,7 +704,7 @@ static int lighting_selftest(void) {
       return fails + 1;
     }
     memcpy(guest_memory_pointer(locked), quad, sizeof quad);
-    d3d8_selftest_call(vb, 12, NULL, 0);
+    x2::d3d8::d3d8_selftest_call(vb, 12, NULL, 0);
 
     memset(&req, 0, sizeof req);
     req.vertex_buffer = d3d8_resource_buffer(vb);
@@ -805,7 +806,7 @@ static int pixel_shader_selftest(void) {
   out = guest_malloc(4);
 
   args[0] = 0;
-  hr = d3d8_selftest_call(dev, 88, args, 1); /* SetPixelShader(0) */
+  hr = x2::d3d8::d3d8_selftest_call(dev, 88, args, 1); /* SetPixelShader(0) */
   if (hr != D3D_OK) {
     x2_log_info("d3d8 ps selftest: FAILED -- SetPixelShader(0) returned "
                 "0x%08x, not D3D_OK. Handle 0 IS the fixed-function "
@@ -816,7 +817,7 @@ static int pixel_shader_selftest(void) {
 
   WR32(out, 0xA5A5A5A5u);
   args[0] = out;
-  hr = d3d8_selftest_call(dev, 89, args, 1); /* GetPixelShader */
+  hr = x2::d3d8::d3d8_selftest_call(dev, 89, args, 1); /* GetPixelShader */
   if (hr != D3D_OK || RD32(out) != 0) {
     x2_log_info("d3d8 ps selftest: FAILED -- GetPixelShader returned 0x%08x "
                 "and wrote 0x%08x; expected D3D_OK and 0.\n",
@@ -825,7 +826,7 @@ static int pixel_shader_selftest(void) {
   }
 
   args[0] = 0xDEADBEEFu;
-  hr = d3d8_selftest_call(dev, 88, args, 1); /* a handle nobody made */
+  hr = x2::d3d8::d3d8_selftest_call(dev, 88, args, 1); /* no such handle */
   if (hr != D3DERR_INVALIDCALL) {
     x2_log_info("d3d8 ps selftest: FAILED -- SetPixelShader(0xdeadbeef) "
                 "returned 0x%08x. A handle this host never created must be "
@@ -837,7 +838,7 @@ static int pixel_shader_selftest(void) {
 
   WR32(out, 0xA5A5A5A5u);
   args[0] = out;
-  d3d8_selftest_call(dev, 89, args, 1);
+  x2::d3d8::d3d8_selftest_call(dev, 89, args, 1);
   if (RD32(out) != 0) {
     x2_log_info("d3d8 ps selftest: FAILED -- the refused handle 0x%08x was "
                 "recorded anyway.\n",
@@ -846,7 +847,7 @@ static int pixel_shader_selftest(void) {
   }
 
   args[0] = 0;
-  hr = d3d8_selftest_call(dev, 89, args, 1); /* GetPixelShader(NULL) */
+  hr = x2::d3d8::d3d8_selftest_call(dev, 89, args, 1); /* Get with NULL */
   if (hr != D3DERR_INVALIDCALL) {
     x2_log_info("d3d8 ps selftest: FAILED -- GetPixelShader(NULL) returned "
                 "0x%08x, not D3DERR_INVALIDCALL.\n",
@@ -892,8 +893,8 @@ static int getdirect3d_selftest(void) {
   /* No Direct3DCreate8 has run in this process. */
   WR32(out, 0xA5A5A5A5u);
   args[0] = out;
-  hr = d3d8_selftest_call(dev, 6, args, 1);
-  if (d3d8_the_direct3d8() == 0) {
+  hr = x2::d3d8::d3d8_selftest_call(dev, 6, args, 1);
+  if (x2::d3d8::d3d8_the_direct3d8() == 0) {
     if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
       x2_log_info("d3d8 GetDirect3D selftest: FAILED -- with no IDirect3D8 in "
                   "existence it returned 0x%08x and wrote 0x%08x; expected "
@@ -905,24 +906,24 @@ static int getdirect3d_selftest(void) {
 
   /* And with one. Created directly rather than through the import, so this
      needs no guest and no CPU state. */
-  before = d3d8_the_direct3d8_refs();
-  d3d8_the_direct3d8_ensure();
+  before = x2::d3d8::d3d8_the_direct3d8_refs();
+  x2::d3d8::d3d8_the_direct3d8_ensure();
   WR32(out, 0xA5A5A5A5u);
   args[0] = out;
-  hr = d3d8_selftest_call(dev, 6, args, 1);
-  if (hr != D3D_OK || RD32(out) != d3d8_the_direct3d8()) {
+  hr = x2::d3d8::d3d8_selftest_call(dev, 6, args, 1);
+  if (hr != D3D_OK || RD32(out) != x2::d3d8::d3d8_the_direct3d8()) {
     x2_log_info(
         "d3d8 GetDirect3D selftest: FAILED -- returned 0x%08x and wrote "
         "0x%08x; expected D3D_OK and the IDirect3D8 at 0x%08x.\n",
-        hr, RD32(out), d3d8_the_direct3d8());
+        hr, RD32(out), x2::d3d8::d3d8_the_direct3d8());
     fails++;
   }
-  if (d3d8_the_direct3d8_refs() <= before) {
+  if (x2::d3d8::d3d8_the_direct3d8_refs() <= before) {
     x2_log_info("d3d8 GetDirect3D selftest: FAILED -- the reference count did "
                 "not rise (%u then %u). The engine will Release what it was "
                 "given, and an unbalanced count makes teardown fail with "
                 "nothing to explain it.\n",
-                before, d3d8_the_direct3d8_refs());
+                before, x2::d3d8::d3d8_the_direct3d8_refs());
     fails++;
   }
   x2_log_info(
@@ -969,7 +970,7 @@ static int texture_level_selftest(void) {
     return 1;
   }
   d3d8_resource_install();
-  d3d8_surface_install();
+  x2::d3d8::d3d8_surface_install();
   tex = d3d8_texture_new(64, 32, 3, 0, D3DFMT_A8R8G8B8, 0);
   if (!tex) {
     x2_log_info("d3d8 texlevel selftest: FAILED -- no texture.\n");
@@ -986,7 +987,7 @@ static int texture_level_selftest(void) {
   args[0] = 0;
   args[1] = out;
   WR32(out, 0xA5A5A5A5u);
-  hr = d3d8_selftest_call(tex, 15, args, 2);
+  hr = x2::d3d8::d3d8_selftest_call(tex, 15, args, 2);
   g0 = RD32(out);
   if (hr != D3D_OK || !g0 || !d3d8_object_from_guest(g0)) {
     x2_log_info("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel(0) returned "
@@ -1016,7 +1017,7 @@ static int texture_level_selftest(void) {
   /* The same level twice is the same surface. */
   args[0] = 0;
   args[1] = out;
-  d3d8_selftest_call(tex, 15, args, 2);
+  x2::d3d8::d3d8_selftest_call(tex, 15, args, 2);
   g0b = RD32(out);
   if (g0b != g0) {
     x2_log_info(
@@ -1027,11 +1028,11 @@ static int texture_level_selftest(void) {
     fails++;
   }
   /* and Releasing it gives the texture's count back. */
-  d3d8_selftest_call(s0, 2, NULL, 0);
+  x2::d3d8::d3d8_selftest_call(s0, 2, NULL, 0);
 
   args[0] = 1;
   args[1] = out;
-  d3d8_selftest_call(tex, 15, args, 2);
+  x2::d3d8::d3d8_selftest_call(tex, 15, args, 2);
   g1 = RD32(out);
   if (!g1 || g1 == g0) {
     x2_log_info(
@@ -1047,7 +1048,7 @@ static int texture_level_selftest(void) {
   WR32(out, 0xA5A5A5A5u);
   args[0] = 3;
   args[1] = out;
-  hr = d3d8_selftest_call(tex, 15, args, 2);
+  hr = x2::d3d8::d3d8_selftest_call(tex, 15, args, 2);
   if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
     x2_log_info(
         "d3d8 texlevel selftest: FAILED -- level 3 of a 3-level texture "
@@ -1058,7 +1059,7 @@ static int texture_level_selftest(void) {
   }
   args[0] = 0;
   args[1] = 0;
-  hr = d3d8_selftest_call(tex, 15, args, 2);
+  hr = x2::d3d8::d3d8_selftest_call(tex, 15, args, 2);
   if (hr != D3DERR_INVALIDCALL) {
     x2_log_info("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel with a NULL "
                 "out-pointer returned 0x%08x.\n",
@@ -1069,7 +1070,7 @@ static int texture_level_selftest(void) {
   /* GetDesc (slot 8) must describe LEVEL 1, not the texture. */
   memset(guest_memory_pointer(desc), 0xA5, 32);
   args[0] = desc;
-  d3d8_selftest_call(s1, 8, args, 1);
+  x2::d3d8::d3d8_selftest_call(s1, 8, args, 1);
   if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 16u) {
     x2_log_info("d3d8 texlevel selftest: FAILED -- level 1 of a 64x32 texture "
                 "describes itself as %ux%u, not 32x16.\n",
@@ -1097,7 +1098,7 @@ static int texture_level_selftest(void) {
   WR32(lr + 4u, 0);
   args[0] = lr;
   args[1] = 0;
-  d3d8_selftest_call(s1, 9, args, 2);
+  x2::d3d8::d3d8_selftest_call(s1, 9, args, 2);
   if (RD32(lr) != 32u * 4u) {
     x2_log_info("d3d8 texlevel selftest: FAILED -- level 1 locked with a pitch "
                 "of %u; 32 pixels of BGRA8 is %u.\n",
@@ -1112,9 +1113,9 @@ static int texture_level_selftest(void) {
     targs[2] = 0;
     WR32(lr, 0);
     WR32(lr + 4u, 0);
-    d3d8_selftest_call(tex, 16, targs, 3);
+    x2::d3d8::d3d8_selftest_call(tex, 16, targs, 3);
     texptr = RD32(lr + 4u);
-    d3d8_selftest_call(tex, 17, targs, 1); /* texture UnlockRect(1) */
+    x2::d3d8::d3d8_selftest_call(tex, 17, targs, 1); /* texture UnlockRect(1) */
     if (!surfptr || surfptr != texptr) {
       x2_log_info("d3d8 texlevel selftest: FAILED -- the level 1 surface locks "
                   "at 0x%08x and the texture's own level 1 at 0x%08x. The "
@@ -1131,7 +1132,7 @@ static int texture_level_selftest(void) {
 
   /* And unlocking the SURFACE uploads that level of the texture. */
   uploads = d3d8_texture_uploads(tex);
-  d3d8_selftest_call(s1, 10, NULL, 0); /* surface UnlockRect */
+  x2::d3d8::d3d8_selftest_call(s1, 10, NULL, 0); /* surface UnlockRect */
   if (d3d8_texture_uploads(tex) != uploads + 1u) {
     x2_log_info(
         "d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
@@ -1184,7 +1185,7 @@ static int cube_selftest(void) {
     return 1;
   }
   d3d8_resource_install();
-  d3d8_surface_install();
+  x2::d3d8::d3d8_surface_install();
   /* 64x64, 3 levels, BGRA8: one face's chain is 64*64*4 + 32*32*4 + 16*16*4. */
   cube = d3d8_cubetexture_new(64, 3, 0, D3DFMT_A8R8G8B8, 0);
   if (!cube) {
@@ -1207,7 +1208,7 @@ static int cube_selftest(void) {
 
   /* GetType (slot 10) must say CUBETEXTURE (5), not TEXTURE (3): the engine
      switches on it to decide how to bind. */
-  hr = d3d8_selftest_call(cube, 10, NULL, 0);
+  hr = x2::d3d8::d3d8_selftest_call(cube, 10, NULL, 0);
   if (hr != 5u) {
     x2_log_info("d3d8 cube selftest: FAILED -- GetType returned %u, not 5 "
                 "(D3DRTYPE_CUBETEXTURE).\n",
@@ -1219,7 +1220,7 @@ static int cube_selftest(void) {
   memset(guest_memory_pointer(desc), 0xA5, 32);
   args[0] = 1;
   args[1] = desc;
-  d3d8_selftest_call(cube, 14, args, 2);
+  x2::d3d8::d3d8_selftest_call(cube, 14, args, 2);
   if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 32u) {
     x2_log_info("d3d8 cube selftest: FAILED -- level 1 of a 64-cube describes "
                 "itself as %ux%u, not 32x32.\n",
@@ -1239,7 +1240,7 @@ static int cube_selftest(void) {
     a5[4] = 0;
     WR32(lr, 0);
     WR32(lr + 4u, 0);
-    hr = d3d8_selftest_call(cube, 16, a5, 5);
+    hr = x2::d3d8::d3d8_selftest_call(cube, 16, a5, 5);
     p_f4l1 = RD32(lr + 4u);
     if (hr != D3D_OK || !p_f4l1) {
       x2_log_info("d3d8 cube selftest: FAILED -- LockRect(face 4, level 1) "
@@ -1257,19 +1258,19 @@ static int cube_selftest(void) {
       uint32_t u[2];
       u[0] = 4;
       u[1] = 1;
-      d3d8_selftest_call(cube, 17, u, 2);
+      x2::d3d8::d3d8_selftest_call(cube, 17, u, 2);
     }
 
     a5[0] = 0;
     WR32(lr, 0);
     WR32(lr + 4u, 0);
-    d3d8_selftest_call(cube, 16, a5, 5);
+    x2::d3d8::d3d8_selftest_call(cube, 16, a5, 5);
     p_f0l1 = RD32(lr + 4u);
     {
       uint32_t u[2];
       u[0] = 0;
       u[1] = 1;
-      d3d8_selftest_call(cube, 17, u, 2);
+      x2::d3d8::d3d8_selftest_call(cube, 17, u, 2);
     }
   }
   if (p_f0l1 && p_f4l1 && p_f4l1 - p_f0l1 != 4u * face_chain) {
@@ -1289,7 +1290,7 @@ static int cube_selftest(void) {
     a5[2] = lr;
     a5[3] = 0;
     a5[4] = 0;
-    hr = d3d8_selftest_call(cube, 16, a5, 5);
+    hr = x2::d3d8::d3d8_selftest_call(cube, 16, a5, 5);
     if (hr != D3DERR_INVALIDCALL) {
       x2_log_info("d3d8 cube selftest: FAILED -- LockRect on face 6 of a cube "
                   "returned 0x%08x, not INVALIDCALL.\n",
@@ -1304,7 +1305,7 @@ static int cube_selftest(void) {
   args[1] = 1;
   args[2] = out;
   WR32(out, 0);
-  hr = d3d8_selftest_call(cube, 15, args, 3);
+  hr = x2::d3d8::d3d8_selftest_call(cube, 15, args, 3);
   g = RD32(out);
   if (hr != D3D_OK || !g || !d3d8_object_from_guest(g)) {
     x2_log_info(
@@ -1321,7 +1322,7 @@ static int cube_selftest(void) {
     uint32_t a2[2];
     a2[0] = lr;
     a2[1] = 0;
-    d3d8_selftest_call(s, 9, a2, 2);
+    x2::d3d8::d3d8_selftest_call(s, 9, a2, 2);
   }
   p_surf = RD32(lr + 4u);
   if (p_surf != p_f4l1) {
@@ -1350,7 +1351,7 @@ static int cube_selftest(void) {
     WR32(lr + 4u, 0);
     a2[0] = lr;
     a2[1] = rc;
-    hr = d3d8_selftest_call(s, 9, a2, 2);
+    hr = x2::d3d8::d3d8_selftest_call(s, 9, a2, 2);
     want = p_f4l1 + 4u * 32u * 4u + 8u * 4u;
     if (hr != D3D_OK || RD32(lr + 4u) != want) {
       x2_log_info("d3d8 cube selftest: FAILED -- locking (8,4)-(16,12) of a "
@@ -1371,7 +1372,7 @@ static int cube_selftest(void) {
     WR32(rc + 4u, 0);
     WR32(rc + 8u, 64);
     WR32(rc + 12u, 8);
-    hr = d3d8_selftest_call(s, 9, a2, 2);
+    hr = x2::d3d8::d3d8_selftest_call(s, 9, a2, 2);
     if (hr != D3DERR_INVALIDCALL) {
       x2_log_info("d3d8 cube selftest: FAILED -- locking (0,0)-(64,8) of a "
                   "32x32 face returned 0x%08x, not INVALIDCALL.\n",
@@ -1381,7 +1382,7 @@ static int cube_selftest(void) {
   }
 
   uploads = d3d8_texture_uploads(cube);
-  d3d8_selftest_call(s, 10, NULL, 0); /* surface UnlockRect */
+  x2::d3d8::d3d8_selftest_call(s, 10, NULL, 0); /* surface UnlockRect */
   if (d3d8_texture_uploads(cube) != uploads + 1u) {
     x2_log_info("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
                 "surface uploaded nothing (%lu uploads before and after).\n",
@@ -1404,12 +1405,11 @@ static int cube_selftest(void) {
   return fails;
 }
 
-int d3d8_host_selftest(void) {
+int x2::d3d8::d3d8_host_selftest(void) {
   int fails = 0;
-  extern int kernel32_thread_alias_selftest(void);
 
-  fails += kernel32_thread_alias_selftest();
-  fails += dsound_selftest();
+  fails += x2::native::kernel32_thread_alias_selftest();
+  fails += x2::native::dsound_selftest();
   fails += d3d8_com_selftest();
   fails += caps_selftest();
   fails += pixel_shader_selftest();

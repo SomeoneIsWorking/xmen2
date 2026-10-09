@@ -55,53 +55,55 @@ static X86pCpu at(uint32_t eip) {
 }
 
 static void addr_predicate_is_frame_independent(void) {
-  X86GuestCallFrame frames[69];
+  x2::native::X86GuestCallFrame frames[69];
   X86pCpu body = at(OVERRIDE_BODY);
   X86pCpu plain = at(PLAIN_GUEST);
   X86pCpu thunk = at(THUNK_ADDR);
 
-  CHECK(x86_guest_call_depth() == 0);
+  CHECK(x2::native::x86_guest_call_depth() == 0);
 
   /* No frame at all: still a hand-back. */
-  CHECK(x86_engine_jit_intercept(&body, NULL, NULL) == 1);
-  CHECK(x86_engine_jit_intercept(&thunk, NULL, NULL) == 1);
-  CHECK(x86_engine_jit_intercept(&plain, NULL, NULL) == 0);
+  CHECK(x2::native::x86_engine_jit_intercept(&body, NULL, NULL) == 1);
+  CHECK(x2::native::x86_engine_jit_intercept(&thunk, NULL, NULL) == 1);
+  CHECK(x2::native::x86_engine_jit_intercept(&plain, NULL, NULL) == 0);
 
   /* A normal, shallow frame -- unchanged. */
-  x86_guest_call_push(&frames[0], NULL, 0x00402000u, 0x00402005u, 0x00320000u);
-  CHECK(x86_engine_jit_intercept(&body, NULL, &frames[0]) == 1);
-  CHECK(x86_engine_jit_intercept(&plain, NULL, &frames[0]) == 0);
+  x2::native::x86_guest_call_push(&frames[0], NULL, 0x00402000u, 0x00402005u,
+                                  0x00320000u);
+  CHECK(x2::native::x86_engine_jit_intercept(&body, NULL, &frames[0]) == 1);
+  CHECK(x2::native::x86_engine_jit_intercept(&plain, NULL, &frames[0]) == 0);
 
   /* Deep nesting remains fully represented and cannot suppress hand-back. */
   for (int i = 1; i < 69; i++)
-    x86_guest_call_push(&frames[i], NULL, 0x00402000u + (uint32_t)i, 0u,
-                        0x00320000u);
-  CHECK(x86_guest_call_depth() == 69u);
-  CHECK(x86_guest_call_top() == &frames[68]);
-  CHECK(x86_engine_jit_intercept(&body, NULL, &frames[68]) ==
+    x2::native::x86_guest_call_push(&frames[i], NULL, 0x00402000u + (uint32_t)i,
+                                    0u, 0x00320000u);
+  CHECK(x2::native::x86_guest_call_depth() == 69u);
+  CHECK(x2::native::x86_guest_call_top() == &frames[68]);
+  CHECK(x2::native::x86_engine_jit_intercept(&body, NULL, &frames[68]) ==
         1); /* was 0 -- the bug */
-  CHECK(x86_engine_jit_intercept(&thunk, NULL, &frames[68]) == 1);
-  CHECK(x86_engine_jit_intercept(&plain, NULL, &frames[68]) == 0);
+  CHECK(x2::native::x86_engine_jit_intercept(&thunk, NULL, &frames[68]) == 1);
+  CHECK(x2::native::x86_engine_jit_intercept(&plain, NULL, &frames[68]) == 0);
 
   for (int i = 68; i >= 0; i--)
-    x86_guest_call_pop(&frames[i]);
-  CHECK(x86_guest_call_depth() == 0);
+    x2::native::x86_guest_call_pop(&frames[i]);
+  CHECK(x2::native::x86_guest_call_depth() == 0);
 
   /* x86_engine_intercepts_addr and the boundary predicate agree with it. */
-  CHECK(x86_engine_intercepts_addr(OVERRIDE_BODY) == 1);
-  CHECK(x86_engine_intercepts_addr(PLAIN_GUEST) == 0);
-  CHECK(x86_engine_jit_boundary(OVERRIDE_BODY, NULL) == 1);
-  CHECK(x86_engine_jit_boundary(PLAIN_GUEST, NULL) == 0);
+  CHECK(x2::native::x86_engine_intercepts_addr(OVERRIDE_BODY) == 1);
+  CHECK(x2::native::x86_engine_intercepts_addr(PLAIN_GUEST) == 0);
+  CHECK(x2::native::x86_engine_jit_boundary(OVERRIDE_BODY, NULL) == 1);
+  CHECK(x2::native::x86_engine_jit_boundary(PLAIN_GUEST, NULL) == 0);
 }
 
 static void selftest_entry_is_still_run_in_place(void) {
-  X86GuestCallFrame frame;
+  x2::native::X86GuestCallFrame frame;
   /* The engine selftest enters a body at its own frame entry to run it both
      ways and compare; that one arrival must NOT be intercepted. */
-  x86_guest_call_push(&frame, NULL, OVERRIDE_BODY, 0x00402005u, 0x00320000u);
+  x2::native::x86_guest_call_push(&frame, NULL, OVERRIDE_BODY, 0x00402005u,
+                                  0x00320000u);
   X86pCpu at_entry = at(OVERRIDE_BODY);
-  CHECK(x86_engine_jit_intercept(&at_entry, NULL, &frame) == 0);
-  x86_guest_call_pop(&frame);
+  CHECK(x2::native::x86_engine_jit_intercept(&at_entry, NULL, &frame) == 0);
+  x2::native::x86_guest_call_pop(&frame);
 }
 
 int main(void) {

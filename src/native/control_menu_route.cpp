@@ -14,7 +14,7 @@ namespace {
 
 void put_string(std::string *out, const std::string &value) {
   std::vector<char> buffer(value.size() * 6u + 3u);
-  json_string_format(buffer.data(), buffer.size(), value.c_str());
+  x2::native::json_string_format(buffer.data(), buffer.size(), value.c_str());
   out->append(buffer.data());
 }
 

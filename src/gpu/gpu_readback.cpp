@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 int gpu_readback_texture_rgba(SDL_GPUDevice *device, SDL_GPUTexture *texture,
                               uint32_t width, uint32_t height, void *out,
                               uint32_t out_bytes) {
@@ -72,3 +74,5 @@ int gpu_readback_texture_rgba(SDL_GPUDevice *device, SDL_GPUTexture *texture,
   SDL_ReleaseGPUTransferBuffer(device, tb);
   return 1;
 }
+
+} // namespace x2::gpu

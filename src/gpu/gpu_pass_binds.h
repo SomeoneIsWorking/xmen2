@@ -1,5 +1,4 @@
-#ifndef GPU_PASS_BINDS_H
-#define GPU_PASS_BINDS_H
+#pragma once
 
 /*
  * What the frame's render pass has bound, so a draw binds only what differs.
@@ -27,11 +26,13 @@
  * Identities are opaque pointers so the decisions are testable without a
  * device; the caller does the binding a `*_changed` call asks for.
  */
-#include <stdint.h>
+#include <cstdint>
 
-enum { kGpuPassFragmentSamplers = 4 };
+namespace x2::gpu {
 
-typedef struct GpuPassBinds {
+inline constexpr int kGpuPassFragmentSamplers = 4;
+
+struct GpuPassBinds {
   const void *pipeline;
   const void *vertex_buffer; /* slot 0, the only one bound */
   uint64_t vertex_serial;
@@ -41,7 +42,7 @@ typedef struct GpuPassBinds {
   const void *sampler_pairs[2 * kGpuPassFragmentSamplers];
   unsigned samplers;
   unsigned long pipelines_kept, vertices_kept, indices_kept, samplers_kept;
-} GpuPassBinds;
+};
 
 /* The frame render pass's record. */
 GpuPassBinds *gpu_pass_binds(void);
@@ -68,4 +69,4 @@ int gpu_pass_binds_vertex_changed(GpuPassBinds *binds, const void *buffer,
 int gpu_pass_binds_index_changed(GpuPassBinds *binds, const void *buffer,
                                  unsigned element_size);
 
-#endif /* GPU_PASS_BINDS_H */
+} // namespace x2::gpu

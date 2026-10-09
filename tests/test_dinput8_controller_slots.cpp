@@ -77,29 +77,29 @@ int main(void) {
     perror("test_dinput8_controller_slots guest map");
     return 1;
   }
-  dinput8_controller_slots_set_manager(manager);
+  x2::native::dinput8_controller_slots_set_manager(manager);
 
   set_slot(manager, 0, 1, host_guid[1]);
   set_slot(manager, 2, 1, host_guid[0]);
   set_slot(manager, 4, 1, unknown);
-  CHECK(dinput8_controller_slot_for_host_pad(0) == 2);
-  CHECK(dinput8_controller_slot_for_host_pad(1) == 0);
-  CHECK(dinput8_controller_host_pad_for_slot(0) == 1);
-  CHECK(dinput8_controller_host_pad_for_slot(2) == 0);
-  CHECK(dinput8_controller_host_pad_for_slot(4) == -1);
-  CHECK(dinput8_controller_host_pad_for_slot(-1) == -1);
-  CHECK(dinput8_controller_host_pad_for_slot(10) == -1);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(0) == 2);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(1) == 0);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(0) == 1);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(2) == 0);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(4) == -1);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(-1) == -1);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(10) == -1);
 
   set_slot(manager, 0, 0, host_guid[1]);
-  CHECK(dinput8_controller_slot_for_host_pad(1) == -1);
-  CHECK(dinput8_controller_host_pad_for_slot(0) == -1);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(1) == -1);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(0) == -1);
 
   set_slot(manager, 0, 1, host_guid[0]);
   set_slot(manager, 2, 1, host_guid[1]);
-  CHECK(dinput8_controller_slot_for_host_pad(0) == 0);
-  CHECK(dinput8_controller_slot_for_host_pad(1) == 2);
-  CHECK(dinput8_controller_host_pad_for_slot(0) == 0);
-  CHECK(dinput8_controller_host_pad_for_slot(2) == 1);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(0) == 0);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(1) == 2);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(0) == 0);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(2) == 1);
 
   /* The poll-side probe. Issue #117's whole shape is a slot the game
      SKIPS, so the probe is only worth anything if it says so out loud: it
@@ -112,7 +112,7 @@ int main(void) {
 
     set_poll(manager, 0, 0x0badf00du, 1);
     set_poll(manager, 2, 0u, 0);
-    len = dinput8_controller_slots_probe(report, sizeof report);
+    len = x2::native::dinput8_controller_slots_probe(report, sizeof report);
     CHECK(len > 0 && len < sizeof report);
     CHECK(strstr(report, "slot 0") && strstr(report, "0x0badf00d"));
     CHECK(strstr(report, "last frame READ"));
@@ -122,24 +122,24 @@ int main(void) {
     /* A slot holding a device that the loop did NOT read last frame is a
        different failure from an empty slot, and must read differently. */
     set_poll(manager, 2, 0x0c0ffeeu, 0);
-    len = dinput8_controller_slots_probe(report, sizeof report);
+    len = x2::native::dinput8_controller_slots_probe(report, sizeof report);
     CHECK(len > 0);
     CHECK(!strstr(report, "slot 2  device 0x00000000  NULL -- SKIPPED"));
     CHECK(strstr(report, "slot 2  device 0x00c0ffee"));
     CHECK(strstr(report, "2 of 10 slot(s) hold a device interface"));
     CHECK(strstr(report, "1 read last frame"));
 
-    dinput8_controller_slots_set_manager(0);
-    len = dinput8_controller_slots_probe(report, sizeof report);
+    x2::native::dinput8_controller_slots_set_manager(0);
+    len = x2::native::dinput8_controller_slots_probe(report, sizeof report);
     CHECK(len > 0);
     CHECK(strstr(report, "has not been published"));
     CHECK(!strstr(report, "slot 0"));
-    dinput8_controller_slots_set_manager(manager);
+    x2::native::dinput8_controller_slots_set_manager(manager);
   }
 
-  dinput8_controller_slots_set_manager(0);
-  CHECK(dinput8_controller_slot_for_host_pad(0) == -1);
-  CHECK(dinput8_controller_host_pad_for_slot(0) == -1);
+  x2::native::dinput8_controller_slots_set_manager(0);
+  CHECK(x2::native::dinput8_controller_slot_for_host_pad(0) == -1);
+  CHECK(x2::native::dinput8_controller_host_pad_for_slot(0) == -1);
 
   printf("dinput8_controller_slots: %d checks passed\n", checks);
   return 0;

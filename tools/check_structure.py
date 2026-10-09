@@ -24,9 +24,9 @@ DEFAULT_LIMIT = 1200
 # would have failed 26 files that nobody touched. Each entry records what it
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
-    "src/native/kernel32.cpp": 3087,            # was 3624; virtual memory -> kernel32_virtual.cpp
+    "src/native/kernel32.cpp": 2989,            # was 3624, 3087; virtual memory -> kernel32_virtual.cpp, handle table -> kernel32_handle_table.cpp
     "src/native/x86rt_native.cpp": 1856,        # was 1865; dladdr -> host_code_location.cpp
-    "src/native/x2native.cpp": 2027,            # was 2329, 2152; signals -> fault_signals_*.cpp
+    "src/native/x2native.cpp": 2024,            # was 2329, 2152; signals -> fault_signals_*.cpp
     "src/d3d8/d3d8_drawcall.cpp": 1613,         # was 1650, 1695; VS source -> d3d8_vs_draw.cpp, transforms -> d3d8_transform.cpp
     "src/d3d8/d3d8_device.cpp": 1633,           # bindings -> d3d8_device_bindings.cpp
     "src/native/crt.cpp": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.cpp

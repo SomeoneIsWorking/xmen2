@@ -9,12 +9,13 @@
  * this host implements -- not because they are easy, but because the engine
  * stops on them.
  */
-#ifndef D3D8_SURFACE_H
-#define D3D8_SURFACE_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "d3d8_com.h"
+
+namespace x2::d3d8 {
 
 /*
  * What a surface IS, which decides what it can honestly do.
@@ -25,15 +26,15 @@
  * refuses by name rather than handing back a buffer whose contents are
  * invented.
  */
-typedef enum {
+enum D3D8SurfaceKind {
   D3D8_SURF_BACKBUFFER,   /* the swapchain image; owned by src/gpu */
   D3D8_SURF_DEPTHSTENCIL, /* the device's automatic depth buffer */
   D3D8_SURF_RENDERTARGET, /* an off-screen target the engine created */
   D3D8_SURF_SYSTEM,       /* plain host memory: CreateImageSurface */
   D3D8_SURF_TEXLEVEL      /* one mip level of a texture: GetSurfaceLevel */
-} D3D8SurfaceKind;
+};
 
-typedef struct {
+struct D3D8Surface {
   D3D8SurfaceKind kind;
   uint32_t width, height;
   uint32_t format;
@@ -47,7 +48,7 @@ typedef struct {
   /* TEXLEVEL only: whose bytes these are, and which level of it. */
   D3D8Object *owner;
   uint32_t level;
-} D3D8Surface;
+};
 
 void d3d8_surface_install(void);
 D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
@@ -85,4 +86,4 @@ uint32_t d3d8_format_bpp(uint32_t format);
 /* How many surfaces exist, for the shutdown report. */
 void d3d8_surface_report(void);
 
-#endif /* D3D8_SURFACE_H */
+} // namespace x2::d3d8

@@ -177,7 +177,7 @@ typedef struct {
    * say only which of those the stage receives. Unset, a programmable draw's
    * vertices are the CPU executor's output. Borrowed for the gpu_draw call.
    */
-  const GpuVsProgram *vs_program;
+  const x2::gpu::GpuVsProgram *vs_program;
   const float (*vs_constants)[4]; /* GPU_VS_CONSTANTS of them */
   int color_offset;
   int specular_offset;

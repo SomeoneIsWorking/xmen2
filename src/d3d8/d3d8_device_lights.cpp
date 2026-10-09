@@ -313,7 +313,7 @@ int d3d8_last_setlight_diffuse(unsigned idx, float out[3]) {
   return 1;
 }
 
-void d3d8_setlight_report(void) {
+void x2::d3d8::d3d8_setlight_report(void) {
   int i;
   x2_log_info("  d3d8 SetLight: %lu call(s), %lu of them with a BLACK diffuse, "
               "from %d distinct call site(s)%s\n",

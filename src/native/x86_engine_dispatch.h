@@ -16,9 +16,10 @@
 #include "jit_engine.h"
 
 struct X86pCpu;
-struct X86GuestCallFrame;
 
 namespace x2::native {
+
+struct X86GuestCallFrame;
 
 /*
  * Run the host code at `cpu->eip` -- an import or a resolved native override

@@ -30,12 +30,14 @@ enum {
 static unsigned failures = 0;
 static uint32_t s_hit_count = 0;
 
-void winmm_timers_pump(void) {}
-
 void x87_fault(const char *what) {
   fprintf(stderr, "test_x86_import_fastpath: x87_fault(%s)\n", what);
   exit(1);
 }
+
+namespace x2::native {
+
+void winmm_timers_pump(void) {}
 
 /* The pump the fast path now calls, with the instant it has already read.
    Stubbed because the multimedia timers are not what this file is about; the
@@ -50,6 +52,8 @@ void x86_thunk_probe_note(uint32_t idx, unsigned long long ns) {
 }
 
 unsigned long long x86_thunk_probe_clock_ns(void) { return 0; }
+
+} // namespace x2::native
 
 /* Unarmed, so the dispatch path takes its untimed branch. */
 int x86_hotep_armed(void) { return 0; }
@@ -101,7 +105,7 @@ static void test_ftol_leaf(void) {
   x86p_x87_push(&cpu.x87, 12345.0L);
 
   cpu.eip = x86_native_thunk("MSVCR71.DLL", "_ftol");
-  int handled = x86_import_fastpath_dispatch(&cpu);
+  int handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "ftol not handled by native-import fast path");
   CHECK(cpu.reg[kX86pEax] == 12345u, "ftol EAX incorrect");
   CHECK(cpu.reg[kX86pEdx] == 0u, "ftol EDX incorrect");
@@ -120,7 +124,7 @@ static void test_stricmp_leaf(void) {
 
   uint32_t stricmp_addr = x86_native_thunk("MSVCR71.DLL", "_stricmp");
   cpu.eip = stricmp_addr;
-  int handled = x86_import_fastpath_dispatch(&cpu);
+  int handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "stricmp not handled by native-import fast path");
   CHECK(cpu.reg[kX86pEax] == 0u, "stricmp equal returned non-zero");
   CHECK(cpu.reg[kX86pEsp] == STACK + 4u, "stricmp did not pop retaddr");
@@ -134,7 +138,7 @@ static void test_stricmp_leaf(void) {
   WR32(STACK + 4u, STR1);
   WR32(STACK + 8u, STR2);
   cpu.eip = stricmp_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "stricmp unequal not handled");
   CHECK((int32_t)cpu.reg[kX86pEax] < 0,
         "stricmp Alpha vs Beta should be negative");
@@ -145,7 +149,7 @@ static void test_stricmp_leaf(void) {
   WR32(STACK + 4u, 0u);
   WR32(STACK + 8u, STR2);
   cpu.eip = stricmp_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "stricmp NULL not handled safely");
   CHECK(cpu.reg[kX86pEax] == (uint32_t)-1, "stricmp NULL vs non-NULL");
 }
@@ -158,7 +162,7 @@ static void test_qpc_and_qpf_leaf(void) {
   uint32_t qpf_addr =
       x86_native_thunk("KERNEL32.DLL", "QueryPerformanceFrequency");
   cpu.eip = qpf_addr;
-  int handled = x86_import_fastpath_dispatch(&cpu);
+  int handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "QPF not handled");
   CHECK(cpu.reg[kX86pEax] == 1u, "QPF return not 1");
   CHECK(cpu.reg[kX86pEsp] == STACK + 8u,
@@ -172,7 +176,7 @@ static void test_qpc_and_qpf_leaf(void) {
   uint32_t qpc_addr =
       x86_native_thunk("KERNEL32.DLL", "QueryPerformanceCounter");
   cpu.eip = qpc_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "QPC not handled");
   CHECK(cpu.reg[kX86pEax] == 1u, "QPC return not 1");
   CHECK(cpu.reg[kX86pEsp] == STACK + 8u, "QPC did not pop 8 bytes");
@@ -187,7 +191,7 @@ static void test_toupper_tolower_strstr_tls(void) {
 
   uint32_t toupper_addr = x86_native_thunk("MSVCR71.DLL", "toupper");
   cpu.eip = toupper_addr;
-  int handled = x86_import_fastpath_dispatch(&cpu);
+  int handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "toupper not handled");
   CHECK(cpu.reg[kX86pEax] == (uint32_t)'A', "toupper 'a' -> 'A'");
   CHECK(cpu.reg[kX86pEsp] == STACK + 4u, "toupper pop");
@@ -197,7 +201,7 @@ static void test_toupper_tolower_strstr_tls(void) {
   WR32(STACK + 4u, (uint32_t)'Z');
   uint32_t tolower_addr = x86_native_thunk("MSVCR71.DLL", "tolower");
   cpu.eip = tolower_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "tolower not handled");
   CHECK(cpu.reg[kX86pEax] == (uint32_t)'z', "tolower 'Z' -> 'z'");
 
@@ -210,7 +214,7 @@ static void test_toupper_tolower_strstr_tls(void) {
   WR32(STACK + 8u, STR2);
   uint32_t strstr_addr = x86_native_thunk("MSVCR71.DLL", "strstr");
   cpu.eip = strstr_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "strstr not handled");
   CHECK(cpu.reg[kX86pEax] == STR1 + 4u, "strstr found substring offset");
   CHECK(cpu.reg[kX86pEsp] == STACK + 4u, "strstr pop");
@@ -221,7 +225,7 @@ static void test_toupper_tolower_strstr_tls(void) {
   WR32(STACK + 4u, 7u);
   uint32_t tls_addr = x86_native_thunk("KERNEL32.DLL", "TlsGetValue");
   cpu.eip = tls_addr;
-  handled = x86_import_fastpath_dispatch(&cpu);
+  handled = x2::native::x86_import_fastpath_dispatch(&cpu);
   CHECK(handled == 1, "TlsGetValue not handled");
   CHECK(cpu.reg[kX86pEax] == 0x77000007u, "TlsGetValue returned wrong value");
   CHECK(cpu.reg[kX86pEsp] == STACK + 8u, "TlsGetValue did not pop 8 bytes");
@@ -234,18 +238,22 @@ static void test_enable_disable(void) {
   uint32_t toupper_addr = x86_native_thunk("MSVCR71.DLL", "toupper");
   cpu.eip = toupper_addr;
 
-  CHECK(x86_import_fastpath_is_enabled() == 1, "should default to enabled");
-  CHECK(x86_import_fastpath_dispatch(&cpu) == 1, "should handle when enabled");
+  CHECK(x2::native::x86_import_fastpath_is_enabled() == 1,
+        "should default to enabled");
+  CHECK(x2::native::x86_import_fastpath_dispatch(&cpu) == 1,
+        "should handle when enabled");
 
-  x86_import_fastpath_enable(0);
-  CHECK(x86_import_fastpath_is_enabled() == 0, "should report disabled");
-  CHECK(x86_import_fastpath_dispatch(&cpu) == 0,
+  x2::native::x86_import_fastpath_enable(0);
+  CHECK(x2::native::x86_import_fastpath_is_enabled() == 0,
+        "should report disabled");
+  CHECK(x2::native::x86_import_fastpath_dispatch(&cpu) == 0,
         "should return 0 when disabled");
 
-  x86_import_fastpath_enable(1);
+  x2::native::x86_import_fastpath_enable(1);
   cpu.eip = toupper_addr;
-  CHECK(x86_import_fastpath_is_enabled() == 1, "should report re-enabled");
-  CHECK(x86_import_fastpath_dispatch(&cpu) == 1,
+  CHECK(x2::native::x86_import_fastpath_is_enabled() == 1,
+        "should report re-enabled");
+  CHECK(x2::native::x86_import_fastpath_dispatch(&cpu) == 1,
         "should handle when re-enabled");
 }
 
@@ -258,7 +266,7 @@ int main(void) {
     return 1;
   }
 
-  x86_import_fastpath_init();
+  x2::native::x86_import_fastpath_init();
 
   test_ftol_leaf();
   test_stricmp_leaf();

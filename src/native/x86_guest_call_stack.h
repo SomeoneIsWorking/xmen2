@@ -1,9 +1,10 @@
-#ifndef X2_X86_GUEST_CALL_STACK_H
-#define X2_X86_GUEST_CALL_STACK_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * One title-owned guest call that is live on the host stack. The nodes are
@@ -12,14 +13,14 @@ struct X86pCpu;
  * gives JIT interception, inline native-import dispatch, longjmp recovery,
  * and fault diagnostics one current-call authority.
  */
-typedef struct X86GuestCallFrame {
+struct X86GuestCallFrame {
   struct X86GuestCallFrame *previous;
   struct X86pCpu *cpu;
   uint32_t entry;
   uint32_t return_to;
   uint32_t entry_esp;
   unsigned long depth;
-} X86GuestCallFrame;
+};
 
 void x86_guest_call_push(X86GuestCallFrame *frame, struct X86pCpu *cpu,
                          uint32_t entry, uint32_t return_to,
@@ -34,4 +35,4 @@ unsigned long x86_guest_call_depth(void);
 unsigned long x86_guest_call_deepest(void);
 void x86_guest_call_reset_deepest(void);
 
-#endif /* X2_X86_GUEST_CALL_STACK_H */
+} // namespace x2::native

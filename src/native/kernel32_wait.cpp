@@ -46,9 +46,10 @@ static void wait_note(uint32_t asked_ms, uint32_t slept_ms) {
     g_wait_worst_oversleep_ms = slept_ms - asked_ms;
 }
 
-void kernel32_wait_counts(unsigned long *sleeps, unsigned long long *asked_ms,
-                          unsigned long long *slept_ms,
-                          unsigned long *worst_oversleep_ms) {
+void x2::native::kernel32_wait_counts(unsigned long *sleeps,
+                                      unsigned long long *asked_ms,
+                                      unsigned long long *slept_ms,
+                                      unsigned long *worst_oversleep_ms) {
   if (sleeps)
     *sleeps = g_wait_sleeps;
   if (asked_ms)
@@ -118,24 +119,24 @@ void kernel32_sleep_site_report(void) {
 }
 
 /* Try to take one object. Returns 1 if it was signalled (and consumes it). */
-static int sync_try_take(Handle *hh) {
+static int sync_try_take(x2::native::Handle *hh) {
   switch (hh->kind) {
-  case H_SEM:
+  case x2::native::H_SEM:
     if (hh->count > 0) {
       hh->count--;
       return 1;
     }
     return 0;
-  case H_THREAD:
+  case x2::native::H_THREAD:
     return hh->count != 0; /* completion remains signaled for every waiter */
-  case H_EVENT:
+  case x2::native::H_EVENT:
     if (hh->count) {
       if (!hh->manual)
         hh->count = 0;
       return 1;
     }
     return 0;
-  case H_MUTEX:
+  case x2::native::H_MUTEX:
     /* Recursive for the owner, exclusive to everyone else. */
     {
       uint32_t me = guest_current_tid();
@@ -156,14 +157,14 @@ static int sync_try_take(Handle *hh) {
 }
 
 static const char *sync_kind_name(int k) {
-  return k == H_SEM     ? "semaphore"
-         : k == H_EVENT ? "event"
-         : k == H_MUTEX ? "mutex"
-                        : "non-waitable object";
+  return k == x2::native::H_SEM     ? "semaphore"
+         : k == x2::native::H_EVENT ? "event"
+         : k == x2::native::H_MUTEX ? "mutex"
+                                    : "non-waitable object";
 }
 
 void imp_KERNEL32_WaitForSingleObject(CPU *C) {
-  Handle *hh = k32_handle_get(A(0), 0);
+  x2::native::Handle *hh = x2::native::k32_handle_get(A(0), 0);
   uint32_t ms = A(1);
   unsigned long pulse0;
   double t0;
@@ -212,7 +213,7 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
      * 1.3 frames per second while looking perfectly healthy.
      */
     {
-      uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
+      uint32_t asked = x2::native::winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
       guest_cond_wait_us(guest_wait_us_from_ms(asked));
       wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
@@ -232,7 +233,7 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
      * on a timer thread; that difference is the same one Sleep already
      * carries and is stated in winmm.cpp, not a new one introduced here.
      */
-    winmm_timers_pump();
+    x2::native::winmm_timers_pump();
     if (sync_try_take(hh)) {
       hh->waiters--;
       ret_std(C, WAIT_OBJECT_0, 2);
@@ -296,8 +297,8 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
 static int wfmo_try_all(uint32_t arr, uint32_t n) {
   uint32_t i;
   for (i = 0; i < n; i++) {
-    Handle *hh = k32_handle_get(RD32(arr + i * 4u), 0);
-    if (hh->kind == H_MUTEX) {
+    x2::native::Handle *hh = x2::native::k32_handle_get(RD32(arr + i * 4u), 0);
+    if (hh->kind == x2::native::H_MUTEX) {
       /* Takeable if free or already ours; sync_try_take says so without
          consuming anything, because a mutex take is idempotent for the
          owner and reversible by the release below. */
@@ -310,7 +311,7 @@ static int wfmo_try_all(uint32_t arr, uint32_t n) {
       return 0;
   }
   for (i = 0; i < n; i++)
-    sync_try_take(k32_handle_get(RD32(arr + i * 4u), 0));
+    sync_try_take(x2::native::k32_handle_get(RD32(arr + i * 4u), 0));
   return 1;
 }
 
@@ -320,14 +321,15 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
   double t0;
   int warned = 0;
 
-  if (n == 0 || n > MAX_HANDLES) {
-    k32_set_last_error(87u);
+  if (n == 0 || n > x2::native::MAX_HANDLES) {
+    x2::native::k32_set_last_error(87u);
     ret_std(C, WAIT_FAILED, 4);
     return;
   }
   if (!all) {
     for (i = 0; i < n; i++) {
-      Handle *hh = k32_handle_get(RD32(arr + i * 4u), 0);
+      x2::native::Handle *hh =
+          x2::native::k32_handle_get(RD32(arr + i * 4u), 0);
       if (sync_try_take(hh)) {
         ret_std(C, WAIT_OBJECT_0 + i, 4);
         return;
@@ -351,29 +353,29 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
    * so a deadlock is reported rather than hung on.
    */
   for (i = 0; i < n; i++)
-    k32_handle_get(RD32(arr + i * 4u), 0)->waiters++;
+    x2::native::k32_handle_get(RD32(arr + i * 4u), 0)->waiters++;
   t0 = guest_clock_now_s();
   for (;;) {
     {
-      uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
+      uint32_t asked = x2::native::winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
       guest_cond_wait_us(guest_wait_us_from_ms(asked));
       wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
     }
-    winmm_timers_pump();
+    x2::native::winmm_timers_pump();
     if (all) {
       if (wfmo_try_all(arr, n)) {
         for (i = 0; i < n; i++)
-          k32_handle_get(RD32(arr + i * 4u), 0)->waiters--;
+          x2::native::k32_handle_get(RD32(arr + i * 4u), 0)->waiters--;
         ret_std(C, WAIT_OBJECT_0, 4);
         return;
       }
     } else {
       for (i = 0; i < n; i++) {
-        if (sync_try_take(k32_handle_get(RD32(arr + i * 4u), 0))) {
+        if (sync_try_take(x2::native::k32_handle_get(RD32(arr + i * 4u), 0))) {
           uint32_t k;
           for (k = 0; k < n; k++)
-            k32_handle_get(RD32(arr + k * 4u), 0)->waiters--;
+            x2::native::k32_handle_get(RD32(arr + k * 4u), 0)->waiters--;
           ret_std(C, WAIT_OBJECT_0 + i, 4);
           return;
         }
@@ -381,7 +383,7 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
     }
     if (ms != 0xFFFFFFFFu && (guest_clock_now_s() - t0) * 1000.0 >= ms) {
       for (i = 0; i < n; i++)
-        k32_handle_get(RD32(arr + i * 4u), 0)->waiters--;
+        x2::native::k32_handle_get(RD32(arr + i * 4u), 0)->waiters--;
       ret_std(C, WAIT_TIMEOUT, 4);
       return;
     }
@@ -400,7 +402,8 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
                  "on %u object(s) has waited 30 seconds. Each of them:\n",
                  all, n);
     for (i = 0; i < n; i++) {
-      Handle *hh = k32_handle_get(RD32(arr + i * 4u), 0);
+      x2::native::Handle *hh =
+          x2::native::k32_handle_get(RD32(arr + i * 4u), 0);
       x2_log_error("  [%u] handle 0x%08x %s \"%s\" count %d, created "
                    "by guest 0x%08x, set %lu pulsed %lu (%lu lost), "
                    "waited on %lu\n",
@@ -433,6 +436,6 @@ void imp_KERNEL32_Sleep(CPU *C) {
   /* The other pump point, and the one that matters most: a guest that sleeps
      waiting for a timer callback would otherwise sleep forever. Pumped
      AFTER the sleep, so a callback due during it fires as soon as it can. */
-  winmm_timers_pump();
+  x2::native::winmm_timers_pump();
   ret_std(C, 0, 1);
 }

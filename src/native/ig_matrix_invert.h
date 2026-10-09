@@ -13,29 +13,28 @@
  * non-finite value could raise an x87 exception the native path does not
  * record: a non-finite input, adjoint element or result.
  */
-#ifndef X2_IG_MATRIX_INVERT_H
-#define X2_IG_MATRIX_INVERT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-typedef enum IgInvertVerdict {
+namespace x2::native {
+
+enum IgInvertVerdict {
   kIgInvertUndecided = 0, /* the guest body must run */
   kIgInvertSingular,      /* |det| < FLT_MIN: `out` untouched */
   kIgInvertInverted,      /* `out` holds the inverse */
-} IgInvertVerdict;
+};
 
 /* The x87 condition codes (C3, C2, C0 of the status word) the guest's
    FCOMP of |(float)det| against FLT_MIN leaves; C1 is clear. */
-enum {
-  kIgInvertCompareGreater = 0x0000,
-  kIgInvertCompareLess = 0x0100,
-  kIgInvertCompareEqual = 0x4000,
-  kIgInvertCompareMask = 0x4700,
-};
+inline constexpr int kIgInvertCompareGreater = 0x0000;
+inline constexpr int kIgInvertCompareLess = 0x0100;
+inline constexpr int kIgInvertCompareEqual = 0x4000;
+inline constexpr int kIgInvertCompareMask = 0x4700;
 
 /* `out` may be `m`: the adjoint is complete before anything is written.
    `compare_codes` is set unless the verdict is kIgInvertUndecided. */
 IgInvertVerdict ig_matrix44_invert(float out[16], const float m[16],
                                    uint16_t *compare_codes);
 
-#endif /* X2_IG_MATRIX_INVERT_H */
+} // namespace x2::native
