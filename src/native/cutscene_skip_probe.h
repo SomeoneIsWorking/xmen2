@@ -1,10 +1,11 @@
-#ifndef X2_CUTSCENE_SKIP_PROBE_H
-#define X2_CUTSCENE_SKIP_PROBE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /* Append the exact retail cutscene-skip action and publication boundaries.
    `input_manager` is FUN_005d8920's result from the caller's guest-thread
@@ -13,4 +14,4 @@ size_t cutscene_skip_probe_report(struct X86pCpu *cpu, unsigned controller,
                                   uint32_t input_manager, char *out,
                                   size_t size);
 
-#endif
+} // namespace x2::native

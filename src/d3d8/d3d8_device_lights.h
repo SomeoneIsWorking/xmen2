@@ -1,5 +1,4 @@
-#ifndef D3D8_DEVICE_LIGHTS_H
-#define D3D8_DEVICE_LIGHTS_H
+#pragma once
 
 /*
  * The three IDirect3DDevice8 light methods, for the device vtable.
@@ -9,8 +8,10 @@
  */
 #include "d3d8_com.h"
 
+namespace x2::d3d8 {
+
 void d3d8_dev_SetMaterial(D3D8Object *self, struct X86pCpu *C);
 void d3d8_dev_SetLight(D3D8Object *self, struct X86pCpu *C);
 void d3d8_dev_LightEnable(D3D8Object *self, struct X86pCpu *C);
 
-#endif /* D3D8_DEVICE_LIGHTS_H */
+} // namespace x2::d3d8

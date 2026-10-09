@@ -438,7 +438,7 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
                evidence->world_matrix_multiply_left_value);
   print_matrix(output, "world_matrix_multiply_right_value",
                evidence->world_matrix_multiply_right_value);
-  d3d8_selector_probe_print_multiply_chain(output, evidence);
+  x2::d3d8::d3d8_selector_probe_print_multiply_chain(output, evidence);
   if (state) {
     static const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0,
                                        0, 0, 1, 0, 0, 0, 0, 1};

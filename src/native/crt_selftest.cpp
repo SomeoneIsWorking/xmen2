@@ -34,7 +34,7 @@ static uint32_t call_import(void (*fn)(CPU *), CPU *C, uint32_t stack_top,
 }
 
 static void check_malloc_free(uint32_t stack_top, int skip_body,
-                              CrtSelftestCheck check) {
+                              x2::native::CrtSelftestCheck check) {
   CPU C;
   uint32_t delta;
   uint32_t pointer;
@@ -52,7 +52,7 @@ static void check_malloc_free(uint32_t stack_top, int skip_body,
 }
 
 static void check_delete_array(uint32_t stack_top, int skip_body,
-                               CrtSelftestCheck check) {
+                               x2::native::CrtSelftestCheck check) {
   CPU C;
   uint32_t baseline_used, ignored_free, ignored_blocks;
   uint32_t after_used;
@@ -90,8 +90,9 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
     guest_free(pointer);
 }
 
-static void check_msvcrt_delete_array_alias(uint32_t stack_top, int skip_body,
-                                            CrtSelftestCheck check) {
+static void
+check_msvcrt_delete_array_alias(uint32_t stack_top, int skip_body,
+                                x2::native::CrtSelftestCheck check) {
   CPU C;
   uint32_t pointer = guest_malloc(64u);
   uint32_t delta =
@@ -104,8 +105,10 @@ static void check_msvcrt_delete_array_alias(uint32_t stack_top, int skip_body,
     guest_free(pointer);
 }
 
+namespace x2::native {
+
 void crt_selftest_run(uint32_t stack_top, int skip_body,
-                      CrtSelftestCheck check) {
+                      x2::native::CrtSelftestCheck check) {
   x2_log_info("  native CRT import ABI and operator delete[] route\n");
   uint32_t jump_program = guest_malloc(256);
   check("older setjmp continuation survives a later setjmp",
@@ -116,3 +119,5 @@ void crt_selftest_run(uint32_t stack_top, int skip_body,
   check_delete_array(stack_top, skip_body, check);
   check_msvcrt_delete_array_alias(stack_top, skip_body, check);
 }
+
+} // namespace x2::native

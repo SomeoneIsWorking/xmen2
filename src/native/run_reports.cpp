@@ -16,6 +16,7 @@
 #include "../input/touch_runtime.h"
 #include "alchemy_controller_bridge.h"
 #include "boot_blackout.h"
+#include "dialog_prompts.h"
 #include "dialog_selection_scale.h"
 #include "dinput_pad_report.h"
 #include "gpu_prompt_glyphs.h"
@@ -26,11 +27,13 @@
 #include "live_session.h"
 #include "movie.h"
 #include "override_leaf.h"
+#include "pad_glyphs.h"
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
 #include "prompt_tokens.h"
+#include "script_trace.h"
 #include "stick_axis_override.h"
 #include "threads.h"
 #include "touch_hud_runtime.h"
@@ -48,12 +51,9 @@ extern void guest_heap_report(void);
 extern void guest_thread_report(void);
 extern void k32_critsec_report(void);
 extern void dinput_device_report(void);
-extern void pad_glyphs_report(void);
-extern void dialog_prompts_report(void);
 extern void dsound_report(void);
 extern void k32_asset_report(void), ws2_report(void);
 extern void conversation_report(void);
-extern void script_trace_report(void);
 extern void x86_profiler_report(void);
 extern void shell32_report(void);
 extern void d3d8_vsconst_caller_report(void);

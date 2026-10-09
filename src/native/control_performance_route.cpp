@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 void control_performance_reset_route(x2::native::Socket fd) {
   char reason[192];
   const int result = control_command_performance_reset(reason, sizeof reason);
@@ -50,3 +52,5 @@ void control_performance_probe_route(x2::native::Socket fd, const char *query) {
                           : "hot-entry-point probe disarmed (%lu).\n",
                      want);
 }
+
+} // namespace x2::native

@@ -97,6 +97,8 @@ static void compare(const PollSnapshot *g, const PollSnapshot *n) {
 
 static unsigned long g_verify_runs;
 
+namespace x2::native {
+
 int audio_channel_poll_verify(struct X86pCpu *C) {
   if (!verify_enabled())
     return 0;
@@ -133,3 +135,5 @@ int audio_channel_poll_verify(struct X86pCpu *C) {
   }
   return 1;
 }
+
+} // namespace x2::native

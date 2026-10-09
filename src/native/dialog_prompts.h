@@ -1,7 +1,8 @@
-#ifndef DIALOG_PROMPTS_H
-#define DIALOG_PROMPTS_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* Pure policy seam for the scoped localization override. */
 int dialog_prompts_use_asset_text(int player_uses_gamepad,
@@ -9,4 +10,4 @@ int dialog_prompts_use_asset_text(int player_uses_gamepad,
 
 void dialog_prompts_report(void);
 
-#endif /* DIALOG_PROMPTS_H */
+} // namespace x2::native

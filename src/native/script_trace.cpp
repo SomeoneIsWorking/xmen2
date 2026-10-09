@@ -316,6 +316,8 @@ x2_script_trace_register_overrides(void) {
   x86_register_override("XMen2.exe", 0x0048a7d0, x2_trace_0048a7d0);
 }
 
+namespace x2::native {
+
 void script_trace_report(void) {
   int i;
 
@@ -355,3 +357,5 @@ void script_trace_report(void) {
     x2_log_info("           set X2_SCRIPTS=1 to see each launch as it "
                 "happens\n");
 }
+
+} // namespace x2::native

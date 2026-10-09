@@ -16,6 +16,8 @@ enum { CONTROL_LIGHT_INDEX = 51 };
 _Static_assert(D3D8_MAX_LIGHTS > CONTROL_LIGHT_INDEX,
                "the D3D8 light table must hold the stock game's slot 51");
 
+namespace x2::d3d8 {
+
 void d3d8_light_selftest_configure(D3D8State *state) {
   float *light = state->light[CONTROL_LIGHT_INDEX];
 
@@ -94,3 +96,5 @@ int d3d8_light_selftest(void) {
               "the draw-time witness retained its colour");
   return fails;
 }
+
+} // namespace x2::d3d8

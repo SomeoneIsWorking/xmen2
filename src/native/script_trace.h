@@ -1,5 +1,4 @@
-#ifndef X2_SCRIPT_TRACE_H
-#define X2_SCRIPT_TRACE_H
+#pragma once
 
 /*
  * Which BehavEd scripts a run actually ran.
@@ -11,6 +10,8 @@
  * indistinguishable from a hang. The only way to tell WHERE it stopped is to
  * know which scripts ran, so this records every launch by name.
  */
+namespace x2::native {
+
 void script_trace_report(void);
 
-#endif
+} // namespace x2::native

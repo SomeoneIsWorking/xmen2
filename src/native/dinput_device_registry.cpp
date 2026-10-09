@@ -4,9 +4,13 @@
 
 /* Methods retain a Device pointer across guest re-entry. Store each object in
    its own allocation so growing the pointer index cannot invalidate it. */
-static DInputDevice **devices;
-static size_t count;
-static size_t capacity;
+namespace x2::native {
+
+namespace {
+DInputDevice **devices;
+size_t count;
+size_t capacity;
+} // namespace
 
 DInputDevice *dinput_device_registry_find(uint32_t guest) {
   size_t i;
@@ -58,3 +62,5 @@ size_t dinput_device_registry_count(void) { return count; }
 DInputDevice *dinput_device_registry_at(size_t index) {
   return index < count ? devices[index] : NULL;
 }
+
+} // namespace x2::native

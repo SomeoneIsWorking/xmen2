@@ -189,6 +189,8 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at) {
          conversations[payload]);
 }
 
+namespace x2::native {
+
 size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
                                   uint32_t input_manager, char *out,
                                   size_t size) {
@@ -244,3 +246,5 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
       "records are subordinate payloads and a branch refuses completion.\n\n");
   return at;
 }
+
+} // namespace x2::native

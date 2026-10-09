@@ -225,8 +225,8 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
   }
 
   manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
-  at += cutscene_skip_probe_report(cpu, controller, manager, out + at, n - at);
-
+  at += x2::native::cutscene_skip_probe_report(cpu, controller, manager,
+                                               out + at, n - at);
   text_put(out, n, &at,
            "controller %u binding table 0x%08x -- %u rows x %u "
            "slots%s\n\n",

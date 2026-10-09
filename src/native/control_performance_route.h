@@ -1,7 +1,8 @@
-#ifndef X2_CONTROL_PERFORMANCE_ROUTE_H
-#define X2_CONTROL_PERFORMANCE_ROUTE_H
+#pragma once
 
 #include "platform_socket.h"
+
+namespace x2::native {
 
 void control_performance_reset_route(x2::native::Socket fd);
 
@@ -10,4 +11,4 @@ void control_performance_reset_route(x2::native::Socket fd);
    in, and reinstalling a debug build to get one costs the player's data. */
 void control_performance_probe_route(x2::native::Socket fd, const char *query);
 
-#endif
+} // namespace x2::native

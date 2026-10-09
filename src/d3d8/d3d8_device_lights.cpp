@@ -27,6 +27,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 void d3d8_dev_SetMaterial(D3D8Object *self, CPU *C) {
   const float *m = (const float *)d3d8_guest_ptr(d3d8_arg(C, 0), "material");
   (void)self;
@@ -75,6 +77,8 @@ void d3d8_dev_SetMaterial(D3D8Object *self, CPU *C) {
   d3d8_ret(C, D3D_OK);
 }
 
+} // namespace x2::d3d8
+
 /*
  * A light index this table cannot hold.
  *
@@ -121,6 +125,8 @@ static struct {
    dev_SetLight. */
 static unsigned long g_light_transformed, g_light_untransformed,
     g_light_tail_unreadable;
+
+namespace x2::d3d8 {
 
 void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   uint32_t idx = d3d8_arg(C, 0);
@@ -285,6 +291,8 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   d3d8_ret(C, D3D_OK);
 }
 
+} // namespace x2::d3d8
+
 /*
  * What the most recent SetLight left in this slot.
  *
@@ -363,6 +371,8 @@ void d3d8_setlight_report(void) {
   }
 }
 
+namespace x2::d3d8 {
+
 void d3d8_dev_LightEnable(D3D8Object *self, CPU *C) {
   uint32_t idx = d3d8_arg(C, 0), on = d3d8_arg(C, 1);
   (void)self;
@@ -379,3 +389,5 @@ void d3d8_dev_LightEnable(D3D8Object *self, CPU *C) {
   d3d8_device_state()->light_on[idx] = on != 0;
   d3d8_ret(C, D3D_OK);
 }
+
+} // namespace x2::d3d8

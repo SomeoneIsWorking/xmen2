@@ -30,6 +30,7 @@
  * the two cases are separate functions with the count spelled out at every call
  * site.
  */
+#include "crt_stdio.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -836,8 +837,7 @@ uint32_t x86_native_data_export(const char *mod, const char *sym) {
        guest memory. crt.cpp owns it, because it is the code that has to
        recognise a pointer into it as a stream. */
     if (strcmp(sym, "_iob") == 0) {
-      extern uint32_t crt_iob_base(void);
-      return crt_iob_base();
+      return x2::native::crt_iob_base();
     }
     /* char *_acmdln: the raw command line the CRT parses. Empty rather
        than invented -- the game parses its own arguments, and a fabricated

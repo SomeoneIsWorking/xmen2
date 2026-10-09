@@ -43,8 +43,9 @@ enum { REASON_BYTES = 192 };
  * chasing "nothing happened" needs them apart. Saying so once means no route
  * can drift into reporting one as the other.
  */
-static int delivered(x2::native::Socket fd, int outcome, const char *reason,
-                     const char *timeout_text) {
+namespace {
+int delivered(x2::native::Socket fd, int outcome, const char *reason,
+              const char *timeout_text) {
   if (outcome < 0) {
     control_reply_text(fd, 504, "Gateway Timeout", "%s", timeout_text);
     return 0;
@@ -55,6 +56,9 @@ static int delivered(x2::native::Socket fd, int outcome, const char *reason,
   }
   return 1;
 }
+} // namespace
+
+namespace x2::native {
 
 void control_route_key(x2::native::Socket fd, const char *query) {
   char name[32] = "", hold[16] = "", reason[REASON_BYTES] = "";
@@ -315,3 +319,5 @@ void control_route_controls(x2::native::Socket fd) {
   }
   control_reply_text(fd, 200, "OK", "%s", body);
 }
+
+} // namespace x2::native

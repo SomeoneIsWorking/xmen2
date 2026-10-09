@@ -18,6 +18,8 @@
 
 #include <stdlib.h>
 
+namespace x2::native {
+
 /*
  * Press a key at the HOST window layer, not at the guest's keyboard.
  *
@@ -142,3 +144,5 @@ void control_ui_click_route(x2::native::Socket fd, const char *query) {
   control_reply_text(fd, 200, "OK", "clicked host (%.0f, %.0f) at frame %lu\n",
                      (double)x, (double)y, gpu_frames_presented());
 }
+
+} // namespace x2::native

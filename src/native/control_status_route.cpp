@@ -3,6 +3,8 @@
 #include "control.h"
 #include "control_status.h"
 
+namespace x2::native {
+
 void control_status_route(x2::native::Socket fd, unsigned long requests,
                           unsigned long keys_pressed,
                           unsigned long keys_refused,
@@ -17,3 +19,5 @@ void control_status_route(x2::native::Socket fd, unsigned long requests,
   }
   control_reply_json(fd, 200, "OK", body, size);
 }
+
+} // namespace x2::native

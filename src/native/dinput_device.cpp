@@ -139,7 +139,7 @@ typedef DInputDevice Device;
 static uint32_t g_vtable;
 
 static Device *dev_of(uint32_t guest) {
-  return dinput_device_registry_find(guest);
+  return x2::native::dinput_device_registry_find(guest);
 }
 
 static const char *kind_name(DInputDeviceKind k) {
@@ -507,7 +507,7 @@ uint32_t dinput_device_new(DInputDeviceKind kind) {
      holders different acquire states. Joysticks are the exception and go
      through dinput_device_new_pad -- there the whole point is one object per
      pad, and collapsing them would give four players one controller. */
-  device = dinput_device_registry_find_system(kind);
+  device = x2::native::dinput_device_registry_find_system(kind);
   if (device) {
     device->refs++;
     return device->guest;
@@ -523,7 +523,7 @@ uint32_t dinput_device_new_pad(const unsigned char guid[16]) {
   Device *device;
   if (!guid || dinput_pad_for_guid(guid) < 0)
     return 0;
-  device = dinput_device_registry_find_controller(guid);
+  device = x2::native::dinput_device_registry_find_controller(guid);
   if (device) {
     device->refs++;
     return device->guest;
@@ -543,7 +543,7 @@ static uint32_t device_alloc(DInputDeviceKind kind,
   }
   WR32(obj + 0u, g_vtable);
   WR32(obj + 4u, 0);
-  d = dinput_device_registry_append();
+  d = x2::native::dinput_device_registry_append();
   if (!d) {
     x2_log_error("DINPUT8: no host memory for another device\n");
     return 0;
@@ -578,13 +578,13 @@ void dinput_device_report(void) {
   int i;
   if (done++)
     return;
-  if (!dinput_device_registry_count()) {
+  if (!x2::native::dinput_device_registry_count()) {
     x2_log_info("  dinput devices: none was ever created.\n");
     return;
   }
   x2_log_info("  dinput devices:\n");
-  for (i = 0; i < (int)dinput_device_registry_count(); i++) {
-    Device *device = dinput_device_registry_at((size_t)i);
+  for (i = 0; i < (int)x2::native::dinput_device_registry_count(); i++) {
+    Device *device = x2::native::dinput_device_registry_at((size_t)i);
     x2_log_info(
         "        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
         " %lu Acquire(s)%s\n",

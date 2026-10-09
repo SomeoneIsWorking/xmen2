@@ -163,7 +163,7 @@ static void x2_movie_load(CPU *C) {
   uint32_t path_address = info ? RD32(info + INFO_PATH) : 0;
   const char *guest_path = guest_memory_as<const char>(path_address);
   const char *host_path;
-  X2FmvAudioSink sink;
+  x2::media::X2FmvAudioSink sink;
   x2::media::FmvPlayer *player;
   char error[256];
   int first_frame, replaced;

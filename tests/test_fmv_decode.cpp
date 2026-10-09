@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
   const char *path = argc > 1 ? argv[1] : getenv("X2_TEST_SFD");
   const char *video_frames_text = getenv("X2_TEST_SFD_VIDEO_FRAMES");
   const char *audio_frames_text = getenv("X2_TEST_SFD_AUDIO_FRAMES");
-  X2FmvAudioSink sink;
+  x2::media::X2FmvAudioSink sink;
   AudioCounter audio = {0};
   x2::media::FmvPlayer *player;
   uint8_t *tight = NULL;

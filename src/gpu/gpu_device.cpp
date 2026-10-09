@@ -161,7 +161,7 @@ void gpu_device_destroy(void) {
 #ifdef X2_WITH_SDL
   if (!g_gpu)
     return;
-  gpu_depth_forget();
+  x2::gpu::gpu_depth_forget();
   if (g_win)
     SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
   SDL_DestroyGPUDevice(g_gpu);

@@ -10,6 +10,7 @@
  */
 #include "d3d8_light_survey.h"
 
+#include "../native/win_path.h"
 #include "d3d8_lighting.h"
 #include "d3d8_render_states.h"
 #include "d3d8_state.h"
@@ -103,6 +104,8 @@ static float survey_bound(const GpuDraw *d, int ignore_atten) {
   return 0.299f * acc[0] + 0.587f * acc[1] + 0.114f * acc[2];
 }
 
+namespace x2::d3d8 {
+
 void d3d8_light_survey(const GpuDraw *d) {
   float bound, bound_noatten;
   int black, only_atten, i;
@@ -134,7 +137,6 @@ void d3d8_light_survey(const GpuDraw *d) {
      * the frames before that point -- rather than an unstated slice of
      * every frame.
      */
-    extern int k32_file_gate_open(void);
     static long minimum = -1;
     if (!k32_file_gate_open()) {
       g_sv_ungated++;
@@ -277,3 +279,5 @@ void d3d8_light_survey_report(void) {
                 "are counted above but not described.\n",
                 g_sv_sig_lost, SURVEY_SIGS + 1);
 }
+
+} // namespace x2::d3d8

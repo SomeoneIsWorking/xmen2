@@ -1409,7 +1409,7 @@ static int run_battery(void) {
     case_findmouse();
     case_arkinit();
     case_import_abi();
-    crt_selftest_run(guest_stack_top, skip_body, check);
+    x2::native::crt_selftest_run(guest_stack_top, skip_body, check);
     skip_body = 0;
     if (fails - before == checks) {
       x2_log_info(
@@ -1436,7 +1436,7 @@ static int run_battery(void) {
   case_findmouse();
   case_arkinit();
   case_import_abi();
-  crt_selftest_run(guest_stack_top, skip_body, check);
+  x2::native::crt_selftest_run(guest_stack_top, skip_body, check);
   case_guest_heap();
   case_setjmp_table();
   case_runtime_module();
@@ -1642,7 +1642,7 @@ int main(int argc, char **argv) {
      and the rest are relocated -- which is exactly what the loader does in
      the hosted build, and why absolute references are emitted against each
      module's own base rather than a shared one. */
-  if (guest_modules_register() != 0)
+  if (x2::native::guest_modules_register() != 0)
     return 1;
   for (m = x86_modules(); m; m = m->next) {
     char path[4096];

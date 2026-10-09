@@ -56,6 +56,8 @@ static FILE *g_files[MAX_FILES];
 #define IOB_SIZEOF_FILE 32u
 static uint32_t g_iob; /* guest address of _iob[0] */
 
+namespace x2::native {
+
 uint32_t crt_iob_base(void) {
   if (!g_iob) {
     g_iob = guest_malloc(IOB_N * IOB_SIZEOF_FILE);
@@ -84,6 +86,8 @@ FILE *crt_file(uint32_t h) {
   }
   return g_files[h - 1];
 }
+
+} // namespace x2::native
 
 void imp_MSVCR71_fopen(CPU *C) {
   int i;
@@ -116,20 +120,24 @@ void imp_MSVCR71_fopen(CPU *C) {
 
 void imp_MSVCR71_fclose(CPU *C) {
   uint32_t h = A(0);
-  int rc = fclose(crt_file(h));
+  int rc = fclose(x2::native::crt_file(h));
   g_files[h - 1] = NULL;
   ret_c(C, (uint32_t)rc);
 }
 
 void imp_MSVCR71_fread(CPU *C) {
-  ret_c(C, (uint32_t)x2::native::guest_fread(A(0), A(1), A(2), crt_file(A(3))));
+  ret_c(C, (uint32_t)x2::native::guest_fread(A(0), A(1), A(2),
+                                             x2::native::crt_file(A(3))));
 }
 
 void imp_MSVCR71_fseek(CPU *C) {
-  ret_c(C, (uint32_t)fseek(crt_file(A(0)), (long)(int32_t)A(1), (int)A(2)));
+  ret_c(C, (uint32_t)fseek(x2::native::crt_file(A(0)), (long)(int32_t)A(1),
+                           (int)A(2)));
 }
 
-void imp_MSVCR71_ftell(CPU *C) { ret_c(C, (uint32_t)ftell(crt_file(A(0)))); }
+void imp_MSVCR71_ftell(CPU *C) {
+  ret_c(C, (uint32_t)ftell(x2::native::crt_file(A(0))));
+}
 
 void imp_MSVCR71__mkdir(CPU *C) {
   const char *path = win_path(ACS(0));
@@ -141,7 +149,7 @@ void imp_MSVCR71__mkdir(CPU *C) {
 /* ---- the rest of stdio -------------------------------------------------- */
 
 void imp_MSVCR71_fflush(CPU *C) {
-  FILE *f = A(0) ? crt_file(A(0)) : NULL;
+  FILE *f = A(0) ? x2::native::crt_file(A(0)) : NULL;
   if (!f || crt_console_is(f)) {
     crt_console_flush();
   }
@@ -157,7 +165,7 @@ static void console_or_stream(FILE *f, const char *text) {
 }
 
 void imp_MSVCR71_fputc(CPU *C) {
-  FILE *f = crt_file(A(1));
+  FILE *f = x2::native::crt_file(A(1));
   char c = (char)A(0);
   if (crt_console_is(f)) {
     crt_console_write(&c, 1u);
@@ -168,7 +176,7 @@ void imp_MSVCR71_fputc(CPU *C) {
 }
 void imp_MSVCR71_fputs(CPU *C) {
   const char *text = ACS(0);
-  FILE *f = crt_file(A(1));
+  FILE *f = x2::native::crt_file(A(1));
   if (crt_console_is(f)) {
     crt_console_write(text, strlen(text));
     ret_c(C, 0);
@@ -176,12 +184,14 @@ void imp_MSVCR71_fputs(CPU *C) {
   }
   ret_c(C, (uint32_t)fputs(text, f));
 }
-void imp_MSVCR71_fgetc(CPU *C) { ret_c(C, (uint32_t)fgetc(crt_file(A(0)))); }
+void imp_MSVCR71_fgetc(CPU *C) {
+  ret_c(C, (uint32_t)fgetc(x2::native::crt_file(A(0))));
+}
 void imp_MSVCR71_ungetc(CPU *C) {
-  ret_c(C, (uint32_t)ungetc((int)A(0), crt_file(A(1))));
+  ret_c(C, (uint32_t)ungetc((int)A(0), x2::native::crt_file(A(1))));
 }
 void imp_MSVCR71_fwrite(CPU *C) {
-  FILE *f = crt_file(A(3));
+  FILE *f = x2::native::crt_file(A(3));
   if (crt_console_is(f)) {
     const char *bytes = (const char *)guest_memory_const_pointer(A(0));
     size_t total = A(1) * A(2);
@@ -194,7 +204,7 @@ void imp_MSVCR71_fwrite(CPU *C) {
   ret_c(C, (uint32_t)x2::native::guest_fwrite(A(0), A(1), A(2), f));
 }
 void imp_MSVCR71_fgets(CPU *C) {
-  char *r = fgets(AS(0), (int)A(1), crt_file(A(2)));
+  char *r = fgets(AS(0), (int)A(1), x2::native::crt_file(A(2)));
   ret_c(C, r ? A(0) : 0u);
 }
 void imp_MSVCR71_fprintf(CPU *C) {
@@ -202,7 +212,7 @@ void imp_MSVCR71_fprintf(CPU *C) {
   int n =
       guest_vformat(buf, sizeof buf, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u);
   if (n >= 0) {
-    console_or_stream(crt_file(A(0)), buf);
+    console_or_stream(x2::native::crt_file(A(0)), buf);
   }
   ret_c(C, (uint32_t)n);
 }
@@ -210,7 +220,7 @@ void imp_MSVCR71_vfprintf(CPU *C) {
   char buf[4096];
   int n = guest_vformat(buf, sizeof buf, ACS(1), A(2));
   if (n >= 0) {
-    console_or_stream(crt_file(A(0)), buf);
+    console_or_stream(x2::native::crt_file(A(0)), buf);
   }
   ret_c(C, (uint32_t)n);
 }

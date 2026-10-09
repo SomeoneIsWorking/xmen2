@@ -1,7 +1,8 @@
-#ifndef X2_CONTROL_INPUT_ROUTE_H
-#define X2_CONTROL_INPUT_ROUTE_H
+#pragma once
 
 #include "control_http.h"
+
+namespace x2::native {
 
 /* The control channel's input-driving routes. Each parses its own query and
    writes its own reply; the work is done on the guest-input thread through
@@ -13,4 +14,4 @@ void control_route_assignment(x2::native::Socket fd, const char *query);
 
 void control_route_controls(x2::native::Socket fd);
 
-#endif
+} // namespace x2::native

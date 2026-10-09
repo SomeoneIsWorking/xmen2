@@ -22,9 +22,9 @@ class HudGeometryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing header constants"):
             hud_geometry.parse_constants("")
         with self.assertRaisesRegex(ValueError, "duplicate"):
-            hud_geometry.parse_constants(self.source + "\n#define HUD_PORTRAIT_EXTENT (2.0f)\n")
+            hud_geometry.parse_constants(self.source + "\ninline constexpr float HUD_PORTRAIT_EXTENT = 2.0f;\n")
         with self.assertRaisesRegex(ValueError, "invalid"):
-            hud_geometry.parse_constants(self.source.replace("(61.0f)", "(60.0f + 1.0f)"))
+            hud_geometry.parse_constants(self.source.replace("= 61.0f;", "= 60.0f + 1.0f;"))
 
     def test_portrait_discriminator_accepts_match_and_refuses_changed_measurement(self):
         extent = self.constants["HUD_PORTRAIT_EXTENT"]

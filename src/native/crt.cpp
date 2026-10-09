@@ -195,7 +195,7 @@ void imp_MSVCR71__callnewh(CPU *C) {
 void imp_MSVCR71_memmove(CPU *C) {
   crt_watch_dst(A(0), A(2), "memmove");
   memmove(AP(0), AP(1), A(2));
-  crt_write_watch_dst(A(0), A(2));
+  x2::native::crt_write_watch_dst(A(0), A(2));
   ret_c(C, A(0));
 }
 
@@ -225,13 +225,13 @@ void imp_MSVCR71_strncat(CPU *C) {
            n = (uint32_t)strnlen(ACS(1), A(2)) + 1u;
   crt_watch_dst(dst, n, "strncat");
   strncat(AS(0), ACS(1), A(2));
-  crt_write_watch_dst(dst, n);
+  x2::native::crt_write_watch_dst(dst, n);
   ret_c(C, A(0));
 }
 void imp_MSVCR71_strncpy(CPU *C) {
   crt_watch_dst(A(0), A(2), "strncpy");
   strncpy(AS(0), ACS(1), A(2));
-  crt_write_watch_dst(A(0), A(2));
+  x2::native::crt_write_watch_dst(A(0), A(2));
   ret_c(C, A(0));
 }
 void imp_MSVCR71_strncmp(CPU *C) {
@@ -710,13 +710,13 @@ void imp_MSVCR71___security_error_handler(CPU *C) {
 void imp_MSVCR71_memcpy(CPU *C) {
   crt_watch_dst(A(0), A(2), "memcpy");
   memcpy(AP(0), AP(1), A(2));
-  crt_write_watch_dst(A(0), A(2));
+  x2::native::crt_write_watch_dst(A(0), A(2));
   ret_c(C, A(0));
 }
 void imp_MSVCR71_memset(CPU *C) {
   crt_watch_dst(A(0), A(2), "memset");
   memset(AP(0), (int)A(1), A(2));
-  crt_write_watch_dst(A(0), A(2));
+  x2::native::crt_write_watch_dst(A(0), A(2));
   ret_c(C, A(0));
 }
 void imp_MSVCR71_strlen(CPU *C) { ret_c(C, (uint32_t)strlen(ACS(0))); }
@@ -941,7 +941,7 @@ void imp_MSVCR71_fscanf(CPU *C) {
      difference is stated here rather than discovered. The engine's uses are
      line-based config parsing. */
   char line[1024];
-  if (!fgets(line, sizeof line, crt_file(A(0)))) {
+  if (!fgets(line, sizeof line, x2::native::crt_file(A(0)))) {
     ret_c(C, 0xFFFFFFFFu);
     return;
   }

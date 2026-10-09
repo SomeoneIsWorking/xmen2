@@ -38,6 +38,8 @@ static uint64_t boundary_end(int index) {
                                     : UINT64_C(1) << 32;
 }
 
+namespace x2::native {
+
 void guest_layout_report(void) {
   const double mb = 1024.0 * 1024.0;
   int i;
@@ -60,3 +62,5 @@ void guest_layout_report(void) {
                 (double)use.pages_now * GUEST_PAGE_SIZE / mb);
   }
 }
+
+} // namespace x2::native

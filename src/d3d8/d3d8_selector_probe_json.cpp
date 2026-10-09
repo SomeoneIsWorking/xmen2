@@ -1,5 +1,7 @@
 #include "d3d8_selector_probe_json.h"
 
+namespace x2::d3d8 {
+
 void d3d8_selector_probe_print_multiply_chain(
     FILE *output, const D3D8SelectorDrawEvidence *evidence) {
   uint32_t step_index, value_index;
@@ -54,3 +56,5 @@ void d3d8_selector_probe_print_multiply_chain(
   fprintf(output, "],\"world_matrix_multiply_chain_truncated\":%s",
           evidence->world_matrix_multiply_chain_truncated ? "true" : "false");
 }
+
+} // namespace x2::d3d8
