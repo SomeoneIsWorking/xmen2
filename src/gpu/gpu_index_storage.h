@@ -8,19 +8,20 @@
  * region, so the earlier draws keep their bytes. Chunks are never cycled, so
  * a bind stays valid across uploads.
  */
-#ifndef GPU_INDEX_STORAGE_H
-#define GPU_INDEX_STORAGE_H
+#pragma once
 
 #ifdef X2_WITH_SDL
 #include "gpu_index_arena.h"
 
 #include <SDL3/SDL.h>
 
-typedef struct GpuIndexStorage {
+namespace x2::gpu {
+
+struct GpuIndexStorage {
   SDL_GPUBuffer *buffer; /* the chunk; not owned */
   GpuIndexRegion region;
   uint64_t drawn_epoch; /* the frame epoch that last drew it; 0 for none */
-} GpuIndexStorage;
+};
 
 /* Storage of at least `bytes` bytes; 0, reported, when there is none. */
 int gpu_index_storage_create(GpuIndexStorage *s, uint32_t bytes);
@@ -40,6 +41,6 @@ void gpu_index_storage_shutdown(SDL_GPUDevice *device);
 
 /* One report line: chunks, regions, relocations. */
 void gpu_index_storage_report(void);
-#endif
 
+} // namespace x2::gpu
 #endif

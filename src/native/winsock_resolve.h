@@ -1,5 +1,4 @@
-#ifndef X2_WINSOCK_RESOLVE_H
-#define X2_WINSOCK_RESOLVE_H
+#pragma once
 
 /*
  * gethostbyname as Windows answers it, over the host's resolver.
@@ -19,17 +18,20 @@
  * h_addr_list[0].
  */
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
-enum { WINSOCK_HOST_NAME_BYTES = 256, WINSOCK_HOST_ADDRESSES = 8 };
+namespace x2::native {
 
-typedef struct WinsockHost {
+inline constexpr int WINSOCK_HOST_NAME_BYTES = 256;
+inline constexpr int WINSOCK_HOST_ADDRESSES = 8;
+
+struct WinsockHost {
   char name[WINSOCK_HOST_NAME_BYTES];
   /* In network byte order, as a guest in_addr holds them. */
   uint32_t addresses[WINSOCK_HOST_ADDRESSES];
   unsigned count;
-} WinsockHost;
+};
 
 /* Returns 1 with *out filled, or 0 with *error set (WINSOCK_HOST_NOT_FOUND).
    May block on the host resolver. */
@@ -43,4 +45,4 @@ int winsock_host_name(char *out, size_t size);
    the count; 0 when no adapter has an address. */
 unsigned winsock_local_addresses(uint32_t *out, unsigned max);
 
-#endif /* X2_WINSOCK_RESOLVE_H */
+} // namespace x2::native

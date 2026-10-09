@@ -105,8 +105,8 @@ int ui_transform_current(uint32_t context, float mvp[16]) {
   }
   if (g_valid != 7u)
     return 0;
-  gpu_matrix_multiply(g_world, g_view, world_view);
-  gpu_matrix_multiply(world_view, g_projection, mvp);
+  x2::gpu::gpu_matrix_multiply(g_world, g_view, world_view);
+  x2::gpu::gpu_matrix_multiply(world_view, g_projection, mvp);
   g_published++;
   return 1;
 }

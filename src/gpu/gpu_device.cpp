@@ -387,7 +387,8 @@ void gpu_device_perf(unsigned long long *frame_ns,
                      unsigned long long *frame_ns_max,
                      unsigned long long *end_submits, unsigned long *intervals,
                      const unsigned long **hist) {
-  gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max, intervals, hist);
+  x2::gpu::gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max,
+                                 intervals, hist);
   *end_submits = g_frame_end_submits;
 }
 
@@ -395,7 +396,7 @@ void gpu_device_frame_percentiles(unsigned long long *p50_ns,
                                   unsigned long long *p95_ns,
                                   unsigned long long *p99_ns,
                                   unsigned long *samples) {
-  gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
+  x2::gpu::gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
 }
 
 /*
@@ -420,7 +421,7 @@ static void pass_begin(int reopen) {
     x2_log_error("gpu: SDL_BeginGPURenderPass failed: %s\n", SDL_GetError());
     return;
   }
-  gpu_pass_binds_reset(gpu_pass_binds());
+  x2::gpu::gpu_pass_binds_reset(x2::gpu::gpu_pass_binds());
   apply_viewport();
 }
 
@@ -455,7 +456,7 @@ int gpu_frame_begin(void) {
                              x2::gpu::gpu_headless_height());
     gpu_shadow_frame_begin();
     g_clear.mask = 0;
-    gpu_host_timer_frame_reset();
+    x2::gpu::gpu_host_timer_frame_reset();
     x2::gpu::gpu_headless_note_frame();
     return 1;
   }
@@ -485,7 +486,7 @@ int gpu_frame_begin(void) {
     unsigned long long t0 = gpu_perf_now_ns();
     acquired = SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
                                                      &g_output_w, &g_output_h);
-    gpu_frame_timing_note_swapchain_wait(gpu_perf_now_ns() - t0);
+    x2::gpu::gpu_frame_timing_note_swapchain_wait(gpu_perf_now_ns() - t0);
   }
   if (!acquired) {
     x2_log_error("gpu: acquiring the swapchain texture failed: %s\n",
@@ -519,7 +520,7 @@ int gpu_frame_begin(void) {
                                                g_output_h);
   gpu_shadow_frame_begin();
   g_clear.mask = 0;
-  gpu_host_timer_frame_reset();
+  x2::gpu::gpu_host_timer_frame_reset();
   return 1;
 #endif
 }
@@ -533,7 +534,7 @@ void gpu_frame_end(void) {
      buffers whose draws read it. See gpu_upload_batch.h. */
   gpu_upload_batch_flush(g_gpu);
   gpu_shadow_frame_submit();
-  gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
+  x2::gpu::gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
   /*
    * Open the pass even if nothing drew.
    *
@@ -712,8 +713,8 @@ void gpu_device_report(void) {
       "and reopened the pass\n",
       g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
       g_late_clears);
-  gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max, &intervals,
-                        &hist);
+  x2::gpu::gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max,
+                                 &intervals, &hist);
   if (frame_ns && intervals) {
     double avg_ms = (double)frame_ns * 1e-6 / (double)intervals;
     unsigned i;
@@ -723,7 +724,7 @@ void gpu_device_report(void) {
                 (double)frame_ns_max * 1e-6,
                 (unsigned long long)g_frame_end_submits);
     x2_log_info("        ");
-    for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
+    for (i = 0; i < x2::gpu::GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
       static const char *LBL[] = {
           "<1",    "1-2",   "2-4",   "4-6",    "6-10",    "10-16", "16-25",
           "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",

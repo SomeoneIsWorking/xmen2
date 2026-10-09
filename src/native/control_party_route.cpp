@@ -51,7 +51,7 @@ struct Reading {
 
 std::string json_text(const std::string &value) {
   std::vector<char> buffer(value.size() * 6u + 3u);
-  json_string_format(buffer.data(), buffer.size(), value.c_str());
+  x2::native::json_string_format(buffer.data(), buffer.size(), value.c_str());
   return buffer.data();
 }
 

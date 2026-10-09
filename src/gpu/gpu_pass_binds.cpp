@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 static GpuPassBinds g_binds;
 
 GpuPassBinds *gpu_pass_binds(void) { return &g_binds; }
@@ -65,3 +67,5 @@ int gpu_pass_binds_samplers_changed(GpuPassBinds *binds,
   binds->samplers = count;
   return 1;
 }
+
+} // namespace x2::gpu

@@ -8,6 +8,8 @@
 #include <string.h>
 #include <time.h>
 
+namespace x2::native {
+
 /* Cumulative, written by the dispatch path and only ever read as deltas. One
    word each per thunk, no smoothing: the tight loops a hotspot is made of are
    exactly what a smoothed counter loses. */
@@ -102,3 +104,5 @@ unsigned int x86_thunk_probe_top(X86ThunkProbe *probe, const char **mod,
   *by_time = timed;
   return n;
 }
+
+} // namespace x2::native

@@ -12,6 +12,8 @@
 #include <sys/stat.h>
 #include <time.h>
 
+namespace x2::input {
+
 #define KEYBOARD_BYTES 256u
 #define GAMEPAD_BYTES 272u
 #define GAMEPADS 4u
@@ -166,7 +168,7 @@ void input_record_gamepad(unsigned pad, const char *persistent_id,
   for (i = 0; i < 9u && (i + 1u) * 4u <= bytes; i++)
     memcpy(&values[i], joy + i * 4u, sizeof values[i]);
   record_prefix("gamepad", frame, guest_time_s);
-  if (!json_string_format(id_json, sizeof id_json, persistent_id))
+  if (!x2::native::json_string_format(id_json, sizeof id_json, persistent_id))
     return;
   fprintf(g_file, "\"device\":%u,\"persistent_id\":%s", pad, id_json);
   fputs(",\"axes\":[", g_file);
@@ -198,3 +200,5 @@ void input_record_report(void) {
   x2_log_error("  input record: %lu changed state(s) in %s\n", g_events,
                g_path);
 }
+
+} // namespace x2::input

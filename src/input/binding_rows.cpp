@@ -11,6 +11,8 @@
 
 #include <stddef.h>
 
+namespace x2::input {
+
 typedef struct {
   const char *storage_key;
   const char *display_label;
@@ -71,3 +73,5 @@ const char *input_binding_row_storage_key(uint32_t row) {
 const char *input_binding_row_display_label(uint32_t row) {
   return row < INPUT_BINDING_ROWS ? ROWS[row].display_label : NULL;
 }
+
+} // namespace x2::input

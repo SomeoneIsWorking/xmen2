@@ -142,7 +142,7 @@ void mix_frames(float *mix, int frames, int rate) {
   for (i = 0; i < g_nbuf; ++i)
     if (g_buf[i].used)
       advance_buffer(&g_buf[i], frames, rate, mix);
-  movie_audio_mix(mix, frames, rate);
+  x2::audio::movie_audio_mix(mix, frames, rate);
   if (mix) {
     for (i = 0; i < frames * 2; ++i) {
       if (mix[i] > 1.0f)

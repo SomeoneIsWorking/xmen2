@@ -14,7 +14,8 @@
 typedef struct {
   uint32_t kind, code;
 } Slot;
-static Slot slots[INPUT_CONTROLLERS][INPUT_BINDING_ROWS][INPUT_BINDING_SLOTS];
+static Slot slots[INPUT_CONTROLLERS][x2::input::INPUT_BINDING_ROWS]
+                 [INPUT_BINDING_SLOTS];
 static x2::config::Settings settings;
 static const char *pads[DINPUT_PAD_MAX];
 static int controller_slots[DINPUT_PAD_MAX] = {-1, -1, -1, -1, -1, -1, -1, -1};
@@ -45,9 +46,11 @@ int dinput_pad_for_persistent_id(const char *id) {
       return i;
   return -1;
 }
+namespace x2::native {
 int dinput8_controller_slot_for_host_pad(int pad) {
   return pad >= 0 && pad < DINPUT_PAD_MAX ? controller_slots[pad] : -1;
 }
+} // namespace x2::native
 int x2::input::transient_controller_has_assignment(unsigned player) {
   return player < INPUT_PLAYERS && transient_pad[player] != -2;
 }
@@ -108,7 +111,7 @@ int main(void) {
   unsigned char gamepad_state[80] = {0};
   unsigned player, row;
   for (player = 0; player < INPUT_PLAYERS; player++)
-    for (row = 0; row < INPUT_BINDING_ROWS; row++)
+    for (row = 0; row < x2::input::INPUT_BINDING_ROWS; row++)
       slots[player][row][0] = (Slot){1, 20u + row};
   for (player = 0; player < INPUT_PLAYERS; player++)
     slots[player][17][0] = (Slot){1, 0x01};

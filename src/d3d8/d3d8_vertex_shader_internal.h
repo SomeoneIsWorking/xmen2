@@ -130,5 +130,5 @@ struct D3D8VertexShader {
   /* The program packed for the GPU (d3d8_vs_gpu.cpp): 0 not yet, 1 packed,
      -1 it has no form the GPU runs and draws take the CPU executor. */
   int gpu_state;
-  GpuVsProgram gpu;
+  x2::gpu::GpuVsProgram gpu;
 };

@@ -15,10 +15,11 @@
  * repeats that in x87_real, which is exact where x87_exact_host() holds
  * (x87_exact.h).
  */
-#ifndef X2_IG_MATRIX_H
-#define X2_IG_MATRIX_H
+#pragma once
+
+namespace x2::native {
 
 /* `out` must not overlap `a` or `b`. */
 void ig_matrix44_multiply(float out[16], const float a[16], const float b[16]);
 
-#endif /* X2_IG_MATRIX_H */
+} // namespace x2::native

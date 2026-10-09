@@ -129,12 +129,12 @@ static int queue_movie_audio(void *userdata, const float *samples,
                              size_t frames, int sample_rate) {
   (void)userdata;
   (void)sample_rate;
-  return movie_audio_queue(samples, frames);
+  return x2::audio::movie_audio_queue(samples, frames);
 }
 
 static double queued_movie_audio(void *userdata) {
   (void)userdata;
-  return movie_audio_queued_seconds();
+  return x2::audio::movie_audio_queued_seconds();
 }
 
 static void close_native_movie(void) {
@@ -142,7 +142,7 @@ static void close_native_movie(void) {
   if (g_native_movie.player)
     x2::media::fmv_report(g_native_movie.player);
   x2::media::fmv_close(g_native_movie.player);
-  movie_audio_close();
+  x2::audio::movie_audio_close();
   memset(&g_native_movie, 0, sizeof(g_native_movie));
 }
 
@@ -191,8 +191,8 @@ static void x2_movie_load(CPU *C) {
     movie_return(C, 0, 1);
     return;
   }
-  dsound_movie_audio_begin();
-  if (!movie_audio_open(x2::media::fmv_sample_rate(player))) {
+  x2::native::dsound_movie_audio_begin();
+  if (!x2::audio::movie_audio_open(x2::media::fmv_sample_rate(player))) {
     x2_log_error("movie: cannot allocate the SFD audio queue\n");
     x2::media::fmv_close(player);
     movie_return(C, 0, 1);
@@ -204,7 +204,7 @@ static void x2_movie_load(CPU *C) {
     x2_log_error("movie: SFD '%s' produced no decodable video frame\n",
                  guest_path);
     x2::media::fmv_close(player);
-    movie_audio_close();
+    x2::audio::movie_audio_close();
     x2::media::fmv_probe_end();
     movie_return(C, 0, 1);
     return;
@@ -251,7 +251,7 @@ static void x2_movie_play(CPU *C) {
   }
   WR32(info + INFO_STATE, 0u);
   x2::media::fmv_play(player);
-  movie_audio_play();
+  x2::audio::movie_audio_play();
   movie_return(C, 1, 1);
 }
 
@@ -271,7 +271,7 @@ static void x2_movie_pause(CPU *C) {
   }
   WR32(info + INFO_STATE, state);
   x2::media::fmv_pause(player, state != 0u);
-  movie_audio_pause(state != 0u);
+  x2::audio::movie_audio_pause(state != 0u);
   movie_return(C, 1, 2);
 }
 
@@ -313,8 +313,9 @@ static void x2_movie_next_frame(CPU *C) {
     movie_return(C, 0, 1);
     return;
   }
-  dsound_movie_audio_tick();
-  changed = x2::media::fmv_update(player, movie_audio_played_seconds());
+  x2::native::dsound_movie_audio_tick();
+  changed =
+      x2::media::fmv_update(player, x2::audio::movie_audio_played_seconds());
   if (changed >= 0 && g_native_movie.needs_copy)
     changed = 1;
   if (changed > 0) {

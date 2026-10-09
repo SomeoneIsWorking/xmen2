@@ -42,7 +42,8 @@ int d3d8_vs_execute(uint32_t handle,
  * per shader. `input_end` receives the furthest byte an input reads, which a
  * draw's stride must cover.
  */
-const GpuVsProgram *d3d8_vs_gpu_program(uint32_t handle, uint32_t *input_end);
+const x2::gpu::GpuVsProgram *d3d8_vs_gpu_program(uint32_t handle,
+                                                 uint32_t *input_end);
 
 void d3d8_vs_report(void);
 /* Programmable draws on the heartbeat, with their deltas, zeros included:

@@ -32,14 +32,14 @@ using net::presence::Endpoint;
 std::optional<Endpoint> endpoint_of(uint32_t socket) {
   sockaddr_in bound{};
   uint32_t error = 0u;
-  if (!winsock_getsockname(socket, &bound, &error)) {
+  if (!x2::native::winsock_getsockname(socket, &bound, &error)) {
     x2_log_error("lan natneg: socket %u has no name (WSA error %u)", socket,
                  error);
     return std::nullopt;
   }
   uint32_t address = bound.sin_addr.s_addr;
   if (address == htonl(INADDR_ANY) &&
-      winsock_local_addresses(&address, 1u) == 0u) {
+      x2::native::winsock_local_addresses(&address, 1u) == 0u) {
     x2_log_error("lan natneg: this machine has no LAN address to offer");
     return std::nullopt;
   }
@@ -130,7 +130,7 @@ void NatNegotiation::complete(
                 outcome.cookie,
                 net::presence::RendezvousTable::kPartnerSeconds);
   }
-  winsock_sockaddr_from_host(&partner, sockaddr.bytes());
+  x2::native::winsock_sockaddr_from_host(&partner, sockaddr.bytes());
   guest::GuestCall(cpu).cdecl_call(
       side.completed, {outcome.partner ? kSuccess : kDeadbeatPartner,
                        side.socket, sockaddr.address(), side.userdata});

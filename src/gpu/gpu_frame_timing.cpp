@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::gpu {
+
 /* Present-to-present frame timing: the accumulator behind gpu_device_perf.
    The state lives here rather than in gpu_device.cpp so the frame-end path
    composes the measurement instead of growing the device file around it. */
@@ -202,3 +204,5 @@ void gpu_frame_timing_window_percentiles(unsigned long long *p50_ns,
   newest_percentiles(g_window_count, p50_ns, p95_ns, p99_ns);
   g_window_count = 0;
 }
+
+} // namespace x2::gpu

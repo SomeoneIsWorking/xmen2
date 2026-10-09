@@ -1038,7 +1038,7 @@ int x86_native_thunk_call(uint32_t addr, CPU *C) {
       g_host_import_ns += excl;
     }
     g_cb_ctx = save;
-    x86_thunk_probe_note(i, excl);
+    x2::native::x86_thunk_probe_note(i, excl);
   }
   ring_note(g_thunk[i].sym, addr, 0, in, C->reg[kX86pEsp], 0);
   /* Imports are recorded TOO. A hand-written stub has to pop its own

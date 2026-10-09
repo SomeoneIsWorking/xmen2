@@ -13,12 +13,14 @@
  * a name per ring entry against 16k functions took minutes, long enough that
  * the timeout killed the process during its own clean shutdown.
  */
+#include "../d3d8/d3d8_host.h"
 #include "../input/touch_runtime.h"
 #include "alchemy_controller_bridge.h"
 #include "boot_blackout.h"
 #include "dialog_prompts.h"
 #include "dialog_selection_scale.h"
 #include "dinput_pad_report.h"
+#include "dsound.h"
 #include "gpu_prompt_glyphs.h"
 #include "guest_layout_report.h"
 #include "heartbeat.h"
@@ -46,12 +48,10 @@
 #include <stdio.h>
 
 extern void x2_texture_probe_report(void);
-extern void d3d8_host_report(void);
 extern void guest_heap_report(void);
 extern void guest_thread_report(void);
 extern void k32_critsec_report(void);
 extern void dinput_device_report(void);
-extern void dsound_report(void);
 extern void k32_asset_report(void), ws2_report(void);
 extern void conversation_report(void);
 extern void x86_profiler_report(void);
@@ -77,7 +77,7 @@ void interrupt_reports(int killed) {
   }
   engine_report();
   x86_override_leaves_report();
-  d3d8_host_report();
+  x2::d3d8::d3d8_host_report();
   guest_heap_report();
   guest_layout_report();
   /* The threads and their critical sections are reported on EVERY ending,
@@ -99,7 +99,7 @@ void interrupt_reports(int killed) {
   dinput_pad_report();
   x2::native::stick_axis_report();
   x2::input::alchemy_controller_report();
-  input_record_report();
+  x2::input::input_record_report();
   live_session_stop();
   pad_glyphs_report();
   dialog_prompts_report();

@@ -219,7 +219,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
         x2_log_error("kernel32: VirtualAlloc could not place %u "
                      "bytes at 0x%08x: %s\n",
                      size, base, strerror(errno));
-      k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
+      x2::native::k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
       ret_std(C, 0, 4);
       return;
     }
@@ -246,7 +246,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
                      "physical memory\n",
                      g_reserved_bytes / 1048576.0, X2_PHYS_BYTES / 1048576.0);
       guest_memory_release(base, len);
-      k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
+      x2::native::k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
       ret_std(C, 0, 4);
       return;
     }
@@ -280,7 +280,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
     uint32_t len = (size + 0xFFFu) & ~0xFFFu;
     int tries;
     if (!len) {
-      k32_set_last_error(87u);
+      x2::native::k32_set_last_error(87u);
       ret_std(C, 0, 4);
       return;
     }
@@ -317,7 +317,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
                  "window is the only 32-bit space not already holding a "
                  "module or the runtime arena.\n",
                  len, RES_LO, RES_HI);
-    k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
+    x2::native::k32_set_last_error(8u); /* ERROR_NOT_ENOUGH_MEMORY */
     ret_std(C, 0, 4);
     return;
   }
@@ -350,7 +350,7 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
     /* Win32 fails this too, but quietly: freeing NULL is an ordinary no-op
        in cleanup code and does not deserve a report that reads like a
        defect. */
-    k32_set_last_error(487u);
+    x2::native::k32_set_last_error(487u);
     ret_std(C, 0, 3);
     return;
   }
@@ -362,7 +362,7 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
                    "Win32 requires 0 and releases the whole "
                    "reservation\n",
                    size);
-      k32_set_last_error(87u);
+      x2::native::k32_set_last_error(87u);
       ret_std(C, 0, 3);
       return;
     }
@@ -378,7 +378,7 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
                  "this host never reserved -- refusing rather than "
                  "unmapping something it does not own\n",
                  addr);
-    k32_set_last_error(487u); /* ERROR_INVALID_ADDRESS */
+    x2::native::k32_set_last_error(487u); /* ERROR_INVALID_ADDRESS */
     ret_std(C, 0, 3);
     return;
   }
@@ -400,7 +400,7 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
   x2_log_error("kernel32: VirtualFree(0x%08x) with type 0x%x, which is "
                "neither MEM_DECOMMIT nor MEM_RELEASE\n",
                addr, type);
-  k32_set_last_error(87u);
+  x2::native::k32_set_last_error(87u);
   ret_std(C, 0, 3);
 }
 

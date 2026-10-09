@@ -153,7 +153,7 @@ static uint32_t name_buffer(void) {
 static int host_pad_for_kind(uint32_t kind) {
   if (kind < 3u || kind > 0xcu)
     return -1;
-  return dinput8_controller_host_pad_for_slot((int)kind - 3);
+  return x2::native::dinput8_controller_host_pad_for_slot((int)kind - 3);
 }
 
 void x2_override_006281f0(CPU *C) {
@@ -220,7 +220,8 @@ void x2_override_006294b0(CPU *C) {
   uint32_t kind, code;
 
   g_rows_asked++;
-  if (!x2::native::prompt_glyphs_enabled() || row >= INPUT_BINDING_ROWS ||
+  if (!x2::native::prompt_glyphs_enabled() ||
+      row >= x2::input::INPUT_BINDING_ROWS ||
       !row_pad_binding(object, row, &kind, &code)) {
     g_rows_no_pad++;
     x86_guest_body(C, "XMen2.exe", 0x006294b0u);

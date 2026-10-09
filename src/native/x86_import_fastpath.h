@@ -1,11 +1,12 @@
-#ifndef X2_X86_IMPORT_FASTPATH_H
-#define X2_X86_IMPORT_FASTPATH_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
 
-typedef int (*X86ImportFastpathHandler)(struct X86pCpu *cpu);
+namespace x2::native {
+
+using X86ImportFastpathHandler = int (*)(struct X86pCpu *cpu);
 
 /*
  * Fast-path dispatch for eligible native imports called from the JIT.
@@ -39,4 +40,4 @@ int x86_import_fastpath_register_at(uint32_t addr,
    guest code or releases the guest lock. 0 while the fast path is disabled. */
 int x86_import_fastpath_leaf_safe(uint32_t addr);
 
-#endif /* X2_X86_IMPORT_FASTPATH_H */
+} // namespace x2::native

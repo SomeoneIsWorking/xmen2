@@ -10,45 +10,46 @@
 
 #include <lucent/log_c.h>
 
-static_assert(D3D8_MAX_VS_CONSTANTS == GPU_VS_CONSTANTS,
+static_assert(D3D8_MAX_VS_CONSTANTS == x2::gpu::GPU_VS_CONSTANTS,
               "the GPU program reads the device's whole constant file");
-static_assert(x2::d3d8::VS_MAX_INSTRUCTIONS == GPU_VS_MAX_INSTRUCTIONS,
+static_assert(x2::d3d8::VS_MAX_INSTRUCTIONS == x2::gpu::GPU_VS_MAX_INSTRUCTIONS,
               "the GPU program holds every instruction VS 1.1 allows");
-static_assert((int)x2::d3d8::VS_FILE_CONST == (int)GPU_VS_REG_CONST &&
-                  (int)x2::d3d8::VS_FILE_ADDR == (int)GPU_VS_REG_ADDR &&
-                  (int)x2::d3d8::VS_OUT_POS == (int)GPU_VS_REG_OUT_POS &&
-                  (int)x2::d3d8::VS_OUT_D0 == (int)GPU_VS_REG_OUT_D0 &&
-                  (int)x2::d3d8::VS_OUT_T0 == (int)GPU_VS_REG_OUT_T0 &&
-                  (int)x2::d3d8::VS_FILE_INPUT == (int)GPU_VS_REG_INPUT,
-              "the decoder and the GPU program name one flat register file");
-static_assert((int)x2::d3d8::VS_OP_MOV == (int)GPU_VS_OP_MOV &&
-                  (int)x2::d3d8::VS_OP_ADD == (int)GPU_VS_OP_ADD &&
-                  (int)x2::d3d8::VS_OP_SUB == (int)GPU_VS_OP_SUB &&
-                  (int)x2::d3d8::VS_OP_MAD == (int)GPU_VS_OP_MAD &&
-                  (int)x2::d3d8::VS_OP_MUL == (int)GPU_VS_OP_MUL &&
-                  (int)x2::d3d8::VS_OP_DP3 == (int)GPU_VS_OP_DP3 &&
-                  (int)x2::d3d8::VS_OP_DP4 == (int)GPU_VS_OP_DP4,
+static_assert(
+    (int)x2::d3d8::VS_FILE_CONST == (int)x2::gpu::GPU_VS_REG_CONST &&
+        (int)x2::d3d8::VS_FILE_ADDR == (int)x2::gpu::GPU_VS_REG_ADDR &&
+        (int)x2::d3d8::VS_OUT_POS == (int)x2::gpu::GPU_VS_REG_OUT_POS &&
+        (int)x2::d3d8::VS_OUT_D0 == (int)x2::gpu::GPU_VS_REG_OUT_D0 &&
+        (int)x2::d3d8::VS_OUT_T0 == (int)x2::gpu::GPU_VS_REG_OUT_T0 &&
+        (int)x2::d3d8::VS_FILE_INPUT == (int)x2::gpu::GPU_VS_REG_INPUT,
+    "the decoder and the GPU program name one flat register file");
+static_assert((int)x2::d3d8::VS_OP_MOV == (int)x2::gpu::GPU_VS_OP_MOV &&
+                  (int)x2::d3d8::VS_OP_ADD == (int)x2::gpu::GPU_VS_OP_ADD &&
+                  (int)x2::d3d8::VS_OP_SUB == (int)x2::gpu::GPU_VS_OP_SUB &&
+                  (int)x2::d3d8::VS_OP_MAD == (int)x2::gpu::GPU_VS_OP_MAD &&
+                  (int)x2::d3d8::VS_OP_MUL == (int)x2::gpu::GPU_VS_OP_MUL &&
+                  (int)x2::d3d8::VS_OP_DP3 == (int)x2::gpu::GPU_VS_OP_DP3 &&
+                  (int)x2::d3d8::VS_OP_DP4 == (int)x2::gpu::GPU_VS_OP_DP4,
               "the GPU program runs every opcode the decoder accepts");
 
 namespace {
 
 /* D3DVSDT_* -> the GPU's input type; ABSENT for one the GPU cannot fetch. */
-GpuVsInputType input_type(unsigned d3d_type) {
+x2::gpu::GpuVsInputType input_type(unsigned d3d_type) {
   switch (d3d_type) {
   case 0:
-    return GPU_VS_INPUT_FLOAT1;
+    return x2::gpu::GPU_VS_INPUT_FLOAT1;
   case 1:
-    return GPU_VS_INPUT_FLOAT2;
+    return x2::gpu::GPU_VS_INPUT_FLOAT2;
   case 2:
-    return GPU_VS_INPUT_FLOAT3;
+    return x2::gpu::GPU_VS_INPUT_FLOAT3;
   case 3:
-    return GPU_VS_INPUT_FLOAT4;
+    return x2::gpu::GPU_VS_INPUT_FLOAT4;
   case 4:
-    return GPU_VS_INPUT_D3DCOLOR;
+    return x2::gpu::GPU_VS_INPUT_D3DCOLOR;
   case 5:
-    return GPU_VS_INPUT_UBYTE4;
+    return x2::gpu::GPU_VS_INPUT_UBYTE4;
   default: /* SHORT2 and SHORT4: no float format keeps -32768 exact */
-    return GPU_VS_INPUT_ABSENT;
+    return x2::gpu::GPU_VS_INPUT_ABSENT;
   }
 }
 
@@ -57,27 +58,28 @@ uint32_t source_word(const x2::d3d8::D3D8VSSource &src) {
   for (unsigned c = 0; c < 4; ++c) {
     swizzle |= (uint32_t)(src.swizzle[c] & 3u) << (2u * c);
   }
-  return (uint32_t)src.reg | swizzle << GPU_VS_SOURCE_SWIZZLE_SHIFT |
-         (src.negate ? (uint32_t)GPU_VS_SOURCE_NEGATE : 0u) |
-         (src.relative ? (uint32_t)GPU_VS_SOURCE_RELATIVE : 0u);
+  return (uint32_t)src.reg | swizzle << x2::gpu::GPU_VS_SOURCE_SWIZZLE_SHIFT |
+         (src.negate ? (uint32_t)x2::gpu::GPU_VS_SOURCE_NEGATE : 0u) |
+         (src.relative ? (uint32_t)x2::gpu::GPU_VS_SOURCE_RELATIVE : 0u);
 }
 
 /* Pack `p` into `out`; 0, having said why, for a program the GPU cannot run. */
-int pack(uint32_t handle, const x2::d3d8::D3D8VSProgram &p, GpuVsProgram *out) {
-  for (unsigned i = GPU_VS_INPUTS; i < x2::d3d8::VS_INPUTS; ++i) {
+int pack(uint32_t handle, const x2::d3d8::D3D8VSProgram &p,
+         x2::gpu::GpuVsProgram *out) {
+  for (unsigned i = x2::gpu::GPU_VS_INPUTS; i < x2::d3d8::VS_INPUTS; ++i) {
     if (p.input[i].present) {
       lucent_log_info("d3d8",
                       "VS 0x%08x declares input v%u; the GPU program "
                       "has %u, so its draws run on the CPU executor",
-                      handle, i, (unsigned)GPU_VS_INPUTS);
+                      handle, i, (unsigned)x2::gpu::GPU_VS_INPUTS);
       return 0;
     }
   }
-  for (unsigned i = 0; i < GPU_VS_INPUTS; ++i) {
+  for (unsigned i = 0; i < x2::gpu::GPU_VS_INPUTS; ++i) {
     const x2::d3d8::D3D8VSInput &in = p.input[i];
-    const GpuVsInputType type =
-        in.present ? input_type(in.type) : GPU_VS_INPUT_ABSENT;
-    if (in.present && type == GPU_VS_INPUT_ABSENT) {
+    const x2::gpu::GpuVsInputType type =
+        in.present ? input_type(in.type) : x2::gpu::GPU_VS_INPUT_ABSENT;
+    if (in.present && type == x2::gpu::GPU_VS_INPUT_ABSENT) {
       lucent_log_info("d3d8",
                       "VS 0x%08x input v%u has type %u, which the GPU "
                       "program cannot fetch, so its draws run on the CPU "
@@ -85,7 +87,7 @@ int pack(uint32_t handle, const x2::d3d8::D3D8VSProgram &p, GpuVsProgram *out) {
                       handle, i, (unsigned)in.type);
       return 0;
     }
-    gpu_vs_program_set_input(out, i, type, in.offset);
+    x2::gpu::gpu_vs_program_set_input(out, i, type, in.offset);
   }
   for (unsigned k = 0; k < p.count; ++k) {
     const x2::d3d8::D3D8VSInstruction &insn = p.insn[k];
@@ -104,7 +106,8 @@ int pack(uint32_t handle, const x2::d3d8::D3D8VSProgram &p, GpuVsProgram *out) {
 
 } // namespace
 
-const GpuVsProgram *d3d8_vs_gpu_program(uint32_t handle, uint32_t *input_end) {
+const x2::gpu::GpuVsProgram *d3d8_vs_gpu_program(uint32_t handle,
+                                                 uint32_t *input_end) {
   D3D8VertexShader *s = d3d8_vs_get(handle, "draw");
   const x2::d3d8::D3D8VSProgram *p;
   if (!s || !(p = x2::d3d8::d3d8_vs_program(s))) {

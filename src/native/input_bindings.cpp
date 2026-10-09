@@ -93,7 +93,8 @@ static uint32_t slot_addr(uint32_t object, uint32_t row, uint32_t slot) {
 int input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
                         uint32_t *kind, uint32_t *code) {
   uint32_t a;
-  if (!object || row >= INPUT_BINDING_ROWS || slot >= INPUT_BINDING_SLOTS)
+  if (!object || row >= x2::input::INPUT_BINDING_ROWS ||
+      slot >= INPUT_BINDING_SLOTS)
     return 0;
   a = slot_addr(object, row, slot);
   return guest_memory_try_read32(a + 4u, kind) &&

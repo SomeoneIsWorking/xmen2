@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::gpu {
+
 /* Class k holds regions of kGpuIndexArenaMinRegion << k bytes; the largest
    is 2 GiB, past any buffer SDL_GPU would create. */
 enum { kClasses = 24 };
@@ -198,3 +200,5 @@ void gpu_index_arena_stats(const GpuIndexArena *a, GpuIndexArenaStats *out) {
   }
   *out = a->stats;
 }
+
+} // namespace x2::gpu

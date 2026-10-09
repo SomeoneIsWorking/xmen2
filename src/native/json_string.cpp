@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+namespace x2::native {
+
 static int append(char *out, size_t capacity, size_t *used, const char *text,
                   size_t bytes) {
   size_t i;
@@ -36,3 +38,5 @@ int json_string_format(char *out, size_t capacity, const char *value) {
   }
   return append(out, capacity, &used, "\"", 1u);
 }
+
+} // namespace x2::native

@@ -73,7 +73,7 @@ static int dispatch_thunk(X86pCpu *cpu) {
 }
 
 static int fastpath_thunk_leaf(X86pCpu *cpu) {
-  return run_thunk(cpu, x86_import_fastpath_dispatch);
+  return run_thunk(cpu, x2::native::x86_import_fastpath_dispatch);
 }
 
 static int thunk_leaf(X86pCpu *cpu) { return run_thunk(cpu, dispatch_thunk); }
@@ -81,7 +81,7 @@ static int thunk_leaf(X86pCpu *cpu) { return run_thunk(cpu, dispatch_thunk); }
 /* The leaf for bound thunk `thunk`, or NULL when its dispatch is not
    leaf-safe. */
 static X86pJitLeafFn thunk_leaf_for(uint32_t thunk) {
-  if (x86_import_fastpath_leaf_safe(thunk)) {
+  if (x2::native::x86_import_fastpath_leaf_safe(thunk)) {
     return fastpath_thunk_leaf;
   }
   return g_thunk_leaf[(thunk - THUNK_BASE) >> 4] ? thunk_leaf : NULL;

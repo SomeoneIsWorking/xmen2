@@ -12,6 +12,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+namespace x2::native {
+
 #define EXE_PREFERRED 0x00400000u
 #define EXE_RVA(va) ((uint32_t)(va) - EXE_PREFERRED)
 #define CONV_SINGLETON_RVA EXE_RVA(0x00717aacu)
@@ -109,3 +111,5 @@ int conversation_player_selection(struct X86pCpu *cpu,
     (void)guest_memory_try_read32(vtable, &out->line_presenter);
   return 1;
 }
+
+} // namespace x2::native

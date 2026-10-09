@@ -1,8 +1,9 @@
-#ifndef X2_INPUT_RECORD_H
-#define X2_INPUT_RECORD_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+
+namespace x2::input {
 
 /*
  * Record the device snapshots DirectInput actually returned to the game.
@@ -31,4 +32,4 @@ const char *input_record_path(void);
 unsigned long input_record_event_count(void);
 void input_record_report(void);
 
-#endif /* X2_INPUT_RECORD_H */
+} // namespace x2::input

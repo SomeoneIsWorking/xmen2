@@ -19,6 +19,8 @@
 #endif
 #endif
 
+namespace x2::native {
+
 namespace {
 
 enum { LOOPBACK_NET = 0x7f000000u };
@@ -198,3 +200,5 @@ int winsock_resolve(const char *name, WinsockHost *out, uint32_t *error) {
   strcpy(out->name, name);
   return 1;
 }
+
+} // namespace x2::native

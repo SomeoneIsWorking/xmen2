@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 #define D3DRTYPE_SURFACE 1
 
 #define NKIND 5
@@ -343,3 +345,5 @@ void d3d8_surface_report(void) {
       x2_log_info("  %d %s", g_count[i], KIND[i]);
   x2_log_info("\n");
 }
+
+} // namespace x2::d3d8

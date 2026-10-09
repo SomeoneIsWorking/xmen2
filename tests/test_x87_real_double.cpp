@@ -25,11 +25,11 @@
 #include <string.h>
 
 /* The double build's names (CMakeLists.txt, x2_x87_double_math). */
+namespace x2::native {
 void double_ig_matrix44_multiply(float out[16], const float a[16],
                                  const float b[16]);
 IgInvertVerdict double_ig_matrix44_invert(float out[16], const float m[16],
                                           uint16_t *compare_codes);
-namespace x2::native {
 void double_box_cull_corners(float out[BOX_CULL_CORNER_FLOATS],
                              const float min[3], const float extent[3],
                              const float matrix[16], float zero);
@@ -107,8 +107,8 @@ static void test_multiply(void) {
     float approximate[16];
     random_matrix(a);
     random_matrix(b);
-    ig_matrix44_multiply(exact, a, b);
-    double_ig_matrix44_multiply(approximate, a, b);
+    x2::native::ig_matrix44_multiply(exact, a, b);
+    x2::native::double_ig_matrix44_multiply(approximate, a, b);
     for (unsigned i = 0; i < 16u; i++) {
       const uint32_t d = ulps(exact[i], approximate[i]);
       differ += d != 0u;
@@ -132,11 +132,13 @@ static void test_invert(void) {
     uint16_t exact_codes = 0;
     uint16_t approximate_codes = 0;
     random_matrix(m);
-    const IgInvertVerdict e = ig_matrix44_invert(exact, m, &exact_codes);
-    const IgInvertVerdict a =
-        double_ig_matrix44_invert(approximate, m, &approximate_codes);
+    const x2::native::IgInvertVerdict e =
+        x2::native::ig_matrix44_invert(exact, m, &exact_codes);
+    const x2::native::IgInvertVerdict a = x2::native::double_ig_matrix44_invert(
+        approximate, m, &approximate_codes);
     verdicts += e != a || exact_codes != approximate_codes;
-    if (e != kIgInvertInverted || a != kIgInvertInverted) {
+    if (e != x2::native::kIgInvertInverted ||
+        a != x2::native::kIgInvertInverted) {
       continue;
     }
     inverted++;
@@ -153,8 +155,8 @@ static void test_invert(void) {
          "verdict(s) differ\n",
          inverted, differ, worst, verdicts);
   check(inverted > CASES / 2u && worst <= X2_INVERT_ULPS && !verdicts &&
-            double_ig_matrix44_invert(out, singular, &codes) ==
-                kIgInvertSingular,
+            x2::native::double_ig_matrix44_invert(out, singular, &codes) ==
+                x2::native::kIgInvertSingular,
         "an inverse is within a few ulps of exact, singular or not alike");
 }
 

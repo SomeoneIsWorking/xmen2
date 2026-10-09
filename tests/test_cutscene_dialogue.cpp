@@ -65,7 +65,8 @@ static void fail(const char *message) {
 
 X86Module *x86_modules(void) { return &module; }
 
-int conversation_player_selection(CPU *cpu, ConversationPlayerSelection *out) {
+int x2::native::conversation_player_selection(
+    CPU *cpu, x2::native::ConversationPlayerSelection *out) {
   (void)cpu;
   out->manager = MANAGER;
   out->choose_response = FN_CHOOSE_RESPONSE;

@@ -191,8 +191,9 @@ void player_input_sync(CPU *cpu) {
   resolve_pads(settings, pad);
   for (player = 0; player < INPUT_PLAYERS; player++) {
     controller_slot[player] =
-        pad[player] < 0 ? -1
-                        : dinput8_controller_slot_for_host_pad(pad[player]);
+        pad[player] < 0
+            ? -1
+            : x2::native::dinput8_controller_slot_for_host_pad(pad[player]);
     keyboard[player] = settings_player_keyboard(settings, player);
     if (player > 0u && x2::input::transient_controller_has_assignment(player))
       keyboard[player] = -1;

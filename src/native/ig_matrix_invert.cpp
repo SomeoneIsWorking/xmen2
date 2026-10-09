@@ -11,6 +11,8 @@
 #include <float.h>
 #include <math.h>
 
+namespace x2::native {
+
 typedef x87_real X87;
 
 /* libIGMath 0x1001b5e0, igMatrix44f::adjoint(const igMatrix44f &m,
@@ -152,3 +154,5 @@ IgInvertVerdict ig_matrix44_invert(float out[16], const float m[16],
   }
   return kIgInvertInverted;
 }
+
+} // namespace x2::native

@@ -29,6 +29,8 @@
 
 uint32_t k32_tls_get_value(uint32_t index);
 
+namespace x2::native {
+
 static X86ImportFastpathHandler s_import_handlers[THUNK_MAX];
 /* Handlers that may also run as JIT leaves (override_leaf.h): they touch only
    the CPU, guest memory and host state that runs no guest code. */
@@ -237,3 +239,5 @@ int x86_import_fastpath_dispatch(struct X86pCpu *cpu) {
   }
   return 0;
 }
+
+} // namespace x2::native

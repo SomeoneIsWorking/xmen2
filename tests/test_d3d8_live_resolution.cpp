@@ -40,9 +40,10 @@ void gpu_frame_viewport(int x, int y, int width, int height, float minz,
   viewport_height = height;
 }
 
-static D3D8Surface surface(D3D8SurfaceKind kind, uint32_t width,
-                           uint32_t height, uint32_t bpp) {
-  D3D8Surface out;
+static x2::d3d8::D3D8Surface surface(x2::d3d8::D3D8SurfaceKind kind,
+                                     uint32_t width, uint32_t height,
+                                     uint32_t bpp) {
+  x2::d3d8::D3D8Surface out;
   memset(&out, 0, sizeof out);
   out.kind = kind;
   out.width = width;
@@ -55,8 +56,10 @@ static D3D8Surface surface(D3D8SurfaceKind kind, uint32_t width,
 
 int main(void) {
   D3DPRESENT_PARAMETERS parameters;
-  D3D8Surface backbuffer = surface(D3D8_SURF_BACKBUFFER, 1280, 720, 4);
-  D3D8Surface depth = surface(D3D8_SURF_DEPTHSTENCIL, 1280, 720, 2);
+  x2::d3d8::D3D8Surface backbuffer =
+      surface(x2::d3d8::D3D8_SURF_BACKBUFFER, 1280, 720, 4);
+  x2::d3d8::D3D8Surface depth =
+      surface(x2::d3d8::D3D8_SURF_DEPTHSTENCIL, 1280, 720, 2);
   D3D8State state;
   char why[256];
 

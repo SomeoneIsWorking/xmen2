@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 static GpuIndexArena *g_arena;
 static SDL_GPUBuffer *g_chunk[kGpuIndexArenaMaxChunks];
 static unsigned long g_relocations;
@@ -95,4 +97,6 @@ void gpu_index_storage_report(void) {
               (unsigned long long)st.allocs, (unsigned long long)st.reused,
               g_relocations, (unsigned long long)st.waiting);
 }
+
+} // namespace x2::gpu
 #endif

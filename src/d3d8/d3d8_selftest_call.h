@@ -1,9 +1,10 @@
-#ifndef D3D8_SELFTEST_CALL_H
-#define D3D8_SELFTEST_CALL_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "d3d8_com.h"
+
+namespace x2::d3d8 {
 
 /* Call vtable slot `slot` of `object` the way guest code does, returning EAX.
    The selftests drive the COM layer through this rather than through the
@@ -11,4 +12,4 @@
 uint32_t d3d8_selftest_call(D3D8Object *object, int slot, const uint32_t *args,
                             int nargs);
 
-#endif /* D3D8_SELFTEST_CALL_H */
+} // namespace x2::d3d8

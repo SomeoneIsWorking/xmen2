@@ -30,11 +30,12 @@
  * shape decides the width of the configured resolution, and that is published
  * to the game (display_mode_seed.cpp) before any window exists.
  */
-#ifndef X2_SDL_HOST_SETUP_H
-#define X2_SDL_HOST_SETUP_H
+#pragma once
+
+namespace x2::native {
 
 /* Returns 1, or 0 having logged why SDL refused. A build without SDL has
    nothing to configure. */
 int sdl_host_setup(int window);
 
-#endif /* X2_SDL_HOST_SETUP_H */
+} // namespace x2::native

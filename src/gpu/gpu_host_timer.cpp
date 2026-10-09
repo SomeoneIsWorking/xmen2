@@ -4,6 +4,8 @@
 
 #include <lucent/cvar_c.h>
 
+namespace x2::gpu {
+
 /* -1 until the cvar has been read: a frame can be set up before the runtime
    configuration is, and reading it once keeps the draw path to a load. */
 static int g_armed = -1;
@@ -46,3 +48,5 @@ void gpu_host_timer_frame_reset(void) {
 }
 
 GpuHostTimes gpu_host_timer_frame(void) { return g_frame; }
+
+} // namespace x2::gpu

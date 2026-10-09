@@ -47,7 +47,7 @@ static const uint32_t ATLAS_TILES = 2;
 static const float SHADOW_DARKNESS = 0.55f;
 
 /* What the shadow pass has bound; see gpu_pass_binds.h. */
-static GpuPassBinds g_binds;
+static x2::gpu::GpuPassBinds g_binds;
 
 static const x2::gpu::GpuShaderWord shadow_depth_vert_code[] =
 #include "shaders/shadow_depth_vert.inc"
@@ -67,7 +67,7 @@ typedef struct {
   int primitive;
   int cull;
   int vs_program; /* the caster's VS 1.1 program runs here too */
-  GpuVsInputLayout vs_inputs;
+  x2::gpu::GpuVsInputLayout vs_inputs;
 } ShadowPipeKey;
 
 typedef struct {
@@ -236,7 +236,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   ShadowPipeKey key;
   SDL_GPUGraphicsPipelineCreateInfo info;
   SDL_GPUVertexBufferDescription vertex_buffer;
-  SDL_GPUVertexAttribute attributes[GPU_VS_INPUTS];
+  SDL_GPUVertexAttribute attributes[x2::gpu::GPU_VS_INPUTS];
   unsigned i, count;
   memset(&key, 0, sizeof key);
   key.stride = draw->vertex_stride;
@@ -265,8 +265,8 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   if (draw->vs_program) {
     if (!vs11_shader_ready())
       return NULL;
-    gpu_vs_program_attributes(&draw->vs_program->inputs, attributes);
-    count = GPU_VS_INPUTS;
+    x2::gpu::gpu_vs_program_attributes(&draw->vs_program->inputs, attributes);
+    count = x2::gpu::GPU_VS_INPUTS;
   } else {
     count = fixed_attributes(draw, attributes);
   }
@@ -329,7 +329,7 @@ static int begin_pass(void) {
   depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
   depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
   g_shadow_pass = SDL_BeginGPURenderPass(g_shadow_command, NULL, 0, &depth);
-  gpu_pass_binds_reset(&g_binds);
+  x2::gpu::gpu_pass_binds_reset(&g_binds);
   return g_shadow_pass != NULL;
 }
 
@@ -411,20 +411,21 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
     g_resource_failures++;
     return;
   }
-  if (gpu_pass_binds_pipeline_changed(&g_binds, pipeline))
+  if (x2::gpu::gpu_pass_binds_pipeline_changed(&g_binds, pipeline))
     SDL_BindGPUGraphicsPipeline(g_shadow_pass, pipeline);
   memset(&binding, 0, sizeof binding);
   binding.buffer = vertices;
-  if (gpu_pass_binds_vertex_changed(&g_binds, vertices, vertex_serial))
+  if (x2::gpu::gpu_pass_binds_vertex_changed(&g_binds, vertices, vertex_serial))
     SDL_BindGPUVertexBuffers(g_shadow_pass, 0, &binding, 1);
   if (draw->vs_program)
-    gpu_vs_program_push(g_shadow_command, draw->vs_program, draw->vs_constants);
+    x2::gpu::gpu_vs_program_push(g_shadow_command, draw->vs_program,
+                                 draw->vs_constants);
   memset(&texture_binding, 0, sizeof texture_binding);
   texture_binding.texture = texture;
   texture_binding.sampler = sampler;
   {
     const void *const pair[2] = {texture, sampler};
-    if (gpu_pass_binds_samplers_changed(&g_binds, pair, 1))
+    if (x2::gpu::gpu_pass_binds_samplers_changed(&g_binds, pair, 1))
       SDL_BindGPUFragmentSamplers(g_shadow_pass, 0, &texture_binding, 1);
   }
   memset(&alpha, 0, sizeof alpha);
@@ -433,8 +434,8 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   SDL_PushGPUFragmentUniformData(g_shadow_command, 0, &alpha, sizeof alpha);
   if (indices) {
     binding.buffer = indices;
-    if (gpu_pass_binds_index_changed(&g_binds, indices,
-                                     draw->index_is_32bit ? 4u : 2u))
+    if (x2::gpu::gpu_pass_binds_index_changed(&g_binds, indices,
+                                              draw->index_is_32bit ? 4u : 2u))
       SDL_BindGPUIndexBuffer(g_shadow_pass, &binding,
                              draw->index_is_32bit
                                  ? SDL_GPU_INDEXELEMENTSIZE_32BIT

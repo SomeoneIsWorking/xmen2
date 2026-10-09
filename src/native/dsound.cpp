@@ -142,9 +142,8 @@ static x2::native::DSBuffer *this_buffer(CPU *C) {
   return b;
 }
 
-void dsound_movie_audio_begin(void) { x2::native::dsound_mixer_open_device(); }
-
-void dsound_movie_audio_tick(void) { x2::native::dsound_mixer_tick_silent(); }
+void x2::native::dsound_movie_audio_begin(void) { dsound_mixer_open_device(); }
+void x2::native::dsound_movie_audio_tick(void) { dsound_mixer_tick_silent(); }
 static int read_waveformat(uint32_t p, x2::native::DSBuffer *b) {
   if (!p)
     return 0;
@@ -217,7 +216,7 @@ static void b_AddRef(CPU *C) {
   ret_com(C, b->refs, 0);
 }
 
-int dsound_buffer_is_playing(uint32_t guest) {
+int x2::native::dsound_buffer_is_playing(uint32_t guest) {
   x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
@@ -225,7 +224,7 @@ int dsound_buffer_is_playing(uint32_t guest) {
   return b->playing ? 1 : 0;
 }
 
-unsigned dsound_buffer_release_guest(uint32_t guest) {
+unsigned x2::native::dsound_buffer_release_guest(uint32_t guest) {
   x2::native::DSBuffer *b = x2::native::dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
@@ -247,7 +246,7 @@ unsigned dsound_buffer_release_guest(uint32_t guest) {
 }
 
 static void b_Release(CPU *C) {
-  ret_com(C, dsound_buffer_release_guest(THIS), 0);
+  ret_com(C, x2::native::dsound_buffer_release_guest(THIS), 0);
 }
 
 static void b_GetCaps(CPU *C) {
@@ -690,12 +689,12 @@ static void imp_DSOUND_DirectSoundCreate(CPU *C) {
   ret_std(C, DS_OK, 3);
 }
 
-void dsound_install(void) {
+void x2::native::dsound_install(void) {
   x86_native_export("DSOUND.DLL", "DirectSoundCreate",
                     imp_DSOUND_DirectSoundCreate);
 }
 
-void dsound_report(void) {
+void x2::native::dsound_report(void) {
   static int done;
   x2::native::DsoundMixerStats mixer;
   int live, playing;
@@ -713,10 +712,10 @@ void dsound_report(void) {
               mixer.callbacks, mixer.frames, mixer.nonzero, mixer.peak,
               mixer.silent_advances,
               mixer.silent ? " -- NO HOST AUDIO DEVICE" : "");
-  movie_audio_report();
+  x2::audio::movie_audio_report();
 }
 
-void dsound_audio_beat_report(void) {
+void x2::native::dsound_audio_beat_report(void) {
   static unsigned long p_cb, p_frames, p_silent;
   x2::native::DsoundMixerStats mixer;
   x2::native::dsound_mixer_stats(&mixer);
@@ -735,11 +734,12 @@ void dsound_audio_beat_report(void) {
   }
   x2_log_error("[HB]             movie clock: %.3fs played, %.3fs queued, "
                "%s\n",
-               movie_audio_played_seconds(), movie_audio_queued_seconds(),
-               movie_audio_active() ? "ACTIVE" : "idle");
+               x2::audio::movie_audio_played_seconds(),
+               x2::audio::movie_audio_queued_seconds(),
+               x2::audio::movie_audio_active() ? "ACTIVE" : "idle");
   p_cb = mixer.callbacks;
   p_frames = mixer.frames;
   p_silent = mixer.silent_advances;
 }
 
-int dsound_selftest(void) { return x2::native::dsound_mixer_selftest(); }
+int x2::native::dsound_selftest(void) { return dsound_mixer_selftest(); }

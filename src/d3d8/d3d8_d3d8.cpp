@@ -384,7 +384,7 @@ static const D3D8MethodFn g_impl[] = {d3d8_QueryInterface,
 
 static int g_enabled;
 
-int d3d8_host_enabled(void) { return g_enabled; }
+int x2::d3d8::d3d8_host_enabled(void) { return g_enabled; }
 
 /*
  * d3d8.dll!Direct3DCreate8(UINT SDKVersion) -- __stdcall, one argument.
@@ -421,7 +421,7 @@ void imp_d3d8_Direct3DCreate8(CPU *C) {
     d3d8_iface_implement(D3D8_IF_IDirect3D8, g_impl,
                          (int)(sizeof g_impl / sizeof g_impl[0]));
     d3d8_device_install();
-    d3d8_surface_install();
+    x2::d3d8::d3d8_surface_install();
     d3d8_resource_install();
     x2::d3d8::d3d8_leaf_methods_install();
     g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
@@ -444,15 +444,15 @@ void imp_d3d8_Direct3DCreate8(CPU *C) {
  * exercise GetDirect3D with no guest and no CPU state. It deliberately does
  * not touch the reference count -- Direct3DCreate8 owns that side.
  */
-uint32_t d3d8_the_direct3d8(void) {
+uint32_t x2::d3d8::d3d8_the_direct3d8(void) {
   return g_d3d8_obj ? d3d8_object_guest(g_d3d8_obj) : 0;
 }
 
-unsigned d3d8_the_direct3d8_refs(void) {
+unsigned x2::d3d8::d3d8_the_direct3d8_refs(void) {
   return g_d3d8_obj ? (unsigned)d3d8_object_refs(g_d3d8_obj) : 0u;
 }
 
-void d3d8_the_direct3d8_ensure(void) {
+void x2::d3d8::d3d8_the_direct3d8_ensure(void) {
   if (g_d3d8_obj)
     return;
   x2::d3d8::d3d8_caps_limits_default(&g_d3d8.limits);
@@ -461,11 +461,11 @@ void d3d8_the_direct3d8_ensure(void) {
   g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
 }
 
-int d3d8_the_direct3d8_addref(void) {
+int x2::d3d8::d3d8_the_direct3d8_addref(void) {
   if (!g_d3d8_obj)
     return 0;
   d3d8_object_addref(g_d3d8_obj);
   return 1;
 }
 
-void d3d8_host_enable(void) { g_enabled = 1; }
+void x2::d3d8::d3d8_host_enable(void) { g_enabled = 1; }

@@ -61,6 +61,8 @@ static void buf_add(uint32_t guest, int playing) {
   }
 }
 
+namespace x2::native {
+
 int dsound_buffer_is_playing(uint32_t guest) {
   for (int i = 0; i < MAX_BUFS; ++i)
     if (g_bufs[i].guest == guest)
@@ -75,6 +77,8 @@ unsigned dsound_buffer_release_guest(uint32_t guest) {
       g_bufs[i].releases++;
   return 0;
 }
+
+} // namespace x2::native
 
 /* --- layout mirrors audio_channel_poll.cpp ------------------------------- */
 

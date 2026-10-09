@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+namespace x2::gpu {
+
 _Static_assert(sizeof(GpuVsProgramBlock) == 128u * 16u + 4u * 16u + 16u,
                "GpuVsProgramBlock must match the std140 Vs11Program block");
 
@@ -53,3 +55,5 @@ void gpu_vs_program_push(SDL_GPUCommandBuffer *command,
                                GPU_VS_CONSTANTS * 4u * sizeof(float));
 }
 #endif /* X2_WITH_SDL */
+
+} // namespace x2::gpu

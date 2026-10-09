@@ -306,7 +306,7 @@ static void m_EnumDevices(CPU *C) {
      * code writes guest state; the game admits the controller by its own
      * rules.
      */
-    dinput8_controller_slots_set_manager(pvref);
+    x2::native::dinput8_controller_slots_set_manager(pvref);
     x2::native::dinput8_hotplug_note_game_enumeration(cb, pvref,
                                                       RD32(C->reg[kX86pEsp]));
   }

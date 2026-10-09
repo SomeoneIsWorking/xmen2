@@ -154,6 +154,8 @@ void imp_WINMM_timeKillEvent(CPU *C) {
   ret_std(C, TIMERR_NOERROR, 1);
 }
 
+namespace x2::native {
+
 /*
  * How long until the earliest timer is due, capped, in milliseconds.
  *
@@ -279,3 +281,5 @@ void winmm_report(void) {
                   "drives is not happening\n",
                   i + 1, g_timer[i].delay_ms);
 }
+
+} // namespace x2::native

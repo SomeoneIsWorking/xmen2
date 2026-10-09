@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 
+namespace x2::native {
+
 #if defined(__GNUC__) || defined(__clang__)
 #define X2_TLS_INTERNAL                                                        \
   __attribute__((visibility("hidden"), tls_model("initial-exec")))
@@ -41,3 +43,5 @@ unsigned long x86_guest_call_depth(void) { return t_top ? t_top->depth : 0u; }
 unsigned long x86_guest_call_deepest(void) { return g_deepest; }
 
 void x86_guest_call_reset_deepest(void) { g_deepest = 0; }
+
+} // namespace x2::native

@@ -115,7 +115,8 @@ typedef struct {
   int live;
   uint64_t serial; /* a vertex buffer's contents, new at creation and every
                       upload: see gpu_pass_binds.h */
-  GpuIndexStorage index; /* an index buffer's region; `buf` is its chunk */
+  x2::gpu::GpuIndexStorage
+      index; /* an index buffer's region; `buf` is its chunk */
 } Res;
 
 static uint64_t g_buffer_serial;
@@ -202,7 +203,7 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
   r = &g_res[h - 1];
 
   if (kind == GPU_BUF_INDEX) {
-    if (!gpu_index_storage_create(&r->index, bytes))
+    if (!x2::gpu::gpu_index_storage_create(&r->index, bytes))
       return 0;
     r->buf = r->index.buffer;
   } else {
@@ -242,11 +243,11 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   SDL_GPUCopyPass *cp;
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
-  unsigned long long t0 = gpu_host_timer_ns(), t1;
+  unsigned long long t0 = x2::gpu::gpu_host_timer_ns(), t1;
   uint32_t base = 0;
 
   if (r->kind == GPU_BUF_INDEX) {
-    if (!gpu_index_storage_prepare_write(&r->index))
+    if (!x2::gpu::gpu_index_storage_prepare_write(&r->index))
       return 0;
     r->buf = r->index.buffer;
     base = r->index.region.offset;
@@ -254,7 +255,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   staged = x2::gpu::gpu_staging_write(g_gpu, data, bytes);
   if (!staged.buffer)
     return 0;
-  t1 = gpu_host_timer_ns();
+  t1 = x2::gpu::gpu_host_timer_ns();
 
   cp = gpu_upload_batch_pass(g_gpu);
   if (!cp)
@@ -285,7 +286,7 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
    */
   SDL_UploadToGPUBuffer(cp, &src, &dr, r->kind != GPU_BUF_INDEX);
   r->serial = ++g_buffer_serial;
-  gpu_host_timer_upload(t0, t1);
+  x2::gpu::gpu_host_timer_upload(t0, t1);
   g_uploads++;
   return 1;
 }
@@ -320,7 +321,7 @@ void gpu_buffer_destroy(GpuBuffer b) {
   if (!r)
     return;
   if (r->kind == GPU_BUF_INDEX)
-    gpu_index_storage_destroy(&r->index);
+    x2::gpu::gpu_index_storage_destroy(&r->index);
   else
     SDL_ReleaseGPUBuffer(g_gpu, r->buf);
   r->live = 0;
@@ -447,13 +448,13 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                                lw * lh);
     upload_data = expanded;
   }
-  t0 = gpu_host_timer_ns();
+  t0 = x2::gpu::gpu_host_timer_ns();
 
   staged = x2::gpu::gpu_staging_write(g_gpu, upload_data, upload_bytes);
   free(expanded);
   if (!staged.buffer)
     return 0;
-  t1 = gpu_host_timer_ns();
+  t1 = x2::gpu::gpu_host_timer_ns();
 
   cp = gpu_upload_batch_pass(g_gpu);
   if (!cp)
@@ -469,7 +470,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   dr.h = lh;
   dr.d = 1;
   SDL_UploadToGPUTexture(cp, &src, &dr, false);
-  gpu_host_timer_upload(t0, t1);
+  x2::gpu::gpu_host_timer_upload(t0, t1);
   g_uploads++;
   return 1;
 }
@@ -556,7 +557,7 @@ int gpu_draw(const GpuDraw *d) {
   GpuShadowSample shadow;
   Res *vres, *ires = NULL, *tres = NULL, *tres1 = NULL, *cres = NULL;
   SDL_GPUSampler *smp, *smp1;
-  unsigned long long t0 = gpu_host_timer_ns();
+  unsigned long long t0 = x2::gpu::gpu_host_timer_ns();
   uint32_t n;
   int depth_test;
 
@@ -762,7 +763,7 @@ int gpu_draw(const GpuDraw *d) {
   }
 
   if (ires)
-    gpu_index_storage_note_draw(&ires->index);
+    x2::gpu::gpu_index_storage_note_draw(&ires->index);
   if (!ires || (uint64_t)(d->first_index + n) * isz <= ires->bytes)
     gpu_shadow_record(d, vres->buf, vres->serial, ires ? ires->buf : NULL,
                       chunk_first_index, tres->tex, smp, n);
@@ -771,11 +772,11 @@ int gpu_draw(const GpuDraw *d) {
   gpu_pass_begin();
   if (!g_pass)
     return refuse("the render pass could not be opened");
-  if (gpu_pass_binds_pipeline_changed(gpu_pass_binds(), pipe))
+  if (x2::gpu::gpu_pass_binds_pipeline_changed(x2::gpu::gpu_pass_binds(), pipe))
     SDL_BindGPUGraphicsPipeline(g_pass, pipe);
 
-  if (gpu_pass_binds_vertex_changed(gpu_pass_binds(), vres->buf,
-                                    vres->serial)) {
+  if (x2::gpu::gpu_pass_binds_vertex_changed(x2::gpu::gpu_pass_binds(),
+                                             vres->buf, vres->serial)) {
     memset(&vb, 0, sizeof vb);
     vb.buffer = vres->buf;
     vb.offset = 0;
@@ -826,12 +827,14 @@ int gpu_draw(const GpuDraw *d) {
     tsb2[2].texture = tres1->tex;
     tsb2[2].sampler = smp1;
     tsb2[3] = gpu_shadow_binding(shadow.enabled);
-    const void *const pairs[2 * kGpuPassFragmentSamplers] = {
+    const void *const pairs[2 * x2::gpu::kGpuPassFragmentSamplers] = {
         tsb2[0].texture, tsb2[0].sampler, tsb2[1].texture, tsb2[1].sampler,
         tsb2[2].texture, tsb2[2].sampler, tsb2[3].texture, tsb2[3].sampler};
-    if (gpu_pass_binds_samplers_changed(gpu_pass_binds(), pairs,
-                                        kGpuPassFragmentSamplers))
-      SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, kGpuPassFragmentSamplers);
+    if (x2::gpu::gpu_pass_binds_samplers_changed(
+            x2::gpu::gpu_pass_binds(), pairs,
+            x2::gpu::kGpuPassFragmentSamplers))
+      SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2,
+                                  x2::gpu::kGpuPassFragmentSamplers);
   }
   (void)tsb;
 
@@ -869,7 +872,8 @@ int gpu_draw(const GpuDraw *d) {
       g_refused_index_range++;
       return 0;
     }
-    if (gpu_pass_binds_index_changed(gpu_pass_binds(), ires->buf, isz)) {
+    if (x2::gpu::gpu_pass_binds_index_changed(x2::gpu::gpu_pass_binds(),
+                                              ires->buf, isz)) {
       memset(&ib, 0, sizeof ib);
       ib.buffer = ires->buf;
       ib.offset = 0;
@@ -889,7 +893,7 @@ int gpu_draw(const GpuDraw *d) {
      through every early-return refusal would add an instrument to the very
      paths the run tells us never fire. State scores the accepted cost of a
      frame, which is the number a hotspot story has to rest on. */
-  gpu_host_timer_draw(t0);
+  x2::gpu::gpu_host_timer_draw(t0);
   return 1;
 }
 
@@ -911,7 +915,7 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
                    unsigned long long *upload_record_ns,
                    unsigned long long *transfer_creates, unsigned long *uploads,
                    unsigned long *submits) {
-  GpuHostTimes times = gpu_host_timer_totals();
+  x2::gpu::GpuHostTimes times = x2::gpu::gpu_host_timer_totals();
   *draw_ns = times.draw_ns;
   *upload_ns = times.upload_ns;
   *upload_alloc_ns = times.upload_alloc_ns;
@@ -932,7 +936,7 @@ static unsigned long staging_allocs(void) {
 
 void gpu_draw_report(void) {
   const unsigned long batches = gpu_upload_batch_submits();
-  GpuHostTimes times = gpu_host_timer_totals();
+  x2::gpu::GpuHostTimes times = x2::gpu::gpu_host_timer_totals();
   x2_log_info(
       "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
       "(%d still cached; the device teardown empties the cache, so these "
@@ -942,19 +946,21 @@ void gpu_draw_report(void) {
   x2_log_info("        of those draws, %lu kept the pass's pipeline, %lu "
               "its vertex buffer, %lu its index buffer and %lu its samplers, "
               "none bound again\n",
-              gpu_pass_binds()->pipelines_kept, gpu_pass_binds()->vertices_kept,
-              gpu_pass_binds()->indices_kept, gpu_pass_binds()->samplers_kept);
+              x2::gpu::gpu_pass_binds()->pipelines_kept,
+              x2::gpu::gpu_pass_binds()->vertices_kept,
+              x2::gpu::gpu_pass_binds()->indices_kept,
+              x2::gpu::gpu_pass_binds()->samplers_kept);
   if (g_draws)
     x2_log_info("        %lu upload(s) using %lu transfer-buffer alloc(s), "
                 "batched into %lu command buffer(s)\n",
                 g_uploads, staging_allocs(), batches);
-  if (g_draws && gpu_host_timer_armed())
+  if (g_draws && x2::gpu::gpu_host_timer_armed())
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
                 "total (%.3f alloc+copy, %.3f record)\n",
                 (double)times.draw_ns * 1e-9, (double)times.upload_ns * 1e-9,
                 (double)times.upload_alloc_ns * 1e-9,
                 (double)times.upload_record_ns * 1e-9);
-  if (g_draws && !gpu_host_timer_armed())
+  if (g_draws && !x2::gpu::gpu_host_timer_armed())
     x2_log_info("        draw and upload host time not timed "
                 "(gpu.host_timing=1 times it)\n");
   if (!g_draws)
@@ -970,7 +976,7 @@ void gpu_draw_report(void) {
                 g_depth_ignored);
   x2::gpu::gpu_draw_trace_report();
   gpu_shadow_report();
-  gpu_index_storage_report();
+  x2::gpu::gpu_index_storage_report();
 }
 
 void gpu_draw_shutdown(void) {
@@ -993,7 +999,7 @@ void gpu_draw_shutdown(void) {
       g_res[i].live = 0;
     }
   g_nres = 0;
-  gpu_index_storage_shutdown(g_gpu);
+  x2::gpu::gpu_index_storage_shutdown(g_gpu);
   /*
    * The placeholder texture's HANDLE is an index into the table just
    * emptied, so keeping it across a device teardown means the next device's

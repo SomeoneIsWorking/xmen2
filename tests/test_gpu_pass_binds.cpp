@@ -20,62 +20,72 @@ static void expect(const char *what, int got, int want) {
 }
 
 int main(void) {
-  GpuPassBinds b = {0};
+  x2::gpu::GpuPassBinds b = {0};
   int p1, p2, i1, i2, v1, v2;
 
-  gpu_pass_binds_reset(&b);
-  expect("the first pipeline", gpu_pass_binds_pipeline_changed(&b, &p1), 1);
-  expect("the same pipeline", gpu_pass_binds_pipeline_changed(&b, &p1), 0);
-  expect("another pipeline", gpu_pass_binds_pipeline_changed(&b, &p2), 1);
-  expect("the first again", gpu_pass_binds_pipeline_changed(&b, &p1), 1);
-
-  expect("the first vertex buffer", gpu_pass_binds_vertex_changed(&b, &v1, 3u),
-         1);
-  expect("the same vertex buffer", gpu_pass_binds_vertex_changed(&b, &v1, 3u),
+  x2::gpu::gpu_pass_binds_reset(&b);
+  expect("the first pipeline",
+         x2::gpu::gpu_pass_binds_pipeline_changed(&b, &p1), 1);
+  expect("the same pipeline", x2::gpu::gpu_pass_binds_pipeline_changed(&b, &p1),
          0);
-  expect("the same vertex buffer after an upload",
-         gpu_pass_binds_vertex_changed(&b, &v1, 4u), 1);
-  expect("another vertex buffer", gpu_pass_binds_vertex_changed(&b, &v2, 4u),
+  expect("another pipeline", x2::gpu::gpu_pass_binds_pipeline_changed(&b, &p2),
+         1);
+  expect("the first again", x2::gpu::gpu_pass_binds_pipeline_changed(&b, &p1),
          1);
 
-  expect("the first index buffer", gpu_pass_binds_index_changed(&b, &i1, 2u),
-         1);
-  expect("the same index buffer", gpu_pass_binds_index_changed(&b, &i1, 2u), 0);
+  expect("the first vertex buffer",
+         x2::gpu::gpu_pass_binds_vertex_changed(&b, &v1, 3u), 1);
+  expect("the same vertex buffer",
+         x2::gpu::gpu_pass_binds_vertex_changed(&b, &v1, 3u), 0);
+  expect("the same vertex buffer after an upload",
+         x2::gpu::gpu_pass_binds_vertex_changed(&b, &v1, 4u), 1);
+  expect("another vertex buffer",
+         x2::gpu::gpu_pass_binds_vertex_changed(&b, &v2, 4u), 1);
+
+  expect("the first index buffer",
+         x2::gpu::gpu_pass_binds_index_changed(&b, &i1, 2u), 1);
+  expect("the same index buffer",
+         x2::gpu::gpu_pass_binds_index_changed(&b, &i1, 2u), 0);
   expect("the same buffer at another element size",
-         gpu_pass_binds_index_changed(&b, &i1, 4u), 1);
-  expect("another index buffer", gpu_pass_binds_index_changed(&b, &i2, 4u), 1);
+         x2::gpu::gpu_pass_binds_index_changed(&b, &i1, 4u), 1);
+  expect("another index buffer",
+         x2::gpu::gpu_pass_binds_index_changed(&b, &i2, 4u), 1);
 
   int t1, t2, s1, s2;
   const void *const set[4] = {&t1, &s1, &t2, &s2};
   const void *const set_texture[4] = {&t1, &s1, &t1, &s2};
   const void *const set_sampler[4] = {&t1, &s1, &t2, &s1};
-  const void *const too_many[2 * kGpuPassFragmentSamplers + 2] = {0};
-  expect("the first samplers", gpu_pass_binds_samplers_changed(&b, set, 2), 1);
-  expect("the same samplers", gpu_pass_binds_samplers_changed(&b, set, 2), 0);
+  const void *const too_many[2 * x2::gpu::kGpuPassFragmentSamplers + 2] = {0};
+  expect("the first samplers",
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set, 2), 1);
+  expect("the same samplers",
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set, 2), 0);
   expect("another texture in the last slot",
-         gpu_pass_binds_samplers_changed(&b, set_texture, 2), 1);
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set_texture, 2), 1);
   expect("another sampler in the last slot",
-         gpu_pass_binds_samplers_changed(&b, set_sampler, 2), 1);
-  expect("fewer slots", gpu_pass_binds_samplers_changed(&b, set_sampler, 1), 1);
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set_sampler, 2), 1);
+  expect("fewer slots",
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set_sampler, 1), 1);
   expect("more slots than a pass records",
-         gpu_pass_binds_samplers_changed(&b, too_many,
-                                         kGpuPassFragmentSamplers + 1),
+         x2::gpu::gpu_pass_binds_samplers_changed(
+             &b, too_many, x2::gpu::kGpuPassFragmentSamplers + 1),
          1);
   expect("more slots again, still bound",
-         gpu_pass_binds_samplers_changed(&b, too_many,
-                                         kGpuPassFragmentSamplers + 1),
+         x2::gpu::gpu_pass_binds_samplers_changed(
+             &b, too_many, x2::gpu::kGpuPassFragmentSamplers + 1),
          1);
   expect("samplers after the long set",
-         gpu_pass_binds_samplers_changed(&b, set, 2), 1);
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set, 2), 1);
 
-  gpu_pass_binds_reset(&b);
-  expect("a new pass's samplers", gpu_pass_binds_samplers_changed(&b, set, 2),
-         1);
-  expect("a new pass's pipeline", gpu_pass_binds_pipeline_changed(&b, &p1), 1);
+  x2::gpu::gpu_pass_binds_reset(&b);
+  expect("a new pass's samplers",
+         x2::gpu::gpu_pass_binds_samplers_changed(&b, set, 2), 1);
+  expect("a new pass's pipeline",
+         x2::gpu::gpu_pass_binds_pipeline_changed(&b, &p1), 1);
   expect("a new pass's vertex buffer",
-         gpu_pass_binds_vertex_changed(&b, &v2, 4u), 1);
-  expect("a new pass's index buffer", gpu_pass_binds_index_changed(&b, &i2, 4u),
-         1);
+         x2::gpu::gpu_pass_binds_vertex_changed(&b, &v2, 4u), 1);
+  expect("a new pass's index buffer",
+         x2::gpu::gpu_pass_binds_index_changed(&b, &i2, 4u), 1);
   expect("kept pipeline binds counted", (int)b.pipelines_kept, 1);
   expect("kept vertex binds counted", (int)b.vertices_kept, 1);
   expect("kept index binds counted", (int)b.indices_kept, 1);

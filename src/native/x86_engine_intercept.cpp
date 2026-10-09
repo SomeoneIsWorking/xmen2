@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 
+namespace x2::native {
+
 int x86_engine_host_body_at(uint32_t eip, uint32_t entry) {
   if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0))
     return x86_is_thunk(eip);
@@ -40,7 +42,8 @@ int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user,
        chain head here instead cost a call through a pthread key on every block
        boundary, because an Android shared object below API 29 has emulated
        thread-locals: 13.4% of the port library's samples. */
-    const X86GuestCallFrame *f = (const X86GuestCallFrame *)run_user;
+    const x2::native::X86GuestCallFrame *f =
+        (const x2::native::X86GuestCallFrame *)run_user;
     if (__builtin_expect(f != NULL, 1)) {
       if (eip == f->return_to && cpu->reg[kX86pEsp] >= f->entry_esp + 4u)
         return 1;
@@ -61,6 +64,9 @@ int x86_engine_jit_boundary(uint32_t eip, void *user) {
 }
 
 uint32_t x86_engine_jit_run_stop(void *run_user) {
-  const X86GuestCallFrame *f = (const X86GuestCallFrame *)run_user;
+  const x2::native::X86GuestCallFrame *f =
+      (const x2::native::X86GuestCallFrame *)run_user;
   return f ? f->return_to : 0u;
 }
+
+} // namespace x2::native

@@ -1,9 +1,10 @@
-#ifndef X2_GPU_FRAME_TIMING_H
-#define X2_GPU_FRAME_TIMING_H
+#pragma once
 
-#define GPU_FRAME_HISTOGRAM_BUCKETS 13
+namespace x2::gpu {
+
+inline constexpr int GPU_FRAME_HISTOGRAM_BUCKETS = 13;
 /* Enough for a 20-minute qualification run at 120 fps, with headroom. */
-#define GPU_FRAME_TIMING_SAMPLE_CAPACITY 262144
+inline constexpr int GPU_FRAME_TIMING_SAMPLE_CAPACITY = 262144;
 
 /* Fold one present-to-present interval in. The FIRST frame has no
    predecessor; it seeds the baseline rather than measuring an
@@ -53,4 +54,4 @@ void gpu_frame_timing_window_percentiles(unsigned long long *p50_ns,
                                          unsigned long long *p99_ns,
                                          unsigned long *samples);
 
-#endif
+} // namespace x2::gpu

@@ -1,15 +1,16 @@
-#ifndef X2_DINPUT8_CONTROLLER_SLOTS_H
-#define X2_DINPUT8_CONTROLLER_SLOTS_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+
+namespace x2::native {
 
 /* The IDirectInput8 owner publishes the retail input-manager instance when
    the game's controller enumeration reaches it. */
 void dinput8_controller_slots_set_manager(uint32_t manager);
 
 /* The retail table's fixed size; both translators iterate it. */
-#define DINPUT8_CONTROLLER_SLOTS 10
+inline constexpr int DINPUT8_CONTROLLER_SLOTS = 10;
 
 /* Translate between SDL-host inventory pads and XMen2's ten-slot DirectInput
    table. The two index spaces are independent and can reorder after hotswap.
@@ -24,4 +25,4 @@ int dinput8_controller_host_pad_for_slot(int controller_slot);
  * interesting fact is an absence. */
 size_t dinput8_controller_slots_probe(char *out, size_t size);
 
-#endif /* X2_DINPUT8_CONTROLLER_SLOTS_H */
+} // namespace x2::native

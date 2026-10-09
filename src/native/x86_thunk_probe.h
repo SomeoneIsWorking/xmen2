@@ -18,10 +18,11 @@
  * reported time is zero and the reader says so by ranking on calls instead --
  * a probe that never timed anything must not print a plausible ranking.
  */
-#ifndef X86_THUNK_PROBE_H
-#define X86_THUNK_PROBE_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* One dispatched import, with its exclusive host time (0 when unarmed). */
 void x86_thunk_probe_note(uint32_t index, unsigned long long ns);
@@ -41,7 +42,7 @@ unsigned long long x86_thunk_probe_clock_ns(void);
  * glibc's heap into an abort with nothing pointing back here. The capacity is
  * fixed for the life of the process, so this owns one allocation of it.
  */
-typedef struct X86ThunkProbe X86ThunkProbe;
+struct X86ThunkProbe;
 
 /* NULL when the allocation fails; the caller reports that and stops asking. */
 X86ThunkProbe *x86_thunk_probe_create(void);
@@ -59,4 +60,4 @@ unsigned int x86_thunk_probe_top(X86ThunkProbe *probe, const char **mod,
                                  unsigned long long *ns, unsigned int cap,
                                  int *by_time);
 
-#endif
+} // namespace x2::native
