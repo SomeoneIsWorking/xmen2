@@ -9,49 +9,52 @@ static int close_enough(float a, float b) { return fabsf(a - b) < 0.001f; }
 
 static int test_texture_dimension_matcher(void) {
   D3D8DrawRequest request;
-  D3D8SelectorDrawEvidence evidence;
+  x2::d3d8::D3D8SelectorDrawEvidence evidence;
   memset(&request, 0, sizeof request);
   memset(&evidence, 0, sizeof evidence);
   request.texture_guest = 0x12345678u;
   x2::d3d8::d3d8_texture_provenance_init(&request.texture_provenance, 128, 32,
                                          21, 1, 1);
   evidence.request = &request;
-  if (!d3d8_selector_request_matches(&evidence, 128, 32))
+  if (!x2::d3d8::d3d8_selector_request_matches(&evidence, 128, 32))
     return 1;
   request.texture_provenance.width = 127;
-  if (d3d8_selector_request_matches(&evidence, 128, 32))
+  if (x2::d3d8::d3d8_selector_request_matches(&evidence, 128, 32))
     return 1;
   request.texture_provenance.width = 128;
   request.texture_guest = 0;
-  if (d3d8_selector_request_matches(&evidence, 128, 32))
+  if (x2::d3d8::d3d8_selector_request_matches(&evidence, 128, 32))
     return 1;
   request.texture_guest = 0x12345678u;
   request.texture_provenance.metadata_valid = 0;
-  return d3d8_selector_request_matches(&evidence, 128, 32) ? 1 : 0;
+  return x2::d3d8::d3d8_selector_request_matches(&evidence, 128, 32) ? 1 : 0;
 }
 
 static int test_untextured_matcher(void) {
   D3D8DrawRequest request;
-  D3D8SelectorDrawEvidence evidence;
+  x2::d3d8::D3D8SelectorDrawEvidence evidence;
   memset(&request, 0, sizeof request);
   memset(&evidence, 0, sizeof evidence);
   evidence.request = &request;
-  if (!d3d8_selector_request_is_untextured(&evidence))
+  if (!x2::d3d8::d3d8_selector_request_is_untextured(&evidence))
     return 1;
   request.texture_guest = 0x12345678u;
-  return d3d8_selector_request_is_untextured(&evidence) ? 1 : 0;
+  return x2::d3d8::d3d8_selector_request_is_untextured(&evidence) ? 1 : 0;
 }
 
 static int test_texture_target_parser(void) {
   uint32_t width = 0, height = 0;
-  if (!d3d8_selector_texture_target_parse("128x32", &width, &height) ||
+  if (!x2::d3d8::d3d8_selector_texture_target_parse("128x32", &width,
+                                                    &height) ||
       width != 128 || height != 32)
     return 1;
-  if (d3d8_selector_texture_target_parse("128X32", &width, &height) ||
-      d3d8_selector_texture_target_parse("128x", &width, &height) ||
-      d3d8_selector_texture_target_parse("0x32", &width, &height) ||
-      d3d8_selector_texture_target_parse("128x32junk", &width, &height) ||
-      d3d8_selector_texture_target_parse("4294967296x1", &width, &height))
+  if (x2::d3d8::d3d8_selector_texture_target_parse("128X32", &width, &height) ||
+      x2::d3d8::d3d8_selector_texture_target_parse("128x", &width, &height) ||
+      x2::d3d8::d3d8_selector_texture_target_parse("0x32", &width, &height) ||
+      x2::d3d8::d3d8_selector_texture_target_parse("128x32junk", &width,
+                                                   &height) ||
+      x2::d3d8::d3d8_selector_texture_target_parse("4294967296x1", &width,
+                                                   &height))
     return 1;
   return 0;
 }
@@ -98,8 +101,8 @@ static int test_pretransformed_bounds(void) {
                                {30.0f, 40.0f, 0.50f, 1.0f}};
   D3D8DrawRequest request;
   GpuDraw draw;
-  D3D8SelectorDrawEvidence evidence;
-  D3D8SelectorBounds bounds;
+  x2::d3d8::D3D8SelectorDrawEvidence evidence;
+  x2::d3d8::D3D8SelectorBounds bounds;
   memset(&request, 0, sizeof request);
   memset(&draw, 0, sizeof draw);
   memset(&evidence, 0, sizeof evidence);
@@ -113,7 +116,7 @@ static int test_pretransformed_bounds(void) {
   evidence.vertex_bytes = vertices;
   evidence.element_count = 3;
   evidence.layout_valid = 1;
-  if (!d3d8_selector_transformed_bounds(&evidence, &bounds))
+  if (!x2::d3d8::d3d8_selector_transformed_bounds(&evidence, &bounds))
     return 1;
   if (!(bounds.used == 3 && bounds.requested == 3 && bounds.out_of_range == 0 &&
         bounds.behind == 0 && bounds.unavailable == 0 &&
@@ -124,7 +127,7 @@ static int test_pretransformed_bounds(void) {
         close_enough(bounds.min_z, 0.25f) && close_enough(bounds.max_z, 0.75f)))
     return 1;
   evidence.vertex_bytes = NULL;
-  if (d3d8_selector_transformed_bounds(&evidence, &bounds))
+  if (x2::d3d8::d3d8_selector_transformed_bounds(&evidence, &bounds))
     return 1;
   return !(bounds.requested == 3 && bounds.used == 0 &&
            bounds.unavailable == 3);
@@ -139,8 +142,8 @@ static int test_indexed_transformed_bounds(void) {
   D3D8DrawRequest request;
   GpuDraw draw;
   D3D8State state;
-  D3D8SelectorDrawEvidence evidence;
-  D3D8SelectorBounds bounds;
+  x2::d3d8::D3D8SelectorDrawEvidence evidence;
+  x2::d3d8::D3D8SelectorBounds bounds;
   int i;
   memset(&request, 0, sizeof request);
   memset(&draw, 0, sizeof draw);
@@ -164,7 +167,7 @@ static int test_indexed_transformed_bounds(void) {
   evidence.index_bytes = indices;
   evidence.element_count = 6;
   evidence.layout_valid = 1;
-  if (!d3d8_selector_transformed_bounds(&evidence, &bounds))
+  if (!x2::d3d8::d3d8_selector_transformed_bounds(&evidence, &bounds))
     return 1;
   return !(
       bounds.used == 6 && bounds.requested == 6 && bounds.out_of_range == 0 &&
@@ -182,8 +185,8 @@ static int exercise_runtime_writer_when_armed(void) {
   D3D8DrawRequest request;
   D3D8State state;
   GpuDraw draw;
-  D3D8SelectorDrawEvidence evidence;
-  D3D8SelectorProbeTicket ticket;
+  x2::d3d8::D3D8SelectorDrawEvidence evidence;
+  x2::d3d8::D3D8SelectorProbeTicket ticket;
   const char *target = getenv("X2_SELECTOR_TEXTURE");
   if (!getenv("X2_SELECTOR_PROBE") || !target || strcmp(target, "128x32") != 0)
     return 0;
@@ -209,15 +212,15 @@ static int exercise_runtime_writer_when_armed(void) {
   evidence.element_count = 3;
   evidence.layout_valid = 1;
   evidence.frame = 7;
-  d3d8_selector_probe_request(&evidence, &ticket);
+  x2::d3d8::d3d8_selector_probe_request(&evidence, &ticket);
   if (!ticket.recorded)
     return 1;
-  d3d8_selector_probe_result(&ticket, 1);
+  x2::d3d8::d3d8_selector_probe_result(&ticket, 1);
   evidence.frame = 8;
-  d3d8_selector_probe_request(&evidence, &ticket);
+  x2::d3d8::d3d8_selector_probe_request(&evidence, &ticket);
   if (!ticket.recorded)
     return 1;
-  d3d8_selector_probe_result(&ticket, 0);
+  x2::d3d8::d3d8_selector_probe_result(&ticket, 0);
   return 0;
 }
 

@@ -1,5 +1,6 @@
 /* The complete host-renderer battery, kept out of the process entry point. */
 #include "../native/x2_log.h"
+#include "gpu_prompt_glyphs.h"
 #include "gpu_selftests.h"
 
 #include <stddef.h>
@@ -40,7 +41,7 @@ static const GpuSelftestEntry kBattery[] = {
     {"BC1 texture", gpu_bc1_texture_selftest},
     {"multistage", gpu_multistage_selftest},
     {"shadow", gpu_shadow_selftest},
-    {"prompt glyphs", gpu_prompt_glyphs_selftest},
+    {"prompt glyphs", x2::gpu::gpu_prompt_glyphs_selftest},
     /* Presenting a frame and drawing into one are different claims. */
     {"draw", gpu_draw_selftest},
     /* Issue #152: the D3DFVF_XYZ + lighting branch, which the draw check

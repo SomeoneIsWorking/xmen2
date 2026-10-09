@@ -1,9 +1,10 @@
-#ifndef X2_CUTSCENE_DIALOGUE_H
-#define X2_CUTSCENE_DIALOGUE_H
+#pragma once
 
 struct X86pCpu;
 
-typedef struct CutsceneDialogueSnapshot {
+namespace x2::native {
+
+struct CutsceneDialogueSnapshot {
   unsigned long advances;
   unsigned long active_voice_stops;
   unsigned long ordinary_response_starts;
@@ -14,7 +15,7 @@ typedef struct CutsceneDialogueSnapshot {
   unsigned last_manager;
   unsigned last_stopped_handle;
   unsigned last_line_presenter;
-} CutsceneDialogueSnapshot;
+};
 
 /* Consume one deterministic conversation payload without presenting its
  * dialogue. The retail response transition still owns scripts and cleanup. */
@@ -24,4 +25,4 @@ int cutscene_dialogue_advance(struct X86pCpu *cpu);
 int cutscene_dialogue_payload_active(void);
 void cutscene_dialogue_snapshot(CutsceneDialogueSnapshot *out);
 
-#endif
+} // namespace x2::native

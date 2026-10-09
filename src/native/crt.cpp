@@ -889,34 +889,35 @@ void imp_MSVCR71___dllonexit(CPU *C) {
 void imp_MSVCR71__vsnprintf(CPU *C) {
   /* (buf, count, fmt, va_list) -- cdecl */
   uint32_t buf = A(0), count = A(1);
-  int n = guest_vformat(AS(0), count, ACS(2), A(3));
+  int n = x2::native::guest_vformat(AS(0), count, ACS(2), A(3));
   ret_c(C, (uint32_t)msvc_trunc(n, buf, count));
 }
 
 void imp_MSVCR71__snprintf(CPU *C) {
   /* (buf, count, fmt, ...) -- the variadic args start at slot 3 */
   uint32_t buf = A(0), count = A(1);
-  int n = guest_vformat(AS(0), count, ACS(2), C->reg[kX86pEsp] + 4u + 3u * 4u);
+  int n = x2::native::guest_vformat(AS(0), count, ACS(2),
+                                    C->reg[kX86pEsp] + 4u + 3u * 4u);
   ret_c(C, (uint32_t)msvc_trunc(n, buf, count));
 }
 
 void imp_MSVCR71_vsprintf(CPU *C) {
   /* (buf, fmt, va_list) -- no bound, which is the caller's problem and the
      reason a huge cap is used rather than a guessed one. */
-  int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1), A(2));
+  int n = x2::native::guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1), A(2));
   ret_c(C, (uint32_t)n);
 }
 
 void imp_MSVCR71_sprintf(CPU *C) {
-  int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1),
-                        C->reg[kX86pEsp] + 4u + 2u * 4u);
+  int n = x2::native::guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1),
+                                    C->reg[kX86pEsp] + 4u + 2u * 4u);
   ret_c(C, (uint32_t)n);
 }
 
 void imp_MSVCR71_printf(CPU *C) {
   char buf[4096];
-  int n =
-      guest_vformat(buf, sizeof buf, ACS(0), C->reg[kX86pEsp] + 4u + 1u * 4u);
+  int n = x2::native::guest_vformat(buf, sizeof buf, ACS(0),
+                                    C->reg[kX86pEsp] + 4u + 1u * 4u);
   if (n >= 0)
     x2_log_info("%s", buf);
   ret_c(C, (uint32_t)n);
@@ -924,15 +925,15 @@ void imp_MSVCR71_printf(CPU *C) {
 
 void imp_MSVCR71_vprintf(CPU *C) {
   char buf[4096];
-  int n = guest_vformat(buf, sizeof buf, ACS(0), A(1));
+  int n = x2::native::guest_vformat(buf, sizeof buf, ACS(0), A(1));
   if (n >= 0)
     x2_log_info("%s", buf);
   ret_c(C, (uint32_t)n);
 }
 
 void imp_MSVCR71_sscanf(CPU *C) {
-  ret_c(C, (uint32_t)guest_vsscanf(ACS(0), ACS(1),
-                                   C->reg[kX86pEsp] + 4u + 2u * 4u));
+  ret_c(C, (uint32_t)x2::native::guest_vsscanf(
+               ACS(0), ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u));
 }
 
 void imp_MSVCR71_fscanf(CPU *C) {
@@ -945,6 +946,6 @@ void imp_MSVCR71_fscanf(CPU *C) {
     ret_c(C, 0xFFFFFFFFu);
     return;
   }
-  ret_c(C,
-        (uint32_t)guest_vsscanf(line, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u));
+  ret_c(C, (uint32_t)x2::native::guest_vsscanf(
+               line, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u));
 }

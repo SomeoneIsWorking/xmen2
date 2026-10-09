@@ -103,7 +103,7 @@ static void trace_texture_factor_write(CPU *C, uint32_t value) {
 typedef struct {
   uint32_t adapter, devtype, focus_window, behaviour;
   D3DPRESENT_PARAMETERS pp;
-  D3D8CapsLimits limits;
+  x2::d3d8::D3D8CapsLimits limits;
   D3D8State state;
 
   uint16_t gamma[3 * 256]; /* the ramp as D3D8 lays it out */
@@ -151,7 +151,7 @@ static void device_destroyed(D3D8Object *o) {
       "with it.\n");
   up_vertices_destroy();
   d3d8_vs_reset();
-  d3d8_live_resolution_unbind();
+  x2::d3d8::d3d8_live_resolution_unbind();
   gpu_device_destroy();
 }
 
@@ -191,11 +191,11 @@ static void dev_GetDeviceCaps(D3D8Object *self, CPU *C) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
-  d3d8_caps_fill(caps, g_dev.adapter, g_dev.devtype, &g_dev.limits);
+  x2::d3d8::d3d8_caps_fill(caps, g_dev.adapter, g_dev.devtype, &g_dev.limits);
   {
     static int told;
     if (!told++)
-      d3d8_caps_dump(caps, "IDirect3DDevice8::GetDeviceCaps");
+      x2::d3d8::d3d8_caps_dump(caps, "IDirect3DDevice8::GetDeviceCaps");
   }
   d3d8_ret(C, D3D_OK);
 }
@@ -519,8 +519,8 @@ static void dev_DeleteStateBlock(D3D8Object *self, CPU *C) {
 static void dev_SetRenderState(D3D8Object *self, CPU *C) {
   uint32_t which = d3d8_arg(C, 0), value = d3d8_arg(C, 1);
   (void)self;
-  /* Only the two lighting states, as the control's proxy logs: the rest
-     arrive at Present rate and would bury the light path. */
+  using x2::d3d8::d3d8_lightlog;
+  /* Only the lighting states, as the proxy logs; the rest would bury them. */
   if (which == D3D8_RS_LIGHTING)
     d3d8_lightlog("SETRENDERSTATE", "LIGHTING=%lu", (unsigned long)value);
   else if (which == D3D8_RS_AMBIENT)
@@ -1521,7 +1521,7 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
   g_dev.focus_window = focus_window;
   g_dev.behaviour = behaviour;
   g_dev.pp = *pp;
-  d3d8_caps_limits_default(&g_dev.limits);
+  x2::d3d8::d3d8_caps_limits_default(&g_dev.limits);
   d3d8_state_reset(&g_dev.state);
 
   x2_log_info("d3d8: CreateDevice adapter=%u %s %ux%u fmt=%u backbuffers=%u "
@@ -1572,9 +1572,9 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
     g_render_depth = g_depth;
   }
 
-  d3d8_live_resolution_bind(&g_dev.pp, d3d8_surface_of(g_backbuffer),
-                            g_depth ? d3d8_surface_of(g_depth) : NULL,
-                            &g_dev.state);
+  x2::d3d8::d3d8_live_resolution_bind(&g_dev.pp, d3d8_surface_of(g_backbuffer),
+                                      g_depth ? d3d8_surface_of(g_depth) : NULL,
+                                      &g_dev.state);
 
   g_dev_obj = d3d8_object_new(D3D8_IF_IDirect3DDevice8, &g_dev);
   d3d8_object_set_destructor(g_dev_obj, device_destroyed);

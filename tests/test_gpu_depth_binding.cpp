@@ -81,24 +81,24 @@ void x2_test_ReleaseGPUSampler(SDL_GPUDevice *device, SDL_GPUSampler *sampler) {
 
 int main(void) {
   for (failure = 1; failure <= 6; ++failure) {
-    CHECK(!gpu_depth_binding_create(DEVICE));
+    CHECK(!x2::gpu::gpu_depth_binding_create(DEVICE));
     CHECK(textures == 0 && samplers == 0);
-    CHECK(gpu_depth_binding_get().texture == NULL);
-    CHECK(gpu_depth_binding_get().sampler == NULL);
+    CHECK(x2::gpu::gpu_depth_binding_get().texture == NULL);
+    CHECK(x2::gpu::gpu_depth_binding_get().sampler == NULL);
   }
   CHECK(cancels == 1);
   failure = 0;
-  CHECK(gpu_depth_binding_create(DEVICE));
+  CHECK(x2::gpu::gpu_depth_binding_create(DEVICE));
   CHECK(textures == 1 && samplers == 1);
-  CHECK(gpu_depth_binding_get().texture == TEXTURE);
-  CHECK(gpu_depth_binding_get().sampler == SAMPLER);
+  CHECK(x2::gpu::gpu_depth_binding_get().texture == TEXTURE);
+  CHECK(x2::gpu::gpu_depth_binding_get().sampler == SAMPLER);
   int previous_probes = probes;
-  CHECK(gpu_depth_binding_create(DEVICE));
+  CHECK(x2::gpu::gpu_depth_binding_create(DEVICE));
   CHECK(probes == previous_probes && submissions == 2);
-  gpu_depth_binding_destroy(DEVICE);
-  gpu_depth_binding_destroy(DEVICE);
+  x2::gpu::gpu_depth_binding_destroy(DEVICE);
+  x2::gpu::gpu_depth_binding_destroy(DEVICE);
   CHECK(textures == 0 && samplers == 0);
-  CHECK(gpu_depth_binding_get().texture == NULL);
+  CHECK(x2::gpu::gpu_depth_binding_get().texture == NULL);
   printf("depth binding: 6 failure boundaries, reuse and teardown; %d checks\n",
          checks);
   return 0;

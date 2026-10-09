@@ -87,7 +87,7 @@ void prompt_glyph_batch_update_context_state(CPU *C) {
   g_with_prompts++;
   if (!x2::native::ui_transform_current(context, mvp))
     g_transform_refused += count;
-  else if (!gpu_prompt_glyphs_render(quads, count, mvp))
+  else if (!x2::gpu::gpu_prompt_glyphs_render(quads, count, mvp))
     g_gpu_refused += count;
   else
     g_drawn += count;

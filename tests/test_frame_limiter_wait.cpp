@@ -13,7 +13,7 @@ static int g_failures;
 /* Within 3 us: the clock reads are floats, and 100.004f is not 100.004. */
 static void expect(const char *what, float min_frame, float start, float last,
                    uint32_t want) {
-  uint32_t got = frame_limiter_sleep_us(min_frame, start, last);
+  uint32_t got = x2::native::frame_limiter_sleep_us(min_frame, start, last);
   if (got + 3u < want || got > want + 3u) {
     printf("FAIL %s: got %u us, want %u us\n", what, got, want);
     g_failures++;

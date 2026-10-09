@@ -30,19 +30,20 @@ int dinput_pad_virtual_report_reader_view(void) {
   int held = -1;
 
   g_refreshes++;
-  if (!g_virt_js) {
+  if (!x2::native::g_virt_js) {
     return -1;
   }
-  for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++) {
-    if (SDL_GetJoystickButton(g_virt_js, i) || g_vbtn_release_pending[i]) {
+  for (i = 0; i < x2::native::X2_VIRTUAL_BUTTON_COUNT; i++) {
+    if (SDL_GetJoystickButton(x2::native::g_virt_js, i) ||
+        x2::native::g_vbtn_release_pending[i]) {
       held = i;
       break;
     }
   }
-  if (g_vpad_presses == g_reported_press || g_reports >= 4) {
+  if (x2::native::g_vpad_presses == g_reported_press || g_reports >= 4) {
     return held;
   }
-  g_reported_press = g_vpad_presses;
+  g_reported_press = x2::native::g_vpad_presses;
   g_reports++;
   if (held < 0) {
     x2_log_error(
@@ -50,7 +51,7 @@ int dinput_pad_virtual_report_reader_view(void) {
         "after press %lu, and NO synthetic button is down or awaiting a "
         "reader. The press was gone before this thread looked.\n",
         g_refreshes, (unsigned long long)SDL_GetCurrentThreadID(),
-        g_vpad_presses);
+        x2::native::g_vpad_presses);
     return held;
   }
   x2_log_error("DINPUT-PAD: reader view -- refresh %lu on thread %llu, the "
@@ -58,10 +59,10 @@ int dinput_pad_virtual_report_reader_view(void) {
                "joystick button and %d through the game's own gamepad handle; "
                "release pending %d.\n",
                g_refreshes, (unsigned long long)SDL_GetCurrentThreadID(),
-               g_vpad_presses, held, g_vbtn_name[held],
-               (int)SDL_GetJoystickButton(g_virt_js, held),
+               x2::native::g_vpad_presses, held, x2::native::g_vbtn_name[held],
+               (int)SDL_GetJoystickButton(x2::native::g_virt_js, held),
                dinput_pad_open_gamepad_button(dinput_pad_virtual_slot(), held),
-               g_vbtn_release_pending[held]);
+               x2::native::g_vbtn_release_pending[held]);
   return held;
 }
 #else

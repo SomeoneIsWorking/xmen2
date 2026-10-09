@@ -1558,10 +1558,11 @@ int main(int argc, char **argv) {
       snprintf(artifacts, sizeof artifacts, "%s/recordings", config);
       input_record_set_directory(artifacts);
       snprintf(artifacts, sizeof artifacts, "%s/run", config);
-      live_session_set_directory(artifacts);
+      x2::native::live_session_set_directory(artifacts);
     }
     if (lucent_cvar_text("live.directory")[0] != '\0') {
-      live_session_set_directory(lucent_cvar_text("live.directory"));
+      x2::native::live_session_set_directory(
+          lucent_cvar_text("live.directory"));
     }
     if (options.input_record && !input_record_start(options.input_record)) {
       x2_log_error("x2native: input recording was requested but "
@@ -1572,7 +1573,8 @@ int main(int argc, char **argv) {
     /* The live session publishes THIS run's control port for tools/x2ctl.py to
        discover. With no channel open there is nothing to discover and nothing
        has gone wrong, so a player's launch does not depend on it either. */
-    if (control_port && !live_session_start(control_port, input_record_path()))
+    if (control_port &&
+        !x2::native::live_session_start(control_port, input_record_path()))
       return 2;
 #else
     (void)control_port;
@@ -1725,8 +1727,8 @@ int main(int argc, char **argv) {
      registry. */
   /* NOT atexit: see interrupt_reports, which calls it on every ending. */
   shell32_install();
-  advapi32_install();
-  atexit(advapi32_report);
+  x2::native::advapi32_install();
+  atexit(x2::native::advapi32_report);
   /* Publish video.width x video.height into the game's own Display\
      Resolution BEFORE any guest code runs: the engine parses that value
      while its modules initialise and sizes its D3D device from it. See
@@ -1777,7 +1779,7 @@ int main(int argc, char **argv) {
   for (m = x86_modules(); m; m = m->next) {
     int bound = 0, poisoned = 0;
     pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
-    if (!guest_teb_register_image(*m->base))
+    if (!x2::native::guest_teb_register_image(*m->base))
       return 1;
   }
   x2_log_info("imports: %d bound (to another guest module or to this host), %d "
@@ -1791,7 +1793,7 @@ int main(int argc, char **argv) {
     x2_log_error("x2native: could not place the guest stack\n");
     return 1;
   }
-  g_fsbase = guest_teb_main_init();
+  g_fsbase = x2::native::guest_teb_main_init();
   if (!g_fsbase)
     return 1;
 

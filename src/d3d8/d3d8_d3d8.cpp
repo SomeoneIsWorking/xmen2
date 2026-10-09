@@ -130,7 +130,7 @@ static void *guest_ptr(uint32_t a, const char *what) {
  * so every interface counts the same way.
  */
 typedef struct {
-  D3D8CapsLimits limits;
+  x2::d3d8::D3D8CapsLimits limits;
 } D3D8Ctx;
 
 static D3D8Ctx g_d3d8;
@@ -315,11 +315,11 @@ static void d3d8_GetDeviceCaps(D3D8Object *self, CPU *C) {
     d3d8_ret(C, D3DERR_NOTAVAILABLE);
     return;
   }
-  d3d8_caps_fill(caps, adapter, devtype, &g_d3d8.limits);
+  x2::d3d8::d3d8_caps_fill(caps, adapter, devtype, &g_d3d8.limits);
   { /* Once. The engine asks repeatedly and the block never changes. */
     static int told;
     if (!told++)
-      d3d8_caps_dump(caps, "IDirect3D8::GetDeviceCaps");
+      x2::d3d8::d3d8_caps_dump(caps, "IDirect3D8::GetDeviceCaps");
   }
   d3d8_ret(C, D3D_OK);
 }
@@ -417,7 +417,7 @@ void imp_d3d8_Direct3DCreate8(CPU *C) {
                  sdk, D3D_SDK_VERSION_D3D8);
 
   if (!g_d3d8_obj) {
-    d3d8_caps_limits_default(&g_d3d8.limits);
+    x2::d3d8::d3d8_caps_limits_default(&g_d3d8.limits);
     d3d8_iface_implement(D3D8_IF_IDirect3D8, g_impl,
                          (int)(sizeof g_impl / sizeof g_impl[0]));
     d3d8_device_install();
@@ -455,7 +455,7 @@ unsigned d3d8_the_direct3d8_refs(void) {
 void d3d8_the_direct3d8_ensure(void) {
   if (g_d3d8_obj)
     return;
-  d3d8_caps_limits_default(&g_d3d8.limits);
+  x2::d3d8::d3d8_caps_limits_default(&g_d3d8.limits);
   d3d8_iface_implement(D3D8_IF_IDirect3D8, g_impl,
                        (int)(sizeof g_impl / sizeof g_impl[0]));
   g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);

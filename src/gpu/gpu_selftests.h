@@ -32,7 +32,6 @@ int gpu_upload_reuse_selftest(void);
 int gpu_upload_order_selftest(void);
 int gpu_index_upload_order_selftest(void);
 int gpu_shadow_selftest(void);
-int gpu_prompt_glyphs_selftest(void);
 int gpu_host_selftest(void);
 
 #endif /* GPU_SELFTESTS_H */

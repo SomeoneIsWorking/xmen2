@@ -28,6 +28,8 @@ static int g_has_stored;
 static int g_set_calls;
 static char g_set_value[32];
 
+namespace x2::native {
+
 int advapi32_host_get_string(const char *path, const char *name, char *out,
                              int cap) {
   (void)path;
@@ -48,6 +50,8 @@ int advapi32_host_set_string(const char *path, const char *name,
   g_has_stored = 1;
   return 1;
 }
+
+} // namespace x2::native
 
 int main(void) {
   char value[32];

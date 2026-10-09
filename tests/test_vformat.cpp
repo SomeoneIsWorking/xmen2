@@ -90,27 +90,27 @@ int main(void) {
 
   nslots = 0;
   push_d(42);
-  guest_vformat(out, sizeof out, "n=%d", va());
+  x2::native::guest_vformat(out, sizeof out, "n=%d", va());
   eq("plain %d", out, "n=42");
 
   nslots = 0;
   push_d(0xDEADBEEF);
-  guest_vformat(out, sizeof out, "%08X", va());
+  x2::native::guest_vformat(out, sizeof out, "%08X", va());
   eq("width+zero pad %08X", out, "DEADBEEF");
 
   nslots = 0;
   push_d(gp("hello"));
-  guest_vformat(out, sizeof out, "[%s]", va());
+  x2::native::guest_vformat(out, sizeof out, "[%s]", va());
   eq("%s from a guest pointer", out, "[hello]");
 
   nslots = 0;
   push_d(0);
-  guest_vformat(out, sizeof out, "[%s]", va());
+  x2::native::guest_vformat(out, sizeof out, "[%s]", va());
   eq("%s with a NULL pointer", out, "[(null)]");
 
   nslots = 0;
   push_f(1.5);
-  guest_vformat(out, sizeof out, "%.2f", va());
+  x2::native::guest_vformat(out, sizeof out, "%.2f", va());
   eq("%f consumes EIGHT bytes", out, "1.50");
 
   /* The ordering case: a double in the middle must not desynchronise the
@@ -119,23 +119,23 @@ int main(void) {
   push_d(1);
   push_f(2.5);
   push_d(3);
-  guest_vformat(out, sizeof out, "%d %.1f %d", va());
+  x2::native::guest_vformat(out, sizeof out, "%d %.1f %d", va());
   eq("int, double, int stay in step", out, "1 2.5 3");
 
   nslots = 0;
   push_d('x');
-  guest_vformat(out, sizeof out, "<%c>", va());
+  x2::native::guest_vformat(out, sizeof out, "<%c>", va());
   eq("%c", out, "<x>");
 
   nslots = 0;
   push_d(7);
-  guest_vformat(out, sizeof out, "100%% of %d", va());
+  x2::native::guest_vformat(out, sizeof out, "100%% of %d", va());
   eq("%% literal", out, "100% of 7");
 
   nslots = 0;
   push_d(5);
   push_d(42);
-  guest_vformat(out, sizeof out, "%*d", va());
+  x2::native::guest_vformat(out, sizeof out, "%*d", va());
   eq("star width consumes an argument", out, "   42");
 
   nslots = 0;
@@ -148,7 +148,7 @@ int main(void) {
     push_d(q.p[0]);
     push_d(q.p[1]);
   }
-  guest_vformat(out, sizeof out, "%I64x", va());
+  x2::native::guest_vformat(out, sizeof out, "%I64x", va());
   eq("MSVC I64 spelling", out, "1122334455667788");
 
   /* Truncation: writes at most cap, always NUL-terminates, and reports the
@@ -157,7 +157,7 @@ int main(void) {
   push_d(gp("abcdefghij"));
   {
     char small[5];
-    int n = guest_vformat(small, sizeof small, "%s", va());
+    int n = x2::native::guest_vformat(small, sizeof small, "%s", va());
     checks++;
     if (n != 10 || strcmp(small, "abcd") != 0) {
       fails++;
@@ -181,7 +181,7 @@ int main(void) {
     push_d(gp(&v1));
     push_d(gp(&v2));
     v1 = v2 = 0;
-    r = guest_vsscanf("12 34", "%d %d", va());
+    r = x2::native::guest_vsscanf("12 34", "%d %d", va());
     checks++;
     if (r != 2 || v1 != 12 || v2 != 34) {
       fails++;
@@ -199,7 +199,7 @@ int main(void) {
     push_d(gp(&num));
     sbuf[0] = 0;
     num = 0;
-    r = guest_vsscanf("name=alpha 7", "name=%s %d", va());
+    r = x2::native::guest_vsscanf("name=alpha 7", "name=%s %d", va());
     checks++;
     if (r != 2 || strcmp(sbuf, "alpha") != 0 || num != 7) {
       fails++;
@@ -213,7 +213,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(&got));
     got = 0;
-    r = guest_vsscanf("x=5", "y=%d", va());
+    r = x2::native::guest_vsscanf("x=5", "y=%d", va());
     checks++;
     if (r != 0 || got != 0) {
       fails++;
@@ -227,7 +227,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(&second));
     second = 0;
-    r = guest_vsscanf("11 22", "%*d %d", va());
+    r = x2::native::guest_vsscanf("11 22", "%*d %d", va());
     checks++;
     if (r != 1 || second != 22) {
       fails++;
@@ -240,7 +240,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(&box));
     box = 0xAAAAAAAAu;
-    r = guest_vsscanf("258", "%hd", va());
+    r = x2::native::guest_vsscanf("258", "%hd", va());
     checks++;
     if (r != 1 || (box & 0xFFFFu) != 258 || (box >> 16) != 0xAAAAu) {
       fails++;
@@ -254,7 +254,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(&f));
     f = 0;
-    r = guest_vsscanf("2.5", "%f", va());
+    r = x2::native::guest_vsscanf("2.5", "%f", va());
     checks++;
     if (r != 1 || f != 2.5f) {
       fails++;
@@ -263,7 +263,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(&dd));
     dd = 0;
-    r = guest_vsscanf("2.5", "%lf", va());
+    r = x2::native::guest_vsscanf("2.5", "%lf", va());
     checks++;
     if (r != 1 || dd != 2.5) {
       fails++;
@@ -277,7 +277,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(sc));
     sc[0] = 0;
-    r = guest_vsscanf("hello world", "%[^ ]", va());
+    r = x2::native::guest_vsscanf("hello world", "%[^ ]", va());
     checks++;
     if (r != 1 || strcmp(sc, "hello") != 0) {
       fails++;
@@ -286,7 +286,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(sc));
     sc[0] = 0;
-    r = guest_vsscanf("abc123", "%[a-c]", va());
+    r = x2::native::guest_vsscanf("abc123", "%[a-c]", va());
     checks++;
     if (r != 1 || strcmp(sc, "abc") != 0) {
       fails++;
@@ -302,7 +302,7 @@ int main(void) {
     nslots = 0;
     push_d(gp(id));
     id[0] = 0;
-    r = guest_vsscanf(
+    r = x2::native::guest_vsscanf(
         " [ some_Name9./ ]",
         " [ "
         "%[_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./"
@@ -321,12 +321,12 @@ int main(void) {
   push_d(gp("a"));
   push_d(gp("b"));
   push_d(gp("c"));
-  guest_vformat(out, sizeof out, "%s%[%s]%s", va());
+  x2::native::guest_vformat(out, sizeof out, "%s%[%s]%s", va());
   eq("%[ prints a literal [", out, "a[b]c");
 
   nslots = 0;
   push_d(7);
-  guest_vformat(out, sizeof out, "%-5!%d", va());
+  x2::native::guest_vformat(out, sizeof out, "%-5!%d", va());
   eq("CH_OTHER drops pending flags/width", out, "!7");
 
   printf("vformat: %d of %d check(s) FAILED\n", fails, checks);

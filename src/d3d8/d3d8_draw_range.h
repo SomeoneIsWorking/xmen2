@@ -2,12 +2,13 @@
  * d3d8_draw_range.h -- does a draw read outside the vertex stream bound to
  * it? See d3d8_draw_range.cpp for why the check exists and what it refuses.
  */
-#ifndef D3D8_DRAW_RANGE_H
-#define D3D8_DRAW_RANGE_H
+#pragma once
 
 #include "d3d8_drawcall.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::d3d8 {
 
 /* 1 when every vertex the draw fetches lies inside its stream of
    `stride`-byte vertices; 0, counted and logged, when one does not or the
@@ -24,4 +25,4 @@ uint32_t d3d8_index_max(uint64_t serial, const void *indices, int is32,
 
 void d3d8_draw_range_report(void);
 
-#endif
+} // namespace x2::d3d8

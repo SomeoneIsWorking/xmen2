@@ -8,6 +8,8 @@
 #include "guest_body.h"
 #include <string.h>
 
+namespace x2::d3d8 {
+
 static uint32_t g_world_matrix_source;
 static uint32_t g_world_matrix_guest;
 static uint32_t g_world_matrix_set_caller;
@@ -417,14 +419,16 @@ void d3d8_selector_probe_build_request(const D3D8State *state,
   d3d8_selector_probe_request(&evidence, ticket);
 }
 
+} // namespace x2::d3d8
+
 int d3d8_build_draw(const D3D8State *state, const D3D8DrawRequest *request,
                     GpuDraw *draw) {
-  D3D8SelectorProbeTicket ticket;
+  x2::d3d8::D3D8SelectorProbeTicket ticket;
   int accepted;
 
-  d3d8_selector_probe_build_request(state, request, gpu_frames_presented(),
-                                    &ticket);
+  x2::d3d8::d3d8_selector_probe_build_request(state, request,
+                                              gpu_frames_presented(), &ticket);
   accepted = d3d8_build_draw_impl(state, request, draw);
-  d3d8_selector_probe_result(&ticket, accepted);
+  x2::d3d8::d3d8_selector_probe_result(&ticket, accepted);
   return accepted;
 }

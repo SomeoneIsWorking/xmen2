@@ -16,19 +16,19 @@
 #include <stdio.h>
 #include <string.h>
 
-static D3D8VertexShader g_shader[VS_MAX];
+static D3D8VertexShader g_shader[x2::d3d8::VS_MAX];
 static uint16_t g_generation = 1;
 static unsigned long g_created, g_deleted, g_refused;
 
 static uint32_t make_handle(unsigned slot, uint16_t generation) {
-  return VS_HANDLE_BASE + ((uint32_t)generation << 8) + slot;
+  return x2::d3d8::VS_HANDLE_BASE + ((uint32_t)generation << 8) + slot;
 }
 
 static int scan_declaration(const uint32_t *p, uint16_t *count) {
   unsigned i;
   if (!p)
     return 0;
-  for (i = 0; i < VS_DECL_MAX_DWORDS; ++i) {
+  for (i = 0; i < x2::d3d8::VS_DECL_MAX_DWORDS; ++i) {
     if (p[i] == 0xffffffffu) {
       *count = (uint16_t)(i + 1);
       return 1;
@@ -36,7 +36,7 @@ static int scan_declaration(const uint32_t *p, uint16_t *count) {
   }
   x2_log_error("d3d8: CreateVertexShader scanned %u declaration token(s) "
                "but found no D3DVSD_END; refusing an unterminated stream.\n",
-               VS_DECL_MAX_DWORDS);
+               x2::d3d8::VS_DECL_MAX_DWORDS);
   return 0;
 }
 
@@ -52,7 +52,7 @@ static int scan_function(const uint32_t *p, uint16_t *count) {
                  p[0]);
     return 0;
   }
-  for (i = 1; i < VS_CODE_MAX_DWORDS; ++i) {
+  for (i = 1; i < x2::d3d8::VS_CODE_MAX_DWORDS; ++i) {
     if ((p[i] & 0xffffu) == 0xffffu) {
       *count = (uint16_t)(i + 1);
       return 1;
@@ -60,7 +60,7 @@ static int scan_function(const uint32_t *p, uint16_t *count) {
   }
   x2_log_error("d3d8: CreateVertexShader scanned %u bytecode dword(s) but "
                "found no D3DSIO_END; refusing an unterminated program.\n",
-               VS_CODE_MAX_DWORDS);
+               x2::d3d8::VS_CODE_MAX_DWORDS);
   return 0;
 }
 
@@ -73,12 +73,12 @@ uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
     g_refused++;
     return 0;
   }
-  for (i = 0; i < VS_MAX && g_shader[i].used; ++i) {
+  for (i = 0; i < x2::d3d8::VS_MAX && g_shader[i].used; ++i) {
   }
-  if (i == VS_MAX) {
+  if (i == x2::d3d8::VS_MAX) {
     x2_log_error("d3d8: CreateVertexShader found all %u shader slots "
                  "live; refusing instead of losing an existing shader.\n",
-                 VS_MAX);
+                 x2::d3d8::VS_MAX);
     g_refused++;
     return 0;
   }
@@ -135,10 +135,10 @@ D3D8VertexShader *d3d8_vs_get(uint32_t handle, const char *operation) {
     g_refused++;
     return NULL;
   }
-  raw = handle - VS_HANDLE_BASE;
+  raw = handle - x2::d3d8::VS_HANDLE_BASE;
   slot = raw & 0xffu;
   generation = (uint16_t)(raw >> 8);
-  if (slot >= VS_MAX || !g_shader[slot].used ||
+  if (slot >= x2::d3d8::VS_MAX || !g_shader[slot].used ||
       g_shader[slot].generation != generation) {
     x2_log_error("d3d8: %s received 0x%08x, which names no live vertex "
                  "shader (slot %u, generation %u).\n",
@@ -160,7 +160,7 @@ int d3d8_vs_delete(uint32_t handle) {
 
 void d3d8_vs_reset(void) {
   unsigned i;
-  for (i = 0; i < VS_MAX; ++i)
+  for (i = 0; i < x2::d3d8::VS_MAX; ++i)
     g_shader[i].used = 0;
 }
 
@@ -177,8 +177,8 @@ const uint32_t *d3d8_vs_function(const D3D8VertexShader *s, size_t *bytes) {
 void d3d8_vs_beat_report(void) {
   static unsigned long p_executions, p_vertices, p_gpu_draws, p_gpu_vertices;
   unsigned long executions, vertices, gpu_draws, gpu_vertices;
-  d3d8_vs_execution_counts(&executions, &vertices);
-  d3d8_vs_draw_gpu_counts(&gpu_draws, &gpu_vertices);
+  x2::d3d8::d3d8_vs_execution_counts(&executions, &vertices);
+  x2::d3d8::d3d8_vs_draw_gpu_counts(&gpu_draws, &gpu_vertices);
   x2_log_error("[HB]           VS 1.1 on the GPU %lu draw(s) (+%lu) over %lu "
                "vertices (+%lu); CPU executor %lu draw(s) (+%lu), %lu vertex "
                "invocation(s) (+%lu)\n",
@@ -195,9 +195,9 @@ void d3d8_vs_report(void) {
   unsigned i, live = 0;
   unsigned long executions, vertices;
 
-  d3d8_vs_execution_counts(&executions, &vertices);
+  x2::d3d8::d3d8_vs_execution_counts(&executions, &vertices);
 
-  for (i = 0; i < VS_MAX; ++i)
+  for (i = 0; i < x2::d3d8::VS_MAX; ++i)
     if (g_shader[i].used)
       live++;
   x2_log_info(

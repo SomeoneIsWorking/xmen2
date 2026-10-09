@@ -23,7 +23,7 @@ static void x86_dispatch_one(CPU *C, uint32_t target) {
     return;
   if (x2::native::engine_call(target, C))
     return;
-  x86_report_missing_body(C, target);
+  x2::native::x86_report_missing_body(C, target);
   abort();
 }
 

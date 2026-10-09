@@ -34,6 +34,8 @@
 #include <stdio.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 /* Only the bits actually set below are named, with the values from a real
    d3d8caps.h. tools/d3d8_abi_check.py re-checks them against one when the
    machine has it. */
@@ -314,3 +316,5 @@ void d3d8_caps_limits_default(D3D8CapsLimits *hw) {
   hw->max_anisotropy = 16;
   hw->max_simultaneous_textures = 8;
 }
+
+} // namespace x2::d3d8

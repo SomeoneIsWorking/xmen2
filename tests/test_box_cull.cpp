@@ -33,8 +33,8 @@ static void expect_status(const char *what, uint16_t got, uint16_t want) {
   }
 }
 
-static void expect_verdict(const char *what, BoxCullVerdict got,
-                           BoxCullVerdict want) {
+static void expect_verdict(const char *what, x2::native::BoxCullVerdict got,
+                           x2::native::BoxCullVerdict want) {
   if (got != want) {
     fprintf(stderr, "FAIL %s: got %d, want %d\n", what, (int)got, (int)want);
     failures++;
@@ -46,7 +46,7 @@ static void expect_verdict(const char *what, BoxCullVerdict got,
 static void test_extent(void) {
   const float box[6] = {1.0f, -2.0f, 3.0f, 5.0f, 6.0f, 3.0f};
   float extent[3];
-  box_cull_extent(extent, box);
+  x2::native::box_cull_extent(extent, box);
   expect_float("extent x", extent[0], 4.0f);
   expect_float("extent y", extent[1], 8.0f);
   expect_float("extent z", extent[2], 0.0f);
@@ -56,9 +56,9 @@ static void test_identity_corners(void) {
   const float min[3] = {1.0f, 2.0f, 3.0f};
   const float extent[3] = {4.0f, 8.0f, 16.0f};
   const float matrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-  float out[BOX_CULL_CORNER_FLOATS];
-  box_cull_corners(out, min, extent, matrix, 0.0f);
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+  float out[x2::native::BOX_CULL_CORNER_FLOATS];
+  x2::native::box_cull_corners(out, min, extent, matrix, 0.0f);
+  for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
     char what[64];
     snprintf(what, sizeof what, "identity corner %u", c);
     expect_float(what, out[c * 4u + 0u], (c & 4u) ? 5.0f : 1.0f);
@@ -77,8 +77,8 @@ static void test_base_spill(void) {
   float matrix[16] = {0};
   matrix[0] = matrix[1] = 1.0f;   /* x and y read min.x and extent.x */
   matrix[12] = matrix[13] = 1.0f; /* and are translated by 1 */
-  float out[BOX_CULL_CORNER_FLOATS];
-  box_cull_corners(out, min, extent, matrix, 0.0f);
+  float out[x2::native::BOX_CULL_CORNER_FLOATS];
+  x2::native::box_cull_corners(out, min, extent, matrix, 0.0f);
   expect_float("x base stays extended", out[4u * 4u + 0u], tiny);
   expect_float("y base is spilled", out[4u * 4u + 1u], 0.0f);
 }
@@ -92,15 +92,15 @@ static void test_term_spill(void) {
   float matrix[16] = {0};
   matrix[1] = matrix[2] = near_one;
   matrix[13] = matrix[14] = -(1.0f + ldexpf(1.0f, -22));
-  float out[BOX_CULL_CORNER_FLOATS];
-  box_cull_corners(out, min, extent, matrix, 0.0f);
+  float out[x2::native::BOX_CULL_CORNER_FLOATS];
+  x2::native::box_cull_corners(out, min, extent, matrix, 0.0f);
   expect_float("y term0 stays extended", out[4u * 4u + 1u], ldexpf(1.0f, -46));
   expect_float("z term0 is spilled", out[4u * 4u + 2u], 0.0f);
 }
 
-static void fill_corners(float corners[BOX_CULL_CORNER_FLOATS], float x,
-                         float w) {
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+static void fill_corners(float corners[x2::native::BOX_CULL_CORNER_FLOATS],
+                         float x, float w) {
+  for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
     corners[c * 4u + 0u] = x;
     corners[c * 4u + 1u] = 0.0f;
     corners[c * 4u + 2u] = 0.0f;
@@ -158,8 +158,8 @@ static void test_corner_code_matches_extended(void) {
     corner[3] = edge_value(1.0f);
     for (unsigned axis = 0; axis < 3u; axis++)
       corner[axis] = edge_value(corner[3]);
-    const unsigned fast = box_cull_corner_code(corner);
-    const unsigned exact = box_cull_corner_code_extended(corner);
+    const unsigned fast = x2::native::box_cull_corner_code(corner);
+    const unsigned exact = x2::native::box_cull_corner_code_extended(corner);
     compared++;
     finite += isfinite(corner[0]) && isfinite(corner[1]) &&
               isfinite(corner[2]) && isfinite(corner[3]);
@@ -188,7 +188,8 @@ static void test_corners_match_guest_order(void) {
   const float zeros[4] = {0.0f, 0.0f, -0.0f, 0.5f};
   for (unsigned n = 0; n < BOXES; n++) {
     float min[3], extent[3], matrix[16];
-    float fast[BOX_CULL_CORNER_FLOATS], guest[BOX_CULL_CORNER_FLOATS];
+    float fast[x2::native::BOX_CULL_CORNER_FLOATS],
+        guest[x2::native::BOX_CULL_CORNER_FLOATS];
     const float zero = zeros[rng() % 4u];
     for (unsigned i = 0; i < 3u; i++) {
       min[i] = (rng() % 4u) ? edge_value(1.0f) : 0.0f;
@@ -196,10 +197,10 @@ static void test_corners_match_guest_order(void) {
     }
     for (unsigned i = 0; i < 16u; i++)
       matrix[i] = (rng() % 4u) ? edge_value(1.0f) : 0.0f;
-    box_cull_corners(fast, min, extent, matrix, zero);
-    box_cull_corners_guest_order(guest, min, extent, matrix, zero);
+    x2::native::box_cull_corners(fast, min, extent, matrix, zero);
+    x2::native::box_cull_corners_guest_order(guest, min, extent, matrix, zero);
     if (memcmp(fast, guest, sizeof fast) != 0) {
-      for (unsigned f = 0; f < BOX_CULL_CORNER_FLOATS; f++) {
+      for (unsigned f = 0; f < x2::native::BOX_CULL_CORNER_FLOATS; f++) {
         if (memcmp(&fast[f], &guest[f], sizeof fast[f]) != 0) {
           fprintf(stderr,
                   "FAIL corners: box %u corner %u axis %u is %a, the guest's "
@@ -218,18 +219,20 @@ static void test_corners_match_guest_order(void) {
 /* The guest's verdict from its own per-corner arithmetic: behind when every
    w has its sign bit, outside when some plane has no corner inside it,
    inside when every corner is inside every plane. */
-static BoxCullVerdict
-guest_verdict(const float corners[BOX_CULL_CORNER_FLOATS]) {
+static x2::native::BoxCullVerdict
+guest_verdict(const float corners[x2::native::BOX_CULL_CORNER_FLOATS]) {
   unsigned behind = 1u, inside_all = 0x3fu, inside_any = 0u;
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+  for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
     behind &= signbit(corners[c * 4u + 3u]) ? 1u : 0u;
-    const unsigned code = box_cull_corner_code_extended(&corners[c * 4u]);
+    const unsigned code =
+        x2::native::box_cull_corner_code_extended(&corners[c * 4u]);
     inside_all &= code;
     inside_any |= code;
   }
   if (behind || inside_any != 0x3fu)
-    return kBoxCullOutside;
-  return inside_all == 0x3fu ? kBoxCullInside : kBoxCullUndecided;
+    return x2::native::kBoxCullOutside;
+  return inside_all == 0x3fu ? x2::native::kBoxCullInside
+                             : x2::native::kBoxCullUndecided;
 }
 
 /* Whole boxes through box_cull_classify, which decides an all-finite box
@@ -239,9 +242,9 @@ static void test_classify_matches_guest(void) {
   enum { BOXES = 300000 };
   unsigned seen[3] = {0, 0, 0};
   for (unsigned n = 0; n < BOXES; n++) {
-    float corners[BOX_CULL_CORNER_FLOATS];
+    float corners[x2::native::BOX_CULL_CORNER_FLOATS];
     const float w = edge_value(1.0f);
-    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
       corners[c * 4u + 3u] = (rng() % 8u) ? w : edge_value(w);
       for (unsigned axis = 0; axis < 3u; axis++) {
         corners[c * 4u + axis] = (rng() % 64u)
@@ -249,8 +252,9 @@ static void test_classify_matches_guest(void) {
                                      : edge_value(w);
       }
     }
-    const BoxCullVerdict got = box_cull_classify(corners);
-    const BoxCullVerdict want = guest_verdict(corners);
+    const x2::native::BoxCullVerdict got =
+        x2::native::box_cull_classify(corners);
+    const x2::native::BoxCullVerdict want = guest_verdict(corners);
     seen[want]++;
     if (got != want) {
       fprintf(stderr,
@@ -261,8 +265,8 @@ static void test_classify_matches_guest(void) {
       return;
     }
   }
-  if (!seen[kBoxCullUndecided] || !seen[kBoxCullInside] ||
-      !seen[kBoxCullOutside]) {
+  if (!seen[x2::native::kBoxCullUndecided] ||
+      !seen[x2::native::kBoxCullInside] || !seen[x2::native::kBoxCullOutside]) {
     fprintf(stderr,
             "FAIL classify: verdicts seen %u undecided, %u inside, "
             "%u outside -- one never came up\n",
@@ -309,12 +313,13 @@ static void test_bounded_verdict_matches_exact(void) {
         t = nextafterf(t, (rng() & 1u) ? INFINITY : -INFINITY);
       matrix[12u + a] = t;
     }
-    float corners[BOX_CULL_CORNER_FLOATS];
-    box_cull_corners(corners, min, extent, matrix, 0.0f);
-    const BoxCullVerdict exact = box_cull_classify(corners);
-    BoxCullVerdict bounded;
-    const int certain =
-        box_cull_bounded_verdict(min, extent, matrix, 0.0f, &bounded);
+    float corners[x2::native::BOX_CULL_CORNER_FLOATS];
+    x2::native::box_cull_corners(corners, min, extent, matrix, 0.0f);
+    const x2::native::BoxCullVerdict exact =
+        x2::native::box_cull_classify(corners);
+    x2::native::BoxCullVerdict bounded;
+    const int certain = x2::native::box_cull_bounded_verdict(
+        min, extent, matrix, 0.0f, &bounded);
     ordinary += !crafted;
     ordinary_decided += !crafted && certain;
     near_plane += (unsigned)crafted;
@@ -332,10 +337,11 @@ static void test_bounded_verdict_matches_exact(void) {
       return;
     }
   }
-  BoxCullVerdict unused;
+  x2::native::BoxCullVerdict unused;
   const float min[3] = {0}, extent[3] = {1, 1, 1};
   float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-  if (box_cull_bounded_verdict(min, extent, identity, 0.5f, &unused)) {
+  if (x2::native::box_cull_bounded_verdict(min, extent, identity, 0.5f,
+                                           &unused)) {
     fprintf(stderr, "FAIL bounded verdict: answered with a nonzero `zero`\n");
     failures++;
   }
@@ -357,10 +363,11 @@ static void test_bounded_verdict_matches_exact(void) {
 /* The guard-band test in the guest's own steps: scaled x and y kept in
    extended registers, scaled z spilled to a float, each -w -/+ v rounded to
    a float and its sign bit taken. */
-static BoxCullVerdict
-guest_guard_band(const float corners[BOX_CULL_CORNER_FLOATS], float scale) {
+static x2::native::BoxCullVerdict
+guest_guard_band(const float corners[x2::native::BOX_CULL_CORNER_FLOATS],
+                 float scale) {
   unsigned inside_all = 0x3fu;
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+  for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
     const float *corner = &corners[c * 4u];
     const long double neg_w = -(long double)corner[3];
     const long double v[3] = {(long double)scale * corner[0],
@@ -373,8 +380,8 @@ guest_guard_band(const float corners[BOX_CULL_CORNER_FLOATS], float scale) {
     }
     inside_all &= code;
   }
-  return inside_all == 0x3fu ? kBoxCullInsideGuardBand
-                             : kBoxCullCrossesGuardBand;
+  return inside_all == 0x3fu ? x2::native::kBoxCullInsideGuardBand
+                             : x2::native::kBoxCullCrossesGuardBand;
 }
 
 /* Crossing boxes against scales about one: the guest's steps and
@@ -383,9 +390,9 @@ static void test_guard_band_matches_guest(void) {
   enum { BOXES = 200000 };
   unsigned inside = 0, crosses = 0;
   for (unsigned n = 0; n < BOXES; n++) {
-    float corners[BOX_CULL_CORNER_FLOATS];
+    float corners[x2::native::BOX_CULL_CORNER_FLOATS];
     const float w = edge_value(1.0f);
-    for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+    for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
       corners[c * 4u + 3u] = (rng() % 8u) ? w : edge_value(w);
       for (unsigned axis = 0; axis < 3u; axis++) {
         corners[c * 4u + axis] = (rng() % 16u)
@@ -394,16 +401,17 @@ static void test_guard_band_matches_guest(void) {
       }
     }
     const float scale = (rng() % 4u) ? 0.75f : edge_value(0.5f);
-    const BoxCullGuardBand guard = {scale, 1.0f};
-    const BoxCullVerdict got = box_cull_guard_band(corners, guard);
-    if (got == kBoxCullUndecided) {
+    const x2::native::BoxCullGuardBand guard = {scale, 1.0f};
+    const x2::native::BoxCullVerdict got =
+        x2::native::box_cull_guard_band(corners, guard);
+    if (got == x2::native::kBoxCullUndecided) {
       continue; /* a non-finite value: the guest body decides it */
     }
-    const BoxCullVerdict want = scale == 1.0f
-                                    ? kBoxCullCrossesGuardBand
-                                    : guest_guard_band(corners, scale);
-    inside += want == kBoxCullInsideGuardBand;
-    crosses += want == kBoxCullCrossesGuardBand;
+    const x2::native::BoxCullVerdict want =
+        scale == 1.0f ? x2::native::kBoxCullCrossesGuardBand
+                      : guest_guard_band(corners, scale);
+    inside += want == x2::native::kBoxCullInsideGuardBand;
+    crosses += want == x2::native::kBoxCullCrossesGuardBand;
     if (got != want) {
       fprintf(stderr,
               "FAIL guard band: box %u at scale %a is %d, the guest's steps "
@@ -426,76 +434,87 @@ static void test_guard_band(void) {
   /* FCOMP scale, one: C3 equal, C0 below, neither above; C1 cleared, the
      rest of the word kept. */
   const uint16_t before = 0x0224;
-  const BoxCullGuardBand equal = {1.0f, 1.0f}, below = {0.5f, 1.0f},
-                         above = {2.0f, 1.0f};
+  const x2::native::BoxCullGuardBand equal = {1.0f, 1.0f}, below = {0.5f, 1.0f},
+                                     above = {2.0f, 1.0f};
   expect_status("status after scale == one",
-                box_cull_guard_band_status(before, equal), 0x4024);
+                x2::native::box_cull_guard_band_status(before, equal), 0x4024);
   expect_status("status after scale < one",
-                box_cull_guard_band_status(before, below), 0x0124);
+                x2::native::box_cull_guard_band_status(before, below), 0x0124);
   expect_status("status after scale > one",
-                box_cull_guard_band_status(before, above), 0x0024);
+                x2::native::box_cull_guard_band_status(before, above), 0x0024);
 
-  float corners[BOX_CULL_CORNER_FLOATS];
-  const BoxCullGuardBand unit = {1.0f, 1.0f};
-  const BoxCullGuardBand half = {0.5f, 1.0f};
+  float corners[x2::native::BOX_CULL_CORNER_FLOATS];
+  const x2::native::BoxCullGuardBand unit = {1.0f, 1.0f};
+  const x2::native::BoxCullGuardBand half = {0.5f, 1.0f};
   fill_corners(corners, 1.5f, 1.0f);
   expect_verdict("a scale of one never tests the band",
-                 box_cull_guard_band(corners, unit), kBoxCullCrossesGuardBand);
+                 x2::native::box_cull_guard_band(corners, unit),
+                 x2::native::kBoxCullCrossesGuardBand);
   expect_verdict("inside the band at half scale",
-                 box_cull_guard_band(corners, half), kBoxCullInsideGuardBand);
+                 x2::native::box_cull_guard_band(corners, half),
+                 x2::native::kBoxCullInsideGuardBand);
   /* The guest compares the scale with one before it looks at a corner. */
   fill_corners(corners, 0.0f, 1.0f);
   expect_verdict("a scale of one answers 3 even for a box inside",
-                 box_cull_guard_band(corners, unit), kBoxCullCrossesGuardBand);
+                 x2::native::box_cull_guard_band(corners, unit),
+                 x2::native::kBoxCullCrossesGuardBand);
   fill_corners(corners, 3.0f, 1.0f);
   expect_verdict("outside the band at half scale",
-                 box_cull_guard_band(corners, half), kBoxCullCrossesGuardBand);
+                 x2::native::box_cull_guard_band(corners, half),
+                 x2::native::kBoxCullCrossesGuardBand);
   /* x is scaled in a register: (1 - 2^-23)(1 + 2^-23) = 1 - 2^-46 < w. */
-  const BoxCullGuardBand close = {1.0f - 0x1p-23f, 1.0f};
+  const x2::native::BoxCullGuardBand close = {1.0f - 0x1p-23f, 1.0f};
   fill_corners(corners, 1.0f + 0x1p-23f, 1.0f);
   expect_verdict("a scaled x is not rounded",
-                 box_cull_guard_band(corners, close), kBoxCullInsideGuardBand);
+                 x2::native::box_cull_guard_band(corners, close),
+                 x2::native::kBoxCullInsideGuardBand);
   /* z is spilled: the same product rounds to 1.0f, which is not < w. */
   fill_corners(corners, 0.0f, 1.0f);
-  for (unsigned c = 0; c < BOX_CULL_CORNERS; c++) {
+  for (unsigned c = 0; c < x2::native::BOX_CULL_CORNERS; c++) {
     corners[c * 4u + 2u] = 1.0f + 0x1p-23f;
   }
   expect_verdict("a scaled z is spilled to a float",
-                 box_cull_guard_band(corners, close), kBoxCullCrossesGuardBand);
-  const BoxCullGuardBand nan_scale = {NAN, 1.0f};
+                 x2::native::box_cull_guard_band(corners, close),
+                 x2::native::kBoxCullCrossesGuardBand);
+  const x2::native::BoxCullGuardBand nan_scale = {NAN, 1.0f};
   expect_verdict("a NaN scale is the guest body's",
-                 box_cull_guard_band(corners, nan_scale), kBoxCullUndecided);
+                 x2::native::box_cull_guard_band(corners, nan_scale),
+                 x2::native::kBoxCullUndecided);
   corners[5] = INFINITY;
   expect_verdict("an infinite corner is the guest body's",
-                 box_cull_guard_band(corners, half), kBoxCullUndecided);
+                 x2::native::box_cull_guard_band(corners, half),
+                 x2::native::kBoxCullUndecided);
 }
 
 static void test_classify(void) {
-  float corners[BOX_CULL_CORNER_FLOATS];
+  float corners[x2::native::BOX_CULL_CORNER_FLOATS];
   fill_corners(corners, 0.0f, 1.0f);
-  expect_verdict("centred box", box_cull_classify(corners), kBoxCullInside);
+  expect_verdict("centred box", x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullInside);
 
   fill_corners(corners, 0.0f, -1.0f);
-  expect_verdict("behind the eye", box_cull_classify(corners), kBoxCullOutside);
+  expect_verdict("behind the eye", x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullOutside);
 
   /* -0.0 has its sign bit: the guest's first test reads w as an integer. */
   fill_corners(corners, 0.0f, -0.0f);
-  expect_verdict("w of -0 counts as behind", box_cull_classify(corners),
-                 kBoxCullOutside);
+  expect_verdict("w of -0 counts as behind",
+                 x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullOutside);
 
   fill_corners(corners, 2.0f, 1.0f);
-  expect_verdict("right of the frustum", box_cull_classify(corners),
-                 kBoxCullOutside);
+  expect_verdict("right of the frustum", x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullOutside);
 
   fill_corners(corners, 0.0f, 1.0f);
   corners[0] = 2.0f;
-  expect_verdict("straddling a plane", box_cull_classify(corners),
-                 kBoxCullUndecided);
+  expect_verdict("straddling a plane", x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullUndecided);
 
   /* -w - x is +0 exactly on the left plane, and +0 has no sign bit. */
   fill_corners(corners, -1.0f, 1.0f);
-  expect_verdict("on the left plane", box_cull_classify(corners),
-                 kBoxCullOutside);
+  expect_verdict("on the left plane", x2::native::box_cull_classify(corners),
+                 x2::native::kBoxCullOutside);
 }
 
 int main(void) {

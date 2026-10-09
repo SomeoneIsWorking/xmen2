@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 enum {
   MAX_POSITION_SAMPLES = 12,
   TRANSFORM_VIEW = 2,
@@ -492,3 +494,5 @@ void d3d8_selector_probe_result(const D3D8SelectorProbeTicket *ticket,
           "\"accepted\":%s}\n",
           ticket->frame, ticket->order, accepted ? "true" : "false");
 }
+
+} // namespace x2::d3d8

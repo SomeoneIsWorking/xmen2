@@ -14,6 +14,8 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
+namespace x2::native {
+
 #ifdef X2_WITH_SDL
 int g_virt_at_frame = -1; /* fN form: attach at that frame */
 SDL_JoystickID g_virt_id;
@@ -73,6 +75,8 @@ unsigned long g_vpad_releases_deferred;
 double g_vaxis_until[6];
 short g_vaxis_value[6];
 
+} // namespace x2::native
+
 void dinput_pad_virtual_from_env(void) {
 #ifdef X2_WITH_SDL
   const char *e = lucent_cvar_text("virtual_pad");
@@ -90,8 +94,8 @@ void dinput_pad_virtual_from_env(void) {
   {
     const char *eid = lucent_cvar_text("virtual_pad_id");
     if (eid && *eid) {
-      snprintf(g_virtual_persistent_id, sizeof g_virtual_persistent_id, "%s",
-               eid);
+      snprintf(x2::native::g_virtual_persistent_id,
+               sizeof x2::native::g_virtual_persistent_id, "%s", eid);
       x2_log_error("DINPUT-PAD: X2_VIRTUAL_PAD_ID -- the synthetic "
                    "pad will report persistent id \"%s\". "
                    "SYNTHETIC: this identity comes from the "
@@ -112,17 +116,18 @@ void dinput_pad_virtual_from_env(void) {
    */
   if (*e == 'f') {
     char *end;
-    g_virt_at_frame = (int)strtol(e + 1, &end, 10);
+    x2::native::g_virt_at_frame = (int)strtol(e + 1, &end, 10);
     if (*end == '-')
-      g_virt_detach_at = (int)strtol(end + 1, NULL, 10);
-    x2_log_error("DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad will "
-                 "be attached at frame %d%s. Nothing in this run's "
-                 "controller behaviour comes from real hardware.\n",
-                 g_virt_at_frame,
-                 g_virt_detach_at >= 0 ? " and unplugged again later" : "");
+      x2::native::g_virt_detach_at = (int)strtol(end + 1, NULL, 10);
+    x2_log_error(
+        "DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad will "
+        "be attached at frame %d%s. Nothing in this run's "
+        "controller behaviour comes from real hardware.\n",
+        x2::native::g_virt_at_frame,
+        x2::native::g_virt_detach_at >= 0 ? " and unplugged again later" : "");
     return;
   }
-  virtual_attach();
+  x2::native::virtual_attach();
 #endif
 }
 
@@ -132,14 +137,14 @@ void dinput_pad_virtual_from_env(void) {
  */
 int dinput_pad_virtual_attach_for_touch(void) {
 #ifdef X2_WITH_SDL
-  if (g_virt_id) {
+  if (x2::native::g_virt_id) {
     return 1;
   }
   x2_log_error("DINPUT-PAD: attaching a SYNTHETIC gamepad because the "
                "on-screen touch controls publish through one. This pad is "
                "the touch overlay, not hardware.\n");
-  virtual_attach();
-  return g_virt_id != 0;
+  x2::native::virtual_attach();
+  return x2::native::g_virt_id != 0;
 #else
   return 0;
 #endif
@@ -147,23 +152,25 @@ int dinput_pad_virtual_attach_for_touch(void) {
 
 void dinput_pad_virtual_tick(unsigned long frame) {
 #ifdef X2_WITH_SDL
-  virtual_expire();
-  if (g_virt_at_frame >= 0 && frame >= (unsigned long)g_virt_at_frame) {
-    g_virt_at_frame = -1;
-    virtual_attach();
+  x2::native::virtual_expire();
+  if (x2::native::g_virt_at_frame >= 0 &&
+      frame >= (unsigned long)x2::native::g_virt_at_frame) {
+    x2::native::g_virt_at_frame = -1;
+    x2::native::virtual_attach();
   }
-  if (g_virt_detach_at >= 0 && frame >= (unsigned long)g_virt_detach_at) {
-    g_virt_detach_at = -1;
-    if (g_virt_id) {
+  if (x2::native::g_virt_detach_at >= 0 &&
+      frame >= (unsigned long)x2::native::g_virt_detach_at) {
+    x2::native::g_virt_detach_at = -1;
+    if (x2::native::g_virt_id) {
       x2_log_error("DINPUT-PAD: X2_VIRTUAL_PAD -- UNPLUGGING the "
                    "synthetic pad at frame %lu.\n",
                    frame);
-      if (g_virt_js) {
-        SDL_CloseJoystick(g_virt_js);
-        g_virt_js = NULL;
+      if (x2::native::g_virt_js) {
+        SDL_CloseJoystick(x2::native::g_virt_js);
+        x2::native::g_virt_js = NULL;
       }
-      SDL_DetachVirtualJoystick(g_virt_id);
-      g_virt_id = 0;
+      SDL_DetachVirtualJoystick(x2::native::g_virt_id);
+      x2::native::g_virt_id = 0;
       dinput_pad_refresh();
     }
   }
@@ -208,7 +215,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
            "path returned without saying anything)",
            what);
 
-  if (!g_virt_js) {
+  if (!x2::native::g_virt_js) {
     snprintf(why, (size_t)whyn,
              "this run has no synthetic pad to press (X2_VIRTUAL_PAD is "
              "unset, or the pad attached but could not be opened). A REAL "
@@ -224,17 +231,18 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
       x2_log_error("DINPUT-PAD: press handle %p on thread %llu -- id %u "
                    "(attached as %u), connected=%d, virtual=%d, %d button(s), "
                    "%d axis(es)\n",
-                   (void *)g_virt_js,
+                   (void *)x2::native::g_virt_js,
                    (unsigned long long)SDL_GetCurrentThreadID(),
-                   (unsigned)SDL_GetJoystickID(g_virt_js), (unsigned)g_virt_id,
-                   (int)SDL_JoystickConnected(g_virt_js),
-                   (int)SDL_IsJoystickVirtual(g_virt_id),
-                   SDL_GetNumJoystickButtons(g_virt_js),
-                   SDL_GetNumJoystickAxes(g_virt_js));
+                   (unsigned)SDL_GetJoystickID(x2::native::g_virt_js),
+                   (unsigned)x2::native::g_virt_id,
+                   (int)SDL_JoystickConnected(x2::native::g_virt_js),
+                   (int)SDL_IsJoystickVirtual(x2::native::g_virt_id),
+                   SDL_GetNumJoystickButtons(x2::native::g_virt_js),
+                   SDL_GetNumJoystickAxes(x2::native::g_virt_js));
   }
-  for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
-    if (!strcmp(what, g_vbtn_name[i])) {
-      if (!SDL_SetJoystickVirtualButton(g_virt_js, i, true)) {
+  for (i = 0; i < x2::native::X2_VIRTUAL_BUTTON_COUNT; i++)
+    if (!strcmp(what, x2::native::g_vbtn_name[i])) {
+      if (!SDL_SetJoystickVirtualButton(x2::native::g_virt_js, i, true)) {
         snprintf(why, (size_t)whyn, "SDL refused button %d (%s): %s", i, what,
                  SDL_GetError());
         return 0;
@@ -242,12 +250,13 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
       /* A negative hold is an explicit until-release state used by
          physical touch contacts. Zero retains the control-channel's
          historical short-press default. */
-      g_vbtn_until[i] = hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30);
+      x2::native::g_vbtn_until[i] =
+          hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30);
       {
-        g_vbtn_reads_at_set[i] = dinput_pad_button_read_count(i);
-        g_vbtn_release_pending[i] = 0;
+        x2::native::g_vbtn_reads_at_set[i] = dinput_pad_button_read_count(i);
+        x2::native::g_vbtn_release_pending[i] = 0;
       }
-      g_vpad_presses++;
+      x2::native::g_vpad_presses++;
       /*
        * READ IT BACK, through the same call the game uses.
        *
@@ -265,7 +274,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
         /* The JOYSTICK's own view, one layer below the gamepad. If
            this is down and the gamepad is up, the mapping is the
            problem; if this is up too, the virtual set never landed. */
-        int jraw = SDL_GetJoystickButton(g_virt_js, i) ? 1 : 0;
+        int jraw = SDL_GetJoystickButton(x2::native::g_virt_js, i) ? 1 : 0;
         /* Is the handle we hold the one SDL is updating? Re-open the
            same id and ask again; and count what is attached, in case
            there is more than one virtual pad and the game reads the
@@ -273,15 +282,15 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
         {
           int njs = 0, fresh = -1;
           SDL_JoystickID *ids = SDL_GetJoysticks(&njs);
-          SDL_Joystick *j2 = SDL_OpenJoystick(g_virt_id);
+          SDL_Joystick *j2 = SDL_OpenJoystick(x2::native::g_virt_id);
           if (j2) {
             fresh = SDL_GetJoystickButton(j2, i) ? 1 : 0;
             SDL_CloseJoystick(j2);
           }
           x2_log_error("DINPUT-PAD: probe -- %d joystick(s) attached; stored "
                        "handle %p reads %s, a FRESH open of id %u reads %s\n",
-                       njs, (void *)g_virt_js, jraw ? "DOWN" : "UP",
-                       (unsigned)g_virt_id,
+                       njs, (void *)x2::native::g_virt_js, jraw ? "DOWN" : "UP",
+                       (unsigned)x2::native::g_virt_id,
                        fresh < 0 ? "UNOPENABLE" : (fresh ? "DOWN" : "UP"));
           if (ids)
             SDL_free(ids);
@@ -306,20 +315,21 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                 : !strcmp(what, "down") ? SDL_HAT_DOWN
                 : !strcmp(what, "left") ? SDL_HAT_LEFT
                                         : SDL_HAT_RIGHT;
-    if (!SDL_SetJoystickVirtualHat(g_virt_js, 0, hat)) {
+    if (!SDL_SetJoystickVirtualHat(x2::native::g_virt_js, 0, hat)) {
       snprintf(why, (size_t)whyn, "SDL refused hat direction %s: %s", what,
                SDL_GetError());
       return 0;
     }
     /* The same hold rule as a button: negative waits for a release. */
-    virtual_hat_pressed(hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30));
+    x2::native::virtual_hat_pressed(
+        hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30));
     SDL_UpdateJoysticks();
     SDL_UpdateGamepads();
     snprintf(why, (size_t)whyn, "virtual d-pad direction %s is down", what);
     return 1;
   }
   for (i = 0; i < 6; i++)
-    if (!strcmp(what, g_vaxis_name[i])) {
+    if (!strcmp(what, x2::native::g_vaxis_name[i])) {
       /* -1..1 from the caller, SDL's signed 16-bit range on the wire --
          EXCEPT for the triggers, which have no negative half. SDL maps a
          virtual joystick axis's whole -32768..32767 travel onto a
@@ -329,30 +339,30 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
          0..1, and its rest position is the axis MINIMUM. */
       double v = value < -1.0 ? -1.0 : (value > 1.0 ? 1.0 : value);
       short raw;
-      if (axis_is_trigger(i)) {
+      if (x2::native::axis_is_trigger(i)) {
         if (v < 0.0)
           v = 0.0;
-        raw = trigger_raw(v);
+        raw = x2::native::trigger_raw(v);
       } else {
         raw = (short)(v * 32767.0);
       }
-      if (!SDL_SetJoystickVirtualAxis(g_virt_js, i, raw)) {
+      if (!SDL_SetJoystickVirtualAxis(x2::native::g_virt_js, i, raw)) {
         snprintf(why, (size_t)whyn, "SDL refused axis %d (%s): %s", i, what,
                  SDL_GetError());
         return 0;
       }
-      g_vaxis_value[i] = raw;
-      g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
+      x2::native::g_vaxis_value[i] = raw;
+      x2::native::g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
       {
-        g_vaxis_reads_at_set[i] = dinput_pad_axis_read_count(i);
-        g_vaxis_release_pending[i] = 0;
+        x2::native::g_vaxis_reads_at_set[i] = dinput_pad_axis_read_count(i);
+        x2::native::g_vaxis_release_pending[i] = 0;
       }
-      g_vpad_axis_sets++;
+      x2::native::g_vpad_axis_sets++;
       SDL_UpdateJoysticks();
       SDL_UpdateGamepads();
       {
         SDL_GamepadAxis ga = SDL_GetGamepadAxisFromString(what);
-        int jraw = SDL_GetJoystickAxis(g_virt_js, i);
+        int jraw = SDL_GetJoystickAxis(x2::native::g_virt_js, i);
         int graw = (ga != SDL_GAMEPAD_AXIS_INVALID)
                        ? dinput_pad_open_gamepad_axis(0, (int)ga)
                        : 0;
@@ -369,8 +379,10 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                                 "\"%s\" is not a button or axis on this "
                                 "pad. Buttons: ",
                                 what);
-    for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT && n < (size_t)whyn; i++)
-      n += (size_t)snprintf(why + n, (size_t)whyn - n, "%s ", g_vbtn_name[i]);
+    for (i = 0; i < x2::native::X2_VIRTUAL_BUTTON_COUNT && n < (size_t)whyn;
+         i++)
+      n += (size_t)snprintf(why + n, (size_t)whyn - n, "%s ",
+                            x2::native::g_vbtn_name[i]);
     if (n < (size_t)whyn)
       snprintf(why + n, (size_t)whyn - n,
                "| axes: leftx lefty rightx righty lefttrigger "
@@ -388,7 +400,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
 
 unsigned int dinput_pad_virtual_joystick_id(void) {
 #ifdef X2_WITH_SDL
-  return (unsigned int)g_virt_id;
+  return (unsigned int)x2::native::g_virt_id;
 #else
   return 0u;
 #endif
@@ -396,9 +408,9 @@ unsigned int dinput_pad_virtual_joystick_id(void) {
 
 int dinput_pad_virtual_slot(void) {
 #ifdef X2_WITH_SDL
-  if (!g_virt_id)
+  if (!x2::native::g_virt_id)
     return -1;
-  return dinput_pad_for_joystick_id((unsigned int)g_virt_id);
+  return dinput_pad_for_joystick_id((unsigned int)x2::native::g_virt_id);
 #else
   return -1;
 #endif
@@ -406,9 +418,10 @@ int dinput_pad_virtual_slot(void) {
 
 const char *dinput_pad_virtual_identity_override(unsigned int joystick_id) {
 #ifdef X2_WITH_SDL
-  if (g_virt_id && (unsigned int)g_virt_id == joystick_id &&
-      g_virtual_persistent_id[0])
-    return g_virtual_persistent_id;
+  if (x2::native::g_virt_id &&
+      (unsigned int)x2::native::g_virt_id == joystick_id &&
+      x2::native::g_virtual_persistent_id[0])
+    return x2::native::g_virtual_persistent_id;
 #else
   (void)joystick_id;
 #endif
@@ -418,13 +431,13 @@ const char *dinput_pad_virtual_identity_override(unsigned int joystick_id) {
 void dinput_pad_virtual_counts(unsigned long *presses, unsigned long *axis_sets,
                                unsigned long *clears) {
   if (presses)
-    *presses = g_vpad_presses;
+    *presses = x2::native::g_vpad_presses;
   if (axis_sets)
-    *axis_sets = g_vpad_axis_sets;
+    *axis_sets = x2::native::g_vpad_axis_sets;
   if (clears)
-    *clears = g_vbtn_clears;
+    *clears = x2::native::g_vbtn_clears;
 }
 
 unsigned long dinput_pad_virtual_deferred_releases(void) {
-  return g_vpad_releases_deferred;
+  return x2::native::g_vpad_releases_deferred;
 }

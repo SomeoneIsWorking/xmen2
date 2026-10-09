@@ -9,15 +9,16 @@
  * decision test. One file per responsibility: predicates decide, this file
  * acts.
  */
-#ifndef X2_X86_ENGINE_DISPATCH_H
-#define X2_X86_ENGINE_DISPATCH_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "jit_engine.h"
 
 struct X86pCpu;
 struct X86GuestCallFrame;
+
+namespace x2::native {
 
 /*
  * Run the host code at `cpu->eip` -- an import or a resolved native override
@@ -39,4 +40,4 @@ void x86_engine_run_host_at(struct X86pCpu *cpu,
 X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user,
                                               void *run_user);
 
-#endif /* X2_X86_ENGINE_DISPATCH_H */
+} // namespace x2::native

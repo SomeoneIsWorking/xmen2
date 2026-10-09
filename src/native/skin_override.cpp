@@ -111,10 +111,11 @@ static SkinResult run_blend(const SkinCall *call) {
   for (uint32_t v = 0; v < call->count; v++) {
     const uint32_t first = v * call->bones;
     float out[3];
-    skin_blend_vertex(out, position_at(call, v),
-                      guest_memory_as<const uint8_t>(call->indices + first),
-                      guest_memory_as<const float>(call->weights + first * 4u),
-                      call->bones, matrices);
+    x2::native::skin_blend_vertex(
+        out, position_at(call, v),
+        guest_memory_as<const uint8_t>(call->indices + first),
+        guest_memory_as<const float>(call->weights + first * 4u), call->bones,
+        matrices);
     guest_memory_write(call->out + v * call->stride, out, OUT_BYTES);
   }
   const uint32_t end = call->out + call->count * call->stride;
@@ -129,7 +130,7 @@ static SkinResult run_rigid(const SkinCall *call) {
   for (uint32_t v = 0; v < call->count; v++) {
     float out[3];
     index = *guest_memory_as<const uint8_t>(call->indices + v * call->bones);
-    skin_rigid_vertex(out, position_at(call, v), index, matrices);
+    x2::native::skin_rigid_vertex(out, position_at(call, v), index, matrices);
     guest_memory_write(call->out + v * call->stride, out, OUT_BYTES);
   }
   const SkinResult result = {call->indices + call->count * call->bones,

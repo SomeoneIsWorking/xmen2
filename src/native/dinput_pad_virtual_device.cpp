@@ -15,6 +15,8 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
+namespace x2::native {
+
 void virtual_attach(void) {
   SDL_VirtualJoystickDesc desc;
   SDL_JoystickID jid;
@@ -123,4 +125,6 @@ void virtual_attach(void) {
                "from real hardware, and this line is here so that cannot "
                "be mistaken.\n");
 }
+
+} // namespace x2::native
 #endif /* X2_WITH_SDL */

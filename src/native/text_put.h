@@ -5,12 +5,13 @@
  * A report that outgrows it is truncated at the buffer's end, never
  * overrun, and `*at` never passes `size`, so every later append is a no-op.
  */
-#ifndef X2_TEXT_PUT_H
-#define X2_TEXT_PUT_H
+#pragma once
 
-#include <stddef.h>
+#include <cstddef>
+
+namespace x2::native {
 
 void text_put(char *out, size_t size, size_t *at, const char *format, ...)
     __attribute__((format(printf, 4, 5)));
 
-#endif
+} // namespace x2::native

@@ -1,5 +1,4 @@
-#ifndef X2_GUEST_TEB_H
-#define X2_GUEST_TEB_H
+#pragma once
 
 /*
  * A guest thread's TEB (the block FS addresses) and what hangs off it.
@@ -20,7 +19,9 @@
  * the Play Online menu starts networking.
  */
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* Map the main thread's TEB at its fixed low address, give it the SEH
    sentinel and its static TLS, and return its base for FS; 0, having said
@@ -40,4 +41,4 @@ int guest_teb_tls_attach(uint32_t tib);
 /* Return what guest_teb_tls_attach gave `tib`; safe on a TEB that has none. */
 void guest_teb_tls_detach(uint32_t tib);
 
-#endif /* X2_GUEST_TEB_H */
+} // namespace x2::native

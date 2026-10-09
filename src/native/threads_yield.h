@@ -2,8 +2,9 @@
  * The guest lock's voluntary release. See threads_yield.cpp for what a turn
  * guarantees and why the old unlock/yield/lock could not deliver one.
  */
-#ifndef X2_THREADS_YIELD_H
-#define X2_THREADS_YIELD_H
+#pragma once
+
+namespace x2::native {
 
 /* Give up the calling thread's turn: unlock, wait for another guest thread to
  * take it, relock. The caller must hold the guest lock at depth 1 and should
@@ -33,4 +34,4 @@ void guest_yield_counts(unsigned long *handoffs, unsigned long *worst_ms,
  */
 void guest_yield_note_park(int timed_out);
 
-#endif /* X2_THREADS_YIELD_H */
+} // namespace x2::native

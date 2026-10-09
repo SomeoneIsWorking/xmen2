@@ -2287,6 +2287,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vertex_layout.cpp
     src/d3d8/d3d8_frame_material.cpp
     src/d3d8/d3d8_drawcall.cpp
+    src/d3d8/d3d8_transform.cpp
     src/d3d8/d3d8_draw_range.cpp
     src/d3d8/d3d8_lighting.cpp
     src/d3d8/d3d8_light_dump.cpp

@@ -1,6 +1,8 @@
 /* frame_limiter_wait.cpp -- see frame_limiter_wait.h. */
 #include "frame_limiter_wait.h"
 
+namespace x2::native {
+
 uint32_t frame_limiter_sleep_us(float min_frame_s, float frame_start_s,
                                 float last_read_s) {
   double remaining =
@@ -17,3 +19,5 @@ uint32_t frame_limiter_sleep_us(float min_frame_s, float frame_start_s,
     return UINT32_MAX;
   return (uint32_t)us;
 }
+
+} // namespace x2::native

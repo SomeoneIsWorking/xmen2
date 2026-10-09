@@ -209,8 +209,8 @@ void imp_MSVCR71_fgets(CPU *C) {
 }
 void imp_MSVCR71_fprintf(CPU *C) {
   char buf[4096];
-  int n =
-      guest_vformat(buf, sizeof buf, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u);
+  int n = x2::native::guest_vformat(buf, sizeof buf, ACS(1),
+                                    C->reg[kX86pEsp] + 4u + 2u * 4u);
   if (n >= 0) {
     console_or_stream(x2::native::crt_file(A(0)), buf);
   }
@@ -218,7 +218,7 @@ void imp_MSVCR71_fprintf(CPU *C) {
 }
 void imp_MSVCR71_vfprintf(CPU *C) {
   char buf[4096];
-  int n = guest_vformat(buf, sizeof buf, ACS(1), A(2));
+  int n = x2::native::guest_vformat(buf, sizeof buf, ACS(1), A(2));
   if (n >= 0) {
     console_or_stream(x2::native::crt_file(A(0)), buf);
   }

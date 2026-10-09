@@ -84,12 +84,12 @@ static SDL_GPUTextureFormat g_format;
 static SDL_GPUShader *g_vertex_shader, *g_fragment_shader, *g_vs11_shader;
 static SDL_GPUCommandBuffer *g_shadow_command;
 static SDL_GPURenderPass *g_shadow_pass;
-static GpuShadowFramePolicy g_frame_policy;
+static x2::gpu::GpuShadowFramePolicy g_frame_policy;
 static int g_frame_policy_valid;
 static ShadowPipe g_pipelines[48];
 static unsigned g_pipeline_count;
 static unsigned long g_frames, g_frames_with_light, g_frames_submitted;
-static GpuShadowFramePolicy g_last_policy;
+static x2::gpu::GpuShadowFramePolicy g_last_policy;
 static GpuShadowSample g_frame_sample;
 static unsigned long g_casters, g_receivers, g_programmable_casters;
 static unsigned long g_programmable_receivers, g_resource_failures;
@@ -131,7 +131,7 @@ static int resources_ready(void) {
   }
   if (g_texture && g_sampler && g_vertex_shader && g_fragment_shader)
     return 1;
-  g_format = gpu_sampleable_depth_format(g_gpu);
+  g_format = x2::gpu::gpu_sampleable_depth_format(g_gpu);
   if (g_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
     x2_log_error("gpu shadow: no sampleable depth-target format.\n");
     g_resource_failures++;
@@ -195,7 +195,7 @@ static int resources_ready(void) {
     x2_log_info("gpu shadow: enabled, %u cascades of %ux%u in a sampleable "
                 "depth atlas; solid world packet policy, first title "
                 "directional light.\n",
-                GPU_SHADOW_CASCADES, tile_side(), tile_side());
+                x2::gpu::GPU_SHADOW_CASCADES, tile_side(), tile_side());
   return 1;
 }
 
@@ -363,8 +363,8 @@ static void build_frame_sample(void) {
   memcpy(pixel->light, g_frame_policy.light_direction,
          sizeof g_frame_policy.light_direction);
   pixel->light[3] = 1.0f / (float)tile_side();
-  for (i = 0; i < GPU_SHADOW_CASCADES; i++) {
-    const GpuShadowCascade *cascade = &g_frame_policy.cascade[i];
+  for (i = 0; i < x2::gpu::GPU_SHADOW_CASCADES; i++) {
+    const x2::gpu::GpuShadowCascade *cascade = &g_frame_policy.cascade[i];
     pixel->kernel_step[i] = cascade->kernel_texels / (float)tile_side();
     pixel->cascade[i][0] = cascade->split_far;
     pixel->cascade[i][1] = cascade->blend_start;
@@ -394,15 +394,15 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
   unsigned roles, cascade;
   if (!g_shadow_command || !draw || !vertices)
     return;
-  roles = gpu_shadow_draw_roles(draw);
+  roles = x2::gpu::gpu_shadow_draw_roles(draw);
   if (!g_frame_policy_valid &&
-      gpu_shadow_frame_policy(draw, tile_side(), &g_frame_policy)) {
+      x2::gpu::gpu_shadow_frame_policy(draw, tile_side(), &g_frame_policy)) {
     g_frame_policy_valid = 1;
     g_frames_with_light++;
     g_last_policy = g_frame_policy;
     build_frame_sample();
   }
-  if (!(roles & GPU_SHADOW_CASTER) || !g_frame_policy_valid)
+  if (!(roles & x2::gpu::GPU_SHADOW_CASTER) || !g_frame_policy_valid)
     return;
   if (!resources_ready())
     return;
@@ -440,9 +440,9 @@ void gpu_shadow_record(const GpuDraw *draw, SDL_GPUBuffer *vertices,
                                  ? SDL_GPU_INDEXELEMENTSIZE_32BIT
                                  : SDL_GPU_INDEXELEMENTSIZE_16BIT);
   }
-  for (cascade = 0; cascade < GPU_SHADOW_CASCADES; cascade++) {
+  for (cascade = 0; cascade < x2::gpu::GPU_SHADOW_CASCADES; cascade++) {
     set_tile(cascade);
-    gpu_shadow_draw_matrix(&g_frame_policy, cascade, draw, matrix);
+    x2::gpu::gpu_shadow_draw_matrix(&g_frame_policy, cascade, draw, matrix);
     SDL_PushGPUVertexUniformData(g_shadow_command, 0, matrix, sizeof matrix);
     if (indices)
       SDL_DrawGPUIndexedPrimitives(g_shadow_pass, index_count, 1, first_index,
@@ -476,7 +476,7 @@ void gpu_shadow_frame_submit(void) {
 int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample) {
   memset(sample, 0, sizeof *sample);
   if (!g_enabled || !g_frame_policy_valid || !g_shadow_pass ||
-      !(gpu_shadow_draw_roles(draw) & GPU_SHADOW_RECEIVER))
+      !(x2::gpu::gpu_shadow_draw_roles(draw) & x2::gpu::GPU_SHADOW_RECEIVER))
     return 0;
   *sample = g_frame_sample;
   g_receivers++;
@@ -489,7 +489,7 @@ SDL_GPUTextureSamplerBinding gpu_shadow_binding(int enabled) {
   if (enabled) {
     return (SDL_GPUTextureSamplerBinding){g_texture, g_sampler};
   }
-  return gpu_depth_binding_get();
+  return x2::gpu::gpu_depth_binding_get();
 }
 
 void gpu_shadow_report(void) {
@@ -505,12 +505,13 @@ void gpu_shadow_report(void) {
               g_binds.vertices_kept, g_binds.indices_kept,
               g_binds.samplers_kept);
   if (g_frames_with_light) {
-    char cascades[GPU_SHADOW_CASCADES * 112];
+    char cascades[x2::gpu::GPU_SHADOW_CASCADES * 112];
     size_t used = 0;
     unsigned i;
     cascades[0] = '\0';
-    for (i = 0; i < GPU_SHADOW_CASCADES && used < sizeof cascades; i++) {
-      const GpuShadowCascade *c = &g_last_policy.cascade[i];
+    for (i = 0; i < x2::gpu::GPU_SHADOW_CASCADES && used < sizeof cascades;
+         i++) {
+      const x2::gpu::GpuShadowCascade *c = &g_last_policy.cascade[i];
       int n =
           snprintf(cascades + used, sizeof cascades - used,
                    "%s [%u] depth %.0f..%.0f: %.0f x %.0f world units "

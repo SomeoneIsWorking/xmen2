@@ -124,7 +124,7 @@ int gpu_device_create(void) {
                  SDL_GetError());
     return 0;
   }
-  if (!gpu_depth_binding_create(g_gpu)) {
+  if (!x2::gpu::gpu_depth_binding_create(g_gpu)) {
     x2_log_error("gpu: neutral depth binding failed: %s\n", SDL_GetError());
     SDL_DestroyGPUDevice(g_gpu);
     g_gpu = NULL;
@@ -149,14 +149,14 @@ void gpu_device_destroy(void) {
   /* RmlUi owns pipelines, buffers and textures on this device. Its backend
      must release them before the device and before the claimed window. */
   x2::ui::ui_gpu_shutdown();
-  gpu_prompt_glyphs_shutdown();
+  x2::gpu::gpu_prompt_glyphs_shutdown();
   /* Buffers, textures and pipelines belong to the device, so they go before
      it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
      that only shows up under a validation layer. */
   gpu_draw_shutdown();
   gpu_capture_shutdown();
   gpu_present_shutdown(g_gpu);
-  gpu_depth_binding_destroy(g_gpu);
+  x2::gpu::gpu_depth_binding_destroy(g_gpu);
 #endif
 #ifdef X2_WITH_SDL
   if (!g_gpu)
@@ -431,7 +431,7 @@ int gpu_frame_begin(void) {
   /* Reset the frame-owned prompt harvest and create its retained resources
      before a render pass can open. Uploading them from the UI hook would
      submit a copy command after engine drawing had already begun. */
-  gpu_prompt_glyphs_frame_begin();
+  x2::gpu::gpu_prompt_glyphs_frame_begin();
 #ifndef X2_WITH_SDL
   return 0;
 #else

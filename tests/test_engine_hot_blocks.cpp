@@ -57,7 +57,8 @@ const char *x86_native_name_at(uint32_t address) {
   return address == 0x00401000u ? "igNamedThing" : nullptr;
 }
 
-const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool) {
+const X86pJitEngine *x2::native::x86_engine_jit_pool_primary(
+    const x2::native::X86EngineJitPool *pool) {
   (void)pool;
   return nullptr;
 }

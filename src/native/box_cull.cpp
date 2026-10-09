@@ -7,6 +7,8 @@
 #include <math.h>
 #include <string.h>
 
+namespace x2::native {
+
 /* The spill sets below are per-axis constants, and only inlining lets the
    compiler drop the rounding an axis does not take instead of computing both
    and selecting: these helpers are forced inline wherever the compiler can
@@ -405,3 +407,5 @@ uint16_t box_cull_guard_band_status(uint16_t status, BoxCullGuardBand guard) {
   }
   return (uint16_t)((status & ~kBoxCullGuardBandCodeMask) | codes);
 }
+
+} // namespace x2::native

@@ -34,17 +34,21 @@ static unsigned long g_vhat_reads_at_set;
 static int g_vhat_release_pending;
 static double g_vhat_until;
 
+namespace x2::native {
+
 void virtual_hat_pressed(double until) {
   g_vhat_reads_at_set = dinput_pad_pov_read_count();
   g_vhat_release_pending = 0;
   g_vhat_until = until;
 }
 
+} // namespace x2::native
+
 static int center_hat(void) {
 #ifdef X2_WITH_SDL
   g_vhat_release_pending = 0;
   g_vhat_until = 0.0;
-  if (!SDL_SetJoystickVirtualHat(g_virt_js, 0, SDL_HAT_CENTERED))
+  if (!SDL_SetJoystickVirtualHat(x2::native::g_virt_js, 0, SDL_HAT_CENTERED))
     return 0;
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
@@ -60,16 +64,18 @@ static int release_button(int i, int wait_for_a_reader) {
      nobody pressed used to take this branch too, which both left a deadline
      armed for a press that never happened and inflated the deferral count the
      beat reports -- 4 waited releases from 2 presses. */
-  if (wait_for_a_reader && SDL_GetJoystickButton(g_virt_js, i) &&
-      dinput_pad_button_read_count(i) == g_vbtn_reads_at_set[i]) {
-    g_vbtn_release_pending[i] = 1;
-    g_vbtn_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
-    g_vpad_releases_deferred++;
-    if (g_vpad_releases_deferred <= 2) {
+  if (wait_for_a_reader && SDL_GetJoystickButton(x2::native::g_virt_js, i) &&
+      dinput_pad_button_read_count(i) == x2::native::g_vbtn_reads_at_set[i]) {
+    x2::native::g_vbtn_release_pending[i] = 1;
+    x2::native::g_vbtn_until[i] =
+        guest_clock_now_s() + x2::native::X2_VIRTUAL_RELEASE_CEILING_S;
+    x2::native::g_vpad_releases_deferred++;
+    if (x2::native::g_vpad_releases_deferred <= 2) {
       x2_log_error("DINPUT-PAD: holding button %d (\"%s\") for its reader; "
                    "it has been read %lu time(s), %lu at the press.\n",
-                   i, g_vbtn_name[i], dinput_pad_button_read_count(i),
-                   g_vbtn_reads_at_set[i]);
+                   i, x2::native::g_vbtn_name[i],
+                   dinput_pad_button_read_count(i),
+                   x2::native::g_vbtn_reads_at_set[i]);
     }
     return 1;
   }
@@ -82,14 +88,15 @@ static int release_button(int i, int wait_for_a_reader) {
     x2_log_error("DINPUT-PAD: releasing button %d (\"%s\") straight away -- "
                  "taken back %d, SDL reports it down %d, read %lu time(s) "
                  "against %lu at the press.\n",
-                 i, g_vbtn_name[i], !wait_for_a_reader,
-                 (int)SDL_GetJoystickButton(g_virt_js, i),
-                 dinput_pad_button_read_count(i), g_vbtn_reads_at_set[i]);
+                 i, x2::native::g_vbtn_name[i], !wait_for_a_reader,
+                 (int)SDL_GetJoystickButton(x2::native::g_virt_js, i),
+                 dinput_pad_button_read_count(i),
+                 x2::native::g_vbtn_reads_at_set[i]);
   }
-  if (!SDL_SetJoystickVirtualButton(g_virt_js, i, false))
+  if (!SDL_SetJoystickVirtualButton(x2::native::g_virt_js, i, false))
     return 0;
-  g_vbtn_release_pending[i] = 0;
-  g_vbtn_until[i] = 0.0;
+  x2::native::g_vbtn_release_pending[i] = 0;
+  x2::native::g_vbtn_until[i] = 0.0;
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
   return 1;
@@ -103,10 +110,10 @@ static int release_button(int i, int wait_for_a_reader) {
 int dinput_pad_virtual_release_now(const char *what) {
 #ifdef X2_WITH_SDL
   int i;
-  if (!g_virt_js || !what)
+  if (!x2::native::g_virt_js || !what)
     return 0;
-  for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
-    if (!strcmp(what, g_vbtn_name[i]))
+  for (i = 0; i < x2::native::X2_VIRTUAL_BUTTON_COUNT; i++)
+    if (!strcmp(what, x2::native::g_vbtn_name[i]))
       return release_button(i, 0);
   if (!strcmp(what, "up") || !strcmp(what, "down") || !strcmp(what, "left") ||
       !strcmp(what, "right"))
@@ -121,41 +128,45 @@ int dinput_pad_virtual_release_now(const char *what) {
 int dinput_pad_virtual_release(const char *what) {
 #ifdef X2_WITH_SDL
   int i;
-  if (!g_virt_js || !what)
+  if (!x2::native::g_virt_js || !what)
     return 0;
-  for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++) {
-    if (!strcmp(what, g_vbtn_name[i])) {
+  for (i = 0; i < x2::native::X2_VIRTUAL_BUTTON_COUNT; i++) {
+    if (!strcmp(what, x2::native::g_vbtn_name[i])) {
       return release_button(i, 1);
     }
   }
   if (!strcmp(what, "up") || !strcmp(what, "down") || !strcmp(what, "left") ||
       !strcmp(what, "right")) {
-    if (SDL_GetJoystickHat(g_virt_js, 0) != SDL_HAT_CENTERED &&
+    if (SDL_GetJoystickHat(x2::native::g_virt_js, 0) != SDL_HAT_CENTERED &&
         dinput_pad_pov_read_count() == g_vhat_reads_at_set) {
       g_vhat_release_pending = 1;
-      g_vhat_until = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
-      g_vpad_releases_deferred++;
+      g_vhat_until =
+          guest_clock_now_s() + x2::native::X2_VIRTUAL_RELEASE_CEILING_S;
+      x2::native::g_vpad_releases_deferred++;
       return 1;
     }
     return center_hat();
   }
-  for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++) {
-    if (!strcmp(what, g_vaxis_name[i])) {
-      const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
-      if (g_vaxis_value[i] != rest &&
-          dinput_pad_axis_read_count(i) == g_vaxis_reads_at_set[i]) {
+  for (i = 0; i < x2::native::X2_VIRTUAL_AXIS_COUNT; i++) {
+    if (!strcmp(what, x2::native::g_vaxis_name[i])) {
+      const short rest =
+          x2::native::axis_is_trigger(i) ? x2::native::trigger_raw(0.0) : 0;
+      if (x2::native::g_vaxis_value[i] != rest &&
+          dinput_pad_axis_read_count(i) ==
+              x2::native::g_vaxis_reads_at_set[i]) {
         /* Same rule as a button, including its guard: a stick the game never
            sampled was never moved, and a stick already at rest is owed
            nothing. */
-        g_vaxis_release_pending[i] = 1;
-        g_vaxis_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
-        g_vpad_releases_deferred++;
+        x2::native::g_vaxis_release_pending[i] = 1;
+        x2::native::g_vaxis_until[i] =
+            guest_clock_now_s() + x2::native::X2_VIRTUAL_RELEASE_CEILING_S;
+        x2::native::g_vpad_releases_deferred++;
         return 1;
       }
-      if (!SDL_SetJoystickVirtualAxis(g_virt_js, i, rest))
+      if (!SDL_SetJoystickVirtualAxis(x2::native::g_virt_js, i, rest))
         return 0;
-      g_vaxis_value[i] = rest;
-      g_vaxis_until[i] = 0.0;
+      x2::native::g_vaxis_value[i] = rest;
+      x2::native::g_vaxis_until[i] = 0.0;
       SDL_UpdateJoysticks();
       SDL_UpdateGamepads();
       return 1;
@@ -172,6 +183,8 @@ int dinput_pad_virtual_release(const char *what) {
  * attach/detach schedule, so a press lasts real frames rather than one poll. */
 /* How many deferred releases have landed because their reader finally came. */
 static unsigned long g_vbtn_landed;
+
+namespace x2::native {
 
 void virtual_expire(void) {
 #ifdef X2_WITH_SDL
@@ -253,3 +266,5 @@ void virtual_expire(void) {
   }
 #endif
 }
+
+} // namespace x2::native

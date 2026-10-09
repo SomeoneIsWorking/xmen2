@@ -22,13 +22,14 @@
  * Each vertex is read, transformed and written before the next is read, as the
  * guest does, so an output that overlaps an input sees the same values.
  */
-#ifndef X2_SKIN_H
-#define X2_SKIN_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-#define SKIN_MATRIX_FLOATS 16u
-#define SKIN_POSITION_FLOATS 4u
+namespace x2::native {
+
+inline constexpr unsigned SKIN_MATRIX_FLOATS = 16u;
+inline constexpr unsigned SKIN_POSITION_FLOATS = 4u;
 
 /* One vertex of 0x10022df0: `bones` (index, weight) pairs, read from
    `indices` and `weights` in order, blended into out[0..2]. */
@@ -40,4 +41,4 @@ void skin_blend_vertex(float out[3], const float position[4],
 void skin_rigid_vertex(float out[3], const float position[4], uint8_t index,
                        const float *matrices);
 
-#endif /* X2_SKIN_H */
+} // namespace x2::native

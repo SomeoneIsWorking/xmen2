@@ -106,9 +106,10 @@ int main(void) {
   check(pe_map_anon_low(REGION, REGION_BYTES) == 0, "the test region maps");
 
   /* An image with no TLS directory costs nothing and asks nothing. */
-  check(guest_teb_register_image(IMAGE) == 1, "an image without TLS is fine");
+  check(x2::native::guest_teb_register_image(IMAGE) == 1,
+        "an image without TLS is fine");
   WR32(OTHER_TEB + TEB_TLS_POINTER, 0xdeadbeefu);
-  check(guest_teb_tls_attach(OTHER_TEB) &&
+  check(x2::native::guest_teb_tls_attach(OTHER_TEB) &&
             RD32(OTHER_TEB + TEB_TLS_POINTER) == 0u,
         "with nothing registered a TEB's TLS pointer is cleared, not left "
         "holding whatever the heap had there");
@@ -117,15 +118,17 @@ int main(void) {
   image_has_tls = 1;
   guest_memory_write(TEMPLATE, template_bytes, TEMPLATE_BYTES);
   WR32(CALLBACKS, 0x00401000u);
-  check(guest_teb_register_image(IMAGE) == 0,
+  check(x2::native::guest_teb_register_image(IMAGE) == 0,
         "an image with a TLS callback is refused");
   WR32(CALLBACKS, 0u);
 
   WR32(INDEX_SLOT, 0xffffffffu);
-  check(guest_teb_register_image(IMAGE) == 1, "the image's TLS registers");
+  check(x2::native::guest_teb_register_image(IMAGE) == 1,
+        "the image's TLS registers");
   check(RD32(INDEX_SLOT) == 0u, "its TLS index is written where it reads it");
 
-  check(guest_teb_main_init() == MAIN_TEB, "the main TEB is placed");
+  check(x2::native::guest_teb_main_init() == MAIN_TEB,
+        "the main TEB is placed");
   check(RD32(MAIN_TEB) == 0xffffffffu, "it holds the SEH end-of-chain marker");
   guest_memory_read(block_of(MAIN_TEB), read_back, TEMPLATE_BYTES);
   check(memcmp(read_back, template_bytes, TEMPLATE_BYTES) == 0,
@@ -133,7 +136,8 @@ int main(void) {
   check(RD32(block_of(MAIN_TEB) + TEMPLATE_BYTES) == 0u,
         "and its zero-fill tail is zero");
 
-  check(guest_teb_tls_attach(OTHER_TEB), "a second thread attaches");
+  check(x2::native::guest_teb_tls_attach(OTHER_TEB),
+        "a second thread attaches");
   check(block_of(OTHER_TEB) != block_of(MAIN_TEB),
         "the second thread's block is its own");
   WR8(block_of(OTHER_TEB), 'X');
@@ -142,11 +146,11 @@ int main(void) {
         "nor the template");
 
   const unsigned frees_before = heap_frees;
-  guest_teb_tls_detach(OTHER_TEB);
+  x2::native::guest_teb_tls_detach(OTHER_TEB);
   check(heap_frees - frees_before == 2u &&
             RD32(OTHER_TEB + TEB_TLS_POINTER) == 0u,
         "detach returns the block and the array and clears the pointer");
-  guest_teb_tls_detach(OTHER_TEB);
+  x2::native::guest_teb_tls_detach(OTHER_TEB);
   check(heap_frees - frees_before == 2u, "a second detach frees nothing");
 
   printf("guest teb: %u check(s), %u failure(s)\n", checks, failures);

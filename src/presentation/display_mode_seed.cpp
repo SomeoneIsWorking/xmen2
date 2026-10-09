@@ -60,8 +60,8 @@ int display_mode_seed_is_current() {
 
   return display_mode_seed_format(settings->width, settings->height, expected,
                                   (int)sizeof expected) &&
-         advapi32_host_get_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE, stored,
-                                  (int)sizeof stored) &&
+         x2::native::advapi32_host_get_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE,
+                                              stored, (int)sizeof stored) &&
          strcmp(stored, expected) == 0;
 }
 
@@ -70,8 +70,8 @@ int display_mode_seed_publish() {
   char before[32];
   char value[32];
 
-  int had_before = advapi32_host_get_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE,
-                                            before, (int)sizeof before);
+  int had_before = x2::native::advapi32_host_get_string(
+      X2_DISPLAY_KEY, X2_DISPLAY_VALUE, before, (int)sizeof before);
 
   if (!display_mode_seed_format(settings->width, settings->height, value,
                                 (int)sizeof value))
@@ -81,7 +81,8 @@ int display_mode_seed_publish() {
     g_published_height = settings->height;
     return 0;
   }
-  if (!advapi32_host_set_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE, value))
+  if (!x2::native::advapi32_host_set_string(X2_DISPLAY_KEY, X2_DISPLAY_VALUE,
+                                            value))
     return 0;
   g_published_width = settings->width;
   g_published_height = settings->height;

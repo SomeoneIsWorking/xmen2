@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+namespace x2::native {
+
 void text_put(char *out, size_t size, size_t *at, const char *format, ...) {
   va_list args;
   int written;
@@ -14,3 +16,5 @@ void text_put(char *out, size_t size, size_t *at, const char *format, ...) {
   if (written > 0)
     *at += (size_t)written < size - *at ? (size_t)written : size - *at;
 }
+
+} // namespace x2::native

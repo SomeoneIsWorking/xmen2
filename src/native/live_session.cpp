@@ -12,6 +12,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+namespace x2::native {
+
 static int g_started;
 static int g_port;
 static char g_recording[512];
@@ -98,3 +100,5 @@ int live_session_start(int control_port, const char *input_recording) {
       live_session_record_path());
   return 1;
 }
+
+} // namespace x2::native

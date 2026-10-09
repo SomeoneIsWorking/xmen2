@@ -112,8 +112,9 @@ void control_pump(CPU *cpu, double now) {
   }
 
   if (cmd == CMD_KEY) {
-    g_cmd_ok = dinput_inject_press(g_cmd_key, now, g_cmd_hold, "control",
-                                   g_cmd_why, (int)sizeof g_cmd_why);
+    g_cmd_ok =
+        x2::native::dinput_inject_press(g_cmd_key, now, g_cmd_hold, "control",
+                                        g_cmd_why, (int)sizeof g_cmd_why);
     if (g_cmd_ok) {
       g_keys_pressed++;
       g_cmd_why[0] = '\0';
