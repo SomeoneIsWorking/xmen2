@@ -2,10 +2,11 @@
  * The adapter's capability block. See d3d8_caps.cpp for what the numbers mean
  * and why declaring one wrong is worse than declaring it small.
  */
-#ifndef D3D8_CAPS_H
-#define D3D8_CAPS_H
+#pragma once
 
 #include "d3d8_types.h"
+
+namespace x2::d3d8 {
 
 /*
  * The few limits that come from the real GPU rather than from the profile.
@@ -14,12 +15,12 @@
  * backend: caps are a statement about the machine, and the only code that
  * knows the machine is the one that opened the device.
  */
-typedef struct {
+struct D3D8CapsLimits {
   uint32_t max_texture_dim;
   uint32_t max_volume_extent;
   uint32_t max_anisotropy;
   uint32_t max_simultaneous_textures;
-} D3D8CapsLimits;
+};
 
 /* Conservative values for before a device exists -- GetDeviceCaps is legal on
    IDirect3D8 with no device, and the game calls it exactly there. */
@@ -33,4 +34,4 @@ void d3d8_caps_fill(D3DCAPS8 *c, uint32_t adapter, uint32_t devtype,
    the engine was written for instead of argued about. */
 void d3d8_caps_dump(const D3DCAPS8 *c, const char *who);
 
-#endif /* D3D8_CAPS_H */
+} // namespace x2::d3d8

@@ -6,6 +6,8 @@
 
 #include <stdio.h>
 
+namespace x2::native {
+
 void x86_report_where(uint32_t addr) {
   X86Module *m = x86_module_for(addr);
   const char *mod = NULL, *sym = x86_poison_name(addr, &mod);
@@ -64,3 +66,5 @@ void x86_report_missing_body(CPU *C, uint32_t target) {
     x2_log_error("*** dispatch cannot continue\n");
   }
 }
+
+} // namespace x2::native

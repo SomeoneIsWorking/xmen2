@@ -191,17 +191,20 @@ static int verifying(void) {
 /* classify's whole answer over `corners`, guard band included;
    kBoxCullUndecided where only the guest body can say. `*status` is the x87
    status word the guest body would leave: its guard band compares. */
-static BoxCullVerdict classify_corners(const float *corners, uint16_t *status) {
-  const BoxCullVerdict verdict = box_cull_classify(corners);
-  if (verdict != kBoxCullUndecided) {
+static x2::native::BoxCullVerdict classify_corners(const float *corners,
+                                                   uint16_t *status) {
+  const x2::native::BoxCullVerdict verdict =
+      x2::native::box_cull_classify(corners);
+  if (verdict != x2::native::kBoxCullUndecided) {
     return verdict;
   }
-  const BoxCullGuardBand guard = {
+  const x2::native::BoxCullGuardBand guard = {
       x86_loadf32(libigsg_mapped(GUARD_SCALE_LINKED)),
       x86_loadf32(libigsg_mapped(GUARD_ONE_LINKED))};
-  const BoxCullVerdict banded = box_cull_guard_band(corners, guard);
-  if (banded != kBoxCullUndecided) {
-    *status = box_cull_guard_band_status(*status, guard);
+  const x2::native::BoxCullVerdict banded =
+      x2::native::box_cull_guard_band(corners, guard);
+  if (banded != x2::native::kBoxCullUndecided) {
+    *status = x2::native::box_cull_guard_band_status(*status, guard);
   }
   return banded;
 }
@@ -224,23 +227,24 @@ static int driver_native(CPU *C) {
   float bounds[6];
   float extent[3];
   float matrix[16];
-  float corners[BOX_CULL_CORNER_FLOATS];
+  float corners[x2::native::BOX_CULL_CORNER_FLOATS];
   read_floats(box + BOX_BOUNDS, bounds, 6u);
   read_floats(traversal + TRAVERSAL_COMPOSITE, matrix, 16u);
-  box_cull_extent(extent, bounds);
+  x2::native::box_cull_extent(extent, bounds);
   const float zero = x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED));
   /* The driver keeps its corners to itself, so only the verdict must be the
      guest's: the bounded one where it is certain, the exact one otherwise. A
      box the bound finds crossing still needs its exact corners for the
      guard band. */
-  BoxCullVerdict verdict;
+  x2::native::BoxCullVerdict verdict;
   uint16_t status = C->x87.status;
-  if (!box_cull_bounded_verdict(bounds, extent, matrix, zero, &verdict) ||
-      verdict == kBoxCullUndecided) {
-    box_cull_corners(corners, bounds, extent, matrix, zero);
+  if (!x2::native::box_cull_bounded_verdict(bounds, extent, matrix, zero,
+                                            &verdict) ||
+      verdict == x2::native::kBoxCullUndecided) {
+    x2::native::box_cull_corners(corners, bounds, extent, matrix, zero);
     verdict = classify_corners(corners, &status);
   }
-  if (verdict == kBoxCullUndecided) {
+  if (verdict == x2::native::kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;
   }
@@ -262,20 +266,21 @@ static int corners_native(CPU *C) {
   float min[3];
   float extent[3];
   float matrix[16];
-  float corners[BOX_CULL_CORNER_FLOATS];
+  float corners[x2::native::BOX_CULL_CORNER_FLOATS];
   read_floats(RD32(esp + 8u), min, 3u);
   read_floats(RD32(esp + 12u), extent, 3u);
   read_floats(RD32(esp + 16u), matrix, 16u);
-  box_cull_corners(corners, min, extent, matrix,
-                   x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
-  for (unsigned i = 0; i < BOX_CULL_CORNER_FLOATS; i++) {
+  x2::native::box_cull_corners(
+      corners, min, extent, matrix,
+      x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
+  for (unsigned i = 0; i < x2::native::BOX_CULL_CORNER_FLOATS; i++) {
     uint32_t word;
     memcpy(&word, &corners[i], sizeof word);
     WR32(out + i * 4u, word);
   }
   if (s_verify) {
     verify_or_abort(C, CORNERS_EP, C->reg[kX86pEax], C->x87.status, out,
-                    corners, BOX_CULL_CORNER_FLOATS);
+                    corners, x2::native::BOX_CULL_CORNER_FLOATS);
   }
   C->reg[kX86pEsp] = esp + 4u;
   return 1;
@@ -286,11 +291,11 @@ static int classify_native(CPU *C) {
     return 0;
   }
   const uint32_t esp = C->reg[kX86pEsp];
-  float corners[BOX_CULL_CORNER_FLOATS];
-  read_floats(RD32(esp + 4u), corners, BOX_CULL_CORNER_FLOATS);
+  float corners[x2::native::BOX_CULL_CORNER_FLOATS];
+  read_floats(RD32(esp + 4u), corners, x2::native::BOX_CULL_CORNER_FLOATS);
   uint16_t status = C->x87.status;
-  const BoxCullVerdict verdict = classify_corners(corners, &status);
-  if (verdict == kBoxCullUndecided) {
+  const x2::native::BoxCullVerdict verdict = classify_corners(corners, &status);
+  if (verdict == x2::native::kBoxCullUndecided) {
     s_undecided += (uint64_t)s_verify;
     return 0;
   }

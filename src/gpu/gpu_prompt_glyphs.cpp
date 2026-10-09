@@ -9,10 +9,8 @@
  * text batch's finalized matrix when it calls this module, so this owner
  * contains no guest addresses or CPU state.
  */
-#include "gpu_selftests.h"
-
-#include "../native/x2_log.h"
 #include "gpu_prompt_glyphs.h"
+#include "../native/x2_log.h"
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
@@ -22,6 +20,8 @@
 
 #include <stdio.h>
 #include <string.h>
+
+namespace x2::gpu {
 
 struct PromptVertex {
   float x, y, z;
@@ -275,3 +275,5 @@ int gpu_prompt_glyphs_selftest(void) {
   return failed;
 #endif
 }
+
+} // namespace x2::gpu

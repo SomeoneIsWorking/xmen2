@@ -647,7 +647,7 @@ void imp_ADVAPI32_RegCloseKey(CPU *C) {
   ret_std(C, ERROR_SUCCESS, 1);
 }
 
-void advapi32_install(void) {
+void x2::native::advapi32_install(void) {
   x86_native_export("ADVAPI32.DLL", "RegOpenKeyA", imp_ADVAPI32_RegOpenKeyA);
   x86_native_export("ADVAPI32.DLL", "RegOpenKeyExA",
                     imp_ADVAPI32_RegOpenKeyExA);
@@ -668,7 +668,7 @@ void advapi32_install(void) {
   x86_native_export("ADVAPI32.DLL", "RegCloseKey", imp_ADVAPI32_RegCloseKey);
 }
 
-void advapi32_report(void) {
+void x2::native::advapi32_report(void) {
   int i, n = 0, leaked = 0;
   for (i = 0; i < static_cast<int>(g_val.size()); i++)
     if (g_val[i].used && strcmp(g_val[i].name, x2::native::KEY_MARK) != 0)

@@ -14,6 +14,8 @@
 #include <cstring>
 #include <lucent/log_c.h>
 
+namespace x2::d3d8 {
+
 static unsigned reg_type(uint32_t t) {
   return ((t >> 28) & 7u) | ((t >> 8) & 0x18u);
 }
@@ -234,3 +236,5 @@ const D3D8VSProgram *d3d8_vs_program(D3D8VertexShader *s) {
     s->program.state = decode_program(s, &s->program) ? 1 : -1;
   return s->program.state == 1 ? &s->program : NULL;
 }
+
+} // namespace x2::d3d8

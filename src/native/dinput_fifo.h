@@ -1,7 +1,10 @@
-#ifndef DINPUT_FIFO_H
-#define DINPUT_FIFO_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * Drain X2_INPUT_FIFO and press whatever key names arrived.
@@ -10,8 +13,6 @@
  * every keyboard poll, whether or not the FIFO is configured -- with it unset
  * this is one getenv and a return.
  */
-struct X86pCpu;
-
 void dinput_fifo_apply(struct X86pCpu *cpu, uint32_t out, uint32_t size,
                        double now);
 
@@ -27,4 +28,4 @@ void dinput_fifo_apply(struct X86pCpu *cpu, uint32_t out, uint32_t size,
 int dinput_inject_press(const char *name, double now, double hold,
                         const char *via, char *why, int whyn);
 
-#endif /* DINPUT_FIFO_H */
+} // namespace x2::native

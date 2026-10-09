@@ -57,8 +57,8 @@ static void rollback(struct SDL_Window *window, x2::config::Settings *settings,
       window, before, window_why, (int)sizeof window_why);
   title_ok = x2::native::display_mode_runtime_apply(
       before->width, before->height, title_why, (int)sizeof title_why);
-  d3d_ok = d3d8_live_resolution_apply(before->width, before->height, d3d_why,
-                                      (int)sizeof d3d_why);
+  d3d_ok = x2::d3d8::d3d8_live_resolution_apply(before->width, before->height,
+                                                d3d_why, (int)sizeof d3d_why);
   if (!title_ok && why && whyn > 0) {
     snprintf(why, (size_t)whyn, "%s; rollback failed (%s)", failure, title_why);
     return;
@@ -78,8 +78,8 @@ int live_resolution_apply(struct SDL_Window *window,
                "window, settings and previous settings are required");
     return 0;
   }
-  if (!d3d8_live_resolution_apply(settings->width, settings->height, failure,
-                                  (int)sizeof failure)) {
+  if (!x2::d3d8::d3d8_live_resolution_apply(settings->width, settings->height,
+                                            failure, (int)sizeof failure)) {
     *settings = *before;
     if (why && whyn > 0)
       snprintf(why, (size_t)whyn, "%s", failure);
@@ -88,8 +88,8 @@ int live_resolution_apply(struct SDL_Window *window,
   if (!x2::native::display_mode_runtime_apply(settings->width, settings->height,
                                               failure, (int)sizeof failure)) {
     char d3d_why[192] = "D3D8 rollback failed";
-    int d3d_ok = d3d8_live_resolution_apply(before->width, before->height,
-                                            d3d_why, (int)sizeof d3d_why);
+    int d3d_ok = x2::d3d8::d3d8_live_resolution_apply(
+        before->width, before->height, d3d_why, (int)sizeof d3d_why);
 
     *settings = *before;
     if (why && whyn > 0) {

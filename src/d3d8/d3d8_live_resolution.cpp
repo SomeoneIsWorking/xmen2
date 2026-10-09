@@ -6,6 +6,8 @@
 
 #define MAX_RESOLUTION_DIMENSION 16384u
 
+namespace x2::d3d8 {
+
 typedef struct {
   D3DPRESENT_PARAMETERS *parameters;
   D3D8Surface *backbuffer;
@@ -85,3 +87,5 @@ int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
     snprintf(why, (size_t)whyn, "game backbuffer is now %ux%u", width, height);
   return 1;
 }
+
+} // namespace x2::d3d8

@@ -46,6 +46,8 @@ static int lightlog_on(void) {
   return 1;
 }
 
+namespace x2::d3d8 {
+
 void d3d8_lightlog(const char *event, const char *fmt, ...) {
   va_list ap;
   if (!lightlog_on())
@@ -56,3 +58,5 @@ void d3d8_lightlog(const char *event, const char *fmt, ...) {
   va_end(ap);
   fputc('\n', g_log);
 }
+
+} // namespace x2::d3d8

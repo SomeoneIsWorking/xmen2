@@ -7,10 +7,11 @@
  * because the request and the report are the same responsibility seen from the
  * two threads that share it.
  */
-#ifndef X2_X86_ENGINE_REPORT_H
-#define X2_X86_ENGINE_REPORT_H
+#pragma once
 
 #include "x86_engine_jit_pool.h"
+
+namespace x2::native {
 
 /*
  * Ask for a snapshot at the next guest boundary, and say whether one was
@@ -36,4 +37,4 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
  */
 void x86_engine_report_jit_totals(const X86EngineJitPool *jit);
 
-#endif
+} // namespace x2::native

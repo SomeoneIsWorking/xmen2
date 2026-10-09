@@ -15,6 +15,8 @@
  */
 #include "xbox_defaults.h"
 
+namespace x2::native {
+
 /* Axis pairs are positive then negative: LX 1/2, LY 3/4, Rx 7/8, Ry 9/10.
    POV is X+/X-/Y+/Y- at 0x11..0x14; buttons start at 0x15 in A/B/X/Y order. */
 static const XboxDefaultBinding DEFAULTS[] = {
@@ -47,3 +49,5 @@ const XboxDefaultBinding *xbox_default_bindings(size_t *count) {
     *count = sizeof DEFAULTS / sizeof DEFAULTS[0];
   return DEFAULTS;
 }
+
+} // namespace x2::native

@@ -28,33 +28,34 @@
  * in doubles (x87_exact.h). classify over finite corners, the guard band and
  * the bounded verdict are exact on any host.
  */
-#ifndef X2_BOX_CULL_H
-#define X2_BOX_CULL_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
-#define BOX_CULL_CORNERS 8u
-#define BOX_CULL_CORNER_FLOATS (BOX_CULL_CORNERS * 4u)
+namespace x2::native {
+
+inline constexpr unsigned BOX_CULL_CORNERS = 8u;
+inline constexpr unsigned BOX_CULL_CORNER_FLOATS = (BOX_CULL_CORNERS * 4u);
 
 /* classify's answer. kBoxCullUndecided is not one: it says this module
    cannot decide -- the box needs the guard-band test, or a value is one the
    host arithmetic does not repeat -- and the caller runs the guest body. */
-typedef enum BoxCullVerdict {
+enum BoxCullVerdict {
   kBoxCullUndecided = 0,
   kBoxCullInside = 1,
   kBoxCullOutside = 2,
   kBoxCullCrossesGuardBand = 3,
   kBoxCullInsideGuardBand = 5,
-} BoxCullVerdict;
+};
 
 /* The guard band classify tests a crossing box against: `scale` is the
    guest's float at 0x1014f4ec (.data, so the title may change it) and `one`
    its .rdata 1.0f at 0x1007bb0c, which scale is compared with. Both are
    read, not assumed. */
-typedef struct BoxCullGuardBand {
+struct BoxCullGuardBand {
   float scale;
   float one;
-} BoxCullGuardBand;
+};
 
 /* The driver's extent, max - min per axis: the guest's fsub, spilled to a
    32-bit slot. `box` is its six floats from min.x. */
@@ -103,7 +104,7 @@ BoxCullVerdict box_cull_guard_band(const float corners[BOX_CULL_CORNER_FLOATS],
    C3/C2/C0 (and clears C1) in the status word, whichever way the band then
    answers: the status word `status` becomes after it. Only a finite scale
    reaches a native answer, so the unordered case never applies. */
-enum { kBoxCullGuardBandCodeMask = 0x4700 };
+inline constexpr int kBoxCullGuardBandCodeMask = 0x4700;
 uint16_t box_cull_guard_band_status(uint16_t status, BoxCullGuardBand guard);
 
 /*
@@ -120,4 +121,4 @@ int box_cull_bounded_verdict(const float min[3], const float extent[3],
                              const float matrix[16], float zero,
                              BoxCullVerdict *out);
 
-#endif /* X2_BOX_CULL_H */
+} // namespace x2::native

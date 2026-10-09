@@ -13,6 +13,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+namespace x2::native {
+
 /* ---- servicing an interception point ---------------------------------- */
 
 /*
@@ -77,3 +79,5 @@ X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user,
   x86_engine_run_host_at(cpu, ctx);
   return kX86pDispatchContinue;
 }
+
+} // namespace x2::native

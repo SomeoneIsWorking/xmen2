@@ -73,8 +73,8 @@ int main(void) {
   state.viewport_maxz = 0.75f;
   state.viewport_set = 1;
 
-  d3d8_live_resolution_bind(&parameters, &backbuffer, &depth, &state);
-  CHECK(d3d8_live_resolution_apply(1920, 1080, why, sizeof why));
+  x2::d3d8::d3d8_live_resolution_bind(&parameters, &backbuffer, &depth, &state);
+  CHECK(x2::d3d8::d3d8_live_resolution_apply(1920, 1080, why, sizeof why));
   CHECK(gpu_calls == 1 && gpu_width == 1920 && gpu_height == 1080);
   CHECK(parameters.BackBufferWidth == 1920 &&
         parameters.BackBufferHeight == 1080);
@@ -91,25 +91,25 @@ int main(void) {
         viewport_height == 1080);
 
   frame_open = 1;
-  CHECK(!d3d8_live_resolution_apply(1600, 900, why, sizeof why));
+  CHECK(!x2::d3d8::d3d8_live_resolution_apply(1600, 900, why, sizeof why));
   CHECK(parameters.BackBufferWidth == 1920 && gpu_calls == 1);
   frame_open = 0;
 
   gpu_accepts = 0;
-  CHECK(!d3d8_live_resolution_apply(1600, 900, why, sizeof why));
+  CHECK(!x2::d3d8::d3d8_live_resolution_apply(1600, 900, why, sizeof why));
   CHECK(parameters.BackBufferWidth == 1920 && gpu_calls == 2);
   gpu_accepts = 1;
 
-  CHECK(!d3d8_live_resolution_apply(0, 900, why, sizeof why));
-  CHECK(!d3d8_live_resolution_apply(20000, 900, why, sizeof why));
+  CHECK(!x2::d3d8::d3d8_live_resolution_apply(0, 900, why, sizeof why));
+  CHECK(!x2::d3d8::d3d8_live_resolution_apply(20000, 900, why, sizeof why));
   CHECK(parameters.BackBufferWidth == 1920 && gpu_calls == 2);
 
-  CHECK(d3d8_live_resolution_apply(1280, 720, why, sizeof why));
+  CHECK(x2::d3d8::d3d8_live_resolution_apply(1280, 720, why, sizeof why));
   CHECK(parameters.BackBufferWidth == 1280 && backbuffer.width == 1280);
   CHECK(depth.width == 1280 && state.viewport_w == 1280);
 
-  d3d8_live_resolution_unbind();
-  CHECK(!d3d8_live_resolution_apply(1920, 1080, why, sizeof why));
+  x2::d3d8::d3d8_live_resolution_unbind();
+  CHECK(!x2::d3d8::d3d8_live_resolution_apply(1920, 1080, why, sizeof why));
 
   printf("test_d3d8_live_resolution: %d checks passed\n", checks);
   return 0;

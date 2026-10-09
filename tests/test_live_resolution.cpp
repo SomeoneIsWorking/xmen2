@@ -51,6 +51,8 @@ int x2::presentation::display_pixel_size(unsigned *width, unsigned *height) {
   return 1;
 }
 
+namespace x2::d3d8 {
+
 int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
                                int whyn) {
   steps[step_count++] = STEP_D3D;
@@ -63,6 +65,8 @@ int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
   }
   return 1;
 }
+
+} // namespace x2::d3d8
 
 namespace x2::native {
 int display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,

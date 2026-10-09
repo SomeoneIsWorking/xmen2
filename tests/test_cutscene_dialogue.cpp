@@ -173,10 +173,10 @@ static void reset_guest(void) {
 }
 
 static void test_ordinary_presentation_positive_control(void) {
-  CutsceneDialogueSnapshot before, after;
+  x2::native::CutsceneDialogueSnapshot before, after;
   CPU cpu = fresh_cpu();
 
-  cutscene_dialogue_snapshot(&before);
+  x2::native::cutscene_dialogue_snapshot(&before);
   cpu.reg[kX86pEsp] -= 8u;
   WR32(cpu.reg[kX86pEsp], 0xc001c0deu);
   WR32(cpu.reg[kX86pEsp] + 4u, 0x0020u);
@@ -188,7 +188,7 @@ static void test_ordinary_presentation_positive_control(void) {
   WR32(cpu.reg[kX86pEsp] + 4u, STACK - 0x40u);
   cpu.reg[kX86pEcx] = 0x0042u;
   line_audio_override(&cpu);
-  cutscene_dialogue_snapshot(&after);
+  x2::native::cutscene_dialogue_snapshot(&after);
 
   CHECK(original_presentations == 2u,
         "positive controls did not reach both retail presenters");
@@ -199,17 +199,17 @@ static void test_ordinary_presentation_positive_control(void) {
 }
 
 static void test_skip_stops_and_suppresses_dialogue(void) {
-  CutsceneDialogueSnapshot before, after;
+  x2::native::CutsceneDialogueSnapshot before, after;
   CPU cpu = fresh_cpu();
 
   WR32(MANAGER + CV_SOUND_HANDLE, 0x12345678u);
   WR32(MANAGER + CV_CHOSEN_RESPONSE, 0x00abcdefu);
   WR8(MANAGER + CV_ACCEPT_STATE, 0xffu);
-  cutscene_dialogue_snapshot(&before);
+  x2::native::cutscene_dialogue_snapshot(&before);
 
-  CHECK(cutscene_dialogue_advance(&cpu),
+  CHECK(x2::native::cutscene_dialogue_advance(&cpu),
         "cutscene dialogue refused a deterministic selection");
-  cutscene_dialogue_snapshot(&after);
+  x2::native::cutscene_dialogue_snapshot(&after);
 
   CHECK(voice_stops == 1u && stopped_handle == 0x12345678u,
         "skip did not stop the currently playing dialogue voice");
@@ -233,15 +233,15 @@ static void test_skip_stops_and_suppresses_dialogue(void) {
 }
 
 static void test_skip_scope_suppresses_adjacent_line(void) {
-  CutsceneDialogueSnapshot before, after;
+  x2::native::CutsceneDialogueSnapshot before, after;
   CPU cpu = fresh_cpu();
 
   WR32(MANAGER + CV_SOUND_HANDLE, 0xffffffffu);
-  cutscene_dialogue_snapshot(&before);
-  cutscene_dialogue_skip_begin();
+  x2::native::cutscene_dialogue_snapshot(&before);
+  x2::native::cutscene_dialogue_skip_begin();
   invoke_line_audio(&cpu);
-  cutscene_dialogue_skip_end(&cpu);
-  cutscene_dialogue_snapshot(&after);
+  x2::native::cutscene_dialogue_skip_end(&cpu);
+  x2::native::cutscene_dialogue_snapshot(&after);
 
   CHECK(original_presentations == 2u,
         "outer cutscene scope leaked into the line presenter");

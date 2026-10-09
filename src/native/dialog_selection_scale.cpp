@@ -58,7 +58,7 @@ static void x2_dialog_selection_transform(CPU *C) {
   uint32_t caller = RD32(C->reg[kX86pEsp]);
 
   g_calls++;
-  d3d8_selector_probe_title_builder_enter(C);
+  x2::d3d8::d3d8_selector_probe_title_builder_enter(C);
   if (caller == SELECTION_CALLER) {
     uint32_t height = RD32(TITLE_OUTPUT_HEIGHT);
     uint32_t translation = RD32(C->reg[kX86pEsp] + 4u);
@@ -84,7 +84,7 @@ static void x2_dialog_selection_transform(CPU *C) {
     }
   }
   x86_guest_body(C, "XMen2.exe", 0x005707d0u);
-  d3d8_selector_probe_title_builder_leave();
+  x2::d3d8::d3d8_selector_probe_title_builder_leave();
 }
 
 } // namespace

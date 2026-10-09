@@ -33,28 +33,32 @@ int main(void) {
   uint16_t small[6] = {3, 9, 2, 7, 1, 4};
   const uint32_t wide[3] = {70000u, 5u, 123456u};
 
-  expect("16-bit, the whole range", d3d8_index_max(1u, small, 0, 0, 6), 9u);
+  expect("16-bit, the whole range",
+         x2::d3d8::d3d8_index_max(1u, small, 0, 0, 6), 9u);
   small[1] = 0;
   expect("the same upload is answered without reading",
-         d3d8_index_max(1u, small, 0, 0, 6), 9u);
-  expect("a new upload is read again", d3d8_index_max(3u, small, 0, 0, 6), 7u);
+         x2::d3d8::d3d8_index_max(1u, small, 0, 0, 6), 9u);
+  expect("a new upload is read again",
+         x2::d3d8::d3d8_index_max(3u, small, 0, 0, 6), 7u);
   expect("another range of that upload is read",
-         d3d8_index_max(3u, small, 0, 4, 2), 4u);
+         x2::d3d8::d3d8_index_max(3u, small, 0, 4, 2), 4u);
   /* Uploads that share serial 1's slot must not take its answer: 20000
      serials over 4096 slots put several in it. */
   for (uint32_t serial = 4; serial < 20000u; serial++) {
-    if (d3d8_index_max(serial, small, 0, 0, 6) != 7u) {
+    if (x2::d3d8::d3d8_index_max(serial, small, 0, 0, 6) != 7u) {
       expect("an upload sharing a slot is read", 9u, 7u);
       break;
     }
   }
-  expect("32-bit indices above 16 bits", d3d8_index_max(2u, wide, 1, 0, 3),
-         123456u);
+  expect("32-bit indices above 16 bits",
+         x2::d3d8::d3d8_index_max(2u, wide, 1, 0, 3), 123456u);
 
   small[5] = 11;
-  expect("serial 0 always reads", d3d8_index_max(0u, small, 0, 0, 6), 11u);
+  expect("serial 0 always reads", x2::d3d8::d3d8_index_max(0u, small, 0, 0, 6),
+         11u);
   small[5] = 1;
-  expect("serial 0 reads again", d3d8_index_max(0u, small, 0, 0, 6), 7u);
+  expect("serial 0 reads again", x2::d3d8::d3d8_index_max(0u, small, 0, 0, 6),
+         7u);
 
   if (failures) {
     fprintf(stderr, "%d failure(s)\n", failures);

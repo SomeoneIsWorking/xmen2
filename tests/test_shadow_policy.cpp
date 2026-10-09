@@ -73,57 +73,59 @@ static void light_clip(const float matrix[16], const float p[3], float out[3]) {
 
 static void test_roles_and_matrices(void) {
   GpuDraw draw = scene_draw();
-  GpuShadowFramePolicy frame;
+  x2::gpu::GpuShadowFramePolicy frame;
   float matrix[16];
-  unsigned roles = gpu_shadow_draw_roles(&draw);
+  unsigned roles = x2::gpu::gpu_shadow_draw_roles(&draw);
 
-  CHECK((roles & GPU_SHADOW_CASTER) != 0);
-  CHECK((roles & GPU_SHADOW_RECEIVER) != 0);
+  CHECK((roles & x2::gpu::GPU_SHADOW_CASTER) != 0);
+  CHECK((roles & x2::gpu::GPU_SHADOW_RECEIVER) != 0);
   /* The identity camera is orthographic: view depth runs along its axis. */
-  CHECK(gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
+  CHECK(x2::gpu::gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
   CHECK(frame.view_near == 0.0f && fabsf(frame.view_far - 1.0f) < 1e-5f);
-  for (unsigned c = 0; c < GPU_SHADOW_CASCADES; c++) {
-    gpu_shadow_draw_matrix(&frame, c, &draw, matrix);
+  for (unsigned c = 0; c < x2::gpu::GPU_SHADOW_CASCADES; c++) {
+    x2::gpu::gpu_shadow_draw_matrix(&frame, c, &draw, matrix);
     for (unsigned i = 0; i < 16; i++)
       CHECK(isfinite(matrix[i]));
   }
 
   draw.programmable = 1;
-  roles = gpu_shadow_draw_roles(&draw);
-  CHECK((roles & GPU_SHADOW_CASTER) != 0);
-  CHECK((roles & GPU_SHADOW_RECEIVER) != 0);
-  gpu_shadow_draw_matrix(&frame, 0, &draw, matrix);
+  roles = x2::gpu::gpu_shadow_draw_roles(&draw);
+  CHECK((roles & x2::gpu::GPU_SHADOW_CASTER) != 0);
+  CHECK((roles & x2::gpu::GPU_SHADOW_RECEIVER) != 0);
+  x2::gpu::gpu_shadow_draw_matrix(&frame, 0, &draw, matrix);
   for (unsigned i = 0; i < 16; i++)
     CHECK(isfinite(matrix[i]));
 
   draw.alpha_test = 1;
   draw.uv_offset = 16;
-  CHECK((gpu_shadow_draw_roles(&draw) & GPU_SHADOW_CASTER) != 0);
+  CHECK((x2::gpu::gpu_shadow_draw_roles(&draw) & x2::gpu::GPU_SHADOW_CASTER) !=
+        0);
   draw.uv_offset = -1;
-  CHECK(gpu_shadow_draw_roles(&draw) == GPU_SHADOW_NONE);
+  CHECK(x2::gpu::gpu_shadow_draw_roles(&draw) == x2::gpu::GPU_SHADOW_NONE);
   draw.alpha_test = 0;
   draw.blend_enable = 1;
-  CHECK(gpu_shadow_draw_roles(&draw) == GPU_SHADOW_NONE);
+  CHECK(x2::gpu::gpu_shadow_draw_roles(&draw) == x2::gpu::GPU_SHADOW_NONE);
   draw.blend_enable = 0;
   draw.pretransformed = 1;
-  CHECK(gpu_shadow_draw_roles(&draw) == GPU_SHADOW_NONE);
+  CHECK(x2::gpu::gpu_shadow_draw_roles(&draw) == x2::gpu::GPU_SHADOW_NONE);
 }
 
 static void test_splits_and_fit(void) {
   GpuDraw draw = camera_draw(EYE_X, EYE_Y, EYE_Z);
-  GpuShadowFramePolicy frame;
-  CHECK(gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
+  x2::gpu::GpuShadowFramePolicy frame;
+  CHECK(x2::gpu::gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
   CHECK(fabsf(frame.view_near - NEAR_PLANE) < 0.1f);
   CHECK(fabsf(frame.view_far - FAR_PLANE) < 1.0f);
   CHECK(frame.cascade[0].slice_near == frame.view_near);
-  CHECK(frame.cascade[GPU_SHADOW_CASCADES - 1].split_far == frame.view_far);
-  for (unsigned c = 0; c < GPU_SHADOW_CASCADES; c++) {
-    const GpuShadowCascade *cascade = &frame.cascade[c];
+  CHECK(frame.cascade[x2::gpu::GPU_SHADOW_CASCADES - 1].split_far ==
+        frame.view_far);
+  for (unsigned c = 0; c < x2::gpu::GPU_SHADOW_CASCADES; c++) {
+    const x2::gpu::GpuShadowCascade *cascade = &frame.cascade[c];
     CHECK(cascade->split_far > cascade->slice_near);
     CHECK(cascade->blend_start > cascade->slice_near &&
           cascade->blend_start < cascade->split_far);
     if (c) {
-      const GpuShadowCascade *previous = &frame.cascade[c - 1];
+      const x2::gpu::GpuShadowCascade *previous = &frame.cascade[c - 1];
       CHECK(cascade->split_far > previous->split_far);
       /* Each slice starts where the previous cascade's blend band does. */
       CHECK(cascade->slice_near == previous->blend_start);
@@ -157,9 +159,9 @@ static void test_splits_and_fit(void) {
 
 static void test_texel_snapping(void) {
   GpuDraw base = camera_draw(500.0f, EYE_Y, 0.0f);
-  GpuShadowFramePolicy reference;
-  CHECK(gpu_shadow_frame_policy(&base, RESOLUTION, &reference));
-  for (unsigned c = 0; c < GPU_SHADOW_CASCADES; c++) {
+  x2::gpu::GpuShadowFramePolicy reference;
+  CHECK(x2::gpu::gpu_shadow_frame_policy(&base, RESOLUTION, &reference));
+  for (unsigned c = 0; c < x2::gpu::GPU_SHADOW_CASCADES; c++) {
     const float texel = reference.cascade[c].texel_world;
     float previous[16];
     unsigned changes = 0;
@@ -167,9 +169,9 @@ static void test_texel_snapping(void) {
       /* This light's right axis is world x, so the camera slides along it. */
       GpuDraw draw =
           camera_draw(500.0f + (float)step * 0.05f * texel, EYE_Y, 0.0f);
-      GpuShadowFramePolicy frame;
+      x2::gpu::GpuShadowFramePolicy frame;
       const float *matrix;
-      CHECK(gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
+      CHECK(x2::gpu::gpu_shadow_frame_policy(&draw, RESOLUTION, &frame));
       matrix = frame.cascade[c].light_view_projection;
       if (step) {
         for (unsigned i = 0; i < 16; i++)
@@ -184,8 +186,8 @@ static void test_texel_snapping(void) {
     CHECK(changes <= 1);
     {
       GpuDraw moved = camera_draw(500.0f + 3.0f * texel, EYE_Y, 0.0f);
-      GpuShadowFramePolicy shifted;
-      CHECK(gpu_shadow_frame_policy(&moved, RESOLUTION, &shifted));
+      x2::gpu::GpuShadowFramePolicy shifted;
+      CHECK(x2::gpu::gpu_shadow_frame_policy(&moved, RESOLUTION, &shifted));
       CHECK(shifted.cascade[c].light_view_projection[12] !=
             reference.cascade[c].light_view_projection[12]);
     }

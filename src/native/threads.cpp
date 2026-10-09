@@ -197,7 +197,7 @@ void guest_lock(void) {
     g_waiters--;
   }
   /* This thread now holds the guest lock: keep the hand-off promise. */
-  guest_yield_turn_taken();
+  x2::native::guest_yield_turn_taken();
   k32_tls_switch(g_self->slot);
   guest_suspend_point();
   g_self->n_ran++;
@@ -229,7 +229,7 @@ void guest_quantum(void) {
     return;
   g_quanta++;
   g_switches++;
-  guest_yield_turn();
+  x2::native::guest_yield_turn();
 }
 
 unsigned long guest_quantum_count(void) { return g_quanta; }
@@ -281,13 +281,13 @@ void guest_cond_wait_us(uint64_t us) {
     clock_gettime(CLOCK_REALTIME, &now);
     x2::native::guest_thread_wait_deadline(&now, us, &ts);
     rc = pthread_cond_timedwait(&g_cond, &g_lock, &ts);
-    guest_yield_note_park(rc == ETIMEDOUT);
+    x2::native::guest_yield_note_park(rc == ETIMEDOUT);
   }
   g_cond_waiters--;
   guest_thread_leave_cond_wait(t);
   /* The wait re-acquired the lock inside pthread_cond_timedwait; that is a
      fresh turn, and the hand-off promise has to hear about it. */
-  guest_yield_turn_taken();
+  x2::native::guest_yield_turn_taken();
   k32_tls_switch(t->slot);
   state_set(x2::native::TS_RUNNING);
   guest_suspend_point();
@@ -318,7 +318,7 @@ void guest_sleep_ms(uint32_t ms) {
     if (g_self->depth != 1 || !scheduler_has_waiter())
       return;
     g_switches++;
-    guest_yield_turn();
+    x2::native::guest_yield_turn();
     return;
   }
   guest_cond_wait_us((uint64_t)ms * 1000u);
@@ -339,7 +339,7 @@ static void *thread_main(void *argument) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
     g_cond_waiters--;
-    guest_yield_turn_taken(); /* the wait re-acquired the lock */
+    x2::native::guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
   state_set(x2::native::TS_RUNNING);
   /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
@@ -548,7 +548,7 @@ static void guest_suspend_point(void) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
     g_cond_waiters--;
-    guest_yield_turn_taken(); /* the wait re-acquired the lock */
+    x2::native::guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
   k32_tls_switch(t->slot);
   state_set(x2::native::TS_RUNNING);

@@ -1,18 +1,19 @@
 /* Opt-in evidence for draw requests bound to a selector-sized texture. */
-#ifndef D3D8_SELECTOR_PROBE_H
-#define D3D8_SELECTOR_PROBE_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "d3d8_drawcall.h"
 #include "d3d8_state.h"
 
 struct X86pCpu;
 
-enum { D3D8_SELECTOR_MULTIPLY_CHAIN_MAX = 8 };
+namespace x2::d3d8 {
 
-typedef struct {
+inline constexpr int D3D8_SELECTOR_MULTIPLY_CHAIN_MAX = 8;
+
+struct D3D8SelectorMultiplyStep {
   uint32_t output;
   uint32_t caller;
   uint32_t left;
@@ -34,9 +35,9 @@ typedef struct {
   uint32_t title_builder_rotation;
   float title_builder_scale[3];
   int title_builder_found;
-} D3D8SelectorMultiplyStep;
+};
 
-typedef struct {
+struct D3D8SelectorDrawEvidence {
   const D3D8DrawRequest *request;
   const GpuDraw *draw;
   const D3D8State *state;
@@ -64,15 +65,15 @@ typedef struct {
   int world_matrix_multiply_chain_truncated;
   int layout_valid;
   unsigned long frame;
-} D3D8SelectorDrawEvidence;
+};
 
-typedef struct {
+struct D3D8SelectorProbeTicket {
   int recorded;
   unsigned long frame;
   unsigned long order;
-} D3D8SelectorProbeTicket;
+};
 
-typedef struct {
+struct D3D8SelectorBounds {
   int valid;
   float min_x, min_y, min_z;
   float max_x, max_y, max_z;
@@ -81,7 +82,7 @@ typedef struct {
   uint32_t behind;
   uint32_t out_of_range;
   uint32_t unavailable;
-} D3D8SelectorBounds;
+};
 
 /* Process-start opt-in. Provenance overrides are not registered when the
    probe has no output path, leaving ordinary runs on the original bodies. */
@@ -121,4 +122,4 @@ void d3d8_selector_probe_result(const D3D8SelectorProbeTicket *ticket,
 void d3d8_selector_probe_title_builder_enter(struct X86pCpu *cpu);
 void d3d8_selector_probe_title_builder_leave(void);
 
-#endif /* D3D8_SELECTOR_PROBE_H */
+} // namespace x2::d3d8

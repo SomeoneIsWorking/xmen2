@@ -7,12 +7,13 @@
  * logic harder to read, and the report is the part most often extended -- each
  * addition to it was growing the file that runs every guest call.
  */
-#ifndef X2_X86_DISPATCH_REPORT_H
-#define X2_X86_DISPATCH_REPORT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 struct X86pCpu;
+
+namespace x2::native {
 
 /*
  * Say everything knowable about a dispatch to `target` that found no body:
@@ -32,4 +33,4 @@ void x86_report_where(uint32_t addr);
 
 void x86_report_missing_body(struct X86pCpu *C, uint32_t target);
 
-#endif
+} // namespace x2::native

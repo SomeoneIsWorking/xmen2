@@ -1,12 +1,13 @@
-#ifndef X2_X86_ENGINE_JIT_POOL_H
-#define X2_X86_ENGINE_JIT_POOL_H
+#pragma once
 
 #include "cpu.h"
 #include "jit_engine.h"
 
-#include <stdint.h>
+#include <cstdint>
 
-typedef struct X86EngineJitPool X86EngineJitPool;
+namespace x2::native {
+
+struct X86EngineJitPool;
 
 /* Guest execution and mapping changes are serialized by threads.cpp's guest
  * lock.
@@ -25,4 +26,4 @@ void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
                                X86pJitEngineStats *out);
 const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool);
 
-#endif
+} // namespace x2::native

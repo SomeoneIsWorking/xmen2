@@ -29,9 +29,11 @@ void double_ig_matrix44_multiply(float out[16], const float a[16],
                                  const float b[16]);
 IgInvertVerdict double_ig_matrix44_invert(float out[16], const float m[16],
                                           uint16_t *compare_codes);
+namespace x2::native {
 void double_box_cull_corners(float out[BOX_CULL_CORNER_FLOATS],
                              const float min[3], const float extent[3],
                              const float matrix[16], float zero);
+} // namespace x2::native
 
 /* An inverse's elements are each a dozen roundings from their inputs. */
 #define X2_INVERT_ULPS 4u
@@ -87,10 +89,10 @@ static void test_configurations_differ(void) {
   matrix[0] = 1.0f;
   matrix[8] = ldexpf(1.0f, -29);
   matrix[12] = -1.0f;
-  float exact[BOX_CULL_CORNER_FLOATS];
-  float approximate[BOX_CULL_CORNER_FLOATS];
-  box_cull_corners(exact, min, extent, matrix, 0.0f);
-  double_box_cull_corners(approximate, min, extent, matrix, 0.0f);
+  float exact[x2::native::BOX_CULL_CORNER_FLOATS];
+  float approximate[x2::native::BOX_CULL_CORNER_FLOATS];
+  x2::native::box_cull_corners(exact, min, extent, matrix, 0.0f);
+  x2::native::double_box_cull_corners(approximate, min, extent, matrix, 0.0f);
   check(exact[0] == ldexpf(1.0f, -58) && approximate[0] == 0.0f,
         "a sum needing 58 bits is exact in one build and not the other");
 }
@@ -170,24 +172,25 @@ static void test_box_cull(void) {
                           uniform(-3.0f, 3.0f)};
     const float extent[3] = {uniform(0.0f, 2.0f), uniform(0.0f, 2.0f),
                              uniform(0.0f, 2.0f)};
-    float exact[BOX_CULL_CORNER_FLOATS];
-    float approximate[BOX_CULL_CORNER_FLOATS];
-    box_cull_corners(exact, min, extent, m, 0.0f);
-    double_box_cull_corners(approximate, min, extent, m, 0.0f);
-    for (unsigned i = 0; i < BOX_CULL_CORNER_FLOATS; i++) {
+    float exact[x2::native::BOX_CULL_CORNER_FLOATS];
+    float approximate[x2::native::BOX_CULL_CORNER_FLOATS];
+    x2::native::box_cull_corners(exact, min, extent, m, 0.0f);
+    x2::native::double_box_cull_corners(approximate, min, extent, m, 0.0f);
+    for (unsigned i = 0; i < x2::native::BOX_CULL_CORNER_FLOATS; i++) {
       const uint32_t d = ulps(exact[i], approximate[i]);
       differ += d != 0u;
       worst = d > worst ? d : worst;
     }
-    const BoxCullVerdict verdict = box_cull_classify(exact);
-    crossing += verdict == kBoxCullUndecided;
-    outside += verdict == kBoxCullOutside;
-    verdicts += box_cull_classify(approximate) != verdict;
+    const x2::native::BoxCullVerdict verdict =
+        x2::native::box_cull_classify(exact);
+    crossing += verdict == x2::native::kBoxCullUndecided;
+    outside += verdict == x2::native::kBoxCullOutside;
+    verdicts += x2::native::box_cull_classify(approximate) != verdict;
   }
   printf("  box corners: %u of %u differ, worst %u ulp(s); verdicts %u "
          "crossing, %u outside, %u differ\n",
-         differ, CASES * BOX_CULL_CORNER_FLOATS, worst, crossing, outside,
-         verdicts);
+         differ, CASES * x2::native::BOX_CULL_CORNER_FLOATS, worst, crossing,
+         outside, verdicts);
   check(worst <= 1u, "box corners are within one ulp of exact");
   check(crossing > 1000u && outside > 1000u && !verdicts,
         "every cull verdict from double corners is the exact one");

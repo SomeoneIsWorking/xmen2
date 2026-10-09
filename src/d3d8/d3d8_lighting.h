@@ -1,5 +1,4 @@
-#ifndef D3D8_LIGHTING_H
-#define D3D8_LIGHTING_H
+#pragma once
 
 /*
  * D3DRS_LIGHTING: the material, the light table, and what a draw is lit by.
@@ -14,7 +13,9 @@
 
 #include "gpu_draw.h"
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::d3d8 {
 
 /* Fill the draw's material, ambient and light table from the device state. */
 void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out);
@@ -25,4 +26,4 @@ void d3d8_argb_to_rgba(uint32_t c, float *out);
 /* Everything the lighting diagnostics measured, for the run report. */
 void d3d8_lighting_report(void);
 
-#endif /* D3D8_LIGHTING_H */
+} // namespace x2::d3d8

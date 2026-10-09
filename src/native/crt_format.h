@@ -1,8 +1,9 @@
-#ifndef X2_NATIVE_CRT_FORMAT_H
-#define X2_NATIVE_CRT_FORMAT_H
+#pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
+
+namespace x2::native {
 
 /* printf over a guest x86-32 va_list; returns the length that would have been
  * written. */
@@ -11,4 +12,4 @@ int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
  */
 int guest_vsscanf(const char *in, const char *fmt, uint32_t va);
 
-#endif
+} // namespace x2::native

@@ -18,8 +18,8 @@ typedef struct {
   /* Filter tap spacing per cascade, in tile UV. */
   float kernel_step[4];
   /* Per cascade: split far, blend start, depth bias, normal offset. */
-  float cascade[GPU_SHADOW_CASCADES][4];
-  float view_projection[GPU_SHADOW_CASCADES][16];
+  float cascade[x2::gpu::GPU_SHADOW_CASCADES][4];
+  float view_projection[x2::gpu::GPU_SHADOW_CASCADES][16];
 } GpuShadowPixelBlock;
 
 typedef struct {

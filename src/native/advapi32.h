@@ -1,7 +1,8 @@
 /* ADVAPI32: one registry read, answered "not found" because that is true.
    See advapi32.cpp. */
-#ifndef X2_ADVAPI32_H
-#define X2_ADVAPI32_H
+#pragma once
+
+namespace x2::native {
 
 void advapi32_install(void);
 
@@ -18,4 +19,4 @@ int advapi32_host_get_string(const char *path, const char *name, char *out,
 int advapi32_host_set_string(const char *path, const char *name,
                              const char *value);
 
-#endif /* X2_ADVAPI32_H */
+} // namespace x2::native

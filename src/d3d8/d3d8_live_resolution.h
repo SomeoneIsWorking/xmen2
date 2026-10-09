@@ -1,11 +1,12 @@
-#ifndef X2_D3D8_LIVE_RESOLUTION_H
-#define X2_D3D8_LIVE_RESOLUTION_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 #include "d3d8_state.h"
 #include "d3d8_surface.h"
 #include "d3d8_types.h"
+
+namespace x2::d3d8 {
 
 /*
  * The host has exactly one active D3D8 device. Bind its presentation state
@@ -26,4 +27,4 @@ void d3d8_live_resolution_unbind(void);
 int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
                                int whyn);
 
-#endif /* X2_D3D8_LIVE_RESOLUTION_H */
+} // namespace x2::d3d8

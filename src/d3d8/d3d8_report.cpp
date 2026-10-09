@@ -46,13 +46,13 @@
  */
 static int caps_selftest(void) {
   D3DCAPS8 c;
-  D3D8CapsLimits hw;
+  x2::d3d8::D3D8CapsLimits hw;
   const uint32_t *raw = (const uint32_t *)&c;
   int fails = 0;
 
-  d3d8_caps_limits_default(&hw);
+  x2::d3d8::d3d8_caps_limits_default(&hw);
   memset(&c, 0xAA, sizeof c);
-  d3d8_caps_fill(&c, 0, D3DDEVTYPE_HAL, &hw);
+  x2::d3d8::d3d8_caps_fill(&c, 0, D3DDEVTYPE_HAL, &hw);
 
   if (sizeof c != 212) {
     x2_log_error("  FAIL: D3DCAPS8 is %d bytes; the game allocates "

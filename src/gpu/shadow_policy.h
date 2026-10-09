@@ -1,15 +1,18 @@
-#ifndef X2_SHADOW_POLICY_H
-#define X2_SHADOW_POLICY_H
+#pragma once
 
 #include "gpu_draw.h"
 
-#include <stdint.h>
+#include <cstdint>
 
-enum { GPU_SHADOW_NONE = 0, GPU_SHADOW_CASTER = 1, GPU_SHADOW_RECEIVER = 2 };
+namespace x2::gpu {
 
-#define GPU_SHADOW_CASCADES 4
+inline constexpr int GPU_SHADOW_NONE = 0;
+inline constexpr int GPU_SHADOW_CASTER = 1;
+inline constexpr int GPU_SHADOW_RECEIVER = 2;
 
-typedef struct {
+inline constexpr int GPU_SHADOW_CASCADES = 4;
+
+struct GpuShadowCascade {
   float light_view_projection[16];
   /* Camera view depths: where the slice starts, where the blend into the next
    * cascade begins, and where this cascade ends. */
@@ -22,16 +25,16 @@ typedef struct {
   /* Receiver terms: NDC depth bias, world normal offset at grazing light and
    * the filter tap spacing in texels. */
   float depth_bias, normal_offset, kernel_texels;
-} GpuShadowCascade;
+};
 
-typedef struct {
+struct GpuShadowFramePolicy {
   GpuShadowCascade cascade[GPU_SHADOW_CASCADES];
   float inverse_view_projection[16];
   float light_direction[3];
   /* World position to camera view depth: dot(vec4(position, 1), plane). */
   float view_depth_plane[4];
   float view_near, view_far;
-} GpuShadowFramePolicy;
+};
 
 /* Enhancement policy, deliberately independent of SDL resource mechanics. */
 unsigned gpu_shadow_draw_roles(const GpuDraw *draw);
@@ -42,4 +45,4 @@ int gpu_shadow_frame_policy(const GpuDraw *draw, uint32_t resolution,
 void gpu_shadow_draw_matrix(const GpuShadowFramePolicy *frame, unsigned cascade,
                             const GpuDraw *draw, float out[16]);
 
-#endif
+} // namespace x2::gpu

@@ -8,6 +8,8 @@
 #include <stddef.h>
 #include <stdlib.h>
 
+namespace x2::d3d8 {
+
 static unsigned long g_gpu_draws, g_gpu_vertices;
 
 void d3d8_vs_draw_gpu_counts(unsigned long *draws, unsigned long *vertices) {
@@ -122,3 +124,5 @@ int d3d8_vs_draw_source_on(const D3D8State *s, const D3D8DrawRequest *req,
   program = d3d8_vs_gpu_program(s->vertex_shader, &input_end);
   return program && gpu_source(s, req, program, input_end, out);
 }
+
+} // namespace x2::d3d8

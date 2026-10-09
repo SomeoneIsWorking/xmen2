@@ -323,7 +323,7 @@ static int play_conversation(void *context,
 
   if (!conversation || !g_player.active || sequence != g_player.sequence)
     return 0;
-  advanced = cutscene_dialogue_advance(cpu);
+  advanced = x2::native::cutscene_dialogue_advance(cpu);
   return advanced && claim_events();
 }
 
@@ -338,11 +338,11 @@ static x2::native::CutscenePlayerResult finish(CPU *cpu) {
 
   (void)x2::native::cutscene_control_clock_now_bits(g_player.clock,
                                                     &time_before);
-  cutscene_dialogue_skip_begin();
+  x2::native::cutscene_dialogue_skip_begin();
   g_player.finishing = 1;
   result = x2::native::cutscene_player_finish(&g_player.policy, &ops, cpu);
   g_player.finishing = 0;
-  cutscene_dialogue_skip_end(cpu);
+  x2::native::cutscene_dialogue_skip_end(cpu);
   (void)x2::native::cutscene_control_clock_now_bits(g_player.clock,
                                                     &time_after);
   if (gpu_frames_presented() == frame_before)
@@ -389,7 +389,7 @@ void x2_override_004d8700(CPU *cpu) {
       x2::native::cutscene_player_inherits_context(
           g_player.active, owns_context(current_context(), NULL),
           x2::native::cutscene_event_player_executing_owned(),
-          cutscene_dialogue_payload_active()))
+          x2::native::cutscene_dialogue_payload_active()))
     own(cpu->reg[kX86pEax]);
 }
 

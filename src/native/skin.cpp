@@ -1,6 +1,8 @@
 /* skin.cpp -- see skin.h. */
 #include "skin.h"
 
+namespace x2::native {
+
 /* Contraction would fuse a multiply and an add into one rounding that the
    guest's mulps/addps pair does not make. */
 #pragma STDC FP_CONTRACT OFF
@@ -42,3 +44,5 @@ void skin_rigid_vertex(float out[3], const float position[4], uint8_t index,
     out[lane] = transform_lane(matrix, position, lane);
   }
 }
+
+} // namespace x2::native

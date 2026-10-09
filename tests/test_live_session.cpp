@@ -24,9 +24,9 @@ int main() {
   std::filesystem::create_directories(dir);
   /* Another run's record mid-write, under the name every run once shared. */
   std::filesystem::create_directory(dir / "live.json.new");
-  live_session_set_directory(dir.c_str());
+  x2::native::live_session_set_directory(dir.c_str());
 
-  check(live_session_start(8571, nullptr) == 1,
+  check(x2::native::live_session_start(8571, nullptr) == 1,
         "a run publishes while another run's record is mid-write");
   std::ifstream in(dir / "live.json");
   std::stringstream text;

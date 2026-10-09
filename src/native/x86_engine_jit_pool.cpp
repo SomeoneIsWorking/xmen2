@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 typedef struct X86EngineJitNode {
   X86pJitEngine *jit;
 #if defined(__EMSCRIPTEN__)
@@ -332,3 +334,5 @@ void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
 const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool) {
   return pool->primary->jit;
 }
+
+} // namespace x2::native

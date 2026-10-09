@@ -4,6 +4,8 @@
 #include <math.h>
 #include <string.h>
 
+namespace x2::gpu {
+
 static int matrix_inverse(const float in[16], float out[16]) {
   float rows[4][8];
   int column, row, pivot, k;
@@ -310,3 +312,5 @@ void gpu_shadow_draw_matrix(const GpuShadowFramePolicy *frame, unsigned cascade,
                                          : draw->world,
                       frame->cascade[cascade].light_view_projection, out);
 }
+
+} // namespace x2::gpu

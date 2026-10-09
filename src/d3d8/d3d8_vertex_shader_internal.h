@@ -1,5 +1,4 @@
-#ifndef D3D8_VERTEX_SHADER_INTERNAL_H
-#define D3D8_VERTEX_SHADER_INTERNAL_H
+#pragma once
 
 /*
  * The shader object's layout, shared by its two owners: the handle store in
@@ -13,12 +12,14 @@
 
 #include "d3d8_state.h"
 #include "gpu_vs_program.h"
-#include <stdint.h>
+#include <cstdint>
 
-#define VS_MAX 64
-#define VS_HANDLE_BASE 0xf0000001u
-#define VS_DECL_MAX_DWORDS 256
-#define VS_CODE_MAX_DWORDS 4096
+namespace x2::d3d8 {
+
+inline constexpr int VS_MAX = 64;
+inline constexpr unsigned VS_HANDLE_BASE = 0xf0000001u;
+inline constexpr int VS_DECL_MAX_DWORDS = 256;
+inline constexpr int VS_CODE_MAX_DWORDS = 4096;
 /*
  * The constant register file is D3D8_MAX_VS_CONSTANTS, not a 96 written here.
  *
@@ -30,7 +31,7 @@
  * meant to restore. A declared capability and the code that honours it must
  * be the same symbol.
  */
-#define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
+inline constexpr int VS_CONSTANTS = D3D8_MAX_VS_CONSTANTS;
 
 /*
  * The program decoded once, by the executor, the first time it runs: register
@@ -39,63 +40,57 @@
  * was 7% of the Dead Zone route's samples. VS 1.1 allows 128 instruction
  * slots.
  */
-#define VS_MAX_INSTRUCTIONS 128
-#define VS_INPUTS 17
+inline constexpr int VS_MAX_INSTRUCTIONS = 128;
+inline constexpr int VS_INPUTS = 17;
 
 /*
  * The flat register file a decoded program addresses: temporaries, inputs,
  * a0, outputs (oPos, oFog, oPts, oD0-1, oT0-7) and then the constants, which
  * the executor reads from the caller's array rather than the file.
  */
-enum {
-  VS_FILE_TEMP = 0,
-  VS_FILE_INPUT = VS_FILE_TEMP + 12,
-  VS_FILE_ADDR = VS_FILE_INPUT + VS_INPUTS,
-  VS_FILE_OUT = VS_FILE_ADDR + 1,
-  VS_FILE_CONST = VS_FILE_OUT + 13,
-};
-enum {
-  VS_OUT_POS = VS_FILE_OUT,
-  VS_OUT_D0 = VS_FILE_OUT + 3,
-  VS_OUT_T0 = VS_FILE_OUT + 5
-};
+inline constexpr int VS_FILE_TEMP = 0;
+inline constexpr int VS_FILE_INPUT = VS_FILE_TEMP + 12;
+inline constexpr int VS_FILE_ADDR = VS_FILE_INPUT + VS_INPUTS;
+inline constexpr int VS_FILE_OUT = VS_FILE_ADDR + 1;
+inline constexpr int VS_FILE_CONST = VS_FILE_OUT + 13;
+inline constexpr int VS_OUT_POS = VS_FILE_OUT;
+inline constexpr int VS_OUT_D0 = VS_FILE_OUT + 3;
+inline constexpr int VS_OUT_T0 = VS_FILE_OUT + 5;
 
 /* The VS 1.1 opcodes the executor implements. */
-enum {
-  VS_OP_MOV = 1,
-  VS_OP_ADD = 2,
-  VS_OP_SUB = 3,
-  VS_OP_MAD = 4,
-  VS_OP_MUL = 5,
-  VS_OP_DP3 = 8,
-  VS_OP_DP4 = 9
-};
+inline constexpr int VS_OP_MOV = 1;
+inline constexpr int VS_OP_ADD = 2;
+inline constexpr int VS_OP_SUB = 3;
+inline constexpr int VS_OP_MAD = 4;
+inline constexpr int VS_OP_MUL = 5;
+inline constexpr int VS_OP_DP3 = 8;
+inline constexpr int VS_OP_DP4 = 9;
 
-typedef struct {
+struct D3D8VSSource {
   uint16_t reg; /* flat register, or the constant number when relative */
   uint8_t swizzle[4];
   uint8_t negate;
   uint8_t relative; /* c[reg + a0.x] */
-} D3D8VSSource;
+};
 
-typedef struct {
+struct D3D8VSInstruction {
   uint8_t op;
   uint8_t mask;
   uint16_t dst;
   D3D8VSSource src[3];
-} D3D8VSInstruction;
+};
 
-typedef struct {
+struct D3D8VSInput {
   uint8_t present;
   uint8_t type;
   uint16_t offset;
   uint16_t end; /* offset + the type's size */
-} D3D8VSInput;
+};
 
 /* One bit per register below the constant file. */
-typedef uint64_t D3D8VSRegisterSet;
+using D3D8VSRegisterSet = uint64_t;
 
-typedef struct {
+struct D3D8VSProgram {
   /* 0 not yet decoded, 1 decoded, -1 refused (decoded again, and the reason
      logged again, at every draw that asks). */
   int state;
@@ -107,21 +102,6 @@ typedef struct {
   uint16_t input_end; /* the furthest byte any input reads */
   D3D8VSInstruction insn[VS_MAX_INSTRUCTIONS];
   D3D8VSInput input[VS_INPUTS];
-} D3D8VSProgram;
-
-struct D3D8VertexShader {
-  int used;
-  uint16_t generation;
-  uint32_t usage;
-  uint32_t declaration[VS_DECL_MAX_DWORDS];
-  uint32_t function[VS_CODE_MAX_DWORDS];
-  uint16_t declaration_dwords;
-  uint16_t function_dwords;
-  D3D8VSProgram program;
-  /* The program packed for the GPU (d3d8_vs_gpu.cpp): 0 not yet, 1 packed,
-     -1 it has no form the GPU runs and draws take the CPU executor. */
-  int gpu_state;
-  GpuVsProgram gpu;
 };
 
 /* The decoded program, decoding it now if it has not been. A program that
@@ -135,4 +115,20 @@ unsigned d3d8_vs_source_count(unsigned op);
 /* How much the executor did, for the store's run report. */
 void d3d8_vs_execution_counts(unsigned long *draws, unsigned long *vertices);
 
-#endif /* D3D8_VERTEX_SHADER_INTERNAL_H */
+} // namespace x2::d3d8
+
+/* The definition of the opaque global declared in d3d8_vertex_shader.h. */
+struct D3D8VertexShader {
+  int used;
+  uint16_t generation;
+  uint32_t usage;
+  uint32_t declaration[x2::d3d8::VS_DECL_MAX_DWORDS];
+  uint32_t function[x2::d3d8::VS_CODE_MAX_DWORDS];
+  uint16_t declaration_dwords;
+  uint16_t function_dwords;
+  x2::d3d8::D3D8VSProgram program;
+  /* The program packed for the GPU (d3d8_vs_gpu.cpp): 0 not yet, 1 packed,
+     -1 it has no form the GPU runs and draws take the CPU executor. */
+  int gpu_state;
+  GpuVsProgram gpu;
+};

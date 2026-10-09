@@ -50,6 +50,8 @@ int x2::native::ui_transform_current(uint32_t context, float mvp[16]) {
   return 1;
 }
 
+namespace x2::gpu {
+
 int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
                              unsigned count, const float mvp[16]) {
   unsigned i;
@@ -66,6 +68,8 @@ int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
     }
   return gpu_ok;
 }
+
+} // namespace x2::gpu
 
 static void guest_body_100352d0(CPU *C) {
   super_calls++;

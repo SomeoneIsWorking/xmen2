@@ -27,6 +27,8 @@
 #define CV_SOUND_HANDLE 0x21b80u
 #define VT_STOP_SOUND 0x74u
 
+namespace x2::native {
+
 typedef struct CutsceneDialogueRuntime {
   unsigned depth;
   unsigned payload_depth;
@@ -199,3 +201,5 @@ x2_cutscene_dialogue_register_override(void) {
   x86_register_override("XMen2.exe", FN_BEGIN_RESPONSE, x2_override_00458700);
   x86_register_override("XMen2.exe", FN_LINE_AUDIO, x2_override_0045a170);
 }
+
+} // namespace x2::native

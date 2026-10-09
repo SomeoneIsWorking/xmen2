@@ -29,6 +29,8 @@
 
 #define YIELD_SLICE_MS 10
 
+namespace x2::native {
+
 /* Any thread newly acquiring the guest lock advances this; a yielding thread
    waits for it to move under it. */
 static std::atomic<unsigned long> g_acquires;
@@ -103,3 +105,5 @@ void guest_yield_counts(unsigned long *handoffs, unsigned long *worst_ms,
   if (parks_timed_out)
     *parks_timed_out = g_park_timed_out.load();
 }
+
+} // namespace x2::native

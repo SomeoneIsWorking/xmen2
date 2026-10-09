@@ -13,6 +13,8 @@
 #include <atomic>
 #include <stdio.h>
 
+namespace x2::native {
+
 static std::atomic<int> g_live_requested = 1;
 
 int x86_engine_report_request(void) {
@@ -444,3 +446,5 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
   x2::native::x86_engine_x87_census_report("");
   x2::native::x86_engine_report_hot_blocks(jit, "");
 }
+
+} // namespace x2::native

@@ -6,6 +6,8 @@
 
 #include <stdint.h>
 
+namespace x2::d3d8 {
+
 /*
  * Does this draw read OUTSIDE the vertex buffer it is bound to?
  *
@@ -164,3 +166,5 @@ void d3d8_draw_range_report(void) {
               "of the same upload, %lu scanned\n",
               g_index_max_hits, g_index_max_scans);
 }
+
+} // namespace x2::d3d8

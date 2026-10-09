@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::native {
+
 /* ---- the format walker -------------------------------------------------
  *
  * A va_list on x86-32 cdecl IS a pointer into the guest stack: arguments are
@@ -433,3 +435,5 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va) {
   }
   return filled;
 }
+
+} // namespace x2::native

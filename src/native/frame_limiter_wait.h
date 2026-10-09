@@ -19,18 +19,19 @@
  * frame ends when it did before -- the sleep only replaces spin iterations
  * that would have found the frame not yet over.
  */
-#ifndef FRAME_LIMITER_WAIT_H
-#define FRAME_LIMITER_WAIT_H
+#pragma once
 
-#include <stdint.h>
+#include <cstdint>
+
+namespace x2::native {
 
 /* The last stretch is left to the loop's spin: a host sleep wakes late, and
    a late wake would lengthen the frame. Whole milliseconds used to be slept
    and a millisecond left, which spun ~2,700 clock reads a frame in Dead Zone
    (#141); a timed wait wakes within tens of microseconds on a desktop host. */
-#define FRAME_LIMITER_SPIN_US 250u
+inline constexpr unsigned FRAME_LIMITER_SPIN_US = 250u;
 /* Below this a sleep costs more in the hand-off than it saves in spin. */
-#define FRAME_LIMITER_MIN_SLEEP_US 100u
+inline constexpr unsigned FRAME_LIMITER_MIN_SLEEP_US = 100u;
 
 /*
  * The microseconds the limiter may sleep before its next clock read: the
@@ -42,4 +43,4 @@
 uint32_t frame_limiter_sleep_us(float min_frame_s, float frame_start_s,
                                 float last_read_s);
 
-#endif /* FRAME_LIMITER_WAIT_H */
+} // namespace x2::native

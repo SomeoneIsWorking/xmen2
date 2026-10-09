@@ -299,8 +299,8 @@ bool SessionDirector::leave_to_main_menu(const CPU &cpu, double now) {
 
 void SessionDirector::accept_popup(double now) {
   std::array<char, 128> why{};
-  if (!dinput_inject_press("Return", now, 0.0, "lan", why.data(),
-                           static_cast<int>(why.size()))) {
+  if (!x2::native::dinput_inject_press("Return", now, 0.0, "lan", why.data(),
+                                       static_cast<int>(why.size()))) {
     x2_log_error("lan: accept on the popup was not delivered: %s", why.data());
     return;
   }
@@ -330,8 +330,8 @@ bool SessionDirector::press(const CPU &cpu, const std::string &item,
     return false;
   }
   std::array<char, 128> why{};
-  if (!dinput_inject_press("Return", now, 0.0, "lan", why.data(),
-                           static_cast<int>(why.size()))) {
+  if (!x2::native::dinput_inject_press("Return", now, 0.0, "lan", why.data(),
+                                       static_cast<int>(why.size()))) {
     x2_log_error("lan: accept on \"%s\" was not delivered: %s", item.c_str(),
                  why.data());
     return false;

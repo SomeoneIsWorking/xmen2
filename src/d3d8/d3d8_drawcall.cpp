@@ -29,7 +29,6 @@
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
-#include "gpu_matrix.h"
 #include "guest_memory.h"
 #include <math.h>
 #include <signal.h>
@@ -1077,6 +1076,7 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   uint32_t fvf = s->vertex_shader;
   uint32_t cull, srcb, dstb;
   int programmable = fvf > 0xf0000000u;
+  using namespace x2::d3d8;
 
   memset(out, 0, sizeof *out);
 
@@ -1360,10 +1360,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
           g_arg_first[3] = b2;
         }
       }
-      out->color_arg1 = x2::d3d8::d3d8_texture_arg(a1, "COLORARG1");
-      out->color_arg2 = x2::d3d8::d3d8_texture_arg(a2, "COLORARG2");
-      out->alpha_arg1 = x2::d3d8::d3d8_texture_arg(b1, "ALPHAARG1");
-      out->alpha_arg2 = x2::d3d8::d3d8_texture_arg(b2, "ALPHAARG2");
+      out->color_arg1 = d3d8_texture_arg(a1, "COLORARG1");
+      out->color_arg2 = d3d8_texture_arg(a2, "COLORARG2");
+      out->alpha_arg1 = d3d8_texture_arg(b1, "ALPHAARG1");
+      out->alpha_arg2 = d3d8_texture_arg(b2, "ALPHAARG2");
       if (out->color_arg1 < 0 || out->color_arg2 < 0 || out->alpha_arg1 < 0 ||
           out->alpha_arg2 < 0)
         return 0;
@@ -1465,7 +1465,7 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
     }
   }
 
-  if (!x2::d3d8::d3d8_texture_stage1_lower(s, req->texture1, out))
+  if (!d3d8_texture_stage1_lower(s, req->texture1, out))
     return 0;
 
   out->blend_enable = rs(s, D3DRS_ALPHABLENDENABLE, 0) != 0;
@@ -1521,42 +1521,6 @@ void d3d8_release_draw(GpuDraw *draw) {
   draw->owns_vertices = 0;
 }
 
-/*
- * world * view * projection, in D3D's order and D3D's row-major storage.
- *
- * The shader multiplies as `mvp * position` with a column-major mat4, which is
- * the same arithmetic as D3D's row-vector `position * M` when the matrix is
- * handed over untransposed -- so no transpose happens here, and that is a
- * deliberate non-action rather than an omission.
- */
-/* World * View on its own. D3D8's texture-coordinate generators are all
-   defined in CAMERA space, so the shader needs this as well as the combined
-   matrix -- and the combined one cannot be taken apart again. */
-void d3d8_worldview_transform(const D3D8State *s, float out[16]) {
-  static const float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0,
-                                  0, 0, 1, 0, 0, 0, 0, 1};
-  const float *w =
-      s->transform_set[D3DTS_WORLD] ? s->transform[D3DTS_WORLD].m : ident;
-  const float *v =
-      s->transform_set[D3DTS_VIEW] ? s->transform[D3DTS_VIEW].m : ident;
-  gpu_matrix_multiply(w, v, out);
-}
-
-void d3d8_combine_transform(const D3D8State *s, float out[16]) {
-  static const float ident[16] = {1, 0, 0, 0, 0, 1, 0, 0,
-                                  0, 0, 1, 0, 0, 0, 0, 1};
-  const float *w =
-      s->transform_set[D3DTS_WORLD] ? s->transform[D3DTS_WORLD].m : ident;
-  const float *v =
-      s->transform_set[D3DTS_VIEW] ? s->transform[D3DTS_VIEW].m : ident;
-  const float *p = s->transform_set[D3DTS_PROJECTION]
-                       ? s->transform[D3DTS_PROJECTION].m
-                       : ident;
-  float wv[16];
-  gpu_matrix_multiply(w, v, wv);
-  gpu_matrix_multiply(wv, p, out);
-}
-
 /* For the heartbeat. The shutdown report cannot answer this: every run of
    this game ends in a kill, so a number that only appears at exit is a number
    nobody ever reads -- the same lesson the pulse and preemption counters
@@ -1590,24 +1554,24 @@ void d3d8_drawcall_combiner_args(unsigned long *dflt, unsigned long *other,
  * implementing a state removes it from the report by construction.
  */
 int d3d8_drawcall_reads_state(uint32_t which) {
-  static const uint32_t READ[] = {D3DRS_ZENABLE,
-                                  D3DRS_ZWRITEENABLE,
-                                  D3DRS_ALPHATESTENABLE,
-                                  D3DRS_SRCBLEND,
-                                  D3DRS_DESTBLEND,
-                                  D3DRS_CULLMODE,
-                                  D3DRS_ZFUNC,
-                                  D3DRS_ALPHAREF,
-                                  D3DRS_ALPHAFUNC,
-                                  D3DRS_ALPHABLENDENABLE,
-                                  D3DRS_LIGHTING,
-                                  D3DRS_AMBIENT,
-                                  D3DRS_COLORVERTEX,
-                                  D3DRS_NORMALIZENORMALS,
-                                  D3DRS_DIFFUSEMATERIALSOURCE,
-                                  D3DRS_AMBIENTMATERIALSOURCE,
-                                  D3DRS_EMISSIVEMATERIALSOURCE,
-                                  D3DRS_TEXTUREFACTOR};
+  static const uint32_t READ[] = {x2::d3d8::D3DRS_ZENABLE,
+                                  x2::d3d8::D3DRS_ZWRITEENABLE,
+                                  x2::d3d8::D3DRS_ALPHATESTENABLE,
+                                  x2::d3d8::D3DRS_SRCBLEND,
+                                  x2::d3d8::D3DRS_DESTBLEND,
+                                  x2::d3d8::D3DRS_CULLMODE,
+                                  x2::d3d8::D3DRS_ZFUNC,
+                                  x2::d3d8::D3DRS_ALPHAREF,
+                                  x2::d3d8::D3DRS_ALPHAFUNC,
+                                  x2::d3d8::D3DRS_ALPHABLENDENABLE,
+                                  x2::d3d8::D3DRS_LIGHTING,
+                                  x2::d3d8::D3DRS_AMBIENT,
+                                  x2::d3d8::D3DRS_COLORVERTEX,
+                                  x2::d3d8::D3DRS_NORMALIZENORMALS,
+                                  x2::d3d8::D3DRS_DIFFUSEMATERIALSOURCE,
+                                  x2::d3d8::D3DRS_AMBIENTMATERIALSOURCE,
+                                  x2::d3d8::D3DRS_EMISSIVEMATERIALSOURCE,
+                                  x2::d3d8::D3DRS_TEXTUREFACTOR};
   unsigned i;
   for (i = 0; i < sizeof READ / sizeof READ[0]; i++)
     if (READ[i] == which)
@@ -1616,9 +1580,9 @@ int d3d8_drawcall_reads_state(uint32_t which) {
 }
 
 void d3d8_drawcall_report(void) {
-  d3d8_lighting_report();
+  x2::d3d8::d3d8_lighting_report();
   d3d8_fvf_report();
-  d3d8_draw_range_report();
+  x2::d3d8::d3d8_draw_range_report();
 
   if (g_refused_prim)
     x2_log_info("        %lu draw(s) refused for an unimplemented primitive "

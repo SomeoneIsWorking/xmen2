@@ -90,9 +90,9 @@ void resolve_pads(const x2::config::Settings *settings,
 }
 
 uint32_t default_gamepad_code(unsigned row) {
-  const XboxDefaultBinding *defaults;
+  const x2::native::XboxDefaultBinding *defaults;
   size_t count, i;
-  defaults = xbox_default_bindings(&count);
+  defaults = x2::native::xbox_default_bindings(&count);
   for (i = 0; i < count; i++)
     if (defaults[i].binding == row)
       return defaults[i].code;

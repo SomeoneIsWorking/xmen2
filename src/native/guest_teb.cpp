@@ -9,6 +9,8 @@
 
 #include <string.h>
 
+namespace x2::native {
+
 enum {
   MAIN_TEB = 0x000A0000u,
   TEB_BYTES = 0x1000u,
@@ -113,3 +115,5 @@ uint32_t guest_teb_main_init(void) {
   WR32(MAIN_TEB, SEH_CHAIN_END);
   return guest_teb_tls_attach(MAIN_TEB) ? MAIN_TEB : 0u;
 }
+
+} // namespace x2::native

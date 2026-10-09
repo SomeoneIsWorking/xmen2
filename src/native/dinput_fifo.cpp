@@ -27,6 +27,8 @@
 #include <SDL3/SDL.h>
 #endif
 
+namespace x2::native {
+
 /*
  * X2_INPUT_FIFO=<path> -- LIVE key injection, for driving a run by hand.
  *
@@ -214,3 +216,5 @@ void dinput_fifo_apply(CPU *cpu, uint32_t out, uint32_t size, double now) {
     g_fifo[i].down = down;
   }
 }
+
+} // namespace x2::native

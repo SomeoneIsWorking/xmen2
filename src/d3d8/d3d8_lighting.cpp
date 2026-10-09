@@ -29,6 +29,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace x2::d3d8 {
+
 /* Render state with its D3D default, as d3d8_drawcall.cpp reads it. */
 static uint32_t rs(const D3D8State *s, uint32_t which, uint32_t dflt) {
   return s->render[which].set ? s->render[which].value : dflt;
@@ -197,3 +199,5 @@ void d3d8_lighting_report(void) {
   light_table_report();
   x2::d3d8::d3d8_light_survey_report();
 }
+
+} // namespace x2::d3d8

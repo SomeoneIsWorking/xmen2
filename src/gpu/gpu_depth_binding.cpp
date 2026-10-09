@@ -1,6 +1,8 @@
 #include "gpu_depth_binding.h"
 
 #ifdef X2_WITH_SDL
+namespace x2::gpu {
+
 static SDL_GPUTextureSamplerBinding neutral;
 
 SDL_GPUTextureFormat gpu_sampleable_depth_format(SDL_GPUDevice *device) {
@@ -88,4 +90,6 @@ void gpu_depth_binding_destroy(SDL_GPUDevice *device) {
   }
   neutral = SDL_GPUTextureSamplerBinding{};
 }
+
+} // namespace x2::gpu
 #endif
