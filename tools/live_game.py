@@ -1,10 +1,12 @@
 """Helpers that read and drive the running game for live cases: scenes,
-pad polling, the touch overlay's controls, and frame comparison."""
+pad polling, the touch overlay's controls, entities, and frame comparison."""
 
 from __future__ import annotations
 
+import json
 import re
 import time
+import urllib.parse
 from pathlib import Path
 
 from live_harness import Case
@@ -161,4 +163,30 @@ def live_stick(case: Case) -> tuple[tuple[float, float, float, float],
         width, height = (float(v) for v in parts[3].split("x"))
         dx, dy = (float(v) for v in parts[6].split(","))
         return ((left, top, width, height), (dx, dy))
+    return None
+
+
+def live_entities(case: Case, match: str = "") -> list[dict]:
+    path = "/entities" + ("?match=" + urllib.parse.quote(match) if match else "")
+    return json.loads(case.get_text(path) or "{}").get("entities", [])
+
+
+def spawn_beside_party(case: Case, definition: str, offset: str = "120 0 0",
+                       timeout: float = 10) -> dict | None:
+    """Spawn one entity definition (e.g. `_ms_ss_mikhailranger_a`, not an
+    npcstat name) at `offset` from the active hero through the retail
+    script spawn. Returns the new entity, or None."""
+    known = {e["handle"] for e in live_entities(case)}
+    code = "spawn('_ACTIVE_HERO_','%s','x2_spawn',' %s ',' 0 0 0 ')" % (
+        definition, offset)
+    status, reply = case.http("/script?text=" + urllib.parse.quote(code))
+    if status != 200:
+        print("  /script %d: %s" % (status, reply.decode(errors="replace")))
+        return None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        for entity in live_entities(case, definition):
+            if entity["handle"] not in known:
+                return entity
+        time.sleep(0.5)
     return None

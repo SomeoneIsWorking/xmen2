@@ -51,6 +51,7 @@ TEXT_NAMES = {"CMakeLists.txt", "Dockerfile", "LICENSE", "Makefile"}
 STATIC_POLICY_OWNERS = {
     "AGENTS.md",
     "docs/project-goals.md",
+    "docs/prior-art.md",
     "tools/runtime_boundary.py",
     "tools/verify_source_policy.py",
     "tools/x2_source_policy.py",

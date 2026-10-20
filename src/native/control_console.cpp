@@ -4,38 +4,18 @@
 
 #include "control_query.h"
 
-#include <algorithm>
-#include <array>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace x2::control {
 namespace {
 
-inline constexpr size_t kCommandBytes = 128u;
 inline constexpr std::chrono::seconds kWait{10};
-
-/* HTTP query values arrive raw; a console command needs its spaces back. */
-std::string unescape(const char *text) {
-  std::string out;
-  for (const char *in = text; *in; ++in) {
-    if (*in == '+') {
-      out += ' ';
-    } else if (in[0] == '%' && in[1] && in[2]) {
-      const char hex[3] = {in[1], in[2], 0};
-      out += static_cast<char>(std::strtol(hex, nullptr, 16));
-      in += 2;
-    } else {
-      out += *in;
-    }
-  }
-  return out;
-}
 
 /* One command in flight, handed from the server thread to the guest thread. */
 class ConsoleChannel {
@@ -93,20 +73,20 @@ namespace x2::native {
 
 void control_console_pump(CPU *cpu) { x2::control::channel().pump(cpu); }
 
-void control_console_route(Socket fd, const char *query) {
+void control_console_run(Socket fd, const std::string &command) {
   using Outcome = x2::control::ConsoleChannel::Outcome;
-  std::array<char, x2::control::kCommandBytes> raw{};
-  if (!control_query_arg(query, "command", raw.data(), raw.size()) || !raw[0]) {
-    control_reply_text(fd, 400, "Bad Request",
-                       "no command. Use /console?command=openmenu+online\n");
+  if (command.size() > x2::retail::FrontEnd::kCommandMax) {
+    control_reply_text(
+        fd, 413, "Content Too Large",
+        "\"%s\" is %zu characters; the console queue holds %zu\n",
+        command.c_str(), command.size(), x2::retail::FrontEnd::kCommandMax);
     return;
   }
-  const std::string command = x2::control::unescape(raw.data());
   switch (x2::control::channel().submit(command)) {
   case Outcome::Queued:
     control_reply_text(fd, 200, "OK",
                        "queued \"%s\"; the console runs it at its next safe "
-                       "point and logs a name it does not know\n",
+                       "point and ignores a command it does not know\n",
                        command.c_str());
     break;
   case Outcome::Refused:
@@ -126,6 +106,17 @@ void control_console_route(Socket fd, const char *query) {
                        command.c_str());
     break;
   }
+}
+
+void control_console_route(Socket fd, const char *query) {
+  std::vector<char> command(std::strlen(query) + 1u);
+  if (!control_query_arg(query, "command", command.data(), command.size()) ||
+      !command[0]) {
+    control_reply_text(fd, 400, "Bad Request",
+                       "no command. Use /console?command=openmenu+online\n");
+    return;
+  }
+  control_console_run(fd, command.data());
 }
 
 } // namespace x2::native

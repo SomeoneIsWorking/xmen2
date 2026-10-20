@@ -12,6 +12,9 @@ void k32_open_note(const char *guest_path, int ok, int replaced,
 void k32_file_trace(const char *operation, const char *guest_path,
                     const char *host_path, const char *outcome);
 int k32_file_gate_open(void);
+/* A second overlay root, after X2_ASSETS, for files the port writes while it
+   runs (control-channel scripts). */
+void k32_set_generated_assets(const char *root);
 void k32_asset_report(void);
 
 #endif

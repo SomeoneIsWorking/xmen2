@@ -14,6 +14,7 @@
 
 #include "x86rt.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -26,6 +27,9 @@ public:
      at the console's own safe point, never inside the caller. False when the
      executable is not mapped or the console is shutting down. */
   static bool queue_command(const CPU &cpu, std::string_view command);
+
+  /* The queue copies 128 bytes per slot (0x0055c100), terminator included. */
+  static inline constexpr size_t kCommandMax = 127u;
 
   /* The active menu object (a CMenu), or 0 when no menu is up. */
   static uint32_t active_menu_object(const CPU &cpu);

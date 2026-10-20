@@ -56,7 +56,6 @@ enum class ConfigOverride {
   ShotKeep,
   ShotMinDraws,
   ShotVertexShader,
-  SpawnCritter,
   Spin,
   StackCheck,
   TextureLevels,

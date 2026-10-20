@@ -126,6 +126,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap:
 - notes:
 
+### console-script-spawn — Console runscript and spawn: script files, target-relative offsets, definition names
+- status: re-verified
+- deps: oracle
+- evidence: ranger-render: /script spawn of _ms_ss_mikhailranger_a gave handle 1787 beside the party, matched by the spawn trace
+- where: src/native/control_script_route.cpp; src/native/entity_spawn_probe.cpp; docs/RE/console.md
+- gap:
+- notes: runscript 0x005f2350 takes a file name; spawn FUN_004a4420; factory FUN_004612e0
+
 ## runtime
 
 ### runtime-jit — Product guest execution through shared x86port

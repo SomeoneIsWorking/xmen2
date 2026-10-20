@@ -26,6 +26,7 @@
 #include "d3d8_types.h"
 #include "d3d8_vertex_shader.h"
 #include "d3d8_vs_draw.h"
+#include "d3d8_vs_frame_row.h"
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
@@ -659,9 +660,9 @@ int d3d8_constants_probe_selftest(void) {
   return fails;
 }
 
-static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
-                             uint32_t stride, int pos_offset, int normal_offset,
-                             uint32_t fvf) {
+static void frame_table_note(const D3D8State *s, const D3D8DrawRequest *req,
+                             const GpuDraw *out, uint32_t stride,
+                             int pos_offset, int normal_offset, uint32_t fvf) {
   float minx = 1e30f, miny = 1e30f, maxx = -1e30f, maxy = -1e30f;
   float minz = 1e30f, maxz = -1e30f;
   float uvmin[2] = {1e30f, 1e30f}, uvmax[2] = {-1e30f, -1e30f};
@@ -685,9 +686,6 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
    */
   double nsum = 0.0;
   uint32_t nzero = 0, ncount = 0;
-  /* 240, not 80: at 80 this line truncated mid-word ("best light: t") and
-     the three numbers the measurement existed to show were silently cut
-     off. snprintf does not complain, so the buffer has to be right. */
   char nphrase[400];
   /* WHICH D3D light indices this draw has, and how bright each is. The
      engine sets a white directional light at index 0; if that light is not
@@ -772,6 +770,10 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 (double)out->world[1] * out->world[1] +
                 (double)out->world[2] * out->world[2]);
 
+  if (out->programmable) {
+    x2::d3d8::d3d8_vs_frame_row(g_ft_draw, s, req, out);
+    return;
+  }
   if (!stride || pos_offset < 0 || !req->vertex_guest_bytes) {
     x2_log_error("  draw %-4lu NO host-readable vertices (guest 0x%08x "
                  "stride %u) -- position unknown\n",
@@ -1504,11 +1506,8 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   out->alpha_test = rs(s, D3DRS_ALPHATESTENABLE, 0) != 0;
   out->alpha_ref = (float)(rs(s, D3DRS_ALPHAREF, 0) & 0xFFu) / 255.0f;
 
-  /* LAST, so the table reports the texture this draw ended up with. Called
-     earlier it printed `tex 0` for all 434 draws of a frame whose walls are
-     plainly textured -- a column that said "untextured" about everything
-     because it ran before the texture was resolved. */
-  frame_table_note(req, out, out->vertex_stride,
+  /* Last, so the table reports the texture this draw ended up with. */
+  frame_table_note(s, req, out, out->vertex_stride,
                    programmable ? -1 : vl.pos_offset,
                    programmable ? -1 : vl.normal_offset, fvf);
   return 1;

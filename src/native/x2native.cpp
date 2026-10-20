@@ -52,6 +52,7 @@
 #include "shell32.h"
 #include "threads.h"
 #include "win32_sdl.h"
+#include "win_path.h"
 #include "windows_package.h"
 #include "winmm.h"
 #include "x2native_options.h"
@@ -1545,9 +1546,7 @@ int main(int argc, char **argv) {
     guest_clock_set_unbounded(1);
   {
 #if defined(__EMSCRIPTEN__)
-    /* Browser input and inspection live at the page boundary. The desktop
-       loopback HTTP channel cannot bind inside a worker and must not turn a
-       valid browser launch into a startup refusal. */
+    /* The loopback control channel cannot bind inside a browser worker. */
     const int control_port = 0;
 #else
     /* Only when asked; see control_start. */
@@ -1573,12 +1572,12 @@ int main(int argc, char **argv) {
       return 2;
     }
 #if !defined(__EMSCRIPTEN__)
-    /* The live session publishes THIS run's control port for tools/x2ctl.py to
-       discover. With no channel open there is nothing to discover and nothing
-       has gone wrong, so a player's launch does not depend on it either. */
+    /* Publish this run's control port for tools/x2ctl.py, when one is open. */
     if (control_port && !x2::native::live_session_start(
                             control_port, x2::input::input_record_path()))
       return 2;
+    if (control_port)
+      k32_set_generated_assets(x2::native::live_session_overlay());
 #else
     (void)control_port;
 #endif

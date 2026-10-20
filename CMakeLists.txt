@@ -2202,6 +2202,8 @@ set(X2_NATIVE_SOURCES
     src/native/control_http.cpp
     src/native/control_save_route.cpp
     src/native/control_menu_route.cpp
+    src/native/control_entities_route.cpp
+    src/native/control_script_route.cpp
     src/native/control_party_route.cpp
     src/native/retail_entities.cpp
     src/native/retail_entities_live.cpp
@@ -2298,6 +2300,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vs_execute.cpp
     src/d3d8/d3d8_vs_gpu.cpp
     src/d3d8/d3d8_vs_draw.cpp
+    src/d3d8/d3d8_vs_frame_row.cpp
     src/d3d8/d3d8_screen_space_test.cpp
     src/d3d8/d3d8_device_bindings.cpp
     src/d3d8/d3d8_binding_selftest.cpp
