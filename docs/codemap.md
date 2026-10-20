@@ -210,8 +210,7 @@ below name cross-directory seams and the entry points used to extend them.
 ## Source tree
 
 Hand-written guest ABI compatibility helpers live under `src/runtime/x86_abi/`;
-CPU translation semantics belong only in `shared/x86port`. This tree was produced with
-`codemap.py tree src --depth 1 --min-lines 1`.
+CPU translation semantics belong only in `shared/x86port`.
 
 ```text
 src/  —  100,986 lines, 536 files
