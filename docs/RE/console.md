@@ -43,6 +43,9 @@ is `FUN_004a4420`.
   fails. A map's `monsterspawnerent ss_x` places definitions named `_ms_ss_x`:
   `_ms_ss_mikhailranger_a` (npcstat `MikhailRanger_a`, Dead Zone 2),
   `_ms_ss_critter_a` (Dead Zone 1). `MikhailRanger_a` returns NULL.
+  The lookup is case-sensitive and keeps the spawner's own spelling:
+  Dead Zone 3's `Grizzly_spawner` (`instantspawn="false"`) spawns
+  Grizzly as `_ms_Grizzly_spawner`; `_ms_grizzly_spawner` returns NULL.
 - The new entity's handle is at `entity+0x1c`, the handle `/entities` reports.
 
 `src/native/entity_spawn_probe.cpp` logs every spawn with the factory's
