@@ -8,8 +8,7 @@
 #include <stdint.h>
 
 #define SPAWN_HANDLER 0x004a4420u /* spawn(target, def, name, pos, orient) */
-#define SPAWN_ENTITY 0x004612e0u  /* entity factory: definition name -> entity \
-                                   */
+#define SPAWN_ENTITY 0x004612e0u  /* definition name -> entity */
 #define ENTITY_HANDLE 0x1cu
 
 static unsigned long g_spawns;
