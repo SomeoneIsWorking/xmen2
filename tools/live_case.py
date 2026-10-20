@@ -45,6 +45,7 @@ from live_cases_menu import (
 )
 from live_cases_pad import (
     case_deadzone_render,
+    case_ranger_render,
     case_deadzone_water,
     case_pad_after_load,
     case_pad_late,
@@ -114,6 +115,7 @@ CASES = {
     "manual-continue": case_manual_continue,
     "combat-bench": case_combat_bench,
     "deadzone-render": case_deadzone_render,
+    "ranger-render": case_ranger_render,
     "deadzone-water": case_deadzone_water,
     "selector-dialog-800": case_selector_dialog,
     "selector-dialog-720": case_selector_dialog,

@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
+import re
 import signal
 import time
+import urllib.parse
 from pathlib import Path
 
 from live_harness import Case, TUTORIAL_MAP
+from live_menu import keyboard_into_gameplay
 from live_game import (
     live_stick,
     live_viewport,
     pad_poll_rate,
     png_mean_diff,
     reach_authored_conversation,
+    spawn_beside_party,
     wait_controls_unlocked,
     wait_pad_polled,
 )
@@ -285,45 +290,55 @@ def case_pad_persisted(case: Case) -> None:
                "(mean |delta| %.1f > 8)" % worst, responded)
 
 
-def case_deadzone_render(case: Case) -> None:
-    """Code-spawn a Scourge Critter and prove the Dead Zone sea is textured
-    and changing. This is deliberately a render observation, not a general
-    gameplay gate: the unit/selftests own the renderer contracts."""
-    case.prepare_profile(["boot.mode=normal"])
-    case.launch({
-        "X2_BOOT_MAP": "act1/deadzone/deadzone1",
-        "X2_FILES": "1",
-        "X2_SCRIPTS": "1",
-        "X2_SPAWN_CRITTER": "1",
-    })
-    case.wait_control(60)
-    case.check("the retail spawn path returned a Scourge Critter entity",
-               case.wait_log("factory result", 180)
-               and "factory result 0x00000000" not in case.log_text())
-    case.check("the Scourge Critter model was requested",
-               case.wait_log("actors/60_critter.igb", 180))
-    case.check("R8G8B8 is no longer refused",
-               "CreateTexture in format 20" not in case.log_text())
+REFUSAL = re.compile(r"REFUSED|the draw is refused|draw refused|unsupported")
 
-    # The bounded boot camera leaves a blue sea wedge in the upper-right.
-    # Blue-pixel selection below excludes the rocks and foliage crossing it.
-    time.sleep(2.0)
-    first = case.shot("water-a")
-    case.signal(signal.SIGUSR1)
-    case.check("a full visible-frame draw table completed",
-               case.wait_log("[FRAME TABLE] end of frame", 30))
+
+def spawn_enemy_beside_party(case: Case, level: str, definition: str) -> dict | None:
+    """Continue the autosave, load `level` and spawn one enemy definition
+    beside the party, then capture it as shot "enemy"."""
+    case.prepare_profile(["boot.mode=continue"])
+    case.seed_save("autosave.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("Continue reached gameplay", menu.get("active") is False,
+               str(menu.get("menu")))
+    case.http("/console?command=" + urllib.parse.quote("loadmap " + level))
+    time.sleep(8)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("loadmap %s reached gameplay" % level,
+               menu.get("active") is False, str(menu.get("menu")))
+    enemy = spawn_beside_party(case, definition)
+    case.check("%s spawned beside the party" % definition, enemy is not None,
+               json.dumps(enemy))
+    case.check("the spawn trace names the same entity",
+               enemy is not None and case.wait_log(
+                   "handle %d\n" % enemy["handle"], 5))
     time.sleep(1.0)
-    second = case.shot("water-b")
-    spread, delta = png_water_stats(first, second)
-    # This camera exposes only a small, oblique wedge of sea; it cannot be
-    # compared numerically with the user's horizon-facing reference crop.
-    # It can still distinguish a flat fill from a textured surface, while the
-    # GPU pixel selftest owns the mip-chain contract.
-    case.check("the visible blue sea is not a flat fill (luma stddev > 1)",
-               spread > 1.0,
-               "stddev %.2f" % spread)
-    case.check("the sea crop changes between frames (mean |delta| > 0.1)",
-               delta > 0.1, "mean |delta| %.2f" % delta)
+    case.shot("enemy")
+    case.signal(signal.SIGUSR1)
+    case.check("the frame's draw table was written",
+               case.wait_log("[FRAME TABLE] end of frame", 30))
+    refusals = [line for line in case.log_text().splitlines()
+                if REFUSAL.search(line)]
+    case.check("the renderer refused nothing", not refusals,
+               "\n".join(refusals[:8]))
+    return enemy
+
+
+def case_deadzone_render(case: Case) -> None:
+    """Spawn a Scourge Critter beside the party in Dead Zone 1: issue #128's
+    R8G8B8 skin."""
+    spawn_enemy_beside_party(case, "act1/deadzone/deadzone1", "_ms_ss_critter_a")
+    case.check("the Scourge Critter model was requested",
+               case.wait_log("actors/60_critter.igb", 10))
+
+
+def case_ranger_render(case: Case) -> None:
+    """Spawn a Mikhail Ranger beside the party in Dead Zone 2: the
+    reproduction for Rangers drawing black."""
+    spawn_enemy_beside_party(case, "act1/deadzone/deadzone2",
+                             "_ms_ss_mikhailranger_a")
 
 
 def case_deadzone_water(case: Case) -> None:

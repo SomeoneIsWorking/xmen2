@@ -281,9 +281,14 @@ void k32_asset_report(void) {
     x2_log_info("         %s\n", g_asset[index]);
 }
 
-static const char *asset_replacement(const char *guest_path) {
+static char g_generated_root[512];
+
+void k32_set_generated_assets(const char *root) {
+  snprintf(g_generated_root, sizeof g_generated_root, "%s", root ? root : "");
+}
+
+static const char *replacement_under(const char *root, const char *guest_path) {
   static char path[1024];
-  const char *root = config_override_get(x2::config::ConfigOverride::Assets);
   char relative[512];
   size_t index;
   struct stat status;
@@ -308,6 +313,12 @@ static const char *asset_replacement(const char *guest_path) {
                  S_ISREG(status.st_mode)
              ? path
              : NULL;
+}
+
+static const char *asset_replacement(const char *guest_path) {
+  const char *path = replacement_under(
+      config_override_get(x2::config::ConfigOverride::Assets), guest_path);
+  return path ? path : replacement_under(g_generated_root, guest_path);
 }
 
 const char *k32_open_path(const char *guest_path, int for_write) {
@@ -336,7 +347,6 @@ void k32_open_note(const char *guest_path, int succeeded, int replaced,
       snprintf(reported[reported_count++], sizeof(reported[0]), "%s",
                guest_path);
     g_replaced++;
-    x2_log_error("assets: REPLACED \"%s\" with %s (X2_ASSETS)\n", guest_path,
-                 host_path);
+    x2_log_error("assets: REPLACED \"%s\" with %s\n", guest_path, host_path);
   }
 }

@@ -87,7 +87,6 @@ const char *const k_override_names[] = {
     "X2_SHOT_KEEP",
     "X2_SHOT_MIN_DRAWS",
     "X2_SHOT_VS",
-    "X2_SPAWN_CRITTER",
     "X2_SPIN",
     "X2_STACKCHECK",
     "X2_TEXTURE_LEVELS",

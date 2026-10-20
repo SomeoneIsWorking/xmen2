@@ -19,7 +19,6 @@
  */
 #include "script_trace.h"
 
-#include "entity_spawn_probe.h"
 #include "gpu_device.h"
 #include "guest_modules.h"
 #include "x86rt.h"
@@ -104,8 +103,6 @@ void x2_override_004a1320(CPU *C) {
   snprintf(g_last, sizeof g_last, "%s", name);
   g_last_caller = caller;
   record(name, ok);
-  if (ok)
-    x2::native::entity_spawn_probe_after_script_launch(C, name);
   if (live())
     x2_log_error("SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",
                  ok ? "launch" : "FAILED", name, gpu_frames_presented(),

@@ -18,9 +18,14 @@
 #include "control_http.h"
 #include "x86rt.h"
 
+#include <string>
+
 namespace x2::native {
 
 void control_console_route(Socket fd, const char *query);
+
+/* Queue one decoded command and reply with the console's verdict. */
+void control_console_run(Socket fd, const std::string &command);
 
 /* Called from control_pump on the guest's input thread. */
 void control_console_pump(CPU *cpu);

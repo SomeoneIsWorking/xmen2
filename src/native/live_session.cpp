@@ -27,6 +27,12 @@ void live_session_set_directory(const char *directory) {
   snprintf(g_directory, sizeof g_directory, "%s", directory);
 }
 
+const char *live_session_overlay(void) {
+  static char path[512];
+  snprintf(path, sizeof path, "%s/overlay", g_directory);
+  return path;
+}
+
 const char *live_session_record_path(void) {
   static char path[512];
   snprintf(path, sizeof path, "%s/live.json", g_directory);

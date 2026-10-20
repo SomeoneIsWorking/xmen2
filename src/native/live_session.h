@@ -12,6 +12,10 @@ void live_session_stop(void);
  * and which is read-only on Android. */
 void live_session_set_directory(const char *directory);
 
+/* Files this run generates for the guest to open (see
+ * k32_set_generated_assets). */
+const char *live_session_overlay(void);
+
 /* The full path of the discovery record, for diagnostics. */
 const char *live_session_record_path(void);
 

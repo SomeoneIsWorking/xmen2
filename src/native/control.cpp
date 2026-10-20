@@ -1,6 +1,7 @@
 #include "control.h"
 
 #include "control_command_bridge.h"
+#include "control_entities_route.hpp"
 #include "control_http.h"
 #include "control_input_route.h"
 #include "control_menu_route.hpp"
@@ -15,6 +16,7 @@
 #include "control_query.h"
 #include "control_save_route.h"
 #include "control_screenshot.h"
+#include "control_script_route.hpp"
 #include "control_status.h"
 #include "control_status_route.h"
 #include "control_ui_route.h"
@@ -411,6 +413,8 @@ static void serve(x2::native::Socket fd) {
     route_input(fd, query ? query : "");
   else if (!strcmp(path, "/lan"))
     x2::native::lan_session_route(fd, query ? query : "");
+  else if (!strcmp(path, "/script"))
+    x2::control::script_route(fd, query ? query : "");
   else if (!strcmp(path, "/console"))
     x2::native::control_console_route(fd, query ? query : "");
   else if (!strcmp(path, "/save"))
@@ -419,6 +423,8 @@ static void serve(x2::native::Socket fd) {
     x2::control::menu_route(fd, query ? query : "");
   else if (!strcmp(path, "/party"))
     x2::control::party_route(fd);
+  else if (!strcmp(path, "/entities"))
+    x2::control::entities_route(fd, query ? query : "");
   else if (!strcmp(path, "/performance/reset"))
     x2::native::control_performance_reset_route(fd);
   else if (!strcmp(path, "/performance/probe"))
@@ -442,11 +448,14 @@ static void serve(x2::native::Socket fd) {
         "  GET /input[?controller=N]  the GAME's binding table "
         "and which actions read down\n"
         "  GET /console?command=openmenu+online  run a game console command\n"
+        "  GET /script?text=CODE  run game script code through runscript\n"
         "  GET /lan[?host=1|join=1]  LAN session status; re-form this "
         "game as a lobby, or join the LAN game this machine finds\n"
         "  GET /save         bounded retail save/load trace\n"
         "  GET /menu[?items=all]  the active retail menu's rows, as JSON\n"
         "  GET /party        money and each hero's health and energy, as JSON\n"
+        "  GET /entities[?match=TEXT]  every entity's definition and "
+        "position, as JSON\n"
         "  GET /performance/reset  start a fresh frame-time window\n"
         "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "
         "probe (n=0 disarms)\n"
