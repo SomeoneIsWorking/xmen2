@@ -142,7 +142,12 @@ void vs11_run()
         else if (op == 8u) r = vec4(dot(a.xyz, b.xyz));  /* DP3 */
         else if (op == 9u) r = vec4(dot(a, b));          /* DP4 */
         else if (op == 10u) r = min(a, b);               /* MIN */
-        else r = max(a, b);                              /* MAX */
+        else if (op == 11u) r = max(a, b);               /* MAX */
+        else if (op == 6u)                               /* RCP of .w */
+            r = vec4(a.w == 1.0 ? 1.0 : 1.0 / a.w);
+        else if (op == 7u)                               /* RSQ of |.w| */
+            r = vec4(a.w == 1.0 ? 1.0 : inversesqrt(abs(a.w)));
+        else r = vec4(1.0, a.y * b.y, a.z, b.w);         /* DST */
         vs11_reg[dst] = mix(vs11_reg[dst], r,
                             bvec4((mask & 1u) != 0u, (mask & 2u) != 0u,
                                   (mask & 4u) != 0u, (mask & 8u) != 0u));

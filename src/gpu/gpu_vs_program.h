@@ -55,10 +55,13 @@ inline constexpr int GPU_VS_OP_ADD = 2;
 inline constexpr int GPU_VS_OP_SUB = 3;
 inline constexpr int GPU_VS_OP_MAD = 4;
 inline constexpr int GPU_VS_OP_MUL = 5;
+inline constexpr int GPU_VS_OP_RCP = 6;
+inline constexpr int GPU_VS_OP_RSQ = 7;
 inline constexpr int GPU_VS_OP_DP3 = 8;
 inline constexpr int GPU_VS_OP_DP4 = 9;
 inline constexpr int GPU_VS_OP_MIN = 10;
 inline constexpr int GPU_VS_OP_MAX = 11;
+inline constexpr int GPU_VS_OP_DST = 17;
 
 /* Source-operand word fields; vs11_program.glsl decodes the same ones. */
 inline constexpr int GPU_VS_SOURCE_SWIZZLE_SHIFT = 9;

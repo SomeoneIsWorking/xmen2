@@ -33,7 +33,7 @@ the original declaration/function streams, mirrors all 96 constant registers,
 and implements create/bind/get/delete/query. The draw path interprets VS 1.1
 over the host-visible D3D8 staging bytes and uploads its actual clip-position,
 diffuse and texture-coordinate outputs. It supports MOV, ADD, SUB, MUL, MAD,
-DP3, DP4, MIN and MAX, the M4x4/M4x3/M3x4/M3x3/M3x2 macros (decoded as DP4 or
+DP3, DP4, MIN, MAX, RCP, RSQ and DST, the M4x4/M4x3/M3x4/M3x3/M3x2 macros (decoded as DP4 or
 DP3 rows, issue #196), masks, swizzles and relative constant addressing; any
 other opcode refuses by name.
 

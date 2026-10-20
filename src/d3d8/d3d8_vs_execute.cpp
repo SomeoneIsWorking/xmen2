@@ -197,6 +197,24 @@ static void compute_component(unsigned op, const Operand src[3], unsigned c,
     for (lane = 0; lane < n; ++lane)
       result[lane] = x[lane] * y[lane];
     break;
+  case x2::d3d8::VS_OP_RCP: /* scalar ops read .w, the replicated component */
+    for (lane = 0; lane < n; ++lane)
+      result[lane] =
+          src[0].row[3][lane] == 1.0f ? 1.0f : 1.0f / src[0].row[3][lane];
+    break;
+  case x2::d3d8::VS_OP_RSQ:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = src[0].row[3][lane] == 1.0f
+                         ? 1.0f
+                         : 1.0f / std::sqrt(std::fabs(src[0].row[3][lane]));
+    break;
+  case x2::d3d8::VS_OP_DST: /* (1, x.y * y.y, x.z, y.w) */
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = c == 0   ? 1.0f
+                     : c == 1 ? x[lane] * y[lane]
+                     : c == 2 ? x[lane]
+                              : y[lane];
+    break;
   case x2::d3d8::VS_OP_MIN:
     for (lane = 0; lane < n; ++lane)
       result[lane] = x[lane] < y[lane] ? x[lane] : y[lane];
