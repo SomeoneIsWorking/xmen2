@@ -140,7 +140,9 @@ void vs11_run()
         else if (op == 4u) r = a * b + c;                /* MAD */
         else if (op == 5u) r = a * b;                    /* MUL */
         else if (op == 8u) r = vec4(dot(a.xyz, b.xyz));  /* DP3 */
-        else r = vec4(dot(a, b));                        /* DP4 */
+        else if (op == 9u) r = vec4(dot(a, b));          /* DP4 */
+        else if (op == 10u) r = min(a, b);               /* MIN */
+        else r = max(a, b);                              /* MAX */
         vs11_reg[dst] = mix(vs11_reg[dst], r,
                             bvec4((mask & 1u) != 0u, (mask & 2u) != 0u,
                                   (mask & 4u) != 0u, (mask & 8u) != 0u));

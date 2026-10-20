@@ -1,7 +1,7 @@
 ---
 id: 196
 title: Mikhail Rangers render as black silhouettes
-status: open
+status: resolved
 symptom: a Mikhail Ranger draws solid black while the party beside it is lit and textured; the user reports two more enemy types doing the same
 state_items:
 tags: pc,native,gpu,d3d8,rendering
@@ -23,4 +23,28 @@ black the same way, while the Continue route draws them normally.
 
 ## Cause
 
-Not yet traced. The Ranger uses `78_mikhail_ranger` skins 7801-7805.
+`src/d3d8/d3d8_vs_decode.cpp:decode_program` did not implement `m3x3`
+(opcode 23) or `max` (opcode 11), so it refused every draw of vertex shader
+0xf0000202, the skinned program that lights a character from c5-c11 and
+writes oD0 and oT0. Only the untextured outline passes (0xf0000101,
+0xf0000303) drew, which is a solid black silhouette. The party used the same
+program on the `X2_BOOT_MAP` route.
+
+The frame table could not show this: it printed "NO host-readable vertices"
+for every programmable draw. It now runs the program on the CPU executor and
+reports the shader handle, screen rectangle, texture and diffuse range.
+
+## Fix
+
+The decoder expands `m4x4`/`m4x3`/`m3x4`/`m3x3`/`m3x2` into one `dp4` or
+`dp3` per written component against consecutive constants, relative or not;
+`min` and `max` are new ops in the CPU executor and the GPU program.
+
+## Verification
+
+- `ranger-render`: the frame table shows draw 233 as VS 0xf0000202, texture
+  787, diffuse luma 0.000..1.781, at the Ranger's position; the shot shows a
+  lit red-armoured Ranger, and no draw is refused.
+- `X2_BOOT_MAP=act1/deadzone/deadzone2`: the pre-fix build draws all four
+  heroes black and logs `VS 1.1 opcode 23 ... the draw is refused`; the
+  fixed build draws them lit and logs no refusal.

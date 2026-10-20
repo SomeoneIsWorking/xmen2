@@ -144,6 +144,8 @@ unsigned d3d8_vs_source_count(unsigned op) {
   case VS_OP_MUL:
   case VS_OP_DP3:
   case VS_OP_DP4:
+  case VS_OP_MIN:
+  case VS_OP_MAX:
     return 2;
   case VS_OP_MAD:
     return 3;
@@ -175,6 +177,31 @@ static D3D8VSRegisterSet zeroed_registers(const D3D8VSProgram *p) {
   return named;
 }
 
+/* m4x4, m4x3, m3x4, m3x3 and m3x2 (opcodes 20-24): rows of a dot product
+   against consecutive registers of the second source, one per component. */
+inline constexpr unsigned kMatrixFirst = 20u;
+inline constexpr unsigned kMatrixRows[5] = {4u, 3u, 4u, 3u, 2u};
+inline constexpr int kMatrixDot[5] = {VS_OP_DP4, VS_OP_DP4, VS_OP_DP3,
+                                      VS_OP_DP3, VS_OP_DP3};
+
+static bool is_matrix(uint32_t op) {
+  return op >= kMatrixFirst && op < kMatrixFirst + 5u;
+}
+
+/* Row `row` of a matrix source: the next constant, relative or not. */
+static int matrix_row(D3D8VSSource *src, unsigned row) {
+  unsigned constant = src->relative ? src->reg : src->reg - VS_FILE_CONST;
+  if (!src->relative &&
+      (src->reg < VS_FILE_CONST || constant + row >= VS_CONSTANTS)) {
+    x2_log_error("d3d8: VS 1.1 matrix row %u of register %u is not a "
+                 "constant.\n",
+                 row, src->reg);
+    return 0;
+  }
+  src->reg = (uint16_t)(src->reg + row);
+  return 1;
+}
+
 /* Decode the declaration and the program, logging the first reason either
    cannot run. */
 static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
@@ -184,7 +211,8 @@ static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
     return 0;
   while (pc < s->function_dwords) {
     uint32_t op = s->function[pc++] & 0xffffu, d;
-    unsigned nsrc = d3d8_vs_source_count(op), i;
+    unsigned nsrc = is_matrix(op) ? 2u : d3d8_vs_source_count(op), i;
+    unsigned rows = is_matrix(op) ? kMatrixRows[op - kMatrixFirst] : 1u;
     D3D8VSInstruction *insn;
     int dst;
     if (op == 0xffffu) {
@@ -203,7 +231,7 @@ static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
                    op, pc - 1, s->function_dwords);
       return 0;
     }
-    if (p->count == VS_MAX_INSTRUCTIONS) {
+    if (p->count + rows > VS_MAX_INSTRUCTIONS) {
       x2_log_error("d3d8: VS 1.1 program has more than the %u instruction "
                    "slots the model allows.\n",
                    VS_MAX_INSTRUCTIONS);
@@ -226,7 +254,22 @@ static int decode_program(const D3D8VertexShader *s, D3D8VSProgram *p) {
     insn->mask = (uint8_t)((d >> 16) & 0xfu);
     if (!insn->mask)
       insn->mask = 0xf;
-    p->count++;
+    if (!is_matrix(op)) {
+      p->count++;
+      continue;
+    }
+    D3D8VSInstruction matrix = *insn;
+    for (i = 0; i < rows; ++i) {
+      if (!(matrix.mask & (1u << i)))
+        continue;
+      D3D8VSInstruction *row = &p->insn[p->count];
+      *row = matrix;
+      row->op = (uint8_t)kMatrixDot[op - kMatrixFirst];
+      row->mask = (uint8_t)(1u << i);
+      if (!matrix_row(&row->src[1], i))
+        return 0;
+      p->count++;
+    }
   }
   return 1;
 }

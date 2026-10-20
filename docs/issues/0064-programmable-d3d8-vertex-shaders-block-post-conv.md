@@ -32,9 +32,10 @@ The host now owns generation-checked D3D8 shader handles, copies and returns
 the original declaration/function streams, mirrors all 96 constant registers,
 and implements create/bind/get/delete/query. The draw path interprets VS 1.1
 over the host-visible D3D8 staging bytes and uploads its actual clip-position,
-diffuse and texture-coordinate outputs. It supports the observed MOV, ADD, SUB,
-MUL, MAD, DP3 and DP4 instructions, masks, swizzles and relative constant
-addressing; any other opcode refuses by name.
+diffuse and texture-coordinate outputs. It supports MOV, ADD, SUB, MUL, MAD,
+DP3, DP4, MIN and MAX, the M4x4/M4x3/M3x4/M3x3/M3x2 macros (decoded as DP4 or
+DP3 rows, issue #196), masks, swizzles and relative constant addressing; any
+other opcode refuses by name.
 
 `DrawPrimitiveUP`, reached immediately afterward, now copies its transient
 bytes as D3D8 requires and shares the same draw path instead of becoming a

@@ -28,7 +28,9 @@ static_assert((int)x2::d3d8::VS_OP_MOV == (int)x2::gpu::GPU_VS_OP_MOV &&
                   (int)x2::d3d8::VS_OP_MAD == (int)x2::gpu::GPU_VS_OP_MAD &&
                   (int)x2::d3d8::VS_OP_MUL == (int)x2::gpu::GPU_VS_OP_MUL &&
                   (int)x2::d3d8::VS_OP_DP3 == (int)x2::gpu::GPU_VS_OP_DP3 &&
-                  (int)x2::d3d8::VS_OP_DP4 == (int)x2::gpu::GPU_VS_OP_DP4,
+                  (int)x2::d3d8::VS_OP_DP4 == (int)x2::gpu::GPU_VS_OP_DP4 &&
+                  (int)x2::d3d8::VS_OP_MIN == (int)x2::gpu::GPU_VS_OP_MIN &&
+                  (int)x2::d3d8::VS_OP_MAX == (int)x2::gpu::GPU_VS_OP_MAX,
               "the GPU program runs every opcode the decoder accepts");
 
 namespace {
