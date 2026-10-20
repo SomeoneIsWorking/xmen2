@@ -138,6 +138,8 @@ static int decode_source(uint32_t t, D3D8VSSource *src) {
 unsigned d3d8_vs_source_count(unsigned op) {
   switch (op) {
   case VS_OP_MOV:
+  case VS_OP_RCP:
+  case VS_OP_RSQ:
     return 1;
   case VS_OP_ADD:
   case VS_OP_SUB:
@@ -146,6 +148,7 @@ unsigned d3d8_vs_source_count(unsigned op) {
   case VS_OP_DP4:
   case VS_OP_MIN:
   case VS_OP_MAX:
+  case VS_OP_DST:
     return 2;
   case VS_OP_MAD:
     return 3;

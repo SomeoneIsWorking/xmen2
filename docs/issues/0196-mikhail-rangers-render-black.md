@@ -48,3 +48,22 @@ The decoder expands `m4x4`/`m4x3`/`m3x4`/`m3x3`/`m3x2` into one `dp4` or
 - `X2_BOOT_MAP=act1/deadzone/deadzone2`: the pre-fix build draws all four
   heroes black and logs `VS 1.1 opcode 23 ... the draw is refused`; the
   fixed build draws them lit and logs no refusal.
+
+## The other shipped programs
+
+`libIGGfx.dll` and `libIGSg.dll` embed 32 VS 1.1 programs. The decoder now
+accepts every instruction they use, including `rcp`, `rsq` and `dst`, which
+only the point-light variants of the skinned program need.
+
+- `igDxVertexBlendingShaderManager::setup` (`libIGGfx` 0x10038f80) registers
+  the variants by directional and point light count; `findShaderHandle` picks
+  one from the draw's enabled lights and the bone palette size.
+- The light limits come from `alchemy.ini` `[GFX]` `maxVertexBlend*Lights`, or
+  from `adjustLoadBalancing`, which weighs `igGetCPUCaps` against GPU ratings,
+  so which characters take the vertex shader path depends on the machine.
+- Characters only ever get directional lights (#3 and a per-character pair);
+  point lights only reach environment draws. With
+  `maxVertexBlendPointLights=4` a Ranger beside a Dead Zone 2 fire still used
+  the directional program, so no point-light variant was seen running.
+- The two `libIGSg` programs that write `oT1` belong to `igCartoonShader`,
+  which no game file uses.
