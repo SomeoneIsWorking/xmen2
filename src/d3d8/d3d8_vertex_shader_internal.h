@@ -65,6 +65,8 @@ inline constexpr int VS_OP_MAD = 4;
 inline constexpr int VS_OP_MUL = 5;
 inline constexpr int VS_OP_DP3 = 8;
 inline constexpr int VS_OP_DP4 = 9;
+inline constexpr int VS_OP_MIN = 10;
+inline constexpr int VS_OP_MAX = 11;
 
 struct D3D8VSSource {
   uint16_t reg; /* flat register, or the constant number when relative */

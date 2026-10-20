@@ -197,6 +197,14 @@ static void compute_component(unsigned op, const Operand src[3], unsigned c,
     for (lane = 0; lane < n; ++lane)
       result[lane] = x[lane] * y[lane];
     break;
+  case x2::d3d8::VS_OP_MIN:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] < y[lane] ? x[lane] : y[lane];
+    break;
+  case x2::d3d8::VS_OP_MAX:
+    for (lane = 0; lane < n; ++lane)
+      result[lane] = x[lane] >= y[lane] ? x[lane] : y[lane];
+    break;
   default: /* VS_OP_MAD: DP3 and DP4 are computed once for every component */
     for (lane = 0; lane < n; ++lane)
       result[lane] = x[lane] * y[lane] + z[lane];
