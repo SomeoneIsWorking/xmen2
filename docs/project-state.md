@@ -109,6 +109,15 @@ configuration path, executable validation, and transactional replacement seams.
 This digest is published in the public
 [`v0.1.3` AppImage release](https://github.com/SomeoneIsWorking/xmen2/releases/tag/v0.1.3).
 
+The release AppImage is built by `tools/appimage_container.py` in an Ubuntu
+22.04 container against a static SDL3/SDL3_image/FreeType/FFmpeg prefix, and
+the packager refuses any ELF needing glibc newer than 2.35 or libstdc++ newer
+than 3.4.30. That build loads on a bare `ubuntu:22.04` (`--no-window
+--selftest` exits 77, the no-install setup state) and its binary passes
+`tools/live_case.py ranger-render` on Fedora 44. The AppImage catalog
+([AppImage/appimage.github.io#6225](https://github.com/AppImage/appimage.github.io/pull/6225))
+had rejected the ubuntu-26.04 build for needing GLIBC 2.38+.
+
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target,
 setup/touch implementation, and ARM64 Cuttlefish install/menu evidence, but
