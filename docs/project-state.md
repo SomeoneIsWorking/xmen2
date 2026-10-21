@@ -7,6 +7,8 @@ through Wine, with its original Direct3D 8 renderer, PC control defaults, prompt
 and save flow. The port's intended differences are Wine-free native execution and a modern native-PC
 presentation, controller, settings, packaging, and diagnostics experience without changing the game.
 One deliberate gameplay delta is on by default: `gameplay.extraction_revive` (S024), `free` unless set to `off`.
+Saving adds five rotating autosaves (after map loads and on stepping onto an extraction pad), listed in
+Load Game and announced on screen (S015); retail has no autosave.
 
 This is the authoritative inventory of what the port demonstrably does now and
 what remains partial, blocked, or absent. Epic intent belongs in
@@ -876,14 +878,17 @@ engine while preserving its gameplay source.
 
 ### S015 — transactional autosave and Continue: verified
 
-Observed capability: successful map-load transactions publish an exact retail
-autosave leaf, once the player controls a character, without modifying the
-manual slot, and persisted Boot Continue
-uses the retail mode-3 save-manager/deserializer chain to restore that map and
-party without intro movies, the menu map, or user input. The retail Load Game
-screen also exposes that autosave after all ten manual slots, virtualizing its
-fixed ten resident rows without replacing a manual leaf; selecting autosave
-retains the retail success acknowledgement.
+Observed capability: successful map loads and a hero stepping onto an
+extraction pad publish an exact retail autosave, once the player controls a
+character, into five rotating slots (`autosave0..4.save`, the lowest empty
+else the oldest) without modifying a manual slot, and show "Autosaved" on
+screen for three seconds; persisted Boot Continue
+uses the retail mode-3 save-manager/deserializer chain to restore the newest
+save's map and party without intro movies, the menu map, or user input. The
+retail Load Game screen lists the autosaves, newest first and numbered
+"AUTOSAVE 1".., after the manual saves, virtualizing its fixed ten resident
+rows without replacing a manual leaf, and opens with only autosaves present;
+selecting one retains the retail success acknowledgement.
 
 Evidence: C246 records exact autosave size, unchanged manual-slot size/mtime,
 and a second-run retail load; C261 records the 13/13 direct-Continue live case,
@@ -892,8 +897,13 @@ zero movie opens, and no menu-map open. Issues #99, #113, and #119 preserve the
 resolved save-authority, conversation, and first-cutscene boundary defects;
 #191 records the Dead Zone autosave taken inside its opening script, whose
 Continue restored an invisible party, and the live fixed-build Continue.
-Issue #131 records the binary-grounded 11-to-10 Load Game projection and its
-windowless full-capacity live proof.
+Issue #131 records the binary-grounded Load Game projection and its
+windowless full-capacity live proof. On 2026-10-21, with only `autosave0.save`
+in the profile, main-menu Load Game listed "AUTOSAVE - 00:00 - Jungle Canal
+(Normal)" (before the fix: EMSG_NO_DATA_DEVNUM), loading it wrote
+`autosave1.save`, and a second run listed both rows; `extraction-free` logged
+`succeeded autosave3.save (extraction pad)` and `autosave4.save` on the two pad
+entries, and a Continue run's frame showed the "Autosaved" pill.
 
 ### S016 — live control and diagnostics: verified
 

@@ -14,29 +14,42 @@ static int failures;
     }                                                                          \
   } while (0)
 
+/* A payload's head as 0x00468990 writes it: newline, then the tag field. */
+static void payload(unsigned char out[64], const char *tag) {
+  memset(out, 0, 64);
+  out[0] = '\n';
+  memcpy(out + 1, tag, strlen(tag) < 0x32u ? strlen(tag) : 0x32u);
+}
+
 int main(void) {
-  static const unsigned char PAYLOAD[] =
-      "\n[SAVEGAMEBEGIN: 00:13 - Sanctuary (Normal)]\0******\n";
-  static const unsigned char NO_TAG[] = "\nnot a retail save";
-  static const unsigned char NO_CLOSE[] = "\n[SAVEGAMEBEGIN: incomplete";
-  static const unsigned char CONTROL[] = "\n[SAVEGAMEBEGIN: bad\tname]";
   static const char EXPECTED[] = "00:13 - Sanctuary (Normal)";
+  unsigned char head[64];
   unsigned char header[x2::save::kSaveHeaderBytes];
   unsigned i;
 
+  payload(head, "[SAVEGAMEBEGIN: 00:13 - Sanctuary (Normal)]");
   memset(header, 0xa5, sizeof header);
-  CHECK(
-      x2::save::autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, header));
+  CHECK(x2::save::autosave_header_from_payload(head, sizeof head, header));
   CHECK(!strcmp((const char *)header, EXPECTED));
   for (i = (unsigned)strlen(EXPECTED); i < sizeof header; i++)
     CHECK(header[i] == 0u);
-  CHECK(!x2::save::autosave_header_from_payload(NO_TAG, sizeof NO_TAG, header));
-  CHECK(!x2::save::autosave_header_from_payload(NO_CLOSE, sizeof NO_CLOSE,
-                                                header));
-  CHECK(
-      !x2::save::autosave_header_from_payload(CONTROL, sizeof CONTROL, header));
-  CHECK(!x2::save::autosave_header_from_payload(NULL, sizeof PAYLOAD, header));
-  CHECK(!x2::save::autosave_header_from_payload(PAYLOAD, sizeof PAYLOAD, NULL));
+  /* Southern Habitats does not fit; the field ends in a NUL, not "]". */
+  payload(head, "[SAVEGAMEBEGIN: 00:00 - Southern Habitats (Normal");
+  CHECK(x2::save::autosave_header_from_payload(head, sizeof head, header));
+  CHECK(!strcmp((const char *)header, "00:00 - Southern Habitats (Normal"));
+  payload(head, "not a retail save");
+  CHECK(!x2::save::autosave_header_from_payload(head, sizeof head, header));
+  payload(head, "[SAVEGAMEBEGIN: ]");
+  CHECK(!x2::save::autosave_header_from_payload(head, sizeof head, header));
+  payload(head, "[SAVEGAMEBEGIN: bad\tname]");
+  CHECK(!x2::save::autosave_header_from_payload(head, sizeof head, header));
+  memset(head + 1, 'x', 63);
+  memcpy(head + 1, "[SAVEGAMEBEGIN: ", 16);
+  CHECK(!x2::save::autosave_header_from_payload(head, sizeof head, header));
+  payload(head, "[SAVEGAMEBEGIN: 00:13 - Sanctuary (Normal)]");
+  CHECK(!x2::save::autosave_header_from_payload(head, 0x32u, header));
+  CHECK(!x2::save::autosave_header_from_payload(NULL, sizeof head, header));
+  CHECK(!x2::save::autosave_header_from_payload(head, sizeof head, NULL));
 
   printf("autosave_format: %d checks, %d failures\n", checks, failures);
   return failures != 0;

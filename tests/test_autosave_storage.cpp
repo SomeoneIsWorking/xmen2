@@ -52,6 +52,8 @@ static size_t read_file(const char *path, unsigned char *out, size_t capacity) {
   return result < 0 ? 0u : (size_t)result;
 }
 
+static const char kLeaf[] = "autosave0.save";
+
 static int temporary_count(const char *directory) {
   DIR *dir = opendir(directory);
   struct dirent *entry;
@@ -59,7 +61,7 @@ static int temporary_count(const char *directory) {
   if (!dir)
     return -1;
   while ((entry = readdir(dir)) != NULL)
-    if (!strncmp(entry->d_name, ".autosave.save.tmp.", 19u))
+    if (!strncmp(entry->d_name, ".autosave.tmp.", 14u))
       count++;
   closedir(dir);
   return count;
@@ -86,14 +88,14 @@ int main(void) {
   directory = x2::save::retail_save_directory();
   CHECK(directory != NULL);
   ensure_directory(directory);
-  snprintf(leaf, sizeof leaf, "%s/%s", directory, x2::save::kAutosaveLeaf);
+  snprintf(leaf, sizeof leaf, "%s/%s", directory, kLeaf);
   memset(header, 0xa5, sizeof header);
 
   for (fault = x2::save::AutosaveStorageFault::AfterHeader;
        fault <= x2::save::AutosaveStorageFault::BeforeRename;
        fault = static_cast<x2::save::AutosaveStorageFault>((int)fault + 1)) {
     CHECK(write_file(leaf, prior, sizeof prior));
-    CHECK(!x2::save::autosave_storage_publish(directory, header, payload,
+    CHECK(!x2::save::autosave_storage_publish(directory, kLeaf, header, payload,
                                               sizeof payload, fault));
     size = read_file(leaf, result, sizeof result);
     CHECK(size == sizeof prior);
@@ -102,7 +104,7 @@ int main(void) {
   }
 
   CHECK(x2::save::autosave_storage_publish(
-      directory, header, payload, sizeof payload,
+      directory, kLeaf, header, payload, sizeof payload,
       x2::save::AutosaveStorageFault::None));
   size = read_file(leaf, result, sizeof result);
   CHECK(size == x2::save::kSaveHeaderBytes + 4u + sizeof payload);
@@ -113,7 +115,7 @@ int main(void) {
   CHECK(temporary_count(directory) == 0);
 
   CHECK(!x2::save::autosave_storage_publish(
-      NULL, header, payload, sizeof payload,
+      NULL, kLeaf, header, payload, sizeof payload,
       x2::save::AutosaveStorageFault::None));
   for (i = 0; i < sizeof result; i++)
     result[i] = 0;

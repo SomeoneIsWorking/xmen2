@@ -33,7 +33,7 @@ def console(case: Case, command: str) -> None:
 
 def start_levelled(case: Case, extra: tuple[str, ...] = ()) -> bool:
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)

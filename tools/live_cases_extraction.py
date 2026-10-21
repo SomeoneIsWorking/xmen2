@@ -9,6 +9,7 @@ game's memory. See docs/RE/extraction.md.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.parse
 
@@ -30,7 +31,7 @@ BEHIND = (2680.0, 4271.0, -119.0)
 def reach_pad_map(case: Case, mode: str) -> None:
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2",
                           "gameplay.extraction_revive=%s" % mode])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -194,6 +195,8 @@ def case_extraction_free(case: Case) -> None:
     case.check("the bridge restored the party once",
                restores(case) == 1 and "free: restored 4 party heroes (1 "
                "revived)" in case.log_text())
+    case.check("stepping onto the pad autosaves",
+               wait_pad_autosaves(case, 1), autosave_lines(case))
     time.sleep(8)
     fell_again(case)
     down = party(case)
@@ -213,10 +216,29 @@ def case_extraction_free(case: Case) -> None:
     put_party_on_pad(case)
     clear_cinematic(case)
     again = wait_full(case)
+    case.check("stepping back onto the pad autosaves again",
+               wait_pad_autosaves(case, 2), autosave_lines(case))
     case.check("stepping back onto the pad restores the party again",
                full(again) and restores(case) == 2,
                "restores %d %s" % (restores(case), again.get("heroes")))
     case.shot("free-after")
+
+
+def autosave_lines(case: Case) -> str:
+    return str([line for line in case.log_text().splitlines()
+                if "[autosave]" in line])
+
+
+def pad_autosaves(case: Case) -> int:
+    return len(re.findall(r"succeeded autosave\d\.save \(extraction pad\)",
+                          case.log_text()))
+
+
+def wait_pad_autosaves(case: Case, count: int) -> bool:
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and pad_autosaves(case) < count:
+        time.sleep(0.2)
+    return pad_autosaves(case) == count
 
 
 def choose_team(case: Case) -> dict:
@@ -438,7 +460,7 @@ def case_extract_keyboard_back(case: Case) -> None:
     """The world map an extraction point opened shows one Back and go, Escape
     leaves it, and the party answers the keyboard again."""
     case.prepare_profile(["boot.mode=continue"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     shown = reach_world_map_by_pad(case)

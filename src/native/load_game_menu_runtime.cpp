@@ -6,6 +6,8 @@
 #include "guest_memory.h"
 #include "guest_modules.h"
 #include "load_game_menu_policy.h"
+#include "save_catalog.h"
+#include "save_directory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -25,6 +27,7 @@ enum {
   FN_SCRIPT_ARGUMENT = 0x000d5830u,
   UI_SINGLETON = 0x004b13ecu,
   SAVE_MODE_LOAD = 3u,
+  MANAGER_SAVE_COUNT = 0xccu,
   MANAGER_MODE = 0xd4u,
   MANAGER_SELECTION = 0xddu,
   MANAGER_METADATA = 0xe4u,
@@ -44,7 +47,7 @@ enum {
   PAGE_ORIGIN = 0x155au,
   PAGE_FOCUS = 0x155bu,
   ROW_BYTES = 0x80u,
-  AUTOSAVE_SCRIPT_SLOT = 10u
+  FIRST_AUTOSAVE_SCRIPT_SLOT = 10u
 };
 
 typedef struct {
@@ -56,14 +59,13 @@ typedef struct {
   unsigned selectable_bit;
 } ResidentRow;
 
-static const char AUTOSAVE_LEAF[] = "autosave.save";
-static const char AUTOSAVE_COMMAND[] = "saveloadChooseFile(10)";
-
 static uint32_t g_exe;
 static uint32_t g_ui;
 static uint32_t g_page;
 static uint32_t g_manager;
-static uint32_t g_autosave_metadata;
+static x2::save::SaveCandidate g_autosaves[x2::save::kAutosaveSlots];
+static unsigned g_autosave_count;
+static uint32_t g_autosave_metadata[x2::save::kAutosaveSlots];
 static ResidentRow g_rows[x2::save::kLoadGameMaxEntries];
 static x2::save::LoadGameMenuPlan g_plan;
 static x2::save::LoadGameMenuWindow g_window;
@@ -131,7 +133,8 @@ static void update_selected_leaf(void) {
     return;
   entry = &g_plan.entries[g_window.selected];
   if (entry->kind == x2::save::LoadGameEntryKind::Autosave)
-    snprintf(g_selected_leaf, sizeof g_selected_leaf, "%s", AUTOSAVE_LEAF);
+    snprintf(g_selected_leaf, sizeof g_selected_leaf, "%s",
+             g_autosaves[entry->autosave].leaf);
   else
     snprintf(g_selected_leaf, sizeof g_selected_leaf, "saveslot%u.save",
              entry->manual_slot);
@@ -201,24 +204,46 @@ static uint16_t manual_present_mask(uint32_t manager) {
   return mask;
 }
 
-static void make_autosave_row(ResidentRow *row) {
+static void make_autosave_row(ResidentRow *row, unsigned autosave) {
+  const uint32_t metadata = g_autosave_metadata[autosave];
   char description[96];
   size_t length = 0u;
 
   memset(row, 0, sizeof *row);
-  while (length + 1u < sizeof description &&
-         RD8(g_autosave_metadata + (uint32_t)length)) {
-    description[length] = (char)RD8(g_autosave_metadata + (uint32_t)length);
+  while (length + 1u < sizeof description && RD8(metadata + (uint32_t)length)) {
+    description[length] = (char)RD8(metadata + (uint32_t)length);
     length++;
   }
   description[length] = 0;
   if (length)
-    snprintf(row->text, sizeof row->text, "AUTOSAVE - %s", description);
+    snprintf(row->text, sizeof row->text, "AUTOSAVE %u - %s", autosave + 1u,
+             description);
   else
-    snprintf(row->text, sizeof row->text, "AUTOSAVE");
-  snprintf(row->primary, sizeof row->primary, "%s", AUTOSAVE_COMMAND);
+    snprintf(row->text, sizeof row->text, "AUTOSAVE %u", autosave + 1u);
+  snprintf(row->primary, sizeof row->primary, "saveloadChooseFile(%u)",
+           FIRST_AUTOSAVE_SCRIPT_SLOT + autosave);
   row->primary_bit = 1u;
   row->selectable_bit = 1u;
+}
+
+/* The present autosaves, newest first, whose headers read back. */
+static unsigned read_autosaves(const CPU *source) {
+  x2::save::SaveCandidate present[x2::save::kAutosaveSlots];
+  const char *directory = x2::save::retail_save_directory();
+  int count =
+      directory ? x2::save::save_catalog_autosaves(directory, present) : -1;
+  unsigned readable = 0u;
+
+  for (int at = 0; at < count; at++) {
+    if (!g_autosave_metadata[readable])
+      g_autosave_metadata[readable] = guest_malloc(METADATA_STRIDE);
+    if (!g_autosave_metadata[readable] ||
+        !x2::native::exact_save_load_read_header(
+            source, g_exe, present[at].leaf, g_autosave_metadata[readable]))
+      continue;
+    g_autosaves[readable++] = present[at];
+  }
+  return readable;
 }
 
 static void activate_projection(const CPU *source, uint32_t manager) {
@@ -236,23 +261,21 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   g_page = dialog_page(g_ui);
   if (!g_ui || !g_page)
     return;
-  if (!g_autosave_metadata)
-    g_autosave_metadata = guest_malloc(METADATA_STRIDE);
-  if (!g_autosave_metadata ||
-      !x2::native::exact_save_load_read_header(source, g_exe, AUTOSAVE_LEAF,
-                                               g_autosave_metadata))
+  g_autosave_count = read_autosaves(source);
+  if (!g_autosave_count)
     return;
 
   mask = manual_present_mask(manager);
-  x2::save::load_game_menu_plan(mask, 1, &g_plan);
-  manual_count = g_plan.count - 1u;
+  x2::save::load_game_menu_plan(mask, g_autosave_count, &g_plan);
+  manual_count = g_plan.count - g_autosave_count;
   retail_count = RD8(g_page + PAGE_COUNT);
   if (manual_count && retail_count != manual_count)
     return;
   memset(g_rows, 0, sizeof g_rows);
   for (logical = 0u; logical < manual_count; logical++)
     capture_row(g_page, (unsigned)logical, &g_rows[logical]);
-  make_autosave_row(&g_rows[manual_count]);
+  for (logical = 0u; logical < g_autosave_count; logical++)
+    make_autosave_row(&g_rows[manual_count + logical], (unsigned)logical);
   x2::save::load_game_menu_window_init(&g_plan, &g_window);
   g_manager = manager;
   g_active = 1;
@@ -332,6 +355,23 @@ static int script_integer_argument(const CPU *source, int *value) {
   return 1;
 }
 
+/* State 0x11 refuses Load with EMSG_NO_DATA while the retail save count,
+   saveslot*.save only, is zero; the autosaves count too. */
+static void x2_override_004b0800(CPU *C) {
+  uint32_t manager = C->reg[kX86pEcx];
+  const char *directory = x2::save::retail_save_directory();
+  x2::save::SaveCandidate present[x2::save::kAutosaveSlots];
+  int autosaves;
+
+  if (RD32(manager + MANAGER_MODE) == SAVE_MODE_LOAD && directory) {
+    autosaves = x2::save::save_catalog_autosaves(directory, present);
+    if (autosaves > 0)
+      WR32(manager + MANAGER_SAVE_COUNT,
+           RD32(manager + MANAGER_SAVE_COUNT) + (uint32_t)autosaves);
+  }
+  x86_guest_body(C, "XMen2.exe", 0x004b0800u);
+}
+
 static void x2_override_004b0d20(CPU *C) {
   uint32_t manager = C->reg[kX86pEcx];
 
@@ -364,7 +404,8 @@ static void x2_override_0049f010(CPU *C) {
   int selection;
 
   if (!g_active || !script_integer_argument(C, &selection) ||
-      selection != AUTOSAVE_SCRIPT_SLOT) {
+      selection < (int)FIRST_AUTOSAVE_SCRIPT_SLOT ||
+      selection >= (int)(FIRST_AUTOSAVE_SCRIPT_SLOT + g_autosave_count)) {
     x86_guest_body(C, "XMen2.exe", 0x0049f010u);
     if (g_active && g_manager) {
       g_manual_choices++;
@@ -373,9 +414,9 @@ static void x2_override_0049f010(CPU *C) {
     }
     return;
   }
-  if (x2::native::exact_save_load_start(C, g_exe, AUTOSAVE_LEAF, 0u,
-                                        x2::native::ExactSaveLoadOwner::Menu,
-                                        NULL)) {
+  if (x2::native::exact_save_load_start(
+          C, g_exe, g_autosaves[selection - FIRST_AUTOSAVE_SCRIPT_SLOT].leaf,
+          0u, x2::native::ExactSaveLoadOwner::Menu, NULL)) {
     g_autosave_choices++;
     g_last_manager_selection = (int)(int8_t)RD8(g_manager + MANAGER_SELECTION);
   } else {
@@ -414,6 +455,7 @@ size_t load_game_menu_runtime_report(char *out, size_t capacity) {
 namespace {
 
 __attribute__((constructor)) static void x2_load_game_menu_register(void) {
+  x86_register_override("XMen2.exe", 0x004b0800u, x2_override_004b0800);
   x86_register_override("XMen2.exe", 0x004b0d20u, x2_override_004b0d20);
   x86_register_override("XMen2.exe", 0x005e9d30u, x2_override_005e9d30);
   x86_register_override("XMen2.exe", 0x0049f010u, x2_override_0049f010);

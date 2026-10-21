@@ -186,14 +186,31 @@ the dialog owner and then consumes a transaction-local one-shot only at mode
 one-shot, so its confirmation behavior is unchanged. Failed reads, unexpected
 states and a return to the main menu clear the pending acknowledgement.
 
-The same successful retained map-return boundary schedules the host autosave.
-The retained main-menu Show cancels its pending request, so booting Menu cannot
-save the menu map. A gameplay load reaches the retail serializer only after 64
-consecutive guest input polls with save-manager mode zero; the publisher derives
-the retail 128-byte description header from the serializer's own
-`[SAVEGAMEBEGIN: ...]` tag and atomically replaces `autosave.save` in the same
-authoritative save directory. Optional save tracing does not own or gate these
-production hooks.
+The same successful retained map-return boundary schedules the host autosave,
+and so does a hero stepping onto an extraction pad (`extraction_revive.cpp`,
+in every `gameplay.extraction_revive` mode). The retained main-menu Show
+cancels its pending request, so booting Menu cannot save the menu map. A
+checkpoint reaches the retail serializer only after 64 consecutive guest input
+polls with save-manager mode zero and the player in control; the publisher
+derives the retail 128-byte description header from the serializer's own
+`[SAVEGAMEBEGIN: ...]` tag and atomically replaces one of five rotating slots,
+`autosave0.save`..`autosave4.save` (the lowest empty slot, else the oldest), in
+the same authoritative save directory. The tag is a fixed 0x32-byte field
+(`0x00468990` formats into it with `vsnprintf(.., 0x32, ..)`), so a long level
+name loses its closing `)]`: "00:00 - Southern Habitats (Normal" is the whole
+field, NUL-terminated. Each write shows "Autosaved" (or "Autosave failed") for
+three seconds (`src/save/autosave_notice`, drawn by
+`src/ui/autosave_notice_document`), and `GET /save` reports it as `notice=`.
+Optional save tracing does not own or gate these production hooks.
+
+Load Game lists the present autosaves, newest first, after the manual saves
+(`load_game_menu_runtime.cpp`, issue #131's projection with up to fifteen
+entries; autosave rows are script choices 10..14). The retail scan
+(`0x0055f190`) counts only `saveslot*.save` into manager `+0xcc`, and save
+state 0x11 (`0x004b0800`) refuses Load with EMSG_NO_DATA_DEVNUM ("No X-men
+Legends 2 save data present on hard disk.") while that count is zero; the
+port's `0x004b0800` override adds the present autosaves to the count in load
+mode first. `+0xcc` is otherwise read only by `0x004b0d20` as zero/nonzero.
 
 `X2_BOOT_MAP` remains the explicit developer route and takes precedence over
 the persistent setting.

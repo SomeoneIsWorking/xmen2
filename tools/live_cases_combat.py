@@ -29,7 +29,7 @@ def party_health(case: Case) -> dict[str, float]:
 
 def case_combat_bench(case: Case) -> None:
     case.prepare_profile(["boot.mode=continue"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)

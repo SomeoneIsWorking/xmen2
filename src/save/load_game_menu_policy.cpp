@@ -17,9 +17,10 @@ size_t visible_count(size_t total, size_t first) {
 
 } // namespace
 
-void load_game_menu_plan(uint16_t manual_present_mask, int has_autosave,
+void load_game_menu_plan(uint16_t manual_present_mask, unsigned autosaves,
                          LoadGameMenuPlan *out) {
   unsigned slot;
+  unsigned autosave;
 
   if (!out)
     return;
@@ -32,11 +33,14 @@ void load_game_menu_plan(uint16_t manual_present_mask, int has_autosave,
     entry = &out->entries[out->count++];
     entry->kind = LoadGameEntryKind::Manual;
     entry->manual_slot = slot;
+    entry->autosave = UINT_MAX;
   }
-  if (has_autosave) {
+  for (autosave = 0u; autosave < autosaves && autosave < kAutosaveSlots;
+       autosave++) {
     LoadGameEntry *entry = &out->entries[out->count++];
     entry->kind = LoadGameEntryKind::Autosave;
     entry->manual_slot = UINT_MAX;
+    entry->autosave = autosave;
   }
 }
 

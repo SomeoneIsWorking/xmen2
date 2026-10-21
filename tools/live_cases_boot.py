@@ -190,7 +190,7 @@ def case_boot_continue(case: Case) -> None:
     title-screen player selection is supplied programmatically and retail
     Continue dispatches synchronously from the intercepted CMenuMain::Show."""
     case.prepare_profile(["boot.mode=continue"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({
         "X2_UNPACED": "1",
         "X2_FILES": "1",
@@ -302,7 +302,7 @@ def case_manual_continue(case: Case) -> None:
     Continue from the click path, then compare the loaded game's hero
     handles with what the bypassing boot produces."""
     case.prepare_profile(["boot.mode=normal"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({
         "X2_UNPACED": "1",
         "X2_FILES": "1",

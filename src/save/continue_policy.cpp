@@ -1,4 +1,5 @@
 #include "continue_policy.h"
+#include "save_catalog.h"
 
 #include <cstring>
 
@@ -61,7 +62,9 @@ void continue_menu_plan(int has_save, int has_lan_game, ContinueMenuPlan *out) {
 int continue_leaf_slot(const char *leaf, unsigned *slot) {
   if (!leaf || !slot)
     return 0;
-  if (!std::strcmp(leaf, "autosave.save")) {
+  unsigned autosave;
+
+  if (autosave_leaf_slot(leaf, &autosave)) {
     *slot = 0u;
     return 1;
   }

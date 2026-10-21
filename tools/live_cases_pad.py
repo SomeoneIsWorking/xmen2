@@ -123,7 +123,7 @@ def case_pad_after_load(case: Case) -> None:
     "the game reads nothing" has several causes and only that array
     distinguishes them."""
     case.prepare_profile(["boot.mode=continue"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({
         "X2_FILES": "1",
         "X2_SCRIPTS": "1",
@@ -233,7 +233,7 @@ def case_pad_persisted(case: Case) -> None:
         "X2_SCRIPTS": "1",
     }
     if boot_continue:
-        case.seed_save("autosave.save")
+        case.seed_save("autosave0.save")
     else:
         env["X2_BOOT_MAP"] = TUTORIAL_MAP
     case.launch(env)
@@ -297,7 +297,7 @@ def spawn_enemy_beside_party(case: Case, level: str, definition: str) -> dict | 
     """Continue the autosave, load `level` and spawn one enemy definition
     beside the party, then capture it as shot "enemy"."""
     case.prepare_profile(["boot.mode=continue"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
