@@ -4,6 +4,7 @@
 #include "guest_image_reader.hpp"
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +20,9 @@ struct HeroRecord {
   std::string display_name;
   /* What FUN_004b87c0 returns: record+0x1c plus the active mission's bonus. */
   int level = 0;
+  /* record+0xc0, the stats object (vtable 0x685294); 0 for the villain
+     records. */
+  std::uint32_t stats = 0;
   /* The stats object's dead test (FUN_0044a690); false without stats. */
   bool fallen = false;
   /* The unlock bit the card tests (FUN_0048f770 on record+0x28e). */

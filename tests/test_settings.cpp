@@ -144,7 +144,7 @@ static void check_extraction_revive(const char *path) {
   char why[256];
   FILE *file;
   settings_defaults(&saved);
-  CHECK(saved.extraction_revive == x2::config::ExtractionRevive::Off);
+  CHECK(saved.extraction_revive == x2::config::ExtractionRevive::Free);
   for (int mode = static_cast<int>(x2::config::ExtractionRevive::Off);
        mode <= static_cast<int>(x2::config::ExtractionRevive::Paid); mode++) {
     saved.extraction_revive = (x2::config::ExtractionRevive)mode;
@@ -162,13 +162,13 @@ static void check_extraction_revive(const char *path) {
   size_t used = fread(text, 1, sizeof text - 1, file);
   fclose(file);
   CHECK(used > 0 && strstr(text, "gameplay.extraction_revive=paid\n"));
-  /* A file written before the setting existed keeps the retail rule. */
+  /* A file written before the setting existed gets the default. */
   file = fopen(path, "w");
   assert(file);
   fprintf(file, "video.width=1280\nvideo.height=720\nvideo.mode=windowed\n");
   fclose(file);
   CHECK(settings_load(&loaded, path, why, sizeof why));
-  CHECK(loaded.extraction_revive == x2::config::ExtractionRevive::Off);
+  CHECK(loaded.extraction_revive == x2::config::ExtractionRevive::Free);
   /* An unknown value refuses and leaves the settings alone. */
   untouched = loaded;
   file = fopen(path, "w");

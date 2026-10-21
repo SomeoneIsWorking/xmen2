@@ -6,9 +6,11 @@
 #include "guest_body.h"
 #include "guest_call.hpp"
 #include "guest_clock.h"
+#include "guest_image_reader.hpp"
 #include "guest_memory.h"
 #include "guest_memory_view.hpp"
 #include "retail_entities.hpp"
+#include "retail_hero_table.hpp"
 #include "settings_store.h"
 #include "x86rt_native.h"
 
@@ -63,18 +65,15 @@ constexpr std::uint32_t kFullHealth = 0x3f800000u; /* 1.0f */
 /* The world map pad and the saving-only sidemission pad. */
 constexpr const char *kPadDefPrefix = "xtraction_point";
 
-/* The retail nearby-revive radius (0x00428ce0). */
-constexpr float kNearRadius = 480.0F;
+/* The pad's expt_trig touch box (extent -120 -120 0 120 120 72 on every
+   map; no pad is rotated). */
+constexpr float kTouchHalfWidth = 120.0F;
+constexpr float kTouchHeight = 72.0F;
 constexpr double kScanSeconds = 0.25;
 
 std::uint32_t exe(std::uint32_t linked) {
   return x86_module_base("XMen2.exe") + linked - kImageBase;
 }
-
-struct Vec2 {
-  float x;
-  float y;
-};
 
 struct Hero {
   std::uint32_t actor = 0;
@@ -82,7 +81,7 @@ struct Hero {
   std::uint32_t stats = 0;  /* record +0xc0 */
   bool fallen = false;
   int level = 0;
-  Vec2 at{};
+  Position at{};
 };
 
 struct Money {
@@ -91,7 +90,7 @@ struct Money {
 };
 
 bool read_position(const GuestMemoryView &memory, std::uint32_t entity,
-                   Vec2 *out) {
+                   Position *out) {
   return memory.read(entity + kEntityPosition, out, sizeof *out);
 }
 
@@ -138,16 +137,25 @@ Money read_money(const CPU &cpu) {
   return money;
 }
 
-bool near_a_pad(const std::vector<Hero> &party,
-                const std::vector<Position> &pads) {
-  for (const Hero &hero : party) {
+/* The hero's height is not read, so its feet may stand up to the box's
+   height below the pad and still overlap it. */
+bool touches(const Position &hero, const Position &pad) {
+  return std::fabs(hero.x - pad.x) <= kTouchHalfWidth &&
+         std::fabs(hero.y - pad.y) <= kTouchHalfWidth &&
+         hero.z >= pad.z - kTouchHeight && hero.z <= pad.z + kTouchHeight;
+}
+
+/* The first party hero touching a pad, or -1. */
+int hero_on_a_pad(const std::vector<Hero> &party,
+                  const std::vector<Position> &pads) {
+  for (std::size_t i = 0; i < party.size(); ++i) {
     for (const Position &pad : pads) {
-      if (std::hypot(hero.at.x - pad.x, hero.at.y - pad.y) <= kNearRadius) {
-        return true;
+      if (touches(party[i].at, pad)) {
+        return static_cast<int>(i);
       }
     }
   }
-  return false;
+  return -1;
 }
 
 std::vector<int> fallen_levels(const std::vector<Hero> &party) {
@@ -178,8 +186,10 @@ void refill(const CPU &cpu, const Hero &hero) {
                     {RD32(hero.actor + kActorMaxEnergy)});
 }
 
-/* `free`: everyone back up and full; returns the actors revived. */
-std::vector<std::uint32_t> restore_party(const CPU &cpu) {
+/* `free`: the party back up and full, and every other fallen character
+   revived as the roster's revive does (stats only: a hero off the field has
+   no actor). Returns the actors revived. */
+std::vector<std::uint32_t> restore_everyone(const CPU &cpu) {
   const std::vector<Hero> party = read_party(cpu);
   std::vector<std::uint32_t> revived;
   for (const Hero &hero : party) {
@@ -189,9 +199,30 @@ std::vector<std::uint32_t> restore_party(const CPU &cpu) {
     }
     refill(cpu, hero);
   }
+  const LiveGuestMemory memory;
+  GuestImageReader reader(memory, x86_module_base("XMen2.exe"));
+  std::vector<HeroRecord> characters;
+  if (!RetailHeroTable(reader).read(&characters)) {
+    lucent_log_error("extraction",
+                     "free: the character table read failed at 0x%08x",
+                     reader.failed_address());
+  }
+  guest::GuestCall call(cpu);
+  int others = 0;
+  for (const HeroRecord &character : characters) {
+    const bool in_party =
+        std::any_of(party.begin(), party.end(), [&character](const Hero &hero) {
+          return hero.stats == character.stats;
+        });
+    if (character.fallen && !in_party) {
+      call.virtual_call(character.stats, kStatsReviveSlot);
+      ++others;
+    }
+  }
   lucent_log_info("extraction",
-                  "free: restored %zu heroes, %zu of them revived",
-                  party.size(), revived.size());
+                  "free: restored %zu party heroes (%zu revived), revived %d "
+                  "of %zu other characters",
+                  party.size(), revived.size(), others, characters.size());
   return revived;
 }
 
@@ -262,18 +293,26 @@ void ExtractionRevive::poll(CPU *cpu, double now) {
   }
   next_scan_ = now + kScanSeconds;
   const std::vector<Hero> party = read_party(*cpu);
-  const bool near =
-      near_a_pad(party, extraction_pad_positions(LiveGuestMemory()));
-  if (mode == x2::config::ExtractionRevive::Free) {
-    if (near && !inside_) {
-      for (const std::uint32_t actor : restore_party(*cpu)) {
+  const int touching =
+      hero_on_a_pad(party, extraction_pad_positions(LiveGuestMemory()));
+  const bool near = touching >= 0;
+  const bool free_mode = mode == x2::config::ExtractionRevive::Free;
+  if (near != inside_) {
+    inside_ = near;
+    lucent_log_info(
+        "extraction", "hero %d %s a pad at (%.0f, %.0f, %.0f)", touching + 1,
+        near ? "steps onto" : "left", near ? party[touching].at.x : 0.0F,
+        near ? party[touching].at.y : 0.0F, near ? party[touching].at.z : 0.0F);
+    if (free_mode && near) {
+      for (const std::uint32_t actor : restore_everyone(*cpu)) {
         set_getting_up(actor, true);
       }
     }
+  }
+  if (free_mode) {
     if (!near) {
       forget_getting_up();
     }
-    inside_ = near;
     return;
   }
   const std::vector<int> levels = fallen_levels(party);
