@@ -233,8 +233,13 @@ elseif(WIN32)
                       libavformat libavcodec libavutil libswscale libswresample)
     set(X2_FFMPEG_TARGET PkgConfig::X2_FFMPEG)
 else()
-    # The runtime letters keyboard prompts in the shared key typeface.
-    find_package(Freetype REQUIRED)
+    # The runtime letters keyboard prompts in the shared key typeface. The
+    # release prefix's config package must win, or RmlUi's later config lookup
+    # redefines Freetype::Freetype.
+    find_package(Freetype CONFIG QUIET)
+    if(NOT Freetype_FOUND)
+        find_package(Freetype REQUIRED)
+    endif()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
                       libavformat libavcodec libavutil libswscale libswresample)

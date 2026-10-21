@@ -75,12 +75,19 @@ build/native/x2native --d3d8                   # the LIVE path: arms the host Di
 `run.sh` launches the native-overrides + x86port-JIT gameplay product. The
 Wine control and maintainer diagnostics remain separate tools.
 
-Build a Linux AppImage from the verified native build with
-`uv run --frozen python tools/package_appimage.py`. The packager stages only
-the native binary, UI resources, desktop metadata, and libraries discovered by
-`linuxdeploy`. It injects a `patchelf` 0.19+ binary into the deployer's
-temporary AppImage payload, because older patchers corrupt `DT_INIT` in current
-Fedora ELFs; `appimagetool` writes the result to
+Build the release AppImage with
+`uv run --frozen python tools/appimage_container.py` (podman; CI passes
+`--engine docker`). It builds `packaging/appimage-build.Containerfile`, an
+Ubuntu 22.04 host with clang-20, and inside it links the release binary against
+the static SDL3, SDL3_image, FreeType and FFmpeg prefix `tools/linux_deps.py`
+builds from the archives pinned in `tools/dependency_archives.py`, then runs
+`tools/package_appimage.py`. The packager stages only the native binary, UI
+resources, desktop metadata, and libraries discovered by `linuxdeploy`. It
+injects a `patchelf` 0.19+ binary into the deployer's temporary AppImage
+payload, because older patchers corrupt `DT_INIT` in current Fedora ELFs, and
+refuses any staged ELF that needs a glibc, libstdc++ or C++ ABI version newer
+than Ubuntu 22.04's, which the AppImage catalog requires.
+`appimagetool` writes the result to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
 Build the Windows portable ZIP on a Windows runner or by cross-building with

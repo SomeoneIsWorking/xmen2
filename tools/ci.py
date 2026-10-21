@@ -142,7 +142,19 @@ def wasm_portability(target: ci_support.TargetSupport) -> None:
     print(f"ci: {target.key}: measured wasm32 portability; {target.explanation}")
 
 
-def release_binary(target: ci_support.TargetSupport) -> None:
+def release_prefix(target: ci_support.TargetSupport, environment: dict[str, str]) -> tuple[str, ...]:
+    """Linux links the pinned static prefix (tools/linux_deps.py), never the host's libraries."""
+    if target.system != "Linux":
+        return ()
+    import linux_deps
+
+    tools = linux_deps.Toolchain(environment["CC"], environment["CXX"], os.cpu_count() or 2)
+    prefix = linux_deps.provision(linux_deps.DEFAULT_DEPS_ROOT, tools)
+    environment["PKG_CONFIG_LIBDIR"] = str(prefix / "lib" / "pkgconfig")
+    return (f"-DCMAKE_PREFIX_PATH={prefix}", f"-DX2_GLSLC={prefix / 'bin' / 'glslc'}")
+
+
+def release_binary(target: ci_support.TargetSupport, build: Path) -> None:
     """Build the shipping binary for a release package, without game assets.
 
     The workflow used to spell this configure out itself and pass whichever
@@ -163,7 +175,7 @@ def release_binary(target: ci_support.TargetSupport) -> None:
     environment.setdefault("CC", "clang")
     environment.setdefault("CXX", "clang++")
     ensure_shared(environment)
-    build = ROOT / "build" / "native"
+    prefix_options = release_prefix(target, environment)
     ci_support.run_checked(
         (
             "cmake",
@@ -175,6 +187,7 @@ def release_binary(target: ci_support.TargetSupport) -> None:
             "Ninja",
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DPython3_EXECUTABLE={sys.executable}",
+            *prefix_options,
         ),
         ROOT,
         environment,
@@ -268,6 +281,8 @@ def parse_args() -> argparse.Namespace:
     for name in ("policy", "native-components", "release-binary", "wasm-portability"):
         command = commands.add_parser(name)
         command.add_argument("--target", required=True, choices=tuple(ci_support.TARGETS))
+        if name == "release-binary":
+            command.add_argument("--build-dir", type=Path, default=ROOT / "build" / "native")
     commands.add_parser("selftest")
     return parser.parse_args()
 
@@ -282,7 +297,7 @@ def main() -> int:
         if args.command == "policy":
             policy(target)
         elif args.command == "release-binary":
-            release_binary(target)
+            release_binary(target, args.build_dir.resolve())
         elif args.command == "wasm-portability":
             wasm_portability(target)
         else:

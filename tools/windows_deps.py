@@ -10,37 +10,23 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import platform
 import shutil
-import subprocess
 import sys
-import tarfile
-import urllib.request
-import zipfile
+
+from dependency_archives import (
+    FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_FEATURES, FFMPEG_LIBRARIES, FREETYPE,
+    FREETYPE_OPTIONS, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
+    fetch, refuse, run, sha256_of, unpack)
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DEPS_ROOT = ROOT / "build" / "deps" / "windows"
 TOOLCHAIN_FILE = ROOT / "cmake" / "toolchains" / "llvm-mingw-x86_64.cmake"
 TRIPLE = "x86_64-w64-mingw32"
-
-
-@dataclass(frozen=True)
-class Archive:
-    name: str
-    version: str
-    url: str
-    sha256: str
-
-    @property
-    def filename(self) -> str:
-        suffix = next(ending for ending in (".tar.gz", ".tar.xz", ".zip")
-                      if self.url.endswith(ending))
-        return f"{self.name}-{self.version}{suffix}"
 
 
 LLVM_MINGW_VERSION = "20260922"
@@ -57,51 +43,12 @@ LLVM_MINGW = {
         "e3ad77d117a4bea19a7a3b333341824d79a5a371004a10e25b8504e7b3047666"),
 }
 
-ZLIB = Archive(
-    "zlib", "1.3.2",
-    "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
-    "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16")
-SDL3 = Archive(
-    "SDL3", "3.4.16",
-    "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz",
-    "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68")
-SDL3_IMAGE = Archive(
-    "SDL3_image", "3.4.6",
-    "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.6/"
-    "SDL3_image-3.4.6.tar.gz",
-    "d2e4637ae700f72e5196b8fbd749850ed2e5e1e09c5a5be8d06ff55aaccf3b01")
-FREETYPE = Archive(
-    "freetype", "2.14.1",
-    "https://github.com/freetype/freetype/archive/refs/tags/VER-2-14-1.tar.gz",
-    "44bd69d1f0750603410cfd4f26f1c5523c5a3a087a2dfa8639b757dc7c6677be")
-FFMPEG = Archive(
-    "ffmpeg", "n7.1.1",
-    "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.1.tar.gz",
-    "f117507dc501f2a6c11f9241d8d0c3213846cfad91764361af37befd6b6c523d")
-
 CMAKE_PACKAGES = (
     (ZLIB, ("-DZLIB_BUILD_SHARED=OFF", "-DZLIB_BUILD_STATIC=ON", "-DZLIB_BUILD_TESTING=OFF")),
-    (SDL3, (
-        "-DSDL_SHARED=OFF", "-DSDL_STATIC=ON", "-DSDL_TESTS=OFF",
-        "-DSDL_TEST_LIBRARY=OFF", "-DSDL_EXAMPLES=OFF", "-DSDL_INSTALL=ON")),
-    (SDL3_IMAGE, (
-        "-DBUILD_SHARED_LIBS=OFF", "-DSDLIMAGE_VENDORED=OFF", "-DSDLIMAGE_DEPS_SHARED=OFF",
-        "-DSDLIMAGE_BACKEND_STB=ON", "-DSDLIMAGE_BACKEND_WIC=OFF", "-DSDLIMAGE_SAMPLES=OFF",
-        "-DSDLIMAGE_TESTS=OFF", "-DSDLIMAGE_PNG_LIBPNG=OFF", "-DSDLIMAGE_AVIF=OFF", "-DSDLIMAGE_JXL=OFF",
-        "-DSDLIMAGE_TIF=OFF", "-DSDLIMAGE_WEBP=OFF", "-DSDLIMAGE_INSTALL=ON")),
-    (FREETYPE, (
-        "-DBUILD_SHARED_LIBS=OFF", "-DFT_DISABLE_BZIP2=ON", "-DFT_DISABLE_BROTLI=ON",
-        "-DFT_DISABLE_HARFBUZZ=ON", "-DFT_DISABLE_PNG=ON", "-DFT_DISABLE_ZLIB=ON")),
+    (SDL3, SDL3_OPTIONS),
+    (SDL3_IMAGE, SDL3_IMAGE_OPTIONS),
+    (FREETYPE, FREETYPE_OPTIONS),
 )
-
-# The container, codecs and parser the title's SFD movies and WMA streams use.
-FFMPEG_FEATURES = (
-    "--enable-demuxer=mpegps,asf",
-    "--enable-decoder=mpeg1video,adpcm_adx,wmav1,wmav2,wmapro,wmavoice",
-    "--enable-parser=mpegvideo",
-    "--enable-protocol=file",
-)
-FFMPEG_LIBRARIES = ("avformat", "avcodec", "swscale", "swresample", "avutil")
 
 
 @dataclass(frozen=True)
@@ -113,71 +60,6 @@ class WindowsDependencies:
     def zlib_library(self) -> Path:
         """zlib's MinGW static name, which CMake 4.1's FindZLIB does not search."""
         return self.prefix / "lib" / "libzs.a"
-
-
-def refuse(message: str) -> None:
-    raise SystemExit(f"windows_deps: {message}")
-
-
-def run(command: list[str], cwd: Path | None = None) -> None:
-    print("+", " ".join(command), flush=True)
-    result = subprocess.run(command, cwd=cwd)
-    if result.returncode:
-        refuse(f"exit {result.returncode}: {' '.join(command)}")
-
-
-def sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def fetch(archive: Archive, cache: Path) -> Path:
-    cache.mkdir(parents=True, exist_ok=True)
-    path = cache / archive.filename
-    if not path.is_file():
-        partial = path.with_name(path.name + ".part")
-        print(f"windows_deps: downloading {archive.url}", flush=True)
-        with urllib.request.urlopen(archive.url) as response, partial.open("wb") as out:
-            shutil.copyfileobj(response, out)
-        partial.replace(path)
-    actual = sha256_of(path)
-    if actual != archive.sha256:
-        refuse(f"{path} has SHA-256 {actual}, expected {archive.sha256}; "
-               "delete it to download again")
-    return path
-
-
-def single_root(names: list[str], source: Path) -> str:
-    roots = {PurePosixPath(name).parts[0] for name in names if name.strip("./")}
-    if len(roots) != 1:
-        refuse(f"{source} must hold one top-level directory, found {sorted(roots)}")
-    return roots.pop()
-
-
-def unpack(path: Path, destination: Path) -> Path:
-    """Extract an archive's one top-level directory under `destination`."""
-    destination.mkdir(parents=True, exist_ok=True)
-    if path.name.endswith(".zip"):
-        with zipfile.ZipFile(path) as bundle:
-            names = bundle.namelist()
-            tree = destination / single_root(names, path)
-            if not tree.is_dir():
-                base = destination.resolve()
-                for name in names:
-                    target = (destination / name).resolve()
-                    if target != base and base not in target.parents:
-                        refuse(f"{path} member escapes the destination: {name}")
-                bundle.extractall(destination)
-    else:
-        with tarfile.open(path) as bundle:
-            names = bundle.getnames()
-            tree = destination / single_root(names, path)
-            if not tree.is_dir():
-                bundle.extractall(destination, filter="data")
-    return tree
 
 
 def host_key() -> tuple[str, str]:
@@ -238,11 +120,7 @@ def ffmpeg_package(toolchain: Path, prefix: Path, work: Path, jobs: int) -> None
          f"--cxx={tool(TRIPLE + '-clang++')}", f"--ar={tool('llvm-ar')}",
          f"--ranlib={tool('llvm-ranlib')}", f"--nm={tool('llvm-nm')}",
          f"--strip={tool('llvm-strip')}", f"--windres={tool(TRIPLE + '-windres')}",
-         "--enable-static", "--disable-shared", "--disable-programs", "--disable-doc",
-         "--disable-debug", "--disable-network", "--disable-avdevice",
-         "--disable-avfilter", "--disable-everything", "--disable-autodetect",
-         "--disable-iconv", "--disable-zlib", "--disable-x86asm",
-         *FFMPEG_FEATURES, "--enable-swscale", "--enable-swresample"],
+         *FFMPEG_COMMON_OPTIONS],
         cwd=build)
     run([make, f"-j{jobs}"], cwd=build)
     run([make, "install"], cwd=build)

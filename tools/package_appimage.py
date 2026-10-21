@@ -24,6 +24,9 @@ SCRATCH = ROOT / "scratch"
 BUILD = ROOT / "build"
 PACKAGING = ROOT / "packaging"
 MINIMUM_PATCHELF_VERSION = (0, 19, 0)
+# Ubuntu 22.04, the oldest LTS the AppImage catalog requires an AppImage to run on.
+NEWEST_RUNTIME_VERSIONS = {"GLIBC": (2, 35), "GLIBCXX": (3, 4, 30), "CXXABI": (1, 3, 13)}
+VERSION_NEED = re.compile(r"Name: (GLIBC|GLIBCXX|CXXABI)_(\d+(?:\.\d+)*)\b")
 
 
 def refuse(message: str) -> None:
@@ -128,21 +131,47 @@ def stage_appdir(appdir: Path, binary: Path, ui_directory: Path) -> None:
 def verify_deployed_runtime(appdir: Path, working_directory: Path) -> None:
     """Reject a deployer that produced an ELF which dies before the runner starts.
 
-    A missing player install is an expected setup-state exit (77).  A loader
+    It launches through AppRun, as the packaged desktop entry does, so the
+    checkout's `.env` is ignored. A missing player install is an expected
+    setup-state exit (77).  A loader
     failure, signal, or failed selftest is not: it means the deployed library
     closure differs from the verified native binary.
     """
-    binary = appdir / "usr/bin/x2native"
-    environment = dict(os.environ)
-    environment["X2_UI_RESOURCE_DIR"] = str(appdir / "usr/share/xmen2")
-    result = subprocess.run([str(binary), "--no-window", "--selftest"],
-                            cwd=working_directory, env=environment,
+    result = subprocess.run([str(appdir / "AppRun"), "--no-window", "--selftest"],
+                            cwd=working_directory,
                             text=True, capture_output=True, check=False)
     if result.returncode in (0, 77):
         return
     detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
     refuse("deployed runtime failed before release validation "
            f"(exit {result.returncode}): {detail}")
+
+
+def runtime_versions_needed(readelf_output: str) -> set[tuple[str, tuple[int, ...]]]:
+    return {(match[1], tuple(map(int, match[2].split("."))))
+            for match in VERSION_NEED.finditer(readelf_output)}
+
+
+def too_new(needed: set[tuple[str, tuple[int, ...]]]) -> list[str]:
+    return sorted(f"{name}_{'.'.join(map(str, version))}" for name, version in needed
+                  if version > NEWEST_RUNTIME_VERSIONS[name])
+
+
+def verify_runtime_floor(appdir: Path) -> None:
+    """Refuse an AppDir with an ELF that needs a newer C or C++ runtime than Ubuntu 22.04's."""
+    readelf = tool("readelf", None)
+    failures = []
+    for path in sorted(appdir.rglob("*")):
+        if path.is_symlink() or not path.is_file() or path.read_bytes()[:4] != b"\x7fELF":
+            continue
+        result = subprocess.run([readelf, "--version-info", "--wide", str(path)],
+                                text=True, capture_output=True, check=True)
+        newer = too_new(runtime_versions_needed(result.stdout))
+        if newer:
+            failures.append(f"{path.relative_to(appdir)} needs {', '.join(newer)}")
+    if failures:
+        refuse("built on a host newer than Ubuntu 22.04; build it with "
+               "tools/appimage_container.py:\n  " + "\n  ".join(failures))
 
 
 def build_appimage(binary: Path, ui_directory: Path, output: Path,
@@ -160,6 +189,7 @@ def build_appimage(binary: Path, ui_directory: Path, output: Path,
             "--executable", str(appdir / "usr/bin/x2native"),
         ], cwd=temporary, env=linuxdeploy_environment(), check=True)
         verify_deployed_runtime(appdir, temporary)
+        verify_runtime_floor(appdir)
         output.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([appimagetool, str(appdir), str(output)],
                        cwd=temporary,
@@ -205,12 +235,16 @@ def selftest() -> int:
                          (0, 19, 1))
         old_patcher_refused = (parse_patchelf_version("patchelf 0.18.0") <
                                MINIMUM_PATCHELF_VERSION)
+        floor = (too_new(runtime_versions_needed(
+            "  0x0010: Name: GLIBC_2.34  Flags: none\n  0x0020: Name: GLIBCXX_3.4.30\n")) == []
+            and too_new(runtime_versions_needed("Name: GLIBC_2.38\n")) == ["GLIBC_2.38"])
         print("package_appimage selftest: "
               f"complete={complete} no-game-files={no_game} portable-resources={portable} "
               f"absolute-tools={tool_is_absolute} modern-elf={preserves_modern_elf} "
-              f"patchelf-version={version_parse and old_patcher_refused}")
+              f"patchelf-version={version_parse and old_patcher_refused} runtime-floor={floor}")
         return 0 if (complete and no_game and portable and tool_is_absolute and
-                     preserves_modern_elf and version_parse and old_patcher_refused) else 1
+                     preserves_modern_elf and version_parse and old_patcher_refused
+                     and floor) else 1
     finally:
         shutil.rmtree(temporary)
 
