@@ -99,13 +99,12 @@ bool RetailHeroTable::read_unlocked(int id, bool *out) {
 bool RetailHeroTable::read_record(std::uint32_t record, HeroRecord *out) {
   std::string display;
   std::uint8_t level = 0;
-  std::uint32_t stats = 0;
   std::int16_t unlock_id = 0;
   if (!reader_.c_string(record + kRecordName, kRecordNameBytes, &out->name) ||
       !reader_.c_string(record + kRecordDisplayName, kRecordNameBytes,
                         &display) ||
       !reader_.bytes(record + kRecordLevel, &level, 1u) ||
-      !reader_.u32(record + kRecordStats, &stats) ||
+      !reader_.u32(record + kRecordStats, &out->stats) ||
       !reader_.bytes(record + kRecordUnlockId, &unlock_id, sizeof unlock_id) ||
       !read_unlocked(unlock_id, &out->unlocked)) {
     return false;
@@ -120,11 +119,11 @@ bool RetailHeroTable::read_record(std::uint32_t record, HeroRecord *out) {
   out->display_name = latin1_to_utf8(display);
   out->level = level;
   out->fallen = false;
-  if (stats != 0u) {
+  if (out->stats != 0u) {
     float health = 0.0F;
     std::uint8_t flags = 0;
-    if (!reader_.bytes(stats + kStatsHealth, &health, sizeof health) ||
-        !reader_.bytes(stats + kStatsFlags, &flags, 1u)) {
+    if (!reader_.bytes(out->stats + kStatsHealth, &health, sizeof health) ||
+        !reader_.bytes(out->stats + kStatsFlags, &flags, 1u)) {
       return false;
     }
     out->fallen = (flags & 1u) != 0u && health <= 0.0F;

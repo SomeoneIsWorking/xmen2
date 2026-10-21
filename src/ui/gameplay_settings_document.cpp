@@ -20,10 +20,10 @@ gameplay_settings_document_rml(const x2::config::Settings &settings) {
       << extraction_revive_label(settings.extraction_revive)
       << "</value></select-button>"
       << "<div class='help'>Off keeps the original rule: a fallen hero stays "
-         "down. Free revives every fallen hero and refills health and energy "
-         "when the party reaches an extraction point. Paid offers to revive "
-         "the "
-         "fallen near an extraction point for the original revive cost: press "
+         "down. Free, the default, revives every fallen character and refills "
+         "the party's health and energy when a hero steps on an extraction "
+         "point. Paid offers to revive the fallen party on an extraction "
+         "point for the original revive cost: press "
          "F3, the controller's left shoulder (LB), or tap the prompt.</div>"
       << "<spacer></spacer></pane>";
   return rml.str();

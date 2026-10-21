@@ -1,7 +1,7 @@
 #ifndef X2_EXTRACTION_REVIVE_HPP
 #define X2_EXTRACTION_REVIVE_HPP
 
-/* `gameplay.extraction_revive`: free and paid party revive near an extraction
+/* `gameplay.extraction_revive`: free and paid party revive on an extraction
  * pad. */
 
 #include "guest_memory_view.hpp"

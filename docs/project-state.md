@@ -6,7 +6,7 @@ The baseline is the unmodified 2005 Windows PC release of *X-Men Legends II* run
 through Wine, with its original Direct3D 8 renderer, PC control defaults, prompts, settings, loading,
 and save flow. The port's intended differences are Wine-free native execution and a modern native-PC
 presentation, controller, settings, packaging, and diagnostics experience without changing the game.
-One deliberate gameplay delta is opt-in: `gameplay.extraction_revive` (S024), off by default.
+One deliberate gameplay delta is on by default: `gameplay.extraction_revive` (S024), `free` unless set to `off`.
 
 This is the authoritative inventory of what the port demonstrably does now and
 what remains partial, blocked, or absent. Epic intent belongs in
@@ -2211,15 +2211,17 @@ on Windows hardware has been made. Issue
 ### S024 — optional extraction-point revive: partial
 
 Setting `gameplay.extraction_revive` (Settings, General, Gameplay): `off` keeps retail (a fallen
-hero stays down), `free` restores the party once when any hero comes within 480 of an extraction pad (again only
-after every hero has left), `paid` offers to revive the fallen near a pad for the retail cost. Grounding and addresses are in
+hero stays down), `free` (the default) restores the party and revives every other fallen character once when any
+hero touches an extraction pad's 240x240x72 trigger box (again only after every hero has left), `paid` offers to
+revive the fallen party on a pad for the retail cost. Grounding and addresses are in
 [`RE/extraction.md`](RE/extraction.md).
 
 Observed on genosha1 with the real binary (`tools/live_case.py extraction-off`, `extraction-free`,
 `extraction-paid`, judged from `GET /party`): with `off` a fallen hero stays down and nothing is
-offered; with `free` a party teleported into the radius with a hero fallen is restored once with
+offered; with `free` heroes 250 beside the pad restore nothing, a party teleported onto the pad with a hero fallen is restored once with
 no command, nothing happens while it stays or after it leaves, and it is restored again on
-re-entry; with `paid` the prompt shows the summed cost, a request with no money refuses visibly
+re-entry, and a fallen hero benched by a choose-team load stands on the bench after the pad
+(`extraction-free-bench`); with `paid` the prompt shows the summed cost, a request with no money refuses visibly
 and takes nothing, and F3, the controller's LB and a touch tap each deduct exactly the offered
 total (200 per level-1 hero) and revive. Unit tests: `test_settings` (round trip, unknown value
 refused), `test_extraction_revive` (cost floor and summation, refusal on short money, prompt

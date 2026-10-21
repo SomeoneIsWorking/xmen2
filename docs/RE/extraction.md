@@ -77,21 +77,26 @@ Other callers: `resurrect(a)` script command (`0x004a3b70`, 0.5), the
 
 ## The port's revive option (`gameplay.extraction_revive`)
 
-`off` (default) is retail. `free` and `paid` are port additions, owned by
+`off` is retail. `free` (the default) and `paid` are port additions, owned by
 `src/native/extraction_revive.cpp` (guest bridge), `extraction_revive_policy.cpp`
 (cost rule), `src/input/revive_prompt.cpp` (the request), `src/ui/extraction_revive_document.cpp`
 (the drawn prompt) and `src/ui/gameplay_settings_document.cpp` (the setting).
 
 Detecting "reaches an extraction point": both modes use presence, not the Use
 command. The input poll (0.25 s throttle, only while gameplay control is
-active) scans the entity table for a pad and tests hero-to-pad 2D distance
-against 480.0, the retail nearby-revive radius in `0x00428ce0`. Pads are
+active) scans the entity table for a pad and tests each hero against the pad's
+touch box: the `expt_trig` volume `extent="-120 -120 0 120 120 72"` from every
+map's XMLB (the same on all 30 maps; no `xtraction_point` instance is rotated),
+taken as |dx|, |dy| <= 120 and |dz| <= 72 from the pad's origin. Pads are
 entities whose definition name starts `xtraction_point` (`xtraction_point` on 30
 maps, `xtraction_point_sidemission` on 4).
 
-- `free` is edge-triggered by `ExtractionRevive`: when any party hero comes
-  within the radius it restores the party once, and not again until every hero
-  (fallen ones included) has left it.
+- `free` is edge-triggered by `ExtractionRevive`: when any party hero touches
+  a pad it restores the party once, and not again until every hero (fallen ones
+  included) has left it. It also revives every other fallen character record
+  in `CCharacters` (`0x0044b8f0`, 31 records of 0x4f8 at `+4`, stats at record
+  `+0xc0`) through the stats revive alone, which is all the retail roster
+  revive `0x005e4010` does for a benched hero.
 - The get-up timer end `0x004220d0` (what slot `+0x21c` queues) re-queues itself
   with a hard-coded `0.5f` and a 0.3 s delay whenever `0x005252e0` vslot `+0x1c8`
   `(actor[0x1f7], 1)` is false, so the fraction passed to the revive is lost and
@@ -101,7 +106,7 @@ maps, `xtraction_point_sidemission` on 4).
   `0x004220d0` and writes 1.0 over the fraction argument for the actors `free`
   revived, until the fire that zeroes `actor+0x60c` (the stand-up done). What
   `0x005252e0` vslot `+0x1c8` asks is not decoded.
-- `paid` offers while a hero is fallen and any hero is inside the radius.
+- `paid` offers while a party hero is fallen and any hero touches a pad.
 - `extractionPoint` (`0x004a6b50`), `extractionPointLite` (`0x004a6d80`) and
   `extractionUnlock` (`0x0049f1e0`) are not touched. `0x004a6b50` keeps the save
   trace's own override.
@@ -130,9 +135,11 @@ memory.
 
 Live cases (`tools/live_cases_extraction.py`, genosha1, pad at 2580.5, 2580.0):
 `extraction-off` (a fallen hero stays down, nothing is offered),
-`extraction-free` (the party is teleported into the radius with a hero fallen:
-restored once on entry with no command, nothing again while inside or after
-leaving, restored again on re-entry), `extraction-paid` (offer text,
+`extraction-free` (heroes placed 250 beside the pad restore nothing; the party
+teleported onto the pad with a hero fallen is
+restored once on entry with no command, nothing again while on it or after
+leaving, restored again on re-entry), `extraction-free-bench` (a choose-team
+load benches fallen Cyclops; stepping on the pad revives him on the bench), `extraction-paid` (offer text,
 money-short refusal, then F3, controller LB and a touch tap each pay the
 offered total and revive). Teleports go Z last per hero; X, Y first with Z
 unset drops heroes through the floor. Arriving at genosha1's pad starts a

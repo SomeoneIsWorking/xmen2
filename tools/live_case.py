@@ -77,6 +77,7 @@ from live_cases_combat import case_combat_bench
 from live_cases_extraction import (
     case_extract_keyboard_back,
     case_extraction_free,
+    case_extraction_free_bench,
     case_extraction_off,
     case_extraction_paid,
 )
@@ -121,6 +122,7 @@ CASES = {
     "selector-dialog-720": case_selector_dialog,
     "selector-dialog-4k": case_selector_dialog,
     "extraction-free": case_extraction_free,
+    "extraction-free-bench": case_extraction_free_bench,
     "extraction-off": case_extraction_off,
     "extraction-paid": case_extraction_paid,
 }

@@ -110,7 +110,7 @@ void settings_defaults(Settings *settings) {
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = BootMode::Normal;
   settings->touch_controls = kTouchControlsAuto;
-  settings->extraction_revive = ExtractionRevive::Off;
+  settings->extraction_revive = ExtractionRevive::Free;
   x2_hud_settings_defaults(&settings->hud);
   for (i = 0; i < kSettingsKeyboardProfiles; i++)
     settings->keyboard_player[i] = kSettingsUnassigned;

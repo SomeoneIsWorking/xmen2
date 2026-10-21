@@ -14,7 +14,10 @@ import urllib.parse
 
 from live_harness import Case
 from live_game import png_mean_diff, wait_controls_unlocked
-from live_menu import keyboard_into_gameplay, menu_item, read_menu, wait_game_menu
+from live_cases_touch_menu import roster_hero
+from live_menu import (keyboard_into_gameplay, menu_item, read_menu, tap_touch_button,
+                       touch_button, touch_menu, wait_game_menu,
+                       wait_settled_touch_menu)
 
 PAD_MAP = "act1/genosha/genosha1"
 ADD_MONEY = "act1/genosha/genosha1/temp_addmoney"
@@ -66,7 +69,7 @@ def place(case: Case, at: tuple[float, float, float],
           heroes: tuple[int, ...], leaving: bool = False) -> None:
     """Teleport heroes around `at`, each hero's X, Y and Z in turn and twice,
     as one setPos is not always taken. Leaving sets Y before X, so a hero
-    never stands inside the radius on the way out."""
+    never crosses the pad on the way out."""
     axes = ("Y", "X") if leaving else ("X", "Y")
     centre = {"X": at[0], "Y": at[1]}
     for hero in heroes * 2:
@@ -150,32 +153,51 @@ def fell_again(case: Case) -> None:
 
 
 def leave_pad(case: Case) -> None:
-    """Everyone outside the 480 radius, hero 2 apart from the others: a living
-    hero within the retail nearby radius of a body stands it back up."""
-    place(case, AWAY, (1, 3, 4), leaving=True)
+    """Everyone off the pad, hero 2 apart from the others: a living hero
+    within the retail nearby radius of a body stands it back up. The AI heroes
+    3 and 4 go first and the controlled hero 1 last, because an AI hero left
+    behind wanders across the pad's edge, and stepping back on is a fresh
+    touch."""
+    place(case, AWAY, (3, 4, 1), leaving=True)
     place(case, BEHIND, (2,), leaving=True)
     time.sleep(3)
 
 
+def stand_beside_pad(case: Case) -> None:
+    """Heroes 1, 3 and 4 250 units off the pad: inside the retail nearby-revive
+    radius the bridge once used, outside the pad's 120-unit touch box."""
+    pad = party(case)["pads"][0]
+    place(case, (pad["x"], pad["y"] + 250, pad["z"] + 4), (1, 3, 4))
+    for hero in (1, 3, 4):
+        script(case, "setInvulnerable('_HERO%d_','TRUE')" % hero)
+    time.sleep(2)
+
+
 def case_extraction_free(case: Case) -> None:
-    """free: walking into the pad's radius restores the party once, and again
-    only after every hero has left and come back."""
+    """free: stepping onto the pad restores the party once, and again only
+    after every hero has left and come back; standing beside it does not."""
     reach_pad_map(case, "free")
     fell_hero_two(case)
     case.check("nothing is restored while the party is far from the pad",
                restores(case) == 0)
+    stand_beside_pad(case)
+    clear_cinematic(case)
+    beside = party(case)
+    case.check("standing beside the pad restores nothing",
+               restores(case) == 0 and len(fallen(beside)) == 1,
+               "%s restores %d" % (fallen(beside), restores(case)))
     put_party_on_pad(case)
     clear_cinematic(case)
     entered = wait_full(case)
-    case.check("entering the radius revives and refills the party, no command",
+    case.check("stepping onto the pad revives and refills the party, no command",
                full(entered), str(entered.get("heroes")))
     case.check("the bridge restored the party once",
-               restores(case) == 1 and "free: restored 4 heroes, 1 of them "
-               "revived" in case.log_text())
+               restores(case) == 1 and "free: restored 4 party heroes (1 "
+               "revived)" in case.log_text())
     time.sleep(8)
     fell_again(case)
     down = party(case)
-    case.check("hero 2 is fallen inside the radius", len(fallen(down)) == 1,
+    case.check("hero 2 is fallen on the pad", len(fallen(down)) == 1,
                str([(h["definition"], h["health"]) for h in down["heroes"]]))
     wound_hero_three(case)
     time.sleep(3)
@@ -191,10 +213,73 @@ def case_extraction_free(case: Case) -> None:
     put_party_on_pad(case)
     clear_cinematic(case)
     again = wait_full(case)
-    case.check("re-entering the radius restores the party again",
+    case.check("stepping back onto the pad restores the party again",
                full(again) and restores(case) == 2,
                "restores %d %s" % (restores(case), again.get("heroes")))
     case.shot("free-after")
+
+
+def choose_team(case: Case) -> dict:
+    """The choose-team load of the pad map, which moves a fallen party hero
+    to the bench (docs/RE/menus.md); returns the team menu's touch model."""
+    case.http("/console?command=loadmap%20" + PAD_MAP + "%200%201")
+    return wait_settled_touch_menu(case, "team", 120)
+
+
+def benched_hero(case: Case, shown: dict, internal: str) -> dict:
+    """`internal`'s roster record, read with the roster open through Replace
+    on the empty party slot, then back to the party."""
+    rows = [r["label"] for r in shown.get("rows", [])]
+    if "Empty slot" not in rows:
+        return {}
+    empty = rows.index("Empty slot")
+    if shown.get("focused_row") != empty:
+        tap_touch_button(case, shown, touch_button(shown, "row", "empty slot"))
+        shown = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
+            "focused_row") == empty, 10).get("touch_menu", {})
+    tap_touch_button(case, shown, touch_button(shown, "footer", "replace"))
+    wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
+    hero = roster_hero(case, internal)
+    case.http("/key?name=Escape&hold=0.2")
+    wait_game_menu(case, lambda m: m.get("mode") == 0, 10)
+    return hero
+
+
+def accept_team(case: Case) -> None:
+    shown = touch_menu(case)
+    accept = touch_button(shown, "footer", "accept")
+    case.check("the team menu offers Accept", accept is not None,
+               str([b["label"] for b in shown.get("buttons", [])]))
+    if accept is not None:
+        tap_touch_button(case, shown, accept)
+    left = wait_game_menu(case, lambda m: m.get("menu") != "team", 20)
+    case.check("Accept left the team menu", left.get("menu") != "team",
+               str(left.get("menu")))
+    keyboard_into_gameplay(case, 120)
+
+
+def case_extraction_free_bench(case: Case) -> None:
+    """free: a fallen hero on the bench, who has no actor in the world, is
+    revived too when the party steps onto the pad."""
+    reach_pad_map(case, "free")
+    fell_hero_two(case)
+    benched = benched_hero(case, choose_team(case), "cyclops")
+    case.check("the choose-team load benched fallen Cyclops",
+               benched.get("fallen") is True, str(benched))
+    accept_team(case)
+    state = party(case)
+    case.check("the party is the three standing heroes",
+               len(state.get("heroes", [])) == 3 and not fallen(state),
+               str([h["definition"] for h in state.get("heroes", [])]))
+    put_party_on_pad(case)
+    clear_cinematic(case)
+    time.sleep(2)
+    case.check("the bridge revived one character off the field",
+               "revived 1 of " in case.log_text())
+    after = benched_hero(case, choose_team(case), "cyclops")
+    case.check("Cyclops stands on the bench after the pad",
+               after.get("fallen") is False, str(after))
+    case.shot("bench-after")
 
 
 def case_extraction_off(case: Case) -> None:
