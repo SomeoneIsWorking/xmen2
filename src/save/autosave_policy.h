@@ -6,7 +6,7 @@ namespace x2::save {
 
 inline constexpr unsigned kAutosaveIdlePolls = 64u;
 
-enum class AutosaveCheckpointKind { None = 0, MapLoad };
+enum class AutosaveCheckpointKind { None = 0, MapLoad, ExtractionPad };
 
 struct AutosaveCheckpoint {
   std::uint64_t id;
@@ -34,6 +34,8 @@ struct AutosavePolicy {
 
 void autosave_policy_init(AutosavePolicy *policy);
 void autosave_policy_map_return(AutosavePolicy *policy, int succeeded);
+/* A hero stepped onto an extraction pad. */
+void autosave_policy_extraction_pad(AutosavePolicy *policy);
 void autosave_policy_menu_show(AutosavePolicy *policy);
 /* One guest input poll. The checkpoint fires after kAutosaveIdlePolls
    consecutive polls in which the retail save manager is idle (mode 0) AND the

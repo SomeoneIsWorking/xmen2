@@ -23,11 +23,14 @@
 
 #define NS_PER_SECOND INT64_C(1000000000)
 
-static int is_save_leaf(const char *leaf) {
-  if (!strcmp(leaf, "autosave.save"))
-    return 1;
-  return !strncmp(leaf, "saveslot", 8) && leaf[8] >= '0' && leaf[8] <= '9' &&
-         !strcmp(leaf + 9, ".save");
+static int numbered_leaf(const char *leaf, const char *prefix, size_t length,
+                         unsigned limit, unsigned *number) {
+  if (strncmp(leaf, prefix, length) != 0 || leaf[length] < '0' ||
+      (unsigned)(leaf[length] - '0') >= limit ||
+      strcmp(leaf + length + 1, ".save") != 0)
+    return 0;
+  *number = (unsigned)(leaf[length] - '0');
+  return 1;
 }
 
 #if defined(_WIN32)
@@ -79,6 +82,21 @@ static int mtime_ns(const struct stat *st, int64_t *out) {
 
 namespace x2::save {
 
+void autosave_slot_leaf(unsigned slot, char out[kSaveLeafCapacity]) {
+  snprintf(out, kSaveLeafCapacity, "autosave%u.save", slot);
+}
+
+int autosave_leaf_slot(const char *leaf, unsigned *slot) {
+  return leaf && slot &&
+         numbered_leaf(leaf, "autosave", 8, kAutosaveSlots, slot);
+}
+
+static int is_save_leaf(const char *leaf) {
+  unsigned number;
+  return numbered_leaf(leaf, "saveslot", 8, 10u, &number) ||
+         autosave_leaf_slot(leaf, &number);
+}
+
 static int is_newer(const SaveCandidate *candidate,
                     const SaveCandidate *current) {
   if (candidate->mtime_ns != current->mtime_ns)
@@ -86,18 +104,15 @@ static int is_newer(const SaveCandidate *candidate,
   return strcmp(candidate->leaf, current->leaf) > 0;
 }
 
-int save_catalog_latest(const char *directory, SaveCandidate *out) {
+/* Calls visit for every regular save leaf; same returns as
+   save_catalog_latest without the found flag. */
+template <typename Visit> static int scan(const char *directory, Visit visit) {
   SaveCandidate candidate;
   struct dirent *entry;
   DIR *dir;
   int directory_fd;
-  int found = 0;
   int result = 0;
 
-  if (!directory || !directory[0] || !out) {
-    errno = EINVAL;
-    return -1;
-  }
   dir = opendir(directory);
   if (!dir)
     return errno == ENOENT ? 0 : -1;
@@ -141,19 +156,78 @@ int save_catalog_latest(const char *directory, SaveCandidate *out) {
     }
 #endif
     memcpy(candidate.leaf, entry->d_name, strlen(entry->d_name) + 1);
-    if (!found || is_newer(&candidate, out)) {
-      *out = candidate;
-      found = 1;
-    }
+    visit(candidate);
     errno = 0;
   }
   if (result == 0 && errno != 0)
     result = -1;
   if (closedir(dir) != 0 && result == 0)
     result = -1;
-  if (result != 0)
-    return result;
-  return found;
+  return result;
+}
+
+int save_catalog_latest(const char *directory, SaveCandidate *out) {
+  int found = 0;
+  int result;
+
+  if (!directory || !directory[0] || !out) {
+    errno = EINVAL;
+    return -1;
+  }
+  result = scan(directory, [&](const SaveCandidate &candidate) {
+    if (!found || is_newer(&candidate, out)) {
+      *out = candidate;
+      found = 1;
+    }
+  });
+  return result != 0 ? result : found;
+}
+
+int save_catalog_autosaves(const char *directory,
+                           SaveCandidate out[kAutosaveSlots]) {
+  int count = 0;
+  int result;
+
+  if (!directory || !directory[0] || !out) {
+    errno = EINVAL;
+    return -1;
+  }
+  result = scan(directory, [&](const SaveCandidate &candidate) {
+    unsigned slot;
+    int at;
+
+    if (!autosave_leaf_slot(candidate.leaf, &slot))
+      return;
+    for (at = count; at > 0 && is_newer(&candidate, &out[at - 1]); at--)
+      out[at] = out[at - 1];
+    out[at] = candidate;
+    count++;
+  });
+  return result != 0 ? result : count;
+}
+
+int save_catalog_next_autosave(const char *directory,
+                               char leaf[kSaveLeafCapacity]) {
+  SaveCandidate present[kAutosaveSlots];
+  int count = save_catalog_autosaves(directory, present);
+  unsigned slot;
+
+  if (count < 0 || !leaf)
+    return 0;
+  for (slot = 0u; slot < kAutosaveSlots; slot++) {
+    char candidate[kSaveLeafCapacity];
+    int taken = 0;
+
+    autosave_slot_leaf(slot, candidate);
+    for (int at = 0; at < count; at++)
+      taken |= !strcmp(present[at].leaf, candidate);
+    if (!taken) {
+      memcpy(leaf, candidate, kSaveLeafCapacity);
+      return 1;
+    }
+  }
+  memcpy(leaf, present[count - 1].leaf, kSaveLeafCapacity);
+  return 1;
 }
 
 } // namespace x2::save

@@ -2,6 +2,7 @@
 
 #include "../input/gameplay_control.h"
 #include "../input/revive_prompt.hpp"
+#include "autosave_runtime.h"
 #include "extraction_revive_policy.hpp"
 #include "guest_body.h"
 #include "guest_call.hpp"
@@ -280,10 +281,9 @@ void ExtractionRevive::poll(CPU *cpu, double now) {
     prompt.withdraw();
   }
   if (mode == x2::config::ExtractionRevive::Off) {
-    inside_ = false;
     forget_getting_up();
   }
-  if (!active || mode == x2::config::ExtractionRevive::Off) {
+  if (!active) {
     return;
   }
   const bool requested =
@@ -303,11 +303,17 @@ void ExtractionRevive::poll(CPU *cpu, double now) {
         "extraction", "hero %d %s a pad at (%.0f, %.0f, %.0f)", touching + 1,
         near ? "steps onto" : "left", near ? party[touching].at.x : 0.0F,
         near ? party[touching].at.y : 0.0F, near ? party[touching].at.z : 0.0F);
+    if (near) {
+      autosave_runtime_extraction_pad();
+    }
     if (free_mode && near) {
       for (const std::uint32_t actor : restore_everyone(*cpu)) {
         set_getting_up(actor, true);
       }
     }
+  }
+  if (mode == x2::config::ExtractionRevive::Off) {
+    return;
   }
   if (free_mode) {
     if (!near) {

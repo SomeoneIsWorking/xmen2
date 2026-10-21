@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "aspect_fit.h"
+#include "autosave_notice_document.hpp"
 #include "environment.h"
 #include "extraction_revive_document.hpp"
 #include "igb_textures.hpp"
@@ -36,6 +37,7 @@ std::unique_ptr<x2::ui::IgbTextureRenderInterface> render_interface;
 Rml::Context *context;
 x2::ui::SkipDocument skip_document;
 x2::ui::ExtractionReviveDocument revive_document;
+x2::ui::AutosaveNoticeDocument autosave_document;
 x2::ui::TouchMenuDocument touch_menu_document;
 SDL_Window *host_window;
 bool initialized;
@@ -104,6 +106,7 @@ bool gamepad_navigation(const SDL_Event &event) {
 }
 
 void discard_partial_initialization() {
+  autosave_document.shutdown();
   revive_document.shutdown();
   skip_document.shutdown();
   touch_menu_document.shutdown();
@@ -178,6 +181,10 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   if (!revive_document.load(context)) {
     discard_partial_initialization();
     return initialize_failed("loading the revive prompt document");
+  }
+  if (!autosave_document.load(context)) {
+    discard_partial_initialization();
+    return initialize_failed("loading the autosave notice document");
   }
   if (!touch_menu_document.load(context)) {
     discard_partial_initialization();
@@ -264,12 +271,14 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   /* The paid revive offer: gameplay only, under the modal port settings. */
   const bool revive_visible =
       x2::ui::ExtractionReviveDocument::wanted() && !settings_visible;
+  const bool autosave_visible =
+      x2::ui::AutosaveNoticeDocument::wanted() && !settings_visible;
   /* The touch menu: touch play over a retail menu it replaces, under the
      modal port settings. */
   const bool menu_visible =
       x2::ui::TouchMenuDocument::wanted() && !settings_visible;
   if ((!settings_visible && !touch_visible && !skip_visible && !menu_visible &&
-       !revive_visible) ||
+       !revive_visible && !autosave_visible) ||
       !device || !command_buffer || !swapchain || !window)
     return;
   if (!initialize(device, window, width, height))
@@ -290,6 +299,7 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   x2::ui::touch_document_update();
   skip_document.update();
   revive_document.update();
+  autosave_document.update();
   touch_menu_document.update();
   context->Update();
   context->Render();
@@ -300,6 +310,7 @@ void ui_gpu_shutdown(void) {
   if (!initialized)
     return;
   touch_menu_document.shutdown();
+  autosave_document.shutdown();
   revive_document.shutdown();
   skip_document.shutdown();
   x2::ui::touch_document_shutdown();

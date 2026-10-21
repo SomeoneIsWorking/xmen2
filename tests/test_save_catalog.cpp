@@ -119,7 +119,9 @@ static void test_exact_regular_leaves(void) {
   write_file("saveslot10.save", "out of range");
   write_file("saveslotx.save", "malformed");
   write_file("Saveslot0.save", "wrong case");
-  write_file("autosave.save.new", "partial autosave");
+  write_file("autosave0.save.new", "partial autosave");
+  write_file("autosave5.save", "out of range");
+  write_file("autosave.save", "unnumbered");
   write_file("other.save", "unrelated");
   path_for(path, sizeof path, "saveslot1.save");
   CHECK(mkdir(path, 0700) == 0);
@@ -138,11 +140,11 @@ static void test_sparse_slots_and_nanoseconds(void) {
   write_file("saveslot0.save", "slot zero");
   write_file("saveslot4.save", "slot four");
   write_file("saveslot9.save", "slot nine");
-  write_file("autosave.save", "autosave");
+  write_file("autosave3.save", "autosave");
   set_mtime("saveslot0.save", 10, 900);
   set_mtime("saveslot4.save", 20, 100);
   set_mtime("saveslot9.save", 20, 200);
-  set_mtime("autosave.save", 19, 999999900);
+  set_mtime("autosave3.save", 19, 999999900);
 
   candidate = latest();
   CHECK(!strcmp(candidate.leaf, "saveslot9.save"));
@@ -153,10 +155,10 @@ static void test_sparse_slots_and_nanoseconds(void) {
 static void test_equal_time_tie_is_by_leaf(void) {
   x2::save::SaveCandidate candidate;
 
-  write_file("autosave.save", "auto");
+  write_file("autosave3.save", "auto");
   write_file("saveslot2.save", "two");
   write_file("saveslot9.save", "nine");
-  set_mtime("autosave.save", 30, 700);
+  set_mtime("autosave3.save", 30, 700);
   set_mtime("saveslot2.save", 30, 700);
   set_mtime("saveslot9.save", 30, 700);
 
@@ -169,12 +171,43 @@ static void test_newest_corrupt_file_is_opaque(void) {
   x2::save::SaveCandidate candidate;
 
   write_file("saveslot3.save", "plausible old save");
-  write_file("autosave.save", "not a valid game save");
+  write_file("autosave3.save", "not a valid game save");
   set_mtime("saveslot3.save", 40, 0);
-  set_mtime("autosave.save", 41, 0);
+  set_mtime("autosave3.save", 41, 0);
 
   candidate = latest();
-  CHECK(!strcmp(candidate.leaf, "autosave.save"));
+  CHECK(!strcmp(candidate.leaf, "autosave3.save"));
+  clear_test_dir();
+}
+
+static void test_autosave_slots_rotate(void) {
+  x2::save::SaveCandidate present[x2::save::kAutosaveSlots];
+  char next[x2::save::kSaveLeafCapacity];
+
+  CHECK(x2::save::save_catalog_autosaves(test_dir, present) == 0);
+  CHECK(x2::save::save_catalog_next_autosave(test_dir, next));
+  CHECK(!strcmp(next, "autosave0.save"));
+  write_file("autosave0.save", "a");
+  write_file("autosave2.save", "c");
+  write_file("saveslot0.save", "manual");
+  set_mtime("autosave0.save", 50, 0);
+  set_mtime("autosave2.save", 51, 0);
+  CHECK(x2::save::save_catalog_autosaves(test_dir, present) == 2);
+  CHECK(!strcmp(present[0].leaf, "autosave2.save"));
+  CHECK(!strcmp(present[1].leaf, "autosave0.save"));
+  CHECK(x2::save::save_catalog_next_autosave(test_dir, next));
+  CHECK(!strcmp(next, "autosave1.save"));
+  write_file("autosave1.save", "b");
+  write_file("autosave3.save", "d");
+  write_file("autosave4.save", "e");
+  set_mtime("autosave1.save", 49, 0);
+  set_mtime("autosave3.save", 53, 0);
+  set_mtime("autosave4.save", 54, 0);
+  CHECK(x2::save::save_catalog_autosaves(test_dir, present) == 5);
+  CHECK(!strcmp(present[0].leaf, "autosave4.save"));
+  CHECK(!strcmp(present[4].leaf, "autosave1.save"));
+  CHECK(x2::save::save_catalog_next_autosave(test_dir, next));
+  CHECK(!strcmp(next, "autosave1.save"));
   clear_test_dir();
 }
 
@@ -198,6 +231,7 @@ int main(void) {
   clear_test_dir();
   test_exact_regular_leaves();
   test_sparse_slots_and_nanoseconds();
+  test_autosave_slots_rotate();
   test_equal_time_tie_is_by_leaf();
   test_newest_corrupt_file_is_opaque();
 

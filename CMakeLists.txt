@@ -1517,7 +1517,8 @@ target_include_directories(test_autosave_policy PRIVATE src/save)
 add_test(NAME autosave_policy COMMAND test_autosave_policy)
 
 add_executable(test_continue_policy
-    tests/test_continue_policy.cpp src/save/continue_policy.cpp)
+    tests/test_continue_policy.cpp src/save/continue_policy.cpp
+    src/save/save_catalog.cpp)
 target_include_directories(test_continue_policy PRIVATE src/save)
 add_test(NAME continue_policy COMMAND test_continue_policy)
 
@@ -1919,11 +1920,12 @@ add_library(x2_rmlui_ui STATIC
     src/ui/touch_document.cpp
     src/ui/skip_document.cpp
     src/ui/extraction_revive_document.cpp
+    src/ui/autosave_notice_document.cpp
     src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.cpp)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
                                                src/presentation src/input
-                                               src/gpu)
+                                               src/gpu src/save)
 target_compile_definitions(x2_rmlui_ui PRIVATE
     X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
     X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
@@ -2054,6 +2056,7 @@ set(X2_NATIVE_SOURCES
     src/save/save_directory.cpp
     src/save/autosave_policy.cpp
     src/save/autosave_storage.cpp
+    src/save/autosave_notice.cpp
     src/save/autosave_format.cpp
     src/save/continue_policy.cpp
     src/save/save_trace.cpp

@@ -39,6 +39,7 @@ static void test_empty_and_sparse(void) {
   CHECK(plan.entries[2].manual_slot == 9u);
   CHECK(plan.entries[3].kind == x2::save::LoadGameEntryKind::Autosave);
   CHECK(plan.entries[3].manual_slot == UINT_MAX);
+  CHECK(plan.entries[3].autosave == 0u);
   CHECK(x2::save::load_game_menu_window_count(&plan, &window) == 4u);
 }
 
@@ -52,7 +53,7 @@ static void test_full_profile_projection(void) {
 
   x2::save::load_game_menu_plan(UINT16_C(0x03ff), 1, &plan);
   x2::save::load_game_menu_window_init(&plan, &window);
-  CHECK(plan.count == x2::save::kLoadGameMaxEntries);
+  CHECK(plan.count == 11u);
   CHECK(window.first == 0u);
   CHECK(window.selected == 0u);
   CHECK(x2::save::load_game_menu_window_count(&plan, &window) ==
@@ -107,8 +108,10 @@ static void test_invalid_arguments(void) {
   x2::save::LoadGameMenuWindow window;
   x2::save::LoadGameEntry entry;
 
-  x2::save::load_game_menu_plan(UINT16_C(0xffff), 1, &plan);
+  x2::save::load_game_menu_plan(UINT16_C(0xffff), 99u, &plan);
   CHECK(plan.count == x2::save::kLoadGameMaxEntries);
+  CHECK(plan.entries[10].autosave == 0u);
+  CHECK(plan.entries[14].autosave == 4u);
   x2::save::load_game_menu_window_init(&plan, &window);
   CHECK(!x2::save::load_game_menu_window_entry(NULL, &window, 0u, &entry));
   CHECK(!x2::save::load_game_menu_window_entry(&plan, NULL, 0u, &entry));

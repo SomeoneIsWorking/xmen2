@@ -62,13 +62,14 @@ int main(void) {
   CHECK(plan.danger_row == 4u);
   CHECK(plan.disable_online_special);
 
-  CHECK(x2::save::continue_leaf_slot("autosave.save", &slot) && slot == 0u);
+  CHECK(x2::save::continue_leaf_slot("autosave4.save", &slot) && slot == 0u);
+  CHECK(!x2::save::continue_leaf_slot("autosave.save", &slot));
   CHECK(x2::save::continue_leaf_slot("saveslot0.save", &slot) && slot == 0u);
   CHECK(x2::save::continue_leaf_slot("saveslot9.save", &slot) && slot == 9u);
   CHECK(!x2::save::continue_leaf_slot("saveslot10.save", &slot));
   CHECK(!x2::save::continue_leaf_slot("../saveslot0.save", &slot));
   CHECK(!x2::save::continue_leaf_slot(NULL, &slot));
-  CHECK(!x2::save::continue_leaf_slot("autosave.save", NULL));
+  CHECK(!x2::save::continue_leaf_slot("autosave0.save", NULL));
 
   /* Manual Load never arms native Continue's one-shot. */
   CHECK(!x2::save::continue_transaction_take_success_ack(&transaction, 3u, 1u));

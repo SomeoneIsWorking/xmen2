@@ -3,12 +3,21 @@
 namespace x2::save {
 
 /* The title policy owns an asynchronous request -> write -> completion state
-   machine. Its verified checkpoint is a successful retail map load, cancelled
-   by main-menu Show, taken once the player controls a character. */
+   machine. Its checkpoints are a successful retail map load and a hero
+   stepping onto an extraction pad, cancelled by main-menu Show, taken once the
+   player controls a character. */
 
 void autosave_policy_init(AutosavePolicy *policy) {
   if (policy)
     *policy = AutosavePolicy{};
+}
+
+static void schedule(AutosavePolicy *policy, AutosaveCheckpointKind kind) {
+  policy->scheduled++;
+  policy->pending.id = policy->scheduled;
+  policy->pending.kind = kind;
+  policy->has_pending = 1;
+  policy->idle_polls = 0;
 }
 
 void autosave_policy_map_return(AutosavePolicy *policy, int succeeded) {
@@ -18,11 +27,12 @@ void autosave_policy_map_return(AutosavePolicy *policy, int succeeded) {
   if (!succeeded)
     return;
   policy->successful_map_returns++;
-  policy->pending.id = policy->successful_map_returns;
-  policy->pending.kind = AutosaveCheckpointKind::MapLoad;
-  policy->has_pending = 1;
-  policy->idle_polls = 0;
-  policy->scheduled++;
+  schedule(policy, AutosaveCheckpointKind::MapLoad);
+}
+
+void autosave_policy_extraction_pad(AutosavePolicy *policy) {
+  if (policy)
+    schedule(policy, AutosaveCheckpointKind::ExtractionPad);
 }
 
 void autosave_policy_menu_show(AutosavePolicy *policy) {

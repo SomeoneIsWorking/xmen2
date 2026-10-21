@@ -149,7 +149,7 @@ def case_touch_team(case: Case) -> None:
     class's mode, and the menu it has open.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     pda = keyboard_into_the_pda(case, 300)
@@ -243,7 +243,7 @@ def case_touch_shop(case: Case) -> None:
     money and potion counts, and the menu it has open.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -363,7 +363,7 @@ def case_touch_codex(case: Case) -> None:
     and the loaded entry's name item.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -477,7 +477,7 @@ def case_touch_worldmap(case: Case) -> None:
     it has open and the act the world map reopens on after travelling.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -605,7 +605,7 @@ def case_touch_stash(case: Case) -> None:
     entries and the stash and gear counts.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -730,7 +730,7 @@ def case_touch_review(case: Case) -> None:
     credits; Esc returns to the review and Back leaves it.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -809,7 +809,7 @@ def case_touch_region(case: Case) -> None:
     lobby as the game's own A does, and Back on a reopened region leaves it.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -869,7 +869,7 @@ def case_touch_danger_room(case: Case) -> None:
     selected course opens the team menu to choose who runs it.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)
@@ -971,7 +971,7 @@ def case_touch_roster(case: Case) -> None:
     Sabretooth then puts him in the empty party slot.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave.save")
+    case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     menu = keyboard_into_gameplay(case, 300)

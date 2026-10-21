@@ -11,21 +11,24 @@ int autosave_header_from_payload(const unsigned char *payload,
   const unsigned char *description;
   size_t description_size = 0;
   size_t offset;
+  size_t end;
 
-  if (!payload || !header || payload_size < sizeof PREFIX + 2u ||
+  if (!payload || !header || payload_size < 1u + kSaveTagBytes ||
       payload[0] != '\n' ||
       memcmp(payload + 1u, PREFIX, sizeof PREFIX - 1u) != 0)
     return 0;
   offset = sizeof PREFIX;
+  end = 1u + kSaveTagBytes;
   description = payload + offset;
-  while (offset + description_size < payload_size &&
-         payload[offset + description_size] != ']') {
+  while (offset + description_size < end &&
+         payload[offset + description_size] != ']' &&
+         payload[offset + description_size] != 0u) {
     unsigned char ch = payload[offset + description_size];
     if (ch < 0x20u || ch > 0x7eu || description_size >= kSaveHeaderBytes - 1u)
       return 0;
     description_size++;
   }
-  if (!description_size || offset + description_size >= payload_size)
+  if (!description_size || offset + description_size >= end)
     return 0;
   memset(header, 0, kSaveHeaderBytes);
   memcpy(header, description, description_size);

@@ -60,7 +60,7 @@ static int write_record(int file_fd, const void *header, const void *payload,
 
 #if defined(_WIN32)
 /* MOVEFILE_WRITE_THROUGH stands in for the POSIX directory fsync. */
-static int publish(const char *directory, const void *header,
+static int publish(const char *directory, const char *leaf, const void *header,
                    const void *payload, size_t payload_size,
                    AutosaveStorageFault fault) {
   static unsigned long sequence;
@@ -70,11 +70,11 @@ static int publish(const char *directory, const void *header,
   int published = 0;
   int saved_errno = 0;
 
-  if (snprintf(temporary, sizeof temporary, "%s/.autosave.save.tmp.%ld.%lu",
+  if (snprintf(temporary, sizeof temporary, "%s/.autosave.tmp.%ld.%lu",
                directory, (long)getpid(),
                ++sequence) >= (int)sizeof temporary ||
-      snprintf(destination, sizeof destination, "%s/%s", directory,
-               kAutosaveLeaf) >= (int)sizeof destination) {
+      snprintf(destination, sizeof destination, "%s/%s", directory, leaf) >=
+          (int)sizeof destination) {
     errno = ENAMETOOLONG;
     return 0;
   }
@@ -103,7 +103,7 @@ static int publish(const char *directory, const void *header,
   return 1;
 }
 #else
-static int publish(const char *directory, const void *header,
+static int publish(const char *directory, const char *leaf, const void *header,
                    const void *payload, size_t payload_size,
                    AutosaveStorageFault fault) {
   static unsigned long sequence;
@@ -117,8 +117,8 @@ static int publish(const char *directory, const void *header,
   directory_fd = open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   if (directory_fd < 0)
     return 0;
-  snprintf(temporary, sizeof temporary, ".autosave.save.tmp.%ld.%lu",
-           (long)getpid(), ++sequence);
+  snprintf(temporary, sizeof temporary, ".autosave.tmp.%ld.%lu", (long)getpid(),
+           ++sequence);
   file_fd = openat(directory_fd, temporary,
                    O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
   if (file_fd < 0) {
@@ -136,7 +136,7 @@ static int publish(const char *directory, const void *header,
   }
   file_fd = -1;
   if (injected(fault, AutosaveStorageFault::BeforeRename) ||
-      renameat(directory_fd, temporary, directory_fd, kAutosaveLeaf) != 0) {
+      renameat(directory_fd, temporary, directory_fd, leaf) != 0) {
     failed = 1;
     goto done;
   }
@@ -161,16 +161,17 @@ done:
 }
 #endif
 
-int autosave_storage_publish(const char *directory, const void *header,
-                             const void *payload, size_t payload_size,
-                             AutosaveStorageFault fault) {
-  if (!directory || !directory[0] || !header || (!payload && payload_size) ||
-      payload_size > UINT32_MAX || fault < AutosaveStorageFault::None ||
+int autosave_storage_publish(const char *directory, const char *leaf,
+                             const void *header, const void *payload,
+                             size_t payload_size, AutosaveStorageFault fault) {
+  if (!directory || !directory[0] || !leaf || !leaf[0] || !header ||
+      (!payload && payload_size) || payload_size > UINT32_MAX ||
+      fault < AutosaveStorageFault::None ||
       fault > AutosaveStorageFault::BeforeRename) {
     errno = EINVAL;
     return 0;
   }
-  return publish(directory, header, payload, payload_size, fault);
+  return publish(directory, leaf, header, payload, payload_size, fault);
 }
 
 } // namespace x2::save
