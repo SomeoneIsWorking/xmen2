@@ -40,7 +40,7 @@ SHARED_REPOS = (
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
                "ba3c758d5aaeef0c79f1f4a19a6ce113f02760cf", "tools/android_port.py"),
     SharedRepo("setup-ui", "https://github.com/SomeoneIsWorking/setup-ui.git",
-               "c95b78b92015da518e4d555223ebc8806d46b4ea", "include/setup_ui/setup_ui.h"),
+               "d4ca35e501733966229b49d49716e00a31e2ad69", "include/setup_ui/setup_ui.h"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
                "8c73beefc8f268c2b52686ab13c59982987fd946", "tools/web_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact

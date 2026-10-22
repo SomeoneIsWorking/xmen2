@@ -46,6 +46,7 @@
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include "win32_events.h"
+#include "window_icon.hpp"
 #include "window_settings.h"
 
 /* ---- guest ABI helpers ------------------------------------------------- */
@@ -586,6 +587,7 @@ void imp_USER32_CreateWindowExA(CPU *C) {
     return;
   }
   g_win_live = 1;
+  x2::ui::WindowIcon().apply(g_win);
   g_gwl[1] = x2::native::win32_events_registered_wndproc();
   x2::native::win32_events_set_wndproc(g_gwl[1]);
   x2::native::win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
@@ -594,15 +596,7 @@ void imp_USER32_CreateWindowExA(CPU *C) {
     x2_log_error("SETTINGS: could not apply requested presentation "
                  "mode (%s). The existing window remains active.\n",
                  why);
-  /*
-   * WHICH display the window went to, said out loud.
-   *
-   * SDL picks the video driver, and on a Wayland session it prefers Wayland
-   * and ignores DISPLAY -- so a run launched onto an Xvfb screen renders to
-   * the user's real desktop instead, and a screenshot of the Xvfb root comes
-   * back black. That black image reads as "the renderer draws nothing". One
-   * line here is the difference between that and the truth.
-   */
+  /* On Wayland SDL ignores DISPLAY, so name the driver the window went to. */
   x2_log_info(
       "win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
       g_hide_windows ? "HIDDEN " : "", w, h,

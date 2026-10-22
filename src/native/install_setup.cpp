@@ -10,6 +10,7 @@
 
 #if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
 #include "../ui/ui_resources.h"
+#include "../ui/window_icon.hpp"
 #include "setup_ui/setup_ui.h"
 
 #include <SDL3/SDL.h>
@@ -95,7 +96,9 @@ bool ask(std::string &directory) {
         }
         return judge(files.front().path.string(), directory);
       });
+  const x2::ui::WindowIcon icon;
   setup_ui::ViewOptions options;
+  options.icon = icon.surface();
   options.window_title = "X-Men Legends II setup";
   options.font_path = x2::ui::ui_resource_path("LatoLatin-Regular.ttf");
   setup_ui::View view(session, options);

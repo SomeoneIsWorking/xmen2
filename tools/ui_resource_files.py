@@ -7,6 +7,8 @@ that whole directory, and the AppImage and macOS packagers copy exactly these.
 UI_FILES = (
     "LatoLatin-Regular.ttf",
     "LatoLatin-Bold.ttf",
+    # packaging/xmen2-port.svg, for the windows' own icon.
+    "app_icon.svg",
     # The shared key typeface keyboard prompts are lettered in at runtime.
     "NotoSans-Bold-keys.ttf",
     "settings.rcss",

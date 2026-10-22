@@ -1905,6 +1905,9 @@ foreach(x2_assign_mark on off)
     configure_file("${CMAKE_SOURCE_DIR}/assets/ui/assign_${x2_assign_mark}.svg"
                    "${CMAKE_BINARY_DIR}/ui/assign_${x2_assign_mark}.svg" COPYONLY)
 endforeach()
+# The application icon, for the windows the port opens.
+configure_file("${CMAKE_SOURCE_DIR}/packaging/xmen2-port.svg"
+               "${CMAKE_BINARY_DIR}/ui/app_icon.svg" COPYONLY)
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
@@ -1921,6 +1924,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/skip_document.cpp
     src/ui/extraction_revive_document.cpp
     src/ui/autosave_notice_document.cpp
+    src/ui/window_icon.cpp
     src/ui/igb_textures.cpp
     src/ui/settings_overlay_state.cpp)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
