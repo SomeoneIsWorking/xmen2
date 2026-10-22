@@ -152,8 +152,8 @@ int prompt(SDL_Window *window) {
       SDL_MESSAGEBOX_INFORMATION,
       NULL,
       "X-Men Legends II installation",
-      "Choose XMen2.exe, or a ZIP containing exactly one XMen2.exe, from your "
-      "legally obtained PC install.",
+      "Choose XMen2.exe, or a ZIP containing exactly one XMen2.exe,\n"
+      "from your legally obtained PC install.",
       2,
       buttons,
       NULL,
