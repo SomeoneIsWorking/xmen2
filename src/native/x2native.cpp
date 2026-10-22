@@ -43,7 +43,7 @@
 #include "heartbeat.h"
 #include "host_imports.h"
 #include "input_record.h"
-#include "install_picker.h"
+#include "install_setup.h"
 #include "live_session.h"
 #include "macos_bundle.h"
 #include "pe_map.h"
@@ -1521,7 +1521,7 @@ int main(int argc, char **argv) {
     atexit(x86_setjmp_report);
   }
   {
-    int r = x2::native::install_picker_resolve_env(
+    int r = x2::native::install_setup_resolve_env(
         options.appimage && options.product, options.install_dir != NULL);
     if (r)
       return r == 1 ? 0 : 1; /* 1: nothing selected; 2: publish failed */

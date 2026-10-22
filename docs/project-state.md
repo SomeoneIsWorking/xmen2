@@ -86,7 +86,8 @@ and launch; dependency reprovision alone does not prove the whole contract.
 ### S017 — Linux AppImage packaging and no-terminal install setup: partial
 
 The repository now has a game-file-free AppImage staging path, portable UI
-resource lookup, and an SDL3 first-run prompt that validates and remembers the
+resource lookup, and a first-run setup screen (shared `setup-ui`: RmlUi in its
+own SDL window, Browse opens the OS file dialog) that validates and remembers the
 user's `XMen2.exe` directory in the OS configuration directory. It also accepts
 a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
 under that same user-data root through the shared safe ZIP implementation.
@@ -123,6 +124,10 @@ showing no window: its xdotool could not read SDL's UTF-8 `WM_NAME` under
 `C.UTF-8` ([#198](issues/0198-appimagehub-finds-no-window-under-a-utf-8-locale.md)).
 SDL3 now comes from the fork commit that stores an ICCCM `WM_NAME`; on a real
 ubuntu-22.04 runner under firejail the setup prompt is found after 2 s.
+The prompt is now the setup screen: under the tester's Xvfb (800x600,
+`C.UTF-8`) it is found after 1 s at 800x540; choosing the real `XMen2.exe`
+through the zenity dialog is accepted, remembered, and the game starts, and
+choosing `alchemy.ini` shows "That file is not XMen2.exe." on the screen.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target,

@@ -1935,6 +1935,25 @@ set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
                                         PRIVATE lucent::lucent alchemy)
 
+# The desktop first-run screen. CONSUMED, never vendored: shared/setup-ui owns
+# its look and layout, and reuses this build's RmlUi target.
+if(NOT ANDROID AND NOT EMSCRIPTEN)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c
+                "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+                "${CMAKE_SOURCE_DIR}/tools" setup-ui include/setup_ui/setup_ui.h
+        OUTPUT_VARIABLE X2_SETUP_UI_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE X2_SETUP_UI_WHY RESULT_VARIABLE X2_SETUP_UI_RC)
+    if(X2_SETUP_UI_RC)
+        message(FATAL_ERROR
+            "x2native: the shared setup screen could not be resolved.\n"
+            "${X2_SETUP_UI_WHY}"
+            "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
+    endif()
+    add_subdirectory("${X2_SETUP_UI_DIR}" "${CMAKE_BINARY_DIR}/setup-ui"
+                     EXCLUDE_FROM_ALL)
+endif()
+
 # The tab label fit on a real RmlUi layout with the shipped stylesheet.
 add_executable(test_touch_label_fit tests/test_touch_label_fit.cpp
                src/ui/touch_label_fit.cpp)
@@ -1957,6 +1976,7 @@ set(X2_NATIVE_SOURCES
     src/native/x2native_options.cpp
     src/native/sdl_host_setup.cpp
     src/native/install_picker.cpp
+    src/native/install_setup.cpp
     src/native/install_archive.cpp
     src/native/install_validation.cpp
     src/native/pe_header.cpp
@@ -2507,6 +2527,9 @@ target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
 target_link_libraries(x2native PRIVATE Freetype::Freetype)
 target_link_libraries(x2native PRIVATE x86port_runtime)
 target_link_libraries(x2native PRIVATE alchemy::input)
+if(NOT ANDROID AND NOT EMSCRIPTEN)
+    target_link_libraries(x2native PRIVATE setup_ui::setup_ui)
+endif()
 
 # Native overrides are declared in C where they belong. Every direct or
 # indirect guest call reaches the runtime dispatcher's override slot; no
