@@ -40,10 +40,9 @@ ZLIB = Archive(
     "zlib", "1.3.2",
     "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
     "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16")
-SDL3 = Archive(
-    "SDL3", "3.4.16",
-    "https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz",
-    "7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68")
+# release-3.4.16 plus an ICCCM WM_NAME, fork branch xmen2/release-3.4.16
+SDL3 = github_commit("SomeoneIsWorking", "SDL", "12f35f14892f01b2199c611be23d628e5ff6917e",
+                     "8a49f23f43788791b6cdbbbda18cc57688bc9ccb4261411dbdd173a6b8f98cf5")
 SDL3_IMAGE = Archive(
     "SDL3_image", "3.4.6",
     "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.6/"

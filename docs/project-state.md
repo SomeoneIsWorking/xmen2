@@ -118,7 +118,11 @@ than 3.4.30. That build loads on a bare `ubuntu:22.04` (`--no-window
 --selftest` exits 77, the no-install setup state) and its binary passes
 `tools/live_case.py ranger-render` on Fedora 44. The AppImage catalog
 ([AppImage/appimage.github.io#6225](https://github.com/AppImage/appimage.github.io/pull/6225))
-had rejected the ubuntu-26.04 build for needing GLIBC 2.38+.
+had rejected the ubuntu-26.04 build for needing GLIBC 2.38+, then v0.3.1 for
+showing no window: its xdotool could not read SDL's UTF-8 `WM_NAME` under
+`C.UTF-8` ([#198](issues/0198-appimagehub-finds-no-window-under-a-utf-8-locale.md)).
+SDL3 now comes from the fork commit that stores an ICCCM `WM_NAME`; on a real
+ubuntu-22.04 runner under firejail the setup prompt is found after 2 s.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target,
