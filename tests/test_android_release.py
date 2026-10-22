@@ -239,7 +239,7 @@ def main() -> int:
     assert "debug.private_install" in debug_install
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
-    assert 'android:icon="@drawable/xmen2_port_icon"' in manifest
+    assert 'android:icon="@mipmap/xmen2_port_icon"' in manifest
     assert "signingConfig = signingConfigs.release" in gradle
     assert "enableV3Signing = true" in gradle
     assert 'version "9.2.1"' in root_gradle
