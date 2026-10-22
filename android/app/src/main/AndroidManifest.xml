@@ -12,7 +12,7 @@
          retain it; ordinary uninstall removes it, including OBB data. Stable
          release signing allows updates in place without deleting app data. -->
     <application
-        android:icon="@drawable/xmen2_port_icon"
+        android:icon="@mipmap/xmen2_port_icon"
         android:label="X-Men Legends II"
         android:theme="@style/AppTheme"
         android:allowBackup="false"

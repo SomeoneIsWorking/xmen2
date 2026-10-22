@@ -2560,6 +2560,17 @@ if(ANDROID)
     # Gradle consumes this generated contract. It keeps the Android shell
     # independent of CMake's internal target names while still refusing a
     # stale or hand-pointed-at native library.
+    set(_x2_android_res "${CMAKE_BINARY_DIR}/android-res")
+    add_custom_command(
+        OUTPUT "${_x2_android_res}/mipmap-mdpi/xmen2_port_icon.png"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/android_launcher_icon.py"
+                "${_x2_android_res}"
+        DEPENDS "${CMAKE_SOURCE_DIR}/tools/android_launcher_icon.py"
+                "${CMAKE_SOURCE_DIR}/packaging/xmen2-port.svg"
+        COMMENT "Rendering the Android launcher icon")
+    add_custom_target(x2_android_launcher_icon
+        DEPENDS "${_x2_android_res}/mipmap-mdpi/xmen2_port_icon.png")
+    add_dependencies(x2native x2_android_launcher_icon)
     set(_x2_android_properties
         "x2.nativeLibrary=$<TARGET_FILE:x2native>\n"
         "x2.sdlLibrary=$<TARGET_FILE:${X2_SDL}>\n"
@@ -2569,7 +2580,8 @@ if(ANDROID)
         "x2.ndkVersion=${_x2_android_ndk_version}\n"
         "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
         "x2.androidFrameworkJavaDir=${X2_ANDROID_FRAMEWORK_JAVA_DIR}\n"
-        "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
+        "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n"
+        "x2.resDir=${_x2_android_res}\n")
     string(JOIN "" _x2_android_properties ${_x2_android_properties})
     file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"
          CONTENT "${_x2_android_properties}")

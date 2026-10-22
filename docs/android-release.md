@@ -5,6 +5,13 @@ APK. The debug APK and setup shell have been installed on the shared emulator;
 S018 remains partial until a signed build is measured on the supported device
 tiers.
 
+## Launcher icon
+
+The CMake Android branch renders `packaging/xmen2-port.svg` into
+`<build>/android-res/mipmap-*/xmen2_port_icon.png`
+(`tools/android_launcher_icon.py`); Gradle adds that directory to the APK's
+resources through `x2.resDir`.
+
 ## Setup and game-file access
 
 The APK has no terminal and opens `XMen2SetupActivity` before starting
