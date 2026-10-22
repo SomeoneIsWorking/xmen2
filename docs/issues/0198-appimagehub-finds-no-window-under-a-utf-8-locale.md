@@ -29,8 +29,9 @@ xdotool's name match cannot read. ICCCM `WM_NAME` is `STRING` or
 
 Fork branch `xmen2/release-3.4.16` of SomeoneIsWorking/SDL is release-3.4.16
 plus `XStdICCTextStyle` there; `tools/dependency_archives.py` pins that commit.
-The prompt text is two lines, so the dialog (664 px) fits an 800 px screen
-instead of overflowing it at 1012 px.
+The SDL message-box prompt it found was itself the wrong screen: desktop setup
+is now the shared `setup-ui` RmlUi screen (`src/native/install_setup.cpp`),
+which setup-ui sizes to the display's usable bounds.
 
 Live: on a GitHub ubuntu-22.04 runner, `firejail --noprofile --net=none
 --appimage`, the prompt was found after 2 s with `WM_NAME(STRING)`.

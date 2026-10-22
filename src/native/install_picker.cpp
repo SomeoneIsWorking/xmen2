@@ -1,14 +1,8 @@
-#include "../config/environment.h"
 #include "x2_log.h"
-/* AppImage first-run installation chooser.
- *
- * The portable release cannot ask a player to export GAME_PC_DIR: an AppImage
- * is launched from a desktop and has no terminal. SDL owns both the small
- * setup prompt and the native file dialog; the selected directory is kept
- * with the port's user configuration, never beside the read-only game. ZIP
- * extraction is shared with other ports through Lucent. */
+/* The player's PC installation: judging a selection (executable, folder or
+ * ZIP), the OS file dialog, and the remembered directory in the port's user
+ * configuration. The first-run screen that uses these is install_setup. */
 #include "../config/config_directory.h"
-#include "android_bridge.h"
 #include "install_archive.h"
 #include "install_picker.h"
 #include "install_validation.h"
@@ -31,8 +25,6 @@ namespace x2::native {
 #define X2_INSTALL_PATH_SIZE 4096
 
 namespace {
-
-char g_directory[X2_INSTALL_PATH_SIZE];
 
 char g_selected[X2_INSTALL_PATH_SIZE];
 
@@ -92,44 +84,6 @@ int preference_path(char *path, size_t capacity) {
   return written > 0 && (size_t)written < capacity;
 }
 
-int saved_directory(void) {
-  char path[X2_INSTALL_PATH_SIZE], line[X2_INSTALL_PATH_SIZE];
-  FILE *file;
-  if (!preference_path(path, sizeof path))
-    return 0;
-  file = fopen(path, "r");
-  if (!file)
-    return 0;
-  if (!fgets(line, sizeof line, file)) {
-    fclose(file);
-    return 0;
-  }
-  fclose(file);
-  line[strcspn(line, "\r\n")] = 0;
-  if (!line[0])
-    return 0;
-  snprintf(path, sizeof path, "%s/XMen2.exe", line);
-  if (!install_picker_directory_from_executable(path, g_directory,
-                                                sizeof g_directory))
-    return 0;
-  return 1;
-}
-
-void remember_directory(const char *directory) {
-  char path[X2_INSTALL_PATH_SIZE];
-  FILE *file;
-  if (!directory || !preference_path(path, sizeof path))
-    return;
-  file = fopen(path, "w");
-  if (!file) {
-    x2_log_error("install picker: could not remember installation: %s\n",
-                 strerror(errno));
-    return;
-  }
-  fprintf(file, "%s\n", directory);
-  fclose(file);
-}
-
 void SDLCALL file_dialog_callback(void *unused, const char *const *filelist,
                                   int filter) {
   (void)unused;
@@ -143,47 +97,7 @@ void SDLCALL file_dialog_callback(void *unused, const char *const *filelist,
   SDL_SetAtomicInt(&g_dialog_done, 1);
 }
 
-int prompt(SDL_Window *window) {
-  static const SDL_MessageBoxButtonData buttons[] = {
-      {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1, "Browse"},
-      {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit"},
-  };
-  static const SDL_MessageBoxData message = {
-      SDL_MESSAGEBOX_INFORMATION,
-      NULL,
-      "X-Men Legends II installation",
-      "Choose XMen2.exe, or a ZIP containing exactly one XMen2.exe,\n"
-      "from your legally obtained PC install.",
-      2,
-      buttons,
-      NULL,
-  };
-  int button = 0;
-  SDL_MessageBoxData shown = message;
-  shown.window = window;
-  if (!SDL_ShowMessageBox(&shown, &button)) {
-    x2_log_error("install picker: setup prompt failed: %s\n", SDL_GetError());
-    return 0;
-  }
-  return button == 1;
-}
-
-int error_prompt(SDL_Window *window, const char *reason) {
-  SDL_MessageBoxButtonData button = {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, 1,
-                                     "Back"};
-  SDL_MessageBoxData message = {
-      SDL_MESSAGEBOX_ERROR,
-      window,
-      "X-Men Legends II installation",
-      reason,
-      1,
-      &button,
-      NULL,
-  };
-  return SDL_ShowMessageBox(&message, NULL) != 0;
-}
-
-int choose_file(SDL_Window *window) {
+int choose_file(void) {
   static const SDL_DialogFileFilter filters[] = {
       {"X-Men Legends II executable", "exe"},
       {"ZIP archive", "zip"},
@@ -192,7 +106,7 @@ int choose_file(SDL_Window *window) {
   SDL_SetAtomicInt(&g_dialog_done, 0);
   g_dialog_status = 0;
   g_selected[0] = 0;
-  SDL_ShowOpenFileDialog(file_dialog_callback, NULL, window, filters, 3, NULL,
+  SDL_ShowOpenFileDialog(file_dialog_callback, NULL, NULL, filters, 3, NULL,
                          false);
   while (!SDL_GetAtomicInt(&g_dialog_done)) {
     SDL_PumpEvents();
@@ -323,110 +237,46 @@ int install_picker_prepare_selection(const char *selection,
                                           reason_capacity);
 }
 
-int install_picker_choose(const char **directory) {
-  SDL_Window *window;
-  char candidate[X2_INSTALL_PATH_SIZE];
-  char reason[512];
-
-  if (!directory)
-    return -1;
-  *directory = NULL;
-#if defined(__ANDROID__)
-  if (saved_directory()) {
-    *directory = g_directory;
+int install_picker_saved_directory(char *directory, unsigned capacity) {
+  char path[X2_INSTALL_PATH_SIZE], line[X2_INSTALL_PATH_SIZE];
+  FILE *file;
+  if (!preference_path(path, sizeof path))
+    return 0;
+  file = fopen(path, "r");
+  if (!file)
+    return 0;
+  if (!fgets(line, sizeof line, file)) {
+    fclose(file);
     return 0;
   }
-  const char *source = x2::native::android_install_source();
-  if (!source) {
-    x2_log_error(
-        "install picker: Android setup has not supplied an install source.\n");
-    return -1;
-  }
-  if (!directory_from_selection(source, candidate, sizeof candidate, reason,
-                                sizeof reason)) {
-    x2_log_error("install picker: Android install source rejected: %s\n",
-                 reason);
-    return -1;
-  }
-  copy_string(g_directory, sizeof g_directory, candidate);
-  remember_directory(g_directory);
-  *directory = g_directory;
-  return 0;
-#else
-  if (!SDL_Init(SDL_INIT_VIDEO)) {
-    x2_log_error("install picker: SDL video initialization failed: %s\n",
-                 SDL_GetError());
-    return -1;
-  }
-  window = SDL_CreateWindow("X-Men Legends II", 640, 240, SDL_WINDOW_HIDDEN);
-  if (!window) {
-    x2_log_error("install picker: setup window failed: %s\n", SDL_GetError());
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
-    return -1;
-  }
-  if (saved_directory()) {
-    *directory = g_directory;
-    SDL_DestroyWindow(window);
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+  fclose(file);
+  line[strcspn(line, "\r\n")] = 0;
+  if (!line[0])
     return 0;
-  }
-  for (;;) {
-    if (!prompt(window)) {
-      SDL_DestroyWindow(window);
-      SDL_QuitSubSystem(SDL_INIT_VIDEO);
-      return -1;
-    }
-    {
-      int result = choose_file(window);
-      if (result < 0) {
-        x2_log_error("install picker: file dialog failed: %s\n",
-                     SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        return -1;
-      }
-      if (result == 0) {
-        SDL_DestroyWindow(window);
-        SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        return -1;
-      }
-    }
-    if (!directory_from_selection(g_selected, candidate, sizeof candidate,
-                                  reason, sizeof reason)) {
-      if (!error_prompt(window, reason)) {
-        SDL_DestroyWindow(window);
-        SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        return -1;
-      }
-      continue;
-    }
-    copy_string(g_directory, sizeof g_directory, candidate);
-    remember_directory(g_directory);
-    *directory = g_directory;
-    SDL_DestroyWindow(window);
-    SDL_QuitSubSystem(SDL_INIT_VIDEO);
-    return 0;
-  }
-#endif
+  snprintf(path, sizeof path, "%s/XMen2.exe", line);
+  return install_picker_directory_from_executable(path, directory, capacity);
 }
 
-int install_picker_resolve_env(int appimage_product, int have_install_dir) {
-  const char *current =
-      config_override_get(x2::config::ConfigOverride::GamePcDir);
-  if (!appimage_product || have_install_dir || (current && current[0]))
-    return 0;
-  const char *picked = nullptr;
-  if (install_picker_choose(&picked) != 0 || !picked) {
-    x2_log_error("x2native: no PC installation was selected; exiting.\n");
-    return 1;
-  }
-  if (config_override_set(x2::config::ConfigOverride::GamePcDir, picked, 1) !=
-      0) {
-    x2_log_error("x2native: could not set the selected installation: %s\n",
+void install_picker_remember_directory(const char *directory) {
+  char path[X2_INSTALL_PATH_SIZE];
+  FILE *file;
+  if (!directory || !preference_path(path, sizeof path))
+    return;
+  file = fopen(path, "w");
+  if (!file) {
+    x2_log_error("install picker: could not remember installation: %s\n",
                  strerror(errno));
-    return 2;
+    return;
   }
-  return 0;
+  fprintf(file, "%s\n", directory);
+  fclose(file);
+}
+
+int install_picker_browse(char *selection, unsigned capacity) {
+  const int chosen = choose_file();
+  if (chosen != 1)
+    return chosen;
+  return copy_string(selection, capacity, g_selected) ? 1 : -1;
 }
 
 } // namespace x2::native
