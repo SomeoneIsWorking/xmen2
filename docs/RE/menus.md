@@ -472,6 +472,31 @@ getter is the row's value. This pairing is the model's rule, not a retail one.
 popup covered the PDA, clear after dismissing it. Load Game is this popup, not
 a `CMenu`.
 
+Its vtable is `0x006a332c`; the list it shows (New Game's difficulty, Load
+Game's saves, a yes/no) lives in the current page `p+0x18+idx*0x1560`: entry
+`i`'s text at `+(i+8)*0x80`, then the count `+0x1558`, the visible rows
+`+0x1559`, the first shown `+0x155a` and the selected `+0x155b` (all `char`).
+
+- **Draw** `FUN_005ea9e0` (`+0x6c` path): each shown entry is laid out by the
+  text layout `FUN_00597c20` `+0x38(width = s16 p+0x4054, text, scale 1.0, 0, 1)`
+  into the text box at `p+0x4050` (`+0x408` left, `+0x40c` pen top, `+0x410`
+  width), which advances the pen by the line's height. The selected entry gets
+  the bar model at `p+0x404c` behind it (`+0x14`, x `left+1`, at the pen, scaled
+  by the backbuffer height `DAT_00a0a000`); `p+0x4044`/`p+0x4048` are the
+  frame's other models.
+- **Pointer** `CPopupDialog::onMouse` `0x005ea2c0` (`+0x7c`, reached first by
+  `FUN_005f9eb0` while `+0x78` isUp): the same layout call measures each shown
+  entry, so a row's hit box is exactly its drawn text line. `0x201` on an entry
+  records it and publishes a d-pad step (`DAT_00a09f2c`/`DAT_00a09fb0` ±1)
+  toward it; `0x202` on the entry already selected publishes `MENU_ACCEPT` (4);
+  the right button does the same with `MENU_OTHER` (0x18). Then the footers
+  (`p+0x4050` `+0x440..`, count `+0x21844`) by their `$MENU_` tokens, as
+  `CMenuItemText::onMouse` does.
+
+So a finger already works on a popup; what it lacks is size. A row is one
+line of text at scale 1.0, about 16 client pixels at 720p, and both the draw
+and the hit test take that pitch from the one layout call.
+
 The "gamepads have been added/removed" popup is not a menu either. The menu
 manager's update calls `FUN_00618e80` at `0x005db0cb`: true when the registry's
 `Controls\Gamepads\ShowWarningListChanged` (default 1) and `ListChanged` are
