@@ -486,16 +486,33 @@ Game's saves, a yes/no) lives in the current page `p+0x18+idx*0x1560`: entry
   frame's other models.
 - **Pointer** `CPopupDialog::onMouse` `0x005ea2c0` (`+0x7c`, reached first by
   `FUN_005f9eb0` while `+0x78` isUp): the same layout call measures each shown
-  entry, so a row's hit box is exactly its drawn text line. `0x201` on an entry
-  records it and publishes a d-pad step (`DAT_00a09f2c`/`DAT_00a09fb0` ±1)
-  toward it; `0x202` on the entry already selected publishes `MENU_ACCEPT` (4);
-  the right button does the same with `MENU_OTHER` (0x18). Then the footers
-  (`p+0x4050` `+0x440..`, count `+0x21844`) by their `$MENU_` tokens, as
-  `CMenuItemText::onMouse` does.
+  entry, so a row's hit box is exactly its drawn text line. On an entry, `0x201`
+  records the selected entry at `p+0xc`; it, and any other message while the
+  left button is held (`FUN_0061a600(player, 0, 0)`: a move, or the `0x210`
+  the frame update `FUN_00401d70` sends once the button has been held 0.2 s),
+  aims the selection at the entry (`p+0x14`, armed flag `p+4` = 1, a d-pad step
+  `DAT_00a09f2c`/`DAT_00a09fb0` ±1). `0x202` publishes `MENU_ACCEPT` (4) only
+  when `p+0xc` is the entry and `p+4` is clear; the right button does the same
+  with `MENU_OTHER` (0x18). Then the footers (`p+0x4050` `+0x440..`, count
+  `+0x21844`) by their `$MENU_` tokens, as `CMenuItemText::onMouse` does.
+- **Update** `FUN_005eb320` (from the draw path, before `FUN_005ea9e0`): while
+  `p+4` is set it steps the selection toward `p+0x14` every `[0x6e5f08]` frames
+  and clears `p+4` once it is there.
 
-So a finger already works on a popup; what it lacks is size. A row is one
-line of text at scale 1.0, about 16 client pixels at 720p, and both the draw
-and the hit test take that pitch from the one layout call.
+So a press on an unselected entry selects it and a press on the selected entry
+accepts it, but only if a frame's update runs between the press and the release
+and no held message reaches the popup in between: a move with the button down,
+or a `0x210` in the frame the release is pumped, re-arms `p+4` and the release
+is refused. Hard on New Game refuses `MENU_ACCEPT` from the keyboard as well,
+with touch off; that is the game's own rule.
+
+On touch each option's row is at least a finger target tall
+(`x2::native::popup_row_slot`, `src/native/popup_rows.cpp`), on both halves of
+the one layout pitch (`src/native/popup_row_override.cpp`): the text box draw
+`FUN_004552f0` called from `0x005eae70` advances its pen `+0x404` by the slot,
+so the bar follows, and the measure `FUN_00597c90` called from `0x005ea3c3`
+answers the slot, so the hit box is the drawn row. Both are scoped to those
+return addresses and to touch being active.
 
 The "gamepads have been added/removed" popup is not a menu either. The menu
 manager's update calls `FUN_00618e80` at `0x005db0cb`: true when the registry's

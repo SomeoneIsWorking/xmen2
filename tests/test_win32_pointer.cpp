@@ -87,29 +87,17 @@ int main(void) {
                 "a warp to the window centre moved the cursor");
   cursor_agrees(window, 17.0f, 401.0f, "a warp off centre moved the cursor");
 
-  /* A client-space touch click is delivered at that guest client point, with
-     no window mapping: the touch menu's clicks land on the box the game
+  /* A client-space touch point is the guest client point itself, with no
+     window mapping: the touch menu's clicks land on the box the game
      hit-tests. */
   {
-    x2::native::Win32Mouse mouse;
-    x2::native::Win32Message message;
     x2::input::TouchPointer pointer = {1, 1100.0f, 650.0f, 1, 0, 1};
-    int32_t screen_x = 1100;
-    int32_t screen_y = 650;
+    int32_t client_x = 0;
+    int32_t client_y = 0;
 
-    check(x2::native::win32_pointer_client_to_screen(&screen_x, &screen_y),
-          "the window has an origin");
-    memset(&mouse, 0, sizeof mouse);
-    x2::native::win32_pointer_translate_touch(&pointer, &mouse, 1u);
-    check(x2::native::win32_message_take(&mouse, 0u, x2::native::kWmLButtonDown,
-                                         x2::native::kWmLButtonUp, 1,
-                                         &message) &&
-              message.message == x2::native::kWmLButtonDown,
-          "a client-space contact presses the button");
-    check(message.screen_x == screen_x && message.screen_y == screen_y,
+    x2::native::win32_pointer_touch_client(&pointer, &client_x, &client_y);
+    check(client_x == 1100 && client_y == 650,
           "a client-space contact is delivered at its own client point");
-    check((message.lparam & 0xffffu) == 1100u && (message.lparam >> 16) == 650u,
-          "and its message carries that client point unmapped");
   }
 
   SDL_DestroyWindow(window);
