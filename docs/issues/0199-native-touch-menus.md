@@ -45,8 +45,18 @@ from the title menu (a popup is up there).
 1. A finger is the retail pointer on every menu: down moves it, up clicks.
 2. Rows without a command, steps and lists answer a tap at their owners above.
 3. Footer tokens the game does not publish get their action at `CMenuItemText::onMouse`.
-4. The menu scene is scaled for touch so the smallest target is finger-sized.
-5. The popup's pointer path is mapped and treated as a menu.
+4. Row menus (main, Options, PDA) are scaled for touch so the smallest target
+   is finger-sized.
+5. Selector screens get a touch layout, because scaling them is not enough:
+   the difficulty popup, Load Game, the shop and stash, and every other list
+   box with the white selection rectangle (codex, review, danger room,
+   trivia). A list becomes a short column of finger-tall rows drawn with the
+   game's own row art and focus highlight, one tap picks an entry and a drag
+   pages it, and the controller cursor is not drawn on touch. A menu is data
+   (`UI/menus/<name>.xmlb` over its `.igb` art, loaded by `FUN_005ab130`), so
+   the layout is a port-owned transform of the player's own file when it is
+   loaded, using retail item types and art. No asset is copied and nothing is
+   drawn over the menu. The popup's pointer path (`popup+0x7c`) is mapped first.
 6. The RmlUi touch menu and the menu pad are deleted.
 
 Each step closes when its gap lines are gone from the scan and the screen is
@@ -60,3 +70,4 @@ the effects volume, toggles Combat Music and leaves by the Back footer, all on
 the game's own screens; a PDA tap on Team Management opens the team menu
 through `openmenu pda` at the boot map. Their footers still draw keyboard
 keycaps (step 3), and their rows are under a finger (step 4).
+The difficulty popup, Load Game and the shop are step 5.
