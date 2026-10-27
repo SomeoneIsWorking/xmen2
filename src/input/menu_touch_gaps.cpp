@@ -1,5 +1,6 @@
 #include "menu_touch_gaps.hpp"
 
+#include "../native/menu_item_tap.hpp"
 #include "../native/x2_log.h"
 #include "touch_menu_view.hpp"
 
@@ -21,6 +22,20 @@ constexpr std::array<std::string_view, 7> kClickedTokens = {
 std::string named(const menu::MenuItem &item) {
   const std::string text = touch_menu_text(item.label);
   return text.empty() ? item.name : item.name + " \"" + text + "\"";
+}
+
+/* What a tap at the centre of `index` does, by the pointer rule. */
+native::MenuItemTap tap_centre(const menu::MenuSnapshot &menu, int index) {
+  const menu::SceneRect &rect =
+      menu.items[static_cast<std::size_t>(index)].rect;
+  return native::menu_item_tap(menu, index, (rect.left + rect.right) / 2,
+                               (rect.top + rect.bottom) / 2,
+                               native::kMouseButtonUp);
+}
+
+/* Whether the menu's own onMouse steps rows (CMenuOptions steps its bars). */
+bool steppable(const menu::MenuSnapshot &menu) {
+  return menu.on_mouse != menu::kMenuOnMouse;
 }
 
 bool shown(const menu::MenuItem &item) {
@@ -124,12 +139,12 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
       }
       continue;
     }
-    if (item.has_left_right()) {
+    if (item.has_left_right() && item.use_command.empty() && !steppable(menu)) {
       gaps.push_back({MenuTouchGapKind::step, named(item)});
     }
     if (item.use_command.empty()) {
-      if (!item.has_left_right() && item.item_class == menu::ItemClass::text &&
-          !item.label.empty()) {
+      if (!item.has_left_right() && native::menu_tap_row(menu, index) &&
+          !tap_centre(menu, index).accept) {
         gaps.push_back({MenuTouchGapKind::row_without_command, named(item)});
       }
     } else if (small(item.rect, plane)) {

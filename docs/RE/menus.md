@@ -303,7 +303,25 @@ that are hidden or disabled (`item+0x54 & 8` is the enabled bit both this and
 calls `setFocus` on it (unless it is `neverfocus`) and `CMenuMgr+0xe8(0)`. It does
 this for every mouse message, so a move alone focuses a row. Because the item's
 `+0x74` hits only with a `usecmd`, a row without one (`danger room`, `play
-online`, the volume rows) is never focused or chosen by the mouse.
+online`, the PDA's `Objectives`) is never focused or chosen by the mouse.
+
+`CMenuOptions::onMouse` is `0x005cb5f0` (its vtable `0x0069ebd4` `+0x80`). It
+hit-tests its own named items before the base handler, and the volume bars
+`fx_vol` and `music_vol` with their boxes widened by 10 on each side: a click
+steps that bar 0.1 toward the click, through the row's `setdecrement` /
+`setincrement`. So the volume rows have no `usecmd` and still answer the mouse.
+
+The port extends `0x005bc1b0` (`src/native/menu_item_mouse_override.cpp`):
+after the retail body, an item it did not take is handed to
+`x2::native::menu_item_tap`. A text row in the up/down chain with a label and
+no `usecmd` hits, so `CMenu::onMouse` focuses it, and on `0x202` without
+left/right it publishes `MENU_ACCEPT` the way a `usecmd` row does. A menu class
+whose `onMouse` is not `0x005ae0a0` owns its own steps, which the gap report
+reads from `MenuSnapshot::on_mouse`.
+
+Retail's step through left/right is `FUN_005bc290`, item vtable `+0x58`,
+`thiscall(char dir[3])`: `dir[0]` and `dir[1]` are x and y, and the menu's own
+caller (`0x005ad1a0`) clears the low two bits of `dir[2]`.
 
 Two other consumers of the same fields exist and are **not** menu rows:
 `FUN_005ae490` and `FUN_005ae990` read `item+0x54 & 0x20` (a link target, so

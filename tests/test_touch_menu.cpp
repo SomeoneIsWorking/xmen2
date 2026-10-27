@@ -52,6 +52,30 @@ MenuSnapshot options_menu() {
   return menu;
 }
 
+/* A touch menu view of Options' rows and footers, for the layout and the
+   taps; Options itself is drawn natively. */
+TouchMenuView options_view(const MenuSnapshot &menu,
+                           const RetailScenePlane &plane) {
+  TouchMenuView view = x2::input::start_menu_view(menu);
+  for (const int index : menu.rows) {
+    const MenuItem &source = menu.items[static_cast<std::size_t>(index)];
+    TouchMenuRow row;
+    row.label = x2::input::touch_menu_text(source.label);
+    row.fill = source.fill;
+    row.clicks = !source.use_command.empty();
+    row.steps = source.has_left_right();
+    row.focused = index == menu.focused;
+    row.slot = source.slot;
+    row.click = x2::input::menu_item_centre(source.rect, plane);
+    if (row.focused) {
+      view.focused_row = static_cast<int>(view.rows.size());
+    }
+    view.rows.push_back(std::move(row));
+  }
+  x2::input::append_menu_footers(menu, plane, &view);
+  return view;
+}
+
 void retail_text_reads_as_a_player_sees_it() {
   using x2::input::touch_menu_text;
   check(touch_menu_text("~05$MENU_BACK Back") == "Back",
@@ -68,42 +92,6 @@ void retail_text_reads_as_a_player_sees_it() {
         "a stat token draws as its name, as the retail shop shows it");
   check(touch_menu_text("~02Limit:~~ 10") == "Limit: 10",
         "the style reset escape is removed");
-}
-
-void the_view_carries_the_rows_values_and_footer() {
-  const auto view =
-      x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
-  check(view.has_value(), "Options is a menu the touch menu replaces");
-  if (!view) {
-    return;
-  }
-  check(view->title == "Options", "the title is the menu's own label");
-  check(view->rows.size() == 3u, "every navigable row is offered");
-  check(view->rows[0].steps && !view->rows[0].clicks && view->rows[0].fill &&
-            *view->rows[0].fill == 1.0F,
-        "a volume row steps and shows its bar");
-  check(view->rows[1].clicks && view->rows[1].value == "On",
-        "a toggle row clicks and shows its paired value");
-  check(view->focused_row == 0, "the game's focus is carried");
-  check(view->footers.size() == 2u,
-        "visible $MENU_ desctext items are footers");
-  check(view->footers.size() == 2u && view->footers[0].token == "$MENU_BACK" &&
-            view->footers[0].label == "Back" &&
-            view->footers[1].token == "$MENU_OK",
-        "each footer names its token and the game's words");
-
-  MenuSnapshot loading = options_menu();
-  loading.menu_class = "CMenuLoading";
-  check(!x2::input::build_touch_menu_view(loading, plane_1280x720()),
-        "a menu class the touch menu does not replace keeps the retail screen");
-  MenuSnapshot popup = options_menu();
-  popup.popup_up = true;
-  check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
-        "a popup over the menu keeps the retail screen");
-  MenuSnapshot empty = options_menu();
-  empty.rows.clear();
-  check(!x2::input::build_touch_menu_view(empty, plane_1280x720()),
-        "a menu with no selectable row keeps the retail screen");
 }
 
 const MenuItem *find_item(const MenuSnapshot &menu, const std::string &name) {
@@ -161,6 +149,23 @@ MenuSnapshot shop_menu(int entries, int top, int selected) {
   menu.rows = {static_cast<int>(menu.items.size()) - 1};
   menu.focused = menu.rows[0];
   return menu;
+}
+
+void main_options_and_the_pda_are_native() {
+  for (const char *native : {"CMenuMain", "CMenuOptions", "CMenuPDA"}) {
+    MenuSnapshot menu = options_menu();
+    menu.menu_class = native;
+    check(!x2::input::build_touch_menu_view(menu, plane_1280x720()),
+          std::string(native) + " is drawn and touched natively");
+  }
+  MenuSnapshot loading = shop_menu(3, 0, 0);
+  loading.menu_class = "CMenuLoading";
+  check(!x2::input::build_touch_menu_view(loading, plane_1280x720()),
+        "a menu class the touch menu does not replace keeps the retail screen");
+  MenuSnapshot popup = shop_menu(3, 0, 0);
+  popup.popup_up = true;
+  check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
+        "a popup over the menu keeps the retail screen");
 }
 
 void the_shop_is_its_tabs_and_entries() {
@@ -798,20 +803,17 @@ void a_delivered_click_lands_in_the_hit_box() {
       if (!plane) {
         continue;
       }
-      const auto view = x2::input::build_touch_menu_view(menu, *plane);
-      if (!view) {
-        check(false, "the view exists");
-        continue;
-      }
-      for (std::size_t i = 0; i < view->rows.size(); ++i) {
-        const auto &rect = menu.items[menu.rows[i]].rect;
-        const auto scene = plane->to_scene(view->rows[i].click);
+      for (const int index : menu.rows) {
+        const auto &rect = menu.items[static_cast<std::size_t>(index)].rect;
+        const auto scene =
+            plane->to_scene(x2::input::menu_item_centre(rect, *plane));
         check(scene.x >= static_cast<float>(rect.left) &&
                   scene.x < static_cast<float>(rect.right) &&
                   scene.z >= static_cast<float>(rect.top) &&
                   scene.z < static_cast<float>(rect.bottom),
-              "row " + std::to_string(i) + " click is inside its hit box at " +
-                  std::to_string(width) + "x" + std::to_string(height));
+              "row " + std::to_string(index) +
+                  " click is inside its hit box at " + std::to_string(width) +
+                  "x" + std::to_string(height));
       }
     }
   }
@@ -822,8 +824,7 @@ void a_delivered_click_lands_in_the_hit_box() {
 }
 
 void the_layout_is_finger_sized_and_inside_the_safe_area() {
-  auto view =
-      *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
+  auto view = options_view(options_menu(), plane_1280x720());
   for (int i = 0; i < 9; ++i) {
     view.rows.push_back(view.rows[1]);
     view.rows.back().slot = 100u + static_cast<unsigned>(i);
@@ -868,8 +869,7 @@ void the_layout_is_finger_sized_and_inside_the_safe_area() {
 }
 
 void a_menu_without_a_title_has_no_header_band() {
-  auto view =
-      *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
+  auto view = options_view(options_menu(), plane_1280x720());
   const TouchMenuLayout titled =
       x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   view.title.clear();
@@ -882,8 +882,7 @@ void a_menu_without_a_title_has_no_header_band() {
 }
 
 void a_menu_without_footers_gives_their_band_to_the_list() {
-  auto view =
-      *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
+  auto view = options_view(options_menu(), plane_1280x720());
   const TouchMenuLayout with =
       x2::input::layout_touch_menu(view, viewport_1280x720(), 0.0F, 0.0F);
   view.footers.clear();
@@ -901,9 +900,9 @@ void a_tap_delivers_the_games_own_input() {
   snapshot.items[2].use_command.clear();
   TouchMenu menu;
   menu.set_viewport(viewport_1280x720());
-  menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 0u);
-  check(menu.shown(), "the touch menu is shown over Options");
-  const TouchMenuView view = *x2::input::build_touch_menu_view(snapshot, plane);
+  menu.set_view(options_view(snapshot, plane), 0u);
+  check(menu.shown(), "the touch menu is shown");
+  const TouchMenuView view = options_view(snapshot, plane);
 
   auto out = tap(menu, find(menu.layout(), TouchMenuPart::row, 1)->rect, 10u);
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
@@ -926,16 +925,16 @@ void a_tap_delivers_the_games_own_input() {
   out = tap(menu, find(menu.layout(), TouchMenuPart::row, 2)->rect, 40u);
   check(out.size() == 1u && out[0].button == TouchAction::MenuUp,
         "a row reached by walking starts with one press the shorter way");
-  out = menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 50u);
+  out = menu.set_view(options_view(snapshot, plane), 50u);
   check(out.empty(), "no second press until the game's focus moved");
-  out = menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 700u);
+  out = menu.set_view(options_view(snapshot, plane), 700u);
   check(out.size() == 1u && out[0].button == TouchAction::MenuUp,
         "a press the game did not answer is sent again");
   snapshot.focused = 2;
-  out = menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 710u);
+  out = menu.set_view(options_view(snapshot, plane), 710u);
   check(out.size() == 1u && out[0].button == TouchAction::MenuA,
         "and A once the focus is on the row");
-  out = menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 720u);
+  out = menu.set_view(options_view(snapshot, plane), 720u);
   check(out.empty(), "the walk is over");
 
   /* From row 2, row 0 is one Down through the wrap. */
@@ -943,7 +942,7 @@ void a_tap_delivers_the_games_own_input() {
   check(out.size() == 1u && out[0].button == TouchAction::MenuDown,
         "a step on another row walks there first");
   snapshot.focused = 0;
-  out = menu.set_view(x2::input::build_touch_menu_view(snapshot, plane), 810u);
+  out = menu.set_view(options_view(snapshot, plane), 810u);
   check(out.size() == 1u && out[0].button == TouchAction::MenuLeft,
         "then steps it with Left");
 
@@ -954,8 +953,7 @@ void a_tap_delivers_the_games_own_input() {
 }
 
 void a_drag_scrolls_and_does_not_press() {
-  auto view =
-      *x2::input::build_touch_menu_view(options_menu(), plane_1280x720());
+  auto view = options_view(options_menu(), plane_1280x720());
   for (int i = 0; i < 9; ++i) {
     view.rows.push_back(view.rows[1]);
     view.rows.back().slot = 100u + static_cast<unsigned>(i);
@@ -982,7 +980,7 @@ void a_drag_scrolls_and_does_not_press() {
 
 int main() {
   retail_text_reads_as_a_player_sees_it();
-  the_view_carries_the_rows_values_and_footer();
+  main_options_and_the_pda_are_native();
   a_delivered_click_lands_in_the_hit_box();
   the_layout_is_finger_sized_and_inside_the_safe_area();
   a_menu_without_footers_gives_their_band_to_the_list();

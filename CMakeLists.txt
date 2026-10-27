@@ -2166,6 +2166,8 @@ set(X2_NATIVE_SOURCES
     src/native/stick_axis_override.cpp
     src/native/menu_start_policy.cpp
     src/native/menu_start_override.cpp
+    src/native/menu_item_tap.cpp
+    src/native/menu_item_mouse_override.cpp
     src/native/world_map_footer.cpp
     src/native/world_map_footer_override.cpp
     src/native/input_probe.cpp
@@ -2191,6 +2193,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_view.cpp
     src/input/touch_menu_parts.cpp
     src/input/menu_touch_gaps.cpp
+    src/input/native_touch_menus.cpp
     src/input/touch_menu_team.cpp
     src/input/touch_menu_team_details.cpp
     src/input/touch_menu_shop.cpp

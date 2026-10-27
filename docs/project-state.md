@@ -53,7 +53,7 @@ list per menu.
 | S023 | Seamless LAN multiplayer without GameSpy's servers | partial | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 | S024 | Optional free or paid party revive at extraction points | partial | S002, S008, S016 | G004 |
-| S025 | Touch menus drawn in the game's own art and style | missing | S004, S008 | G008 |
+| S025 | Touch menus drawn in the game's own art and style | partial | S004, S008 | G008 |
 
 ## State details and evidence
 
@@ -2249,10 +2249,12 @@ Gap: the energy refill from below maximum was not observed (health was); the sho
 compared with a guest call of `0x004b8830`; what the get-up timer's `0x005252e0` `+0x1c8` check
 asks (it decides whether a revive keeps its fraction) is not decoded.
 
-### S025 — touch menus in the game's own art: missing
+### S025 — touch menus in the game's own art: partial
 
-Missing capability: touch menus drawn with the game's own panels, fonts, colours and focus art
-from the install, laid out for fingers (G008). The touch menus today are a port-styled
-RmlUi panel over the retail menu. The route is the retail menus themselves, touched directly
+Touch menus drawn with the game's own panels, fonts, colours and focus art from the install,
+laid out for fingers (G008). The main menu, Options and the PDA are native: the game draws them,
+nothing covers them, and a tap is its own pointer (`tools/live_case.py touch-menu`). Their
+footers still show keyboard keycaps and their rows are smaller than a finger. The other menus
+are still a port-styled RmlUi panel over the retail menu. The route is the retail menus themselves, touched directly
 ([#199](issues/0199-native-touch-menus.md)); `tools/scan.py` lists what a finger cannot yet do on
 each menu, and that list is the work.

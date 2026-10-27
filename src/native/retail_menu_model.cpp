@@ -11,6 +11,7 @@ namespace {
 
 /* XMen2.exe is linked at 0x00400000; every static below is an RVA. */
 inline constexpr std::uint32_t kLinkedBase = 0x00400000u;
+inline constexpr std::uint32_t kMenuVtableOnMouse = 0x80u;
 
 /* `FUN_005d88b0` stores the CMenuMgr singleton here. */
 inline constexpr std::uint32_t kManagerRva = 0x004aff18u;
@@ -697,6 +698,11 @@ ReadStatus RetailMenuModel::read_menu(std::uint32_t menu, MenuSnapshot *out) {
     return ReadStatus::unreadable;
   }
   out->menu_class = classify_menu(vtable, reader_.image_base());
+  std::uint32_t on_mouse = 0;
+  if (!reader_.u32(vtable + kMenuVtableOnMouse, &on_mouse)) {
+    return ReadStatus::unreadable;
+  }
+  out->on_mouse = on_mouse - reader_.image_base() + kLinkedBase;
   for (const MenuModeEntry &entry : kMenuModes) {
     if (entry.menu_class != out->menu_class) {
       continue;

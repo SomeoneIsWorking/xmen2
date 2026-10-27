@@ -1,5 +1,6 @@
 #include "touch_menu_source.hpp"
 
+#include "../input/native_touch_menus.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_runtime_menu.hpp"
 #include "x86rt_native.h"
@@ -58,7 +59,7 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   if (!x2::input::touch_runtime_active()) {
     if (offered_) {
       offered_ = false;
-      input::touch_runtime_set_menu(std::nullopt);
+      input::touch_runtime_set_menu(std::nullopt, false);
     }
     return;
   }
@@ -68,18 +69,21 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   last_ms_ = now_ms;
   offered_ = true;
   std::optional<input::TouchMenuView> view;
+  bool native = false;
   const std::uint32_t image = x86_module_base("XMen2.exe");
   menu::MenuSnapshot snapshot;
   std::uint32_t failed = 0u;
   if (image != 0u &&
       menu::read_live_menu(&snapshot, &failed) == menu::ReadStatus::ok) {
+    native = !snapshot.popup_up &&
+             input::menu_is_native_on_touch(snapshot.menu_class);
     const LiveGuestMemory memory;
     if (const auto plane = read_scene_plane(memory, image)) {
       gaps_.observe(snapshot, *plane);
       view = input::build_touch_menu_view(snapshot, *plane);
     }
   }
-  input::touch_runtime_set_menu(std::move(view));
+  input::touch_runtime_set_menu(std::move(view), native);
 }
 
 void refresh_touch_menu() { source.refresh(SDL_GetTicks()); }

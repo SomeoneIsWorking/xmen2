@@ -9,8 +9,10 @@
 
 namespace x2::control {
 
-/* The snapshot as the JSON GET /menu returns; all_items adds every item. */
-std::string menu_json(const menu::MenuSnapshot &menu, bool all_items);
+/* The snapshot as the JSON GET /menu returns; all_items adds every item, and
+   a scene plane adds each item's tap point. */
+std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
+                      const presentation::RetailScenePlane *plane);
 
 /* The touch menu as drawn: its rows and every button's output rectangle. */
 std::string touch_menu_json(const input::TouchMenuState &state);
