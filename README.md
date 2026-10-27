@@ -233,9 +233,7 @@ The input-specific features are:
   headless on Xvfb and captures a frame; `scratch/run/stock` is the unmodified
   reference and `scratch/run/proxy` swaps in our DLL. Both are symlink farms — the
   real game install is never modified.
-- **Ledgers**: `docs/info/` holds what has been *proven* (claims, each with the
-  observation that would falsify it) and which tools can be *trusted* (instruments).
-  Query with `info.py brief <words>` before re-deriving anything.
+- **Notes**: search `docs/` with `rg` before re-deriving anything.
 
 ## Progress tracking
 

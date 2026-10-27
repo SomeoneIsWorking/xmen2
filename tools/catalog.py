@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared_dir import shared_dir
 
-_tool = os.path.join(shared_dir("re-harness", "catalog.py"), "catalog.py")
+_tool = os.path.join(shared_dir("re-harness", "tools/catalog.py"), "tools", "catalog.py")
 
 if __name__ == "__main__":
     sys.argv[0] = _tool

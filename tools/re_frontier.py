@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared_dir import shared_dir
 
-_tool = os.path.join(shared_dir("re-harness", "re_frontier.py"), "re_frontier.py")
+_tool = os.path.join(shared_dir("re-harness", "tools/re_frontier.py"), "tools", "re_frontier.py")
 
 if __name__ == "__main__":
     sys.argv[0] = _tool
