@@ -22,10 +22,9 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S018 — combat performance.** Combat is reported slow on the phone; the
-desktop reproduction is `tools/live_case.py combat-bench` (a boss fight). Its
-first finding, whole-cache JIT flushes, is fixed ([#194](issues/0194-combat-hitches-when-the-jit-block-table-fills.md));
-the remaining steady-state profile is the active work.
+**S025 — native touch menus.** The retail menus become the touch UI with nothing drawn
+over them ([#199](issues/0199-native-touch-menus.md)); `tools/scan.py` gives the work
+list per menu.
 
 ## Capability inventory
 
@@ -2253,5 +2252,7 @@ asks (it decides whether a revive keeps its fraction) is not decoded.
 ### S025 — touch menus in the game's own art: missing
 
 Missing capability: touch menus drawn with the game's own panels, fonts, colours and focus art
-from the install, laid out for fingers (G008). The touch menus (S008) today are a port-styled
-RmlUi panel over the retail menu. Not started.
+from the install, laid out for fingers (G008). The touch menus today are a port-styled
+RmlUi panel over the retail menu. The route is the retail menus themselves, touched directly
+([#199](issues/0199-native-touch-menus.md)); `tools/scan.py` lists what a finger cannot yet do on
+each menu, and that list is the work.

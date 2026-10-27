@@ -1,0 +1,181 @@
+#include "menu_touch_gaps.hpp"
+
+#include "../native/x2_log.h"
+#include "touch_menu_view.hpp"
+
+#include <algorithm>
+#include <array>
+#include <string_view>
+
+namespace x2::input {
+namespace {
+
+constexpr std::string_view kTokenPrefix = "$MENU_";
+constexpr std::string_view kFooterPrefix = "desctext";
+/* The tokens CMenuItemText::onMouse turns into an action. */
+constexpr std::array<std::string_view, 7> kClickedTokens = {
+    "$MENU_ACCEPT", "$MENU_SUBTRACT", "$MENU_OK",   "$MENU_BACK",
+    "$MENU_NEXT",   "$MENU_PREV",     "$MENU_OTHER"};
+
+/* The item's name and, when it shows text, that text. */
+std::string named(const menu::MenuItem &item) {
+  const std::string text = touch_menu_text(item.label);
+  return text.empty() ? item.name : item.name + " \"" + text + "\"";
+}
+
+bool shown(const menu::MenuItem &item) {
+  return item.enabled() && !item.hidden();
+}
+
+bool is_list(menu::ItemClass item_class) {
+  switch (item_class) {
+  case menu::ItemClass::list:
+  case menu::ItemClass::list_box:
+  case menu::ItemClass::list_codex:
+  case menu::ItemClass::list_items:
+  case menu::ItemClass::list_cycle:
+  case menu::ItemClass::list_chars:
+  case menu::ItemClass::skills:
+    return true;
+  default:
+    return false;
+  }
+}
+
+std::string_view token_in(std::string_view label) {
+  const std::size_t at = label.find(kTokenPrefix);
+  if (at == std::string_view::npos) {
+    return {};
+  }
+  std::size_t end = at;
+  while (end < label.size() && label[end] != ' ' && label[end] != '\n') {
+    ++end;
+  }
+  return label.substr(at, end - at);
+}
+
+bool clicked(std::string_view token) {
+  return std::find(kClickedTokens.begin(), kClickedTokens.end(), token) !=
+         kClickedTokens.end();
+}
+
+float client_width(const menu::SceneRect &rect,
+                   const presentation::RetailScenePlane &plane) {
+  return static_cast<float>(rect.right - rect.left) *
+         static_cast<float>(plane.client_width()) / plane.width();
+}
+
+float client_height(int scene_height,
+                    const presentation::RetailScenePlane &plane) {
+  return static_cast<float>(scene_height) *
+         static_cast<float>(plane.client_height()) / plane.height();
+}
+
+bool small(const menu::SceneRect &rect,
+           const presentation::RetailScenePlane &plane) {
+  const float finger = menu_finger_target(plane);
+  return client_width(rect, plane) < finger ||
+         client_height(rect.bottom - rect.top, plane) < finger;
+}
+
+} // namespace
+
+const char *menu_touch_gap_kind_name(MenuTouchGapKind kind) {
+  switch (kind) {
+  case MenuTouchGapKind::row_without_command:
+    return "row-without-command";
+  case MenuTouchGapKind::step:
+    return "step";
+  case MenuTouchGapKind::list:
+    return "list";
+  case MenuTouchGapKind::footer_token:
+    return "footer-token";
+  case MenuTouchGapKind::small_target:
+    return "small-target";
+  case MenuTouchGapKind::popup:
+    return "popup";
+  }
+  return "unknown";
+}
+
+float menu_finger_target(const presentation::RetailScenePlane &plane) {
+  return 0.1F * static_cast<float>(
+                    std::min(plane.client_width(), plane.client_height()));
+}
+
+std::vector<MenuTouchGap>
+find_menu_touch_gaps(const menu::MenuSnapshot &menu,
+                     const presentation::RetailScenePlane &plane) {
+  std::vector<MenuTouchGap> gaps;
+  if (menu.popup_up) {
+    gaps.push_back({MenuTouchGapKind::popup, "popup"});
+    return gaps;
+  }
+  for (const int index : menu.rows) {
+    const menu::MenuItem &item = menu.items[static_cast<std::size_t>(index)];
+    if (!shown(item)) {
+      continue;
+    }
+    if (is_list(item.item_class)) {
+      gaps.push_back({MenuTouchGapKind::list, named(item)});
+      if (item.list_box && client_height(item.list_box->row_height, plane) <
+                               menu_finger_target(plane)) {
+        gaps.push_back({MenuTouchGapKind::small_target, item.name});
+      }
+      continue;
+    }
+    if (item.has_left_right()) {
+      gaps.push_back({MenuTouchGapKind::step, named(item)});
+    }
+    if (item.use_command.empty()) {
+      if (!item.has_left_right() && item.item_class == menu::ItemClass::text &&
+          !item.label.empty()) {
+        gaps.push_back({MenuTouchGapKind::row_without_command, named(item)});
+      }
+    } else if (small(item.rect, plane)) {
+      gaps.push_back({MenuTouchGapKind::small_target, item.name});
+    }
+  }
+  for (const menu::MenuItem &item : menu.items) {
+    if (!item.name.starts_with(kFooterPrefix) || !shown(item)) {
+      continue;
+    }
+    const std::string_view token = token_in(item.label);
+    if (token.empty()) {
+      continue;
+    }
+    if (!clicked(token)) {
+      gaps.push_back({MenuTouchGapKind::footer_token, std::string(token)});
+    } else if (small(item.rect, plane)) {
+      gaps.push_back({MenuTouchGapKind::small_target, item.name});
+    }
+  }
+  return gaps;
+}
+
+void MenuTouchGapReport::observe(const menu::MenuSnapshot &menu,
+                                 const presentation::RetailScenePlane &plane) {
+  if (menu.address != open_menu_) {
+    open_menu_ = menu.address;
+    open_gaps_.clear();
+  }
+  for (MenuTouchGap &gap : find_menu_touch_gaps(menu, plane)) {
+    Key key{menu.name, gap.kind, std::move(gap.item)};
+    if (std::find(open_gaps_.begin(), open_gaps_.end(), key) !=
+        open_gaps_.end()) {
+      continue;
+    }
+    ++counts_[key];
+    open_gaps_.push_back(std::move(key));
+  }
+}
+
+void MenuTouchGapReport::report() const {
+  for (const auto &[key, count] : counts_) {
+    x2_log_info("menu touch gap: %s %s %s x%u\n", std::get<0>(key).c_str(),
+                menu_touch_gap_kind_name(std::get<1>(key)),
+                std::get<2>(key).c_str(), count);
+  }
+}
+
+} // namespace x2::input
