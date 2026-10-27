@@ -16,7 +16,8 @@ at runtime and why the PC build is the conformance target.
 ## Start here, before touching anything
 
 ```sh
-uv run --frozen python tools/info.py brief <words>
+rg -i '<words>' docs
+codemap.py find '<concept>'
 ```
 
 `docs/project-goals.md`, `docs/project-state.md`, `docs/codemap.md`,
