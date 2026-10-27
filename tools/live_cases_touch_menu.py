@@ -1,4 +1,5 @@
-"""Live cases for the touch menu over each retail menu class it replaces."""
+"""Live cases for a finger on the retail menus, drawn natively or under the
+touch menu over each class it still replaces."""
 
 from __future__ import annotations
 
@@ -9,23 +10,26 @@ import time
 from live_game import live_controls
 from live_harness import Case
 from live_menu import (
-    MAIN_MENU_LABELS,
     dismiss_level_up,
     drag_touch,
     keyboard_into_gameplay,
     keyboard_into_the_pda,
     keyboard_past_the_intro,
+    menu_footer,
     menu_item,
     menu_labels,
     menu_list,
+    menu_row,
     read_menu,
     reveal_touch_row,
+    tap_menu_item,
     tap_touch_button,
     touch_button,
     touch_menu,
     touch_row,
     wait_game_menu,
-    wait_row_change,
+    wait_menu,
+    wait_menu_row_change,
     wait_settled_touch_menu,
     wait_touch_menu,
 )
@@ -36,99 +40,72 @@ OPTIONS_PACKAGE = "menus/options.pkgb"
 
 
 def case_touch_menu(case: Case) -> None:
-    """The port's touch menu over the retail main and Options menus.
+    """A finger on the retail main and Options menus, which draw no touch menu.
 
-    Each tap is judged by the game's own state as GET /menu reads it: the menu
-    the game has open, a volume bar's level, a toggle's value text. The
-    negative comes first, so a run where every tap "works" cannot pass.
+    Each tap lands on the box the game itself hit-tests and is judged by the
+    game's own state as GET /menu reads it: the menu it has open, a volume
+    bar's level, a toggle's value text. The negative comes first, so a run
+    where every tap "works" cannot pass.
     """
     case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     case.check("the run reached the main menu",
                keyboard_past_the_intro(case, 300))
-    main = wait_touch_menu(case, "main", 30)
+    main = wait_menu(case, "main", 30)
     (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
-    case.check("the touch menu is shown over the main menu",
-               main.get("visible") is True and main.get("menu") == "main",
-               str({k: main.get(k) for k in ("visible", "menu")}))
-    if not main.get("visible"):
-        return
-    print("  main rows: %s" % [row["label"] for row in main.get("rows", [])])
-    case.check("it offers the main menu's rows",
-               [row["label"].lower() for row in main["rows"]]
-               == MAIN_MENU_LABELS)
+    case.check("nothing is drawn over the main menu",
+               main.get("touch_menu", {}).get("visible") is False)
     controls = live_controls(case)
-    case.check("and the menu pad is not drawn under it",
+    case.check("not even the menu pad",
                "menu-a" not in controls, "drawn: %s" % sorted(controls))
     time.sleep(1.0)
     case.shot("main")
 
     opened_before = case.log_text().count(OPTIONS_PACKAGE)
-    title = {"left": 0.0, "top": 0.0, "width": main["viewport_width"],
-             "height": main["viewport_height"] * 0.02}
-    tap_touch_button(case, main, title)
+    case.http("/touch?x=0.5&y=0.02")
     time.sleep(3.0)
-    case.check("a tap on no button activates nothing",
+    case.check("a tap on no item activates nothing",
                case.log_text().count(OPTIONS_PACKAGE) == opened_before
                and read_menu(case).get("menu") == "main")
 
-    options_button = touch_button(main, "row", "options")
-    case.check("the main menu has an OPTIONS button", options_button is not None)
-    if options_button is None:
-        return
-    case.check("OPTIONS was tapped",
-               tap_touch_button(case, main, options_button))
-    options = wait_touch_menu(case, "options", 20)
+    options_row = menu_row(main, "options")
+    case.check("OPTIONS was tapped", tap_menu_item(case, options_row))
+    options = wait_menu(case, "options", 20)
     (case.dir / "options.json").write_text(json.dumps(options, indent=1)
                                            + "\n")
     case.check("the tap opened the game's Options menu",
-               read_menu(case).get("menu") == "options"
-               and options.get("visible") is True,
-               "the game's menu is %r" % read_menu(case).get("menu"))
-    if not options.get("visible"):
+               options.get("menu") == "options",
+               "the game's menu is %r" % options.get("menu"))
+    if options.get("menu") != "options":
         return
     time.sleep(1.0)
     case.shot("options")
 
-    volume = touch_row(options, "effects volume")
-    step = touch_button(options, "step-left", "effects volume")
-    case.check("the effects volume row has a step-left button",
-               step is not None and volume.get("fill") is not None)
-    if step is not None:
-        before = volume.get("fill")
-        tap_touch_button(case, options, step)
-        after = wait_row_change(case, "effects volume", "fill", before, 10)
-        case.check("its step-left lowered the game's effects volume",
-                   after.get("fill") is not None and before is not None
-                   and after["fill"] < before,
-                   "%s -> %s" % (before, after.get("fill")))
-        options = touch_menu(case)
+    before = menu_row(options, "effects volume").get("fill")
+    bar = menu_item(case, "fx_vol")
+    case.check("the effects volume bar was tapped", tap_menu_item(case, bar))
+    after = wait_menu_row_change(case, "effects volume", "fill", before, 10)
+    case.check("a tap left of the bar's level lowered the game's volume",
+               after.get("fill") is not None and before is not None
+               and after["fill"] < before,
+               "%s -> %s" % (before, after.get("fill")))
 
-    toggle = touch_row(options, "combat music")
-    toggle_button = touch_button(options, "row", "combat music")
+    toggle = menu_row(read_menu(case), "combat music")
+    before = toggle.get("value")
     case.check("the combat music row shows its value",
-               toggle.get("value") in ("On", "Off") and toggle_button,
-               repr(toggle.get("value")))
-    if toggle_button:
-        before = toggle.get("value")
-        tap_touch_button(case, options, toggle_button)
-        after = wait_row_change(case, "combat music", "value", before, 10)
-        case.check("tapping it changed the game's value text",
-                   after.get("value") in ("On", "Off")
-                   and after.get("value") != before,
-                   "%r -> %r" % (before, after.get("value")))
-        time.sleep(1.0)
-        case.shot("options-changed")
+               before in ("On", "Off"), repr(before))
+    tap_menu_item(case, toggle)
+    after = wait_menu_row_change(case, "combat music", "value", before, 10)
+    case.check("tapping it changed the game's value text",
+               after.get("value") in ("On", "Off")
+               and after.get("value") != before,
+               "%r -> %r" % (before, after.get("value")))
+    time.sleep(1.0)
+    case.shot("options-changed")
 
-    options = touch_menu(case)
-    back = touch_button(options, "footer", "back")
-    case.check("Options offers the game's Back footer", back is not None,
-               str([b["label"] for b in options.get("buttons", [])
-                    if b["part"] == "footer"]))
-    if back is None:
-        return
-    tap_touch_button(case, options, back)
+    back = menu_footer(read_menu(case), "$MENU_BACK")
+    case.check("Back was tapped", tap_menu_item(case, back))
     deadline = time.monotonic() + 20
     left = read_menu(case).get("menu")
     while time.monotonic() < deadline and left in (None, "options"):
@@ -155,15 +132,12 @@ def case_touch_team(case: Case) -> None:
     pda = keyboard_into_the_pda(case, 300)
     case.check("the run reached the PDA", pda.get("menu") == "pda",
                str(pda.get("menu")))
-    shown = wait_touch_menu(case, "pda", 20)
-    case.check("the touch menu is shown over the PDA",
-               shown.get("visible") is True)
-    team_button = touch_button(shown, "row", "team management")
-    case.check("the PDA offers Team Management", team_button is not None)
-    if team_button is None:
+    team_row = menu_row(pda, "team management")
+    case.check("the PDA has Team Management", bool(team_row))
+    if not team_row:
         return
     case.shot("pda")
-    tap_touch_button(case, shown, team_button)
+    tap_menu_item(case, team_row)
     team = wait_touch_menu(case, "team", 20)
     (case.dir / "team.json").write_text(json.dumps(team, indent=1) + "\n")
     heroes = [row["label"] for row in team.get("rows", [])]

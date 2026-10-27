@@ -146,6 +146,23 @@ int win32_pointer_set_cursor_pos(int32_t x, int32_t y) {
   return SDL_WarpMouseGlobal((float)host_x, (float)host_y);
 }
 
+int win32_pointer_client_to_window(int32_t x, int32_t y, float *fraction_x,
+                                   float *fraction_y) {
+  MouseGeometry geometry;
+  int32_t host_x, host_y;
+
+  mouse_geometry(&geometry);
+  if (!x2::native::win32_mouse_unmap_point(
+          x, y, geometry.window_width, geometry.window_height,
+          geometry.game_width, geometry.game_height, &host_x, &host_y) ||
+      host_x < 0 || host_y < 0 || (uint32_t)host_x >= geometry.window_width ||
+      (uint32_t)host_y >= geometry.window_height)
+    return 0;
+  *fraction_x = ((float)host_x + 0.5F) / (float)geometry.window_width;
+  *fraction_y = ((float)host_y + 0.5F) / (float)geometry.window_height;
+  return 1;
+}
+
 static uint32_t modifiers(void) {
   SDL_Keymod state = SDL_GetModState();
   uint32_t result = 0;

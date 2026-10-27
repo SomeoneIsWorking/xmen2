@@ -107,7 +107,9 @@ public:
   // The port's touch menu: touch play, a window, and a retail menu it
   // replaces. It covers the screen, so neither pad is drawn under it.
   bool touch_menu_shown() const;
-  void set_touch_menu(std::optional<TouchMenuView> view);
+  // The retail menu as touch meets it: the touch menu's view of a class it
+  // replaces, or `native` for one a finger drives directly.
+  void set_menu(std::optional<TouchMenuView> view, bool native);
   TouchMenuState touch_menu_state() const { return touch_menu_.state(); }
 
 private:
@@ -152,6 +154,7 @@ private:
      where the screen is. */
   x2::presentation::LayoutViewport viewport_{};
   bool menu_requested_ = false;
+  bool native_menu_ = false;
 };
 
 namespace {
@@ -174,19 +177,21 @@ bool TouchRuntime::overlay_visible() const {
 
 bool TouchRuntime::menu_visible() const {
   return window_ != nullptr && active() && !touch_menu_shown() &&
-         !x2_gameplay_control_active(guest_clock_now_s());
+         !native_menu_ && !x2_gameplay_control_active(guest_clock_now_s());
 }
 
 bool TouchRuntime::touch_menu_shown() const {
   return window_ != nullptr && active() && touch_menu_.shown();
 }
 
-void TouchRuntime::set_touch_menu(std::optional<TouchMenuView> view) {
-  /* The game must be reading the pad before the first step or walk taps it. */
-  if (view && window_ != nullptr && !touch_menu_.shown()) {
+void TouchRuntime::set_menu(std::optional<TouchMenuView> view, bool native) {
+  /* The game must be reading the pad before the first tap on a pad control:
+     the press that claims it is lost while player one resolves. */
+  if (window_ != nullptr && active()) {
     touch_pad::ensure();
     touch_pad::claim_player_one();
   }
+  native_menu_ = native;
   const auto owed = touch_menu_.set_view(std::move(view), SDL_GetTicks());
   deliver(owed);
 }
@@ -625,8 +630,8 @@ std::size_t TouchRuntime::visuals(TouchVisual *out,
                          controls_.stick_ring(), out, capacity);
 }
 
-void touch_runtime_set_menu(std::optional<TouchMenuView> view) {
-  runtime.set_touch_menu(std::move(view));
+void touch_runtime_set_menu(std::optional<TouchMenuView> view, bool native) {
+  runtime.set_menu(std::move(view), native);
 }
 
 TouchMenuState touch_menu_state() { return runtime.touch_menu_state(); }

@@ -97,9 +97,19 @@ constexpr std::uint32_t kVtMenuCodex = 0x0069e6d4u;
 constexpr std::uint32_t kVtListCodex = 0x006a0724u;
 constexpr std::uint32_t kVtSkills = 0x006a0f14u;
 constexpr std::uint32_t kListStore = 0x25000000u;
+/* CMenuOptions::onMouse. */
+constexpr std::uint32_t kOptionsOnMouse = 0x005cb5f0u;
 
 std::uint32_t rebased(std::uint32_t linked) {
   return linked - kLinked + kImage;
+}
+
+/* The menu at kMenu is of class `vtable`, whose onMouse slot holds
+   `on_mouse`. */
+void menu_vtable(FakeGuest *guest, std::uint32_t vtable,
+                 std::uint32_t on_mouse) {
+  guest->u32(kMenu, rebased(vtable));
+  guest->u32(rebased(vtable) + 0x80u, rebased(on_mouse));
 }
 
 /* handle_str<2>: generation in the top byte, slot in the low bits. */
@@ -207,7 +217,7 @@ FakeGuest build_options() {
   guest.u32(rebased(0x008b13ecu), 0u);
   guest.u32(kManager + 0x86090u, kMenu);
   guest.zero(kMenu, 0x1800u);
-  guest.u32(kMenu, rebased(kVtMenuOptions));
+  menu_vtable(&guest, kVtMenuOptions, kOptionsOnMouse);
   guest.text(kMenu + 0x0cu, "options");
   guest.u32(kMenu + 0x2f4u, pool.add("$MENU_BACK Back"));
   guest.u32(kMenu + 0x324u, item_address(3));
@@ -320,6 +330,8 @@ void test_reads_the_options_menu() {
   check(model.read(&menu) == x2::menu::ReadStatus::ok, "the menu reads");
   check(menu.name == "options", "the menu's name");
   check(menu.menu_class == "CMenuOptions", "the menu's class from its vtable");
+  check(menu.on_mouse == kOptionsOnMouse,
+        "the class's onMouse at its linked address");
   check(menu.desctext[0] == "$MENU_BACK Back", "the menu's desctext1");
   check(menu.items.size() == 8u,
         "the released slot is not an item, the stale pointer notwithstanding");
@@ -501,7 +513,7 @@ FakeGuest build_team(std::uint32_t mode) {
   guest.u32(rebased(0x008b13ecu), 0u);
   guest.u32(kManager + 0x86090u, kMenu);
   guest.zero(kMenu, 0x1900u);
-  guest.u32(kMenu, rebased(kVtMenuTeam));
+  menu_vtable(&guest, kVtMenuTeam, x2::menu::kMenuOnMouse);
   guest.text(kMenu + 0x0cu, "team");
   guest.u32(kMenu + 0x15f0u, 0x1fu);
   guest.u32(kMenu + 0x1608u, 5u);
@@ -637,7 +649,7 @@ void test_team_menu() {
 
 /* A shop-shaped menu: one list box of three entries drawn from the shared
    record table, the second selected, the window scrolled by one. */
-FakeGuest build_list_menu(std::uint32_t entries, std::uint32_t menu_vtable,
+FakeGuest build_list_menu(std::uint32_t entries, std::uint32_t menu_class,
                           std::uint32_t list_vtable) {
   FakeGuest guest;
   Pool2 pool(&guest);
@@ -645,7 +657,7 @@ FakeGuest build_list_menu(std::uint32_t entries, std::uint32_t menu_vtable,
   guest.u32(rebased(0x008b13ecu), 0u);
   guest.u32(kManager + 0x86090u, kMenu);
   guest.zero(kMenu, 0x1900u);
-  guest.u32(kMenu, rebased(menu_vtable));
+  menu_vtable(&guest, menu_class, x2::menu::kMenuOnMouse);
   guest.text(kMenu + 0x0cu, "shop");
   guest.u32(kMenu + 0x15f0u, 0x01u);
   guest.u32(kMenu + 0x1608u, 1u);

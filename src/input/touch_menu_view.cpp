@@ -69,45 +69,6 @@ bool TouchMenuView::same_screen(const TouchMenuView &other) const {
 
 namespace {
 
-/* The main menu, Options and the PDA: their up/down rows as the game orders
-   them. */
-std::optional<TouchMenuView>
-build_row_menu_view(const menu::MenuSnapshot &menu,
-                    const presentation::RetailScenePlane &plane) {
-  TouchMenuView view = start_menu_view(menu);
-  for (const int index : menu.rows) {
-    const menu::MenuItem &item = menu.items[static_cast<std::size_t>(index)];
-    if (!menu_item_shown(item)) {
-      continue;
-    }
-    TouchMenuRow row;
-    row.label = touch_menu_text(item.label);
-    row.fill = item.fill;
-    if (item.value_item >= 0) {
-      const menu::MenuItem &value =
-          menu.items[static_cast<std::size_t>(item.value_item)];
-      row.value = touch_menu_text(value.label);
-      if (value.fill) {
-        row.fill = value.fill;
-      }
-    }
-    row.clicks = !item.use_command.empty();
-    row.steps = item.has_left_right();
-    row.focused = index == menu.focused;
-    row.slot = item.slot;
-    row.click = menu_item_centre(item.rect, plane);
-    if (row.focused) {
-      view.focused_row = static_cast<int>(view.rows.size());
-    }
-    view.rows.push_back(std::move(row));
-  }
-  if (view.rows.empty()) {
-    return std::nullopt;
-  }
-  append_menu_footers(menu, plane, &view);
-  return view;
-}
-
 using ViewBuilder = std::optional<TouchMenuView> (*)(
     const menu::MenuSnapshot &, const presentation::RetailScenePlane &);
 
@@ -116,10 +77,7 @@ struct ReplacedClass {
   ViewBuilder build;
 };
 
-constexpr std::array<ReplacedClass, 10> kReplacedClasses = {{
-    {"CMenuMain", build_row_menu_view},
-    {"CMenuOptions", build_row_menu_view},
-    {"CMenuPDA", build_row_menu_view},
+constexpr std::array<ReplacedClass, 7> kReplacedClasses = {{
     {"CMenuTeam", build_team_view},
     {"CMenuShop", build_shop_view},
     {"CMenuCodex", build_codex_view},

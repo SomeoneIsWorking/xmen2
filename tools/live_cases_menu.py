@@ -19,15 +19,13 @@ from live_menu import (
     OPTIONS_MENU_LABELS,
     MenuTimeline,
     keyboard_past_the_intro,
+    menu_row,
     open_options,
     read_menu,
     row_labels,
-    tap_touch_button,
-    touch_button,
-    touch_menu,
+    tap_menu_item,
     wait_menu,
     wait_movie_end,
-    wait_touch_menu,
     walk_rows_by_key,
 )
 
@@ -204,29 +202,33 @@ def case_menu_touch(case: Case) -> None:
                keyboard_past_the_intro(case, 300))
     case.shot("menu")
 
-    # The main menu is the touch menu's: its rows are covered by the
-    # touch-menu case. Here only the census's account of this run is checked.
-    shown = wait_touch_menu(case, "main", 30)
-    case.check("the touch menu covers the main menu", shown.get("visible") is True)
-    beats = len(re.findall(r"went to the touch menu", case.log_text()))
-    case.http("/touch?x=0.02&y=0.5")
+    # The main menu is drawn natively, so a tap on its row is the retail
+    # pointer too; its rows are covered by the touch-menu case.
+    main = wait_menu(case, "main", 30)
+    case.check("nothing is drawn over the main menu",
+               main.get("touch_menu", {}).get("visible") is False)
+    case.check("the OPTIONS row was tapped",
+               tap_menu_item(case, menu_row(main, "options")))
+    case.check("and opened the game's Options",
+               wait_menu(case, "options", 20).get("menu") == "options")
+    pointers: list[int] = []
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
-        if len(re.findall(r"went to the touch menu", case.log_text())) > beats:
+        report = case.log_text()
+        pointers = [int(n) for n in re.findall(
+            r"(\d+) contact\(s\) became the retail GUI pointer", report)]
+        if pointers and max(pointers) >= 4:
             break
         time.sleep(1.0)
     report = case.log_text()
-    pointers = [int(n) for n in re.findall(
-        r"(\d+) contact\(s\) became the retail GUI pointer", report)]
     menu_contacts = [int(n) for n in re.findall(
         r"(\d+) contact event\(s\) went to the touch menu", report)]
     dropped = [int(n) for n in re.findall(
         r"(\d+) of \d+ contact\(s\) were dropped before routing", report)]
-    case.check("the census counted the intro tap as the retail pointer",
-               bool(pointers) and max(pointers) >= 2,
+    case.check("the census counted the intro and menu taps as the retail "
+               "pointer", bool(pointers) and max(pointers) >= 4,
                "%d at most" % max(pointers, default=0))
-    case.check("and the menu tap as the touch menu's",
-               bool(menu_contacts) and max(menu_contacts) >= 2,
+    case.check("and none as the touch menu's", max(menu_contacts, default=0) == 0,
                "%d at most" % max(menu_contacts, default=0))
     case.check("and reported none of them dropped",
                bool(dropped) and max(dropped) == 0,
@@ -234,34 +236,30 @@ def case_menu_touch(case: Case) -> None:
 
 
 def case_menu_pad(case: Case) -> None:
-    """The menu pad where the touch menu stands aside.
+    """The menu pad over the main menu's popup.
 
-    New Game raises the difficulty popup over the main menu; the touch menu
-    hides under a popup, touch play draws the d-pad and face buttons, and the
-    pad's B must close the popup.
+    New Game raises the difficulty popup over the main menu; touch play draws
+    the d-pad and face buttons there, and the pad's B must close the popup.
     """
     case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     case.check("the run reached the main menu",
                keyboard_past_the_intro(case, 300))
-    main = wait_touch_menu(case, "main", 30)
-    new_game = touch_button(main, "row", "new game")
-    case.check("the touch menu offers NEW GAME", new_game is not None)
-    if new_game is None:
+    main = wait_menu(case, "main", 30)
+    new_game = menu_row(main, "new game")
+    case.check("the main menu has NEW GAME", bool(new_game))
+    if not new_game:
         return
     timeline = MenuTimeline(case, "timeline.txt")
-    tap_touch_button(case, main, new_game)
+    tap_menu_item(case, new_game)
     menu = timeline.until(lambda m: m.get("popup") is True, 20)
     case.check("NEW GAME opened the game's difficulty popup",
                menu.get("menu") == "main" and menu.get("popup") is True,
                "menu %r popup %r" % (menu.get("menu"), menu.get("popup")))
-    timeline.until(lambda m: not m.get("touch_menu", {}).get("visible"), 5)
     controls = live_controls(case)
     viewport = live_viewport(case)
-    case.check("the touch menu stands aside there",
-               touch_menu(case).get("visible") is False)
-    case.check("and the menu pad is drawn instead",
+    case.check("the menu pad is drawn",
                viewport is not None and "menu-b" in controls,
                "drawn: %s" % sorted(controls))
     case.check("and none of the gameplay controls", "jump" not in controls)

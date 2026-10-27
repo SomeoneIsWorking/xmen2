@@ -62,8 +62,21 @@ phone player met: an intro no tap could skip and a menu no tap could press
 sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
 reach the retail world-click handler.
 
-**Every screen that is not gameplay and has no touch menu draws the menu pad**
--- the team menu, the World Map, popups, dialogue. The retail menus are
+**The main menu, Options and the PDA are touched natively** (issue #199): the
+game draws them in its own art, nothing is drawn over them, not even the menu
+pad, and a tap is the retail pointer. `menu_is_native_on_touch` names the
+classes. Retail's pointer path already presses every row with a usecmd and
+every `desctext` footer with a `$MENU_` token, and `CMenuOptions::onMouse`
+steps a volume bar toward the click. What it lacks is
+`x2::native::menu_item_tap`, run after retail's `CMenuItem::onMouse`
+(`0x005bc1b0`) at its own entry: a text row in the up/down chain with no
+usecmd (the PDA's Objectives, the main menu's command-less rows) is focused on
+a press and chosen with `MENU_ACCEPT` on the release, as a row with a usecmd
+is. Prove a screen with `tools/live_case.py touch-menu`, which taps the boxes
+`GET /menu` reports as each item's `tap`.
+
+**Every other screen that is not gameplay and has no touch menu draws the menu
+pad** -- popups, dialogue. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -84,8 +97,9 @@ each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
-**The main menu, Options, the PDA, the team menu's party screen, the shop,
-the stash, the codex, the world map, the review, the region list and the danger room are replaced by the touch menu.** While touch play is the input and one of those
+**The team menu's party screen, the shop, the stash, the codex, the world
+map, the review, the region list and the danger room are still replaced by the
+touch menu**, until each is native (issue #199). While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
@@ -104,7 +118,7 @@ only the game's own input paths, never a guest call or write:
   own focus is on the row, then A, Left or Right.
 
 Each replaced class has its own builder (`touch_menu_view` dispatches): the
-main menu, Options and the PDA list their up/down rows; the team menu lists the
+team menu lists the
 four hero summaries by the names the cards draw, with their levels and the
 empty slot as "Empty slot", where a tap selects a hero and a tap on the
 selected hero opens its details through the game's own click

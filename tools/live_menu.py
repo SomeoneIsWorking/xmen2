@@ -129,6 +129,41 @@ def open_options(case: Case) -> dict:
     return wait_menu(case, "options", 20)
 
 
+def menu_row(menu: dict, label: str) -> dict:
+    """The game's row whose label is `label`, lower case."""
+    for row in menu.get("rows", []):
+        if row["label"].lower() == label:
+            return row
+    return {}
+
+
+def menu_footer(menu: dict, token: str) -> dict:
+    """The game's desctext item carrying `token`, such as $MENU_BACK."""
+    for text in menu.get("texts", []):
+        if text["name"].startswith("desctext") and token in text["label"]:
+            return text
+    return {}
+
+
+def tap_menu_item(case: Case, item: dict) -> bool:
+    """Tap the centre of the box the game hit-tests for `item`."""
+    tap = item.get("tap")
+    return tap is not None and case.http(
+        "/touch?x=%g&y=%g" % (tap["x"], tap["y"]))[0] == 200
+
+
+def wait_menu_row_change(case: Case, label: str, key: str, before,
+                         timeout: float) -> dict:
+    deadline = time.monotonic() + timeout
+    row = {}
+    while time.monotonic() < deadline:
+        row = menu_row(read_menu(case), label)
+        if row and row.get(key) != before:
+            return row
+        time.sleep(0.5)
+    return row
+
+
 def touch_menu(case: Case) -> dict:
     """The touch menu as GET /menu reports it: rows, buttons, viewport."""
     return read_menu(case).get("touch_menu", {})
@@ -181,18 +216,6 @@ def touch_row(shown: dict, label: str) -> dict:
         if row["label"].lower() == label:
             return row
     return {}
-
-
-def wait_row_change(case: Case, label: str, key: str, before,
-                    timeout: float) -> dict:
-    deadline = time.monotonic() + timeout
-    row = {}
-    while time.monotonic() < deadline:
-        row = touch_row(touch_menu(case), label)
-        if row and row.get(key) != before:
-            return row
-        time.sleep(0.5)
-    return row
 
 
 def keyboard_into_the_pda(case: Case, timeout: float) -> dict:

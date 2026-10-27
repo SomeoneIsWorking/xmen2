@@ -16,6 +16,10 @@ int win32_pointer_client_to_screen(int32_t *x, int32_t *y);
 int win32_pointer_screen_to_client(int32_t *x, int32_t *y);
 int win32_pointer_get_cursor_pos(int32_t *x, int32_t *y);
 int win32_pointer_set_cursor_pos(int32_t x, int32_t y);
+/* A guest client point as fractions of the window, where a finger lands on
+   it; 0 when it maps outside the window. */
+int win32_pointer_client_to_window(int32_t x, int32_t y, float *fraction_x,
+                                   float *fraction_y);
 void win32_pointer_translate_mouse(const SDL_Event *event, Win32Mouse *mouse,
                                    uint32_t hwnd);
 void win32_pointer_translate_touch(const input::TouchPointer *pointer,

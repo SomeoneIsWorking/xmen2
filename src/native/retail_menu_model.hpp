@@ -140,10 +140,15 @@ struct MenuItem {
   }
 };
 
+/* CMenu::onMouse: focuses the hit item and never steps one. */
+inline constexpr std::uint32_t kMenuOnMouse = 0x005ae0a0u;
+
 struct MenuSnapshot {
   std::uint32_t address = 0;
   std::string name;
   std::string menu_class;
+  /* The class's onMouse (vtable +0x80) at its preferred address. */
+  std::uint32_t on_mouse = 0;
   /* The menu's own desctext1..5 attributes (menu+0x2f4). */
   std::array<std::string, 5> desctext;
   /* Live items, in name-slot order. */

@@ -1,10 +1,14 @@
 #include "control_menu_route.hpp"
 
+#include "../input/touch_menu_parts.hpp"
 #include "../input/touch_runtime_menu.hpp"
 #include "control.h"
 #include "control_command_bridge.h"
 #include "control_query.h"
 #include "json_string.h"
+#include "touch_menu_source.hpp"
+#include "win32_pointer.h"
+#include "x86rt_native.h"
 
 #include <cstdio>
 #include <vector>
@@ -49,6 +53,24 @@ void put_rect(std::string *out, const menu::SceneRect &rect) {
   out->append(text);
 }
 
+/* Where /touch lands on the box the game hit-tests, as window fractions. */
+void put_tap(std::string *out, const menu::SceneRect &rect,
+             const presentation::RetailScenePlane *plane) {
+  float x = 0.0F;
+  float y = 0.0F;
+  if (plane == nullptr) {
+    return;
+  }
+  const presentation::ClientPoint client =
+      input::menu_item_centre(rect, *plane);
+  if (native::win32_pointer_client_to_window(client.x, client.y, &x, &y) == 0) {
+    return;
+  }
+  char text[64];
+  std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x, y);
+  out->append(text);
+}
+
 void put_fill(std::string *out, const std::optional<float> &fill) {
   put_key(out, "fill");
   if (fill) {
@@ -68,7 +90,8 @@ void close_object(std::string *out) {
 }
 
 void put_row(std::string *out, const menu::MenuSnapshot &menu,
-             const menu::MenuItem &item) {
+             const menu::MenuItem &item,
+             const presentation::RetailScenePlane *plane) {
   out->push_back('{');
   put_int(out, "slot", static_cast<long>(item.slot));
   put_text(out, "name", item.name);
@@ -88,6 +111,7 @@ void put_row(std::string *out, const menu::MenuSnapshot &menu,
   put_text(out, "value_item", value ? value->name : std::string());
   put_fill(out, value ? value->fill : item.fill);
   put_rect(out, item.rect);
+  put_tap(out, item.rect, plane);
   put_bool(out, "enabled", item.enabled());
   put_bool(out, "hidden", item.hidden());
   put_bool(out, "never_focus", item.never_focus());
@@ -100,13 +124,15 @@ void put_row(std::string *out, const menu::MenuSnapshot &menu,
   close_object(out);
 }
 
-void put_text_item(std::string *out, const menu::MenuItem &item) {
+void put_text_item(std::string *out, const menu::MenuItem &item,
+                   const presentation::RetailScenePlane *plane) {
   out->push_back('{');
   put_int(out, "slot", static_cast<long>(item.slot));
   put_text(out, "name", item.name);
   put_text(out, "class", menu::item_class_name(item.item_class));
   put_text(out, "label", item.label);
   put_rect(out, item.rect);
+  put_tap(out, item.rect, plane);
   put_bool(out, "enabled", item.enabled());
   close_object(out);
 }
@@ -155,13 +181,15 @@ void put_hero(std::string *out, const native::HeroRecord &hero) {
   close_object(out);
 }
 
-void put_item(std::string *out, const menu::MenuItem &item) {
+void put_item(std::string *out, const menu::MenuItem &item,
+              const presentation::RetailScenePlane *plane) {
   out->push_back('{');
   put_int(out, "slot", static_cast<long>(item.slot));
   put_text(out, "name", item.name);
   put_text(out, "class", menu::item_class_name(item.item_class));
   put_text(out, "label", item.label);
   put_rect(out, item.rect);
+  put_tap(out, item.rect, plane);
   put_int(out, "flags", item.flags);
   put_bool(out, "focused", item.focused);
   put_bool(out, "navigable", item.navigable);
@@ -242,7 +270,10 @@ void read_menu_body(void *context) {
   menu::MenuSnapshot menu;
   read->status = menu::read_live_menu(&menu, &read->failed);
   if (read->status == menu::ReadStatus::ok) {
-    read->body = menu_json(menu, read->all_items);
+    const native::LiveGuestMemory memory;
+    const auto plane =
+        native::read_scene_plane(memory, x86_module_base("XMen2.exe"));
+    read->body = menu_json(menu, read->all_items, plane ? &*plane : nullptr);
   } else if (read->status != menu::ReadStatus::unreadable) {
     read->body = menu.popup_up
                      ? "{\"active\":false,\"popup\":true,\"reason\":"
@@ -332,7 +363,8 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
   return out;
 }
 
-std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
+std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
+                      const presentation::RetailScenePlane *plane) {
   std::string out = "{";
   put_bool(&out, "active", true);
   put_text(&out, "menu", menu.name);
@@ -367,7 +399,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
   std::vector<bool> is_row(menu.items.size(), false);
   for (const int row : menu.rows) {
     is_row[static_cast<std::size_t>(row)] = true;
-    put_row(&out, menu, menu.items[static_cast<std::size_t>(row)]);
+    put_row(&out, menu, menu.items[static_cast<std::size_t>(row)], plane);
     out.push_back(',');
   }
   if (out.back() == ',') {
@@ -381,7 +413,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
     if (is_row[i] || item.hidden() || item.label.empty()) {
       continue;
     }
-    put_text_item(&out, item);
+    put_text_item(&out, item, plane);
     out.push_back(',');
   }
   if (out.back() == ',') {
@@ -391,7 +423,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items) {
   if (all_items) {
     out.append(",\"items\":[");
     for (const menu::MenuItem &item : menu.items) {
-      put_item(&out, item);
+      put_item(&out, item, plane);
       out.push_back(',');
     }
     if (out.back() == ',') {

@@ -28,6 +28,7 @@ using x2::input::TouchMenuButton;
 using x2::input::TouchMenuDelivery;
 using x2::input::TouchMenuLayout;
 using x2::input::TouchMenuPart;
+using x2::input::TouchMenuRow;
 using x2::input::TouchMenuView;
 using x2::menu::MenuItem;
 using x2::menu::MenuSnapshot;
