@@ -75,6 +75,7 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
       menu::read_live_menu(&snapshot, &failed) == menu::ReadStatus::ok) {
     const LiveGuestMemory memory;
     if (const auto plane = read_scene_plane(memory, image)) {
+      gaps_.observe(snapshot, *plane);
       view = input::build_touch_menu_view(snapshot, *plane);
     }
   }
@@ -82,5 +83,7 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
 }
 
 void refresh_touch_menu() { source.refresh(SDL_GetTicks()); }
+
+void touch_menu_gap_report() { source.report(); }
 
 } // namespace x2::native

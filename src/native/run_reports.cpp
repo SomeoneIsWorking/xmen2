@@ -39,6 +39,7 @@
 #include "stick_axis_override.h"
 #include "threads.h"
 #include "touch_hud_runtime.h"
+#include "touch_menu_source.hpp"
 #include "ui_text_scale.h"
 #include "ui_transform.h"
 #include "x2_log.h"
@@ -69,6 +70,7 @@ void interrupt_reports(int killed) {
   x2::native::prompt_glyph_batch_report();
   x2::native::prompt_tokens_report();
   x2::native::ui_transform_report();
+  x2::native::touch_menu_gap_report();
   x2::gpu::gpu_prompt_glyphs_report();
   {
     char blackout[256];

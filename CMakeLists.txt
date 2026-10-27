@@ -2190,6 +2190,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_layout.cpp
     src/input/touch_menu_view.cpp
     src/input/touch_menu_parts.cpp
+    src/input/menu_touch_gaps.cpp
     src/input/touch_menu_team.cpp
     src/input/touch_menu_team_details.cpp
     src/input/touch_menu_shop.cpp

@@ -1,6 +1,7 @@
 #ifndef X2_TOUCH_MENU_SOURCE_HPP
 #define X2_TOUCH_MENU_SOURCE_HPP
 
+#include "../input/menu_touch_gaps.hpp"
 #include "../input/touch_menu_view.hpp"
 #include "guest_memory_view.hpp"
 
@@ -24,14 +25,18 @@ read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base);
 class TouchMenuSource {
 public:
   void refresh(std::uint64_t now_ms);
+  void report() const { gaps_.report(); }
 
 private:
+  input::MenuTouchGapReport gaps_;
   std::uint64_t last_ms_ = 0;
   bool offered_ = false;
 };
 
 /* The running game's source, polled by the Win32 event pump. */
 void refresh_touch_menu();
+/* Run end: what a finger could not do on the menus seen. */
+void touch_menu_gap_report();
 
 } // namespace x2::native
 

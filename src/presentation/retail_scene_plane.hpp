@@ -40,6 +40,8 @@ public:
   float left() const { return left_; }
   float width() const { return width_; }
   float height() const { return height_; }
+  unsigned client_width() const { return client_w_; }
+  unsigned client_height() const { return client_h_; }
 
 private:
   float left_ = 0.0F;

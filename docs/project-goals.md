@@ -313,5 +313,10 @@ the player's install at run time.
 
 **Non-goals.** New menu features the game does not have.
 
-**Contributing state items.** None yet; not started.
+**Approach.** The retail menus themselves are the touch UI: a finger is the
+game's pointer, the gaps in the game's own pointer handling are filled at their
+owners, and the menu scene is scaled to finger size. Nothing is drawn over a
+menu ([#199](issues/0199-native-touch-menus.md)).
+
+**Contributing state items.** S025.
 
