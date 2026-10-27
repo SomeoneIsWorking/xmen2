@@ -56,6 +56,16 @@ pointer**, at its own position. Those screens are the retail GUI and the
 retail GUI takes a mouse (issue #132 put `igWin32Window::getEvents` back in
 the loop), so a tap is a click on what the player can see.
 
+The pointer is not a Win32 message. `src/native/touch_pointer_dispatch.cpp`
+calls the game's own window-event callback (`0x005faa20`, which
+`igWin32Window`'s procedure calls and which hands mouse messages to
+`FUN_005f9eb0`) at the top of the game's frame update `FUN_00401d70`: a move
+only when the point changed, then at most one press or release per frame. A
+release is therefore seen after the previous frame's menu update and before
+this frame's held-button check, which is what the difficulty popup needs to
+accept a tap or a long press ([Menus](RE/menus.md#the-popup)). Alchemy's own
+move handling is skipped with it; its listener (`sink+0xc`) is null.
+
 Contacts there used to be counted and discarded, which is the whole of what a
 phone player met: an intro no tap could skip and a menu no tap could press
 (issue #179). They had no second route either, deliberately — `x2native.cpp`
@@ -250,7 +260,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`layout_stick_reach`) takes it |
 | Bottom-right action diamond | Attack (A) below, Smash (B) outside, Use (X) above, Jump (Y) inside |
 | Arc inboard of the diamond | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
-| Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
+| Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |

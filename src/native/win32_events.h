@@ -16,6 +16,8 @@ void win32_events_hide_window(int hidden);
 void win32_events_register_wndproc(std::uint32_t wndproc);
 std::uint32_t win32_events_registered_wndproc();
 void win32_events_set_wndproc(std::uint32_t wndproc);
+/* The guest window's handle, 0 while there is none. */
+std::uint32_t win32_events_hwnd();
 
 void win32_events_modal(int visible);
 int win32_events_guest_show_cursor(int show);

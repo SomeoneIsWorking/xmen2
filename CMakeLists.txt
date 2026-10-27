@@ -2094,6 +2094,7 @@ set(X2_NATIVE_SOURCES
     src/native/win32_mouse.cpp
     src/native/win32_pointer.cpp
     src/native/win32_events.cpp
+    src/native/touch_pointer_dispatch.cpp
     src/native/guest_heap.cpp
     src/native/guest_file_io.cpp
     src/native/crt_console.cpp
@@ -2167,6 +2168,8 @@ set(X2_NATIVE_SOURCES
     src/native/menu_start_policy.cpp
     src/native/menu_start_override.cpp
     src/native/pad_list_warning_override.cpp
+    src/native/popup_row_override.cpp
+    src/native/popup_rows.cpp
     src/native/menu_item_tap.cpp
     src/native/menu_item_mouse_override.cpp
     src/native/world_map_footer.cpp

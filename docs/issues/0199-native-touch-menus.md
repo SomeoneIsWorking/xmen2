@@ -70,4 +70,9 @@ the effects volume, toggles Combat Music and leaves by the Back footer, all on
 the game's own screens; a PDA tap on Team Management opens the team menu
 through `openmenu pda` at the boot map. Their footers still draw keyboard
 keycaps (step 3), and their rows are under a finger (step 4).
-The difficulty popup, Load Game and the shop are step 5.
+The difficulty popup is step 5's first screen: on touch its options are finger
+rows in the game's own font and bar, a tap on Easy selects it and a second tap,
+short or held 0.6 s, starts the new game. Touch reaches the game through its
+own event callback at the frame boundary (`touch_pointer_dispatch.cpp`), not
+the Win32 queue. The popup still draws the menu pad. Load Game (needs a save)
+and the shop are next.

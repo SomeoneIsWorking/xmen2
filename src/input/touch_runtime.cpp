@@ -65,7 +65,7 @@ bool is_release(lucent::touch::Phase phase) {
  * a finger under a drawn control is a pad press, and any other finger outside
  * gameplay is the retail GUI's pointer. Gameplay draws TouchControls; every
  * other screen draws the menu pad, MenuControls. The pad belongs to
- * PadPublisher, the Win32 pointer to RetailPointer, and the account of what
+ * PadPublisher, the retail pointer to RetailPointer, and the account of what
  * happened to the census. This composes them and owns only the window, the
  * live contacts, and the gate.
  */

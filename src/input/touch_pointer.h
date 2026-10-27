@@ -15,9 +15,9 @@ namespace x2::input {
  * Two things a finger does reach the retail GUI rather than the pad: a
  * portrait tap during gameplay, which selects a hero, and a tap anywhere on a
  * screen that draws no control -- the intro, the main menu, the load and
- * pause screens. Both become Win32 mouse messages through the same queue the
- * guest's own message loop drains, and both obey the same rule, because
- * retail draws one cursor and has one button.
+ * pause screens. Both reach the game's own window-event callback at the top
+ * of its frame (src/native/touch_pointer_dispatch.cpp), and both obey the same
+ * rule, because retail draws one cursor and has one button.
  *
  * Contacts on the screens with no drawn control used to be counted and
  * discarded, which is what left a phone player on the title screen with no
@@ -48,7 +48,8 @@ public:
   // the caller counts that as a pointer event, because it is one.
   bool release_if_held();
 
-  // The oldest queued event, for the Win32 pump. False when there is none.
+  // The oldest queued event, for the frame's dispatch. False when there is
+  // none.
   bool take(TouchPointer &out);
 
 private:

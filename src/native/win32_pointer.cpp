@@ -238,33 +238,16 @@ void win32_pointer_translate_mouse(const SDL_Event *event,
   require_queued(queued, "mouse event");
 }
 
-void win32_pointer_translate_touch(const input::TouchPointer *pointer,
-                                   x2::native::Win32Mouse *mouse,
-                                   uint32_t hwnd) {
-  int32_t client_x, client_y, screen_x, screen_y;
-  int queued;
+void win32_pointer_touch_client(const input::TouchPointer *pointer,
+                                int32_t *client_x, int32_t *client_y) {
+  int32_t screen_x, screen_y;
 
-  if (!pointer || !pointer->valid)
-    return;
   if (pointer->client_space) {
-    client_x = (int32_t)pointer->x;
-    client_y = (int32_t)pointer->y;
-    screen_x = client_x;
-    screen_y = client_y;
-    win32_pointer_client_to_screen(&screen_x, &screen_y);
-  } else {
-    map_point(pointer->x, pointer->y, &client_x, &client_y, &screen_x,
-              &screen_y);
+    *client_x = (int32_t)pointer->x;
+    *client_y = (int32_t)pointer->y;
+    return;
   }
-  queued = x2::native::win32_mouse_motion(mouse, hwnd, client_x, client_y,
-                                          screen_x, screen_y, pointer->time_ms,
-                                          mouse->buttons, modifiers());
-  if (queued && pointer->button_change >= 0)
-    queued = x2::native::win32_mouse_button(
-        mouse, hwnd, x2::native::Win32MouseButton::Left,
-        pointer->button_change != 0, client_x, client_y, screen_x, screen_y,
-        pointer->time_ms, modifiers());
-  require_queued(queued, "touch pointer");
+  map_point(pointer->x, pointer->y, client_x, client_y, &screen_x, &screen_y);
 }
 
 } // namespace x2::native

@@ -104,6 +104,8 @@ void win32_events_register_wndproc(uint32_t wndproc) {
 
 uint32_t win32_events_registered_wndproc() { return g_registered_wndproc; }
 
+uint32_t win32_events_hwnd() { return g_hwnd; }
+
 void win32_events_set_wndproc(uint32_t wndproc) { g_wndproc = wndproc; }
 
 void win32_events_modal(int visible) {
@@ -168,17 +170,10 @@ static void post_activation(int active, uint64_t timestamp) {
   post_message_or_abort(&message, "WM_ACTIVATE");
 }
 
-static void drain_touch_pointer(void) {
-  x2::input::TouchPointer pointer;
-  while (x2::input::touch_runtime_take_pointer(&pointer))
-    x2::native::win32_pointer_translate_touch(&pointer, &g_mouse, g_hwnd);
-}
-
 static void pump_sdl(void) {
   SDL_Event event;
 
   x2::native::refresh_touch_menu();
-  drain_touch_pointer();
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT ||
         event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
@@ -210,12 +205,10 @@ static void pump_sdl(void) {
        and the answer decides whether the overlay is drawn at all. */
     x2::input::touch_runtime_note_source(&event);
     x2::input::touch_runtime_lifecycle_event(&event);
-    drain_touch_pointer();
 
     if (x2::ui::ui_handle_event(&event)) {
       if (x2::ui::ui_captures_input()) {
         x2::input::touch_runtime_cancel();
-        drain_touch_pointer();
       }
       x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
       apply_cursor_policy();
@@ -225,7 +218,6 @@ static void pump_sdl(void) {
       continue;
     }
     int touch_handled = x2::input::touch_runtime_event(&event);
-    drain_touch_pointer();
     if (touch_handled) {
       continue;
     }

@@ -1,0 +1,15 @@
+#include "popup_rows.hpp"
+
+#include "../input/menu_touch_gaps.hpp"
+
+#include <algorithm>
+
+namespace x2::native {
+
+float popup_row_slot(float line, const presentation::RetailScenePlane &plane) {
+  const float finger = input::menu_finger_target(plane) * plane.height() /
+                       static_cast<float>(plane.client_height());
+  return std::max(line, finger);
+}
+
+} // namespace x2::native
