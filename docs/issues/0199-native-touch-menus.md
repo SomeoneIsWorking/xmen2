@@ -32,13 +32,13 @@ refuses the finger:
 | step | `CMenu::onMouse` `0x005ae0a0` (no left/right) | none: Options' volume rows were a misreading, `CMenuOptions::onMouse` `0x005cb5f0` steps its bars |
 | list | list box `onMouse` `0x005c0e10` (no scroll) | shop, codex, review, danger_room, trivia |
 | footer token | `CMenuItemText::onMouse` `0x005c6490` | codex: `$MENU_DETAILS` |
-| popup | `popup+0x7c`, not mapped | main on a fresh profile |
+| popup | `popup+0x7c`, not mapped | main: New Game's difficulty, Load Game's saves |
 | small target | the menu's own layout | every menu: each clickable row, footer and list row is under a tenth of the shorter client edge at 1280x720 |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
 hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), the world
 map's points (no unlocked point at the boot map), and `options`/`options_controller`
-from the title menu (a popup is up there).
+from the title menu (the scan opens them from a level).
 
 ## Steps
 
