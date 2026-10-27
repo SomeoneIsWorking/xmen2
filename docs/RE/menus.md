@@ -472,6 +472,18 @@ getter is the row's value. This pairing is the model's rule, not a retail one.
 popup covered the PDA, clear after dismissing it. Load Game is this popup, not
 a `CMenu`.
 
+The "gamepads have been added/removed" popup is not a menu either. The menu
+manager's update calls `FUN_00618e80` at `0x005db0cb`: true when the registry's
+`Controls\Gamepads\ShowWarningListChanged` (default 1) and `ListChanged` are
+both set. `ListChanged` is set at `0x00618dca` when the enumerated pads differ
+from the stored `Gamepad%d`/`GamepadName%d` list. On true the manager runs the
+`gamepadchanged` script, which raises the popup, then clears `ListChanged`
+(`FUN_00618ed0`); "No" clears `ShowWarningListChanged` (`FUN_00618ef0`).
+`ListChanged` is read nowhere else. The port answers `FUN_00618e80` false
+(`src/native/pad_list_warning_override.cpp`): it assigns controllers itself, and
+its own touch pad attaching, like any hotplug, used to raise the warning on
+boot.
+
 ### Hero cards
 
 A menu with a `CMenuItemCharSummary` or `CMenuItemListChars` also gets the

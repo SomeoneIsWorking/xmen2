@@ -2166,6 +2166,7 @@ set(X2_NATIVE_SOURCES
     src/native/stick_axis_override.cpp
     src/native/menu_start_policy.cpp
     src/native/menu_start_override.cpp
+    src/native/pad_list_warning_override.cpp
     src/native/menu_item_tap.cpp
     src/native/menu_item_mouse_override.cpp
     src/native/world_map_footer.cpp
