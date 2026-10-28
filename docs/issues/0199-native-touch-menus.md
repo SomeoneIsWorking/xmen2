@@ -6,7 +6,7 @@ symptom: "Touch menus are a port-styled RmlUi panel over the retail menu, and th
 state_items: S025, S020
 tags: touch,menus,ui
 created: 2026-10-27
-updated: 2026-10-27
+updated: 2026-10-28
 ---
 
 # 0199 — Native touch menus
@@ -47,16 +47,21 @@ from the title menu (the scan opens them from a level).
 3. Footer tokens the game does not publish get their action at `CMenuItemText::onMouse`.
 4. Row menus (main, Options, PDA) are scaled for touch so the smallest target
    is finger-sized.
-5. Selector screens get a touch layout, because scaling them is not enough:
+5. Selector screens get a mobile layout, because scaling them is not enough:
    the difficulty popup, Load Game, the shop and stash, and every other list
    box with the white selection rectangle (codex, review, danger room,
-   trivia). A list becomes a short column of finger-tall rows drawn with the
-   game's own row art and focus highlight, one tap picks an entry and a drag
-   pages it, and the controller cursor is not drawn on touch. A menu is data
-   (`UI/menus/<name>.xmlb` over its `.igb` art, loaded by `FUN_005ab130`), so
-   the layout is a port-owned transform of the player's own file when it is
-   loaded, using retail item types and art. No asset is copied and nothing is
-   drawn over the menu. The popup's pointer path (`popup+0x7c`) is mapped first.
+   trivia). Widening the retail rows (the first popup pass) only spaces out
+   the same small lines; on touch each selector is laid out the way a mobile
+   game lays out its own screens, by one port-owned layout per screen kind,
+   drawn by the game's renderer with the game's font, bar and frame art:
+   - a large title; full-width cards for the entries, each the game's bar art
+     dimmed with the entry text larger, the selected card at full brightness;
+   - the card list fills its frame and scrolls by drag; one tap picks a card;
+   - the footer actions are big buttons in the same art, not keycaps;
+   - list boxes put the cards on one side and the detail panel on the other.
+   The controller cursor is not drawn on touch, nothing is drawn over the
+   menu and no asset is copied. The popup's pointer path (`popup+0x7c`) is
+   mapped first.
 6. The RmlUi touch menu and the menu pad are deleted.
 
 Each step closes when its gap lines are gone from the scan and the screen is
@@ -70,10 +75,10 @@ the effects volume, toggles Combat Music and leaves by the Back footer, all on
 the game's own screens; a PDA tap on Team Management opens the team menu
 through `openmenu pda` at the boot map. Their footers still draw keyboard
 keycaps (step 3), and their rows are under a finger (step 4).
-The difficulty popup is step 5's first screen: on touch its options are finger
-rows in the game's own font and bar, a tap on Easy selects it and a second tap,
-short or held 0.6 s, starts the new game. Touch reaches the game through its
+The difficulty popup is step 5's first screen. Its first pass only widened the
+retail rows to a finger's pitch (a tap on Easy selects it and a second tap,
+short or held 0.6 s, starts the new game); the mobile layout replaces it. Touch reaches the game through its
 own event callback at the frame boundary (`touch_pointer_dispatch.cpp`), not
 the Win32 queue. Every popup is native on touch, with nothing drawn over it
-(`tools/live_case.py touch-popup`, 11 of 11). Load Game (needs a save) and the
-shop are next.
+(`tools/live_case.py touch-popup`, 11 of 11). The popup's mobile layout is next,
+then Load Game (its window follows the page's visible count) and the shop.
