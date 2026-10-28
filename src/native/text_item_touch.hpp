@@ -1,0 +1,18 @@
+#ifndef X2_TEXT_ITEM_TOUCH_HPP
+#define X2_TEXT_ITEM_TOUCH_HPP
+
+#include <string_view>
+
+namespace x2::native {
+
+/* The text items touch draws as a finger button: a `$MENU_*` prompt in a
+   menu that is native on touch. */
+bool text_has_touch_button(std::string_view menu_class, std::string_view text);
+
+/* The text items touch gives a finger target and leaves retail's draw: the
+   tabs of the shop, stash, review and danger room. */
+bool text_is_menu_tab(std::string_view menu_class, std::string_view name);
+
+} // namespace x2::native
+
+#endif

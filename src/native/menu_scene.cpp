@@ -138,12 +138,12 @@ void show_phase(guest::GuestCall &call, std::uint32_t entity, float phase) {
 }
 
 std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
-                          std::uint32_t style, bool selected, bool enabled,
+                          std::uint32_t style, float lit, bool enabled,
                           std::uint32_t item, std::uint32_t custom) {
   const std::uint32_t out = vectors.put(3, 0.0F, 0.0F, 0.0F);
-  call.thiscall(exe_linked(kStyleColor), style,
-                {x2::guest::float_bits(selected ? 1.0F : 0.0F), out,
-                 enabled ? 1u : 0u, item, custom});
+  call.thiscall(
+      exe_linked(kStyleColor), style,
+      {x2::guest::float_bits(lit), out, enabled ? 1u : 0u, item, custom});
   return call.cdecl_call(exe_linked(kPackColor), {out});
 }
 

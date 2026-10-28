@@ -41,6 +41,16 @@ std::optional<MenuAction> menu_token_action(std::string_view text) {
   return std::nullopt;
 }
 
+std::string menu_token_label(std::string_view text) {
+  const std::size_t at = text.find("$MENU");
+  if (at == std::string_view::npos) {
+    return std::string(text);
+  }
+  std::size_t end = text.find(' ', at);
+  end = end == std::string_view::npos ? text.size() : end + 1u;
+  return std::string(text.substr(0, at)) + std::string(text.substr(end));
+}
+
 void post_menu_action(MenuAction action) {
   const std::uint32_t player = RD32(exe_linked(kMenuPlayer));
   WR8(exe_linked(kMenuActionPending) + player, 1u);

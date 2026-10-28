@@ -55,6 +55,11 @@ struct SceneRect {
   int bottom = 0;
 };
 
+/* The RECT from an item's box fields (+0x70 left, +0x72 top, +0x74 width,
+   +0x76 height, +0x7a local top): the box lifted by half its local top. */
+SceneRect item_hit_rect(int left, int top, int width, int height,
+                        int local_top);
+
 /* item+0x54. */
 inline constexpr std::uint8_t kItemFocusLit = 0x01u;
 inline constexpr std::uint8_t kItemStartActive = 0x02u;
@@ -213,6 +218,9 @@ public:
      unset. */
   ReadStatus read_menu(std::uint32_t menu, MenuSnapshot *out);
 
+  /* The name of the item at `item`. */
+  bool read_item_name(std::uint32_t item, std::string *out);
+
   /* The guest address the last unreadable read failed at. */
   std::uint32_t failed_address() const { return reader_.failed_address(); }
 
@@ -236,6 +244,8 @@ private:
 
 /* The running game's menu, through LiveGuestMemory. */
 ReadStatus read_live_menu(MenuSnapshot *out, std::uint32_t *failed_address);
+/* The running game's item at `item`'s name; "" when it cannot be read. */
+std::string read_live_item_name(std::uint32_t item);
 
 } // namespace x2::menu
 

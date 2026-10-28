@@ -33,7 +33,7 @@ refuses the finger:
 | list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
 | footer token | `CMenuItemText::onMouse` `0x005c6490` | codex: `$MENU_DETAILS` |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
-| small target | the menu's own layout | every menu: each clickable row, footer and list row is under a tenth of the shorter client edge at 1280x720 |
+| small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; native ones: their rows (step 4) |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
 hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), the world
@@ -73,8 +73,8 @@ Main, Options and the PDA are native on touch (`menu_is_native_on_touch`):
 `tools/live_case.py touch-menu` taps Options open from the main menu, lowers
 the effects volume, toggles Combat Music and leaves by the Back footer, all on
 the game's own screens; a PDA tap on Team Management opens the team menu
-through `openmenu pda` at the boot map. Their footers still draw keyboard
-keycaps (step 3), and their rows are under a finger (step 4).
+through `openmenu pda` at the boot map. Their rows are under a finger
+(step 4).
 Every popup is step 5's first screen, done: CPopupDialog has its mobile
 layout on touch (cards of the game's bar art, a frame sized to its page, bar
 buttons for the prompts, one tap to act, a drag to scroll), shown working by
@@ -86,5 +86,10 @@ with the entry's icons and fitted text, a tap selecting through retail's own
 press walk, a tap on the selected card accepting, a drag scrolling
 (`src/native/list_touch.cpp`); the RmlUi shop, codex, review and danger room
 views are deleted. Shown by `tools/live_case.py touch-shop`, `touch-stash`,
-`touch-codex`, `touch-review` and `touch-danger-room`. The tabs and footers
-beside them are still the game's small items (step 3).
+`touch-codex`, `touch-review` and `touch-danger-room`. The footers of every
+menu native on touch are step 5's third screen, done: each `$MENU_*` prompt is
+a finger button of the option art with its words and no keycap, and the tabs
+of the shop, stash, review and danger room get finger areas; a press on either
+is delivered at the item, so the menu's own handlers act (the codex's Details
+included). Shown by the same cases tapping each button outside the game's own
+box, and by `touch-menu` leaving Options by its Back button.

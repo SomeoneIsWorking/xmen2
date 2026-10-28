@@ -1,12 +1,13 @@
 #include "menu_touch_gaps.hpp"
 
+#include "../native/menu_action.hpp"
 #include "../native/menu_item_tap.hpp"
+#include "../native/text_item_touch.hpp"
 #include "../native/x2_log.h"
 #include "list_touch_layout.hpp"
 #include "touch_menu_view.hpp"
 
 #include <algorithm>
-#include <array>
 #include <string_view>
 
 namespace x2::input {
@@ -14,11 +15,6 @@ namespace {
 
 constexpr std::string_view kTokenPrefix = "$MENU_";
 constexpr std::string_view kFooterPrefix = "desctext";
-/* The tokens CMenuItemText::onMouse turns into an action. */
-constexpr std::array<std::string_view, 7> kClickedTokens = {
-    "$MENU_ACCEPT", "$MENU_SUBTRACT", "$MENU_OK",   "$MENU_BACK",
-    "$MENU_NEXT",   "$MENU_PREV",     "$MENU_OTHER"};
-
 /* The item's name and, when it shows text, that text. */
 std::string named(const menu::MenuItem &item) {
   const std::string text = touch_menu_text(item.label);
@@ -68,11 +64,6 @@ std::string_view token_in(std::string_view label) {
     ++end;
   }
   return label.substr(at, end - at);
-}
-
-bool clicked(std::string_view token) {
-  return std::find(kClickedTokens.begin(), kClickedTokens.end(), token) !=
-         kClickedTokens.end();
 }
 
 float client_width(const menu::SceneRect &rect,
@@ -161,9 +152,10 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
     if (token.empty()) {
       continue;
     }
-    if (!clicked(token)) {
+    if (!native::menu_token_action(token)) {
       gaps.push_back({MenuTouchGapKind::footer_token, std::string(token)});
-    } else if (small(item.rect, plane)) {
+    } else if (!native::text_has_touch_button(menu.menu_class, item.label) &&
+               small(item.rect, plane)) {
       gaps.push_back({MenuTouchGapKind::small_target, item.name});
     }
   }

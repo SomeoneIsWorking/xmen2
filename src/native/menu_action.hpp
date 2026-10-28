@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace x2::native {
@@ -22,6 +23,8 @@ enum class MenuAction : std::uint32_t {
 /* What a text line's `$MENU_*` token posts when CPopupDialog::onMouse
    releases on it; nothing when it names no action. */
 std::optional<MenuAction> menu_token_action(std::string_view text);
+/* `text` without its `$MENU_*` token: what a touch button for it reads. */
+std::string menu_token_label(std::string_view text);
 
 /* Queues `action` for the menu's player, read on the next menu update. */
 void post_menu_action(MenuAction action);

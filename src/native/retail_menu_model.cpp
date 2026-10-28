@@ -209,6 +209,12 @@ std::string command_target(const std::string &command) {
 
 } // namespace
 
+SceneRect item_hit_rect(int left, int top, int width, int height,
+                        int local_top) {
+  const int half = local_top / 2;
+  return {left, top - height + half - 1, left + width - 1, top + half};
+}
+
 const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
   for (const MenuClassEntry &entry : kMenuClasses) {
     if (entry.vtable - kLinkedBase + image_base == vtable) {
@@ -284,6 +290,12 @@ const char *read_status_name(ReadStatus status) {
 RetailMenuModel::RetailMenuModel(const native::GuestMemoryView &memory,
                                  std::uint32_t image_base)
     : reader_(memory, image_base) {}
+
+bool RetailMenuModel::read_item_name(std::uint32_t item, std::string *out) {
+  std::uint32_t handle = 0u;
+  return reader_.u32(item + kItemName, &handle) &&
+         reader_.pool2_string(handle, out);
+}
 
 bool RetailMenuModel::registry_getter(const std::string &name,
                                       std::uint32_t *getter) {
@@ -425,13 +437,10 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
       !read_label(header, out->item_class, &out->label)) {
     return false;
   }
-  const int left = field_i16(header, item::kBoxLeft);
-  const int y = field_i16(header, item::kBoxTop);
-  const int half = field_i16(header, item::kLocalTop) / 2;
-  out->rect.left = left;
-  out->rect.right = left + field_i16(header, item::kBoxWidth) - 1;
-  out->rect.bottom = y + half;
-  out->rect.top = y - field_i16(header, item::kBoxHeight) + half - 1;
+  out->rect = item_hit_rect(
+      field_i16(header, item::kBoxLeft), field_i16(header, item::kBoxTop),
+      field_i16(header, item::kBoxWidth), field_i16(header, item::kBoxHeight),
+      field_i16(header, item::kLocalTop));
   out->navigable = (out->flags & (kItemHidden | kItemNavigationSkip)) == 0u &&
                    (out->flags & kItemEnabled) != 0u;
   if (out->item_class == ItemClass::bar) {
