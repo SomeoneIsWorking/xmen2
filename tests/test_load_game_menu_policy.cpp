@@ -21,7 +21,7 @@ static void test_empty_and_sparse(void) {
   x2::save::LoadGameEntry entry;
 
   x2::save::load_game_menu_plan(0u, 0, &plan);
-  x2::save::load_game_menu_window_init(&plan, &window);
+  x2::save::load_game_menu_window_init(&plan, &window, 10u);
   CHECK(plan.count == 0u);
   CHECK(window.selected == SIZE_MAX);
   CHECK(x2::save::load_game_menu_window_count(&plan, &window) == 0u);
@@ -31,7 +31,7 @@ static void test_empty_and_sparse(void) {
 
   x2::save::load_game_menu_plan((uint16_t)((1u << 0) | (1u << 4) | (1u << 9)),
                                 1, &plan);
-  x2::save::load_game_menu_window_init(&plan, &window);
+  x2::save::load_game_menu_window_init(&plan, &window, 10u);
   CHECK(plan.count == 4u);
   CHECK(plan.entries[0].kind == x2::save::LoadGameEntryKind::Manual);
   CHECK(plan.entries[0].manual_slot == 0u);
@@ -52,13 +52,13 @@ static void test_full_profile_projection(void) {
   size_t row;
 
   x2::save::load_game_menu_plan(UINT16_C(0x03ff), 1, &plan);
-  x2::save::load_game_menu_window_init(&plan, &window);
+  x2::save::load_game_menu_window_init(&plan, &window, 10u);
   CHECK(plan.count == 11u);
   CHECK(window.first == 0u);
   CHECK(window.selected == 0u);
   CHECK(x2::save::load_game_menu_window_count(&plan, &window) ==
-        x2::save::kLoadGameVisibleRows);
-  for (row = 0u; row < x2::save::kLoadGameVisibleRows; row++) {
+        x2::save::kLoadGameResidentRows);
+  for (row = 0u; row < x2::save::kLoadGameResidentRows; row++) {
     CHECK(x2::save::load_game_menu_window_entry(&plan, &window, row, &entry));
     CHECK(entry.kind == x2::save::LoadGameEntryKind::Manual);
     CHECK(entry.manual_slot == row);
@@ -72,7 +72,7 @@ static void test_full_profile_projection(void) {
   CHECK(window.selected == 10u);
   CHECK(x2::save::load_game_menu_window_focus(&plan, &window) == 9u);
   CHECK(x2::save::load_game_menu_window_count(&plan, &window) == 10u);
-  for (row = 0u; row < x2::save::kLoadGameVisibleRows; row++) {
+  for (row = 0u; row < x2::save::kLoadGameResidentRows; row++) {
     CHECK(x2::save::load_game_menu_window_entry(&plan, &window, row, &entry));
     if (entry.kind == x2::save::LoadGameEntryKind::Autosave) {
       autosave_seen++;
@@ -103,6 +103,26 @@ static void test_full_profile_projection(void) {
   CHECK(window.first == 0u);
 }
 
+static void test_touch_rows(void) {
+  x2::save::LoadGameMenuPlan plan;
+  x2::save::LoadGameMenuWindow window;
+  x2::save::LoadGameEntry entry;
+
+  x2::save::load_game_menu_plan(UINT16_C(0x03ff), 1, &plan);
+  x2::save::load_game_menu_window_init(&plan, &window, 4u);
+  CHECK(x2::save::load_game_menu_window_count(&plan, &window) == 4u);
+  CHECK(!x2::save::load_game_menu_window_select(&plan, &window, 4u));
+  CHECK(x2::save::load_game_menu_window_move(&plan, &window, 4));
+  CHECK(window.first == 1u);
+  CHECK(x2::save::load_game_menu_window_focus(&plan, &window) == 3u);
+  CHECK(x2::save::load_game_menu_window_entry(&plan, &window, 3u, &entry));
+  CHECK(entry.manual_slot == 4u);
+  x2::save::load_game_menu_window_init(&plan, &window, 0u);
+  CHECK(window.rows == 1u);
+  x2::save::load_game_menu_window_init(&plan, &window, 99u);
+  CHECK(window.rows == x2::save::kLoadGameResidentRows);
+}
+
 static void test_invalid_arguments(void) {
   x2::save::LoadGameMenuPlan plan;
   x2::save::LoadGameMenuWindow window;
@@ -112,7 +132,7 @@ static void test_invalid_arguments(void) {
   CHECK(plan.count == x2::save::kLoadGameMaxEntries);
   CHECK(plan.entries[10].autosave == 0u);
   CHECK(plan.entries[14].autosave == 4u);
-  x2::save::load_game_menu_window_init(&plan, &window);
+  x2::save::load_game_menu_window_init(&plan, &window, 10u);
   CHECK(!x2::save::load_game_menu_window_entry(NULL, &window, 0u, &entry));
   CHECK(!x2::save::load_game_menu_window_entry(&plan, NULL, 0u, &entry));
   CHECK(!x2::save::load_game_menu_window_entry(&plan, &window, 0u, NULL));
@@ -122,12 +142,13 @@ static void test_invalid_arguments(void) {
   CHECK(!x2::save::load_game_menu_window_select(NULL, &window, 0u));
   CHECK(!x2::save::load_game_menu_window_select(&plan, NULL, 0u));
   x2::save::load_game_menu_plan(0u, 0, NULL);
-  x2::save::load_game_menu_window_init(&plan, NULL);
+  x2::save::load_game_menu_window_init(&plan, NULL, 10u);
 }
 
 int main(void) {
   test_empty_and_sparse();
   test_full_profile_projection();
+  test_touch_rows();
   test_invalid_arguments();
   printf("load_game_menu_policy: %d checks, %d failures\n", checks, failures);
   return failures != 0;

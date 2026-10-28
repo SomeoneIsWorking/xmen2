@@ -6,13 +6,14 @@ namespace x2::save {
 
 namespace {
 
-size_t visible_count(size_t total, size_t first) {
+size_t visible_count(size_t total, const LoadGameMenuWindow *window) {
+  const size_t first = window->first;
   size_t remaining;
 
   if (first >= total)
     return 0u;
   remaining = total - first;
-  return remaining < kLoadGameVisibleRows ? remaining : kLoadGameVisibleRows;
+  return remaining < window->rows ? remaining : window->rows;
 }
 
 } // namespace
@@ -45,9 +46,12 @@ void load_game_menu_plan(uint16_t manual_present_mask, unsigned autosaves,
 }
 
 void load_game_menu_window_init(const LoadGameMenuPlan *plan,
-                                LoadGameMenuWindow *window) {
+                                LoadGameMenuWindow *window, size_t rows) {
   if (!window)
     return;
+  window->rows = rows == 0u                     ? 1u
+                 : rows > kLoadGameResidentRows ? kLoadGameResidentRows
+                                                : rows;
   window->first = 0u;
   window->selected = plan && plan->count ? 0u : SIZE_MAX;
 }
@@ -72,8 +76,8 @@ int load_game_menu_window_move(const LoadGameMenuPlan *plan,
   window->selected = selected;
   if (selected < window->first)
     window->first = selected;
-  if (selected >= window->first + kLoadGameVisibleRows)
-    window->first = selected - kLoadGameVisibleRows + 1u;
+  if (selected >= window->first + window->rows)
+    window->first = selected - window->rows + 1u;
   return 1;
 }
 
@@ -81,7 +85,7 @@ int load_game_menu_window_select(const LoadGameMenuPlan *plan,
                                  LoadGameMenuWindow *window, size_t row) {
   size_t logical;
 
-  if (!plan || !window || row >= visible_count(plan->count, window->first))
+  if (!plan || !window || row >= visible_count(plan->count, window))
     return 0;
   logical = window->first + row;
   if (logical == window->selected)
@@ -94,14 +98,14 @@ size_t load_game_menu_window_count(const LoadGameMenuPlan *plan,
                                    const LoadGameMenuWindow *window) {
   if (!plan || !window)
     return 0u;
-  return visible_count(plan->count, window->first);
+  return visible_count(plan->count, window);
 }
 
 size_t load_game_menu_window_focus(const LoadGameMenuPlan *plan,
                                    const LoadGameMenuWindow *window) {
   if (!plan || !window || window->selected >= plan->count ||
       window->selected < window->first ||
-      window->selected >= window->first + kLoadGameVisibleRows)
+      window->selected >= window->first + window->rows)
     return SIZE_MAX;
   return window->selected - window->first;
 }
@@ -114,7 +118,7 @@ int load_game_menu_window_entry(const LoadGameMenuPlan *plan,
 
   if (!plan || !window || !out)
     return 0;
-  count = visible_count(plan->count, window->first);
+  count = visible_count(plan->count, window);
   if (row >= count)
     return 0;
   logical = window->first + row;
