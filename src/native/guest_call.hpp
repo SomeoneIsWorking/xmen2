@@ -106,6 +106,13 @@ private:
   GuestBlock block_;
 };
 
+/* A float argument as the stack word it is passed in. */
+inline uint32_t float_bits(float value) {
+  uint32_t out = 0;
+  std::memcpy(&out, &value, sizeof out);
+  return out;
+}
+
 /* A guest C string, bounded, as host text. */
 inline std::string_view guest_string(uint32_t address, size_t limit = 256u) {
   if (!address) {

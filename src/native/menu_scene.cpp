@@ -32,12 +32,6 @@ constexpr std::uint32_t kAnimationPhase = 0x30u;
 constexpr std::uint32_t kStyleColor = 0x005d8ae0u;
 constexpr std::uint32_t kPackColor = 0x0040be00u;
 
-std::uint32_t bits(float value) {
-  std::uint32_t out = 0;
-  std::memcpy(&out, &value, sizeof out);
-  return out;
-}
-
 std::uint32_t manager(guest::GuestCall &call) {
   return call.cdecl_call(exe_linked(kMenuManager));
 }
@@ -96,8 +90,9 @@ void place(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
   const std::uint32_t node = call.virtual_call(entity, kEntityTransform);
   call.virtual_call(node, kPlaceScaled,
                     {vectors.put(0, at.x, depth, at.z),
-                     vectors.put(1, 0.0F, turn, 0.0F), bits(sx), bits(1.0F),
-                     bits(sz)});
+                     vectors.put(1, 0.0F, turn, 0.0F),
+                     x2::guest::float_bits(sx), x2::guest::float_bits(1.0F),
+                     x2::guest::float_bits(sz)});
 }
 
 void stretch(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
@@ -138,7 +133,7 @@ std::uint32_t animation(guest::GuestCall &call, std::uint32_t entity) {
 void show_phase(guest::GuestCall &call, std::uint32_t entity, float phase) {
   const std::uint32_t anim = animation(call, entity);
   if (anim != 0u) {
-    call.virtual_call(anim, kAnimationPhase, {bits(phase)});
+    call.virtual_call(anim, kAnimationPhase, {x2::guest::float_bits(phase)});
   }
 }
 
@@ -146,9 +141,9 @@ std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
                           std::uint32_t style, bool selected, bool enabled,
                           std::uint32_t item, std::uint32_t custom) {
   const std::uint32_t out = vectors.put(3, 0.0F, 0.0F, 0.0F);
-  call.thiscall(
-      exe_linked(kStyleColor), style,
-      {bits(selected ? 1.0F : 0.0F), out, enabled ? 1u : 0u, item, custom});
+  call.thiscall(exe_linked(kStyleColor), style,
+                {x2::guest::float_bits(selected ? 1.0F : 0.0F), out,
+                 enabled ? 1u : 0u, item, custom});
   return call.cdecl_call(exe_linked(kPackColor), {out});
 }
 
