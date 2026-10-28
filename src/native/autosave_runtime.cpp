@@ -113,9 +113,11 @@ int publish_snapshot(const CPU *source) {
 
 void autosave_runtime_extraction_pad() {
   initialize();
-  const bool taken =
-      x2::save::autosave_policy_extraction_pad(&g_policy, guest_clock_now_s());
-  lucent_log_info("autosave", "extraction pad: %s",
+  const double now = guest_clock_now_s();
+  /* Guest seconds since the last pad checkpoint, -1 before the first. */
+  const double since = g_policy.has_last_pad ? now - g_policy.last_pad_s : -1.0;
+  const bool taken = x2::save::autosave_policy_extraction_pad(&g_policy, now);
+  lucent_log_info("autosave", "extraction pad %.1fs after the last: %s", since,
                   taken ? "checkpoint scheduled"
                         : "within the autosave cooldown, no save");
 }
