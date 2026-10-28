@@ -102,7 +102,9 @@ Load Game holds more saves than a page's ten rows; while it projects them
 (`x2::native::load_game_menu_list`) the cards scroll its window
 (`load_game_menu_show`) instead of the page.
 The draw and onMouse are the port's on touch, and the extra bar entities
-attach and detach with the popup's own models; with touch off both are
+attach, detach and are released with the popup's own models (released by its
+vtable slot 2, `FUN_005e9070`, when a map's art goes, and loaded again at the
+next attach); with touch off both are
 retail's and the frame goes back to its retail placement. `GET /menu` reports
 each card and button where the last draw put it (`popup_page.rows`,
 `popup_page.footers`, `touch`). Prove it with `tools/live_case.py touch-popup`

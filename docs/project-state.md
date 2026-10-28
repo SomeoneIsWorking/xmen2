@@ -1064,7 +1064,7 @@ its 15 heroes with Back and Details, a tap on Wolverine selected it in the game,
 Details switched the game to the description with Wolverine loaded and the
 touch menu showed its name and lines, a drag scrolled them, Details returned
 to the list on Wolverine, and Back closed the codex. The world map follows:
-measured by `tools/live_case.py touch-worldmap`, 16 of 16 on 2026-10-07: the
+measured by `tools/live_case.py touch-worldmap`, 19 of 19 on 2026-10-28: the
 console's `loadmap` of savage1 and sanctuary1 unlocked one extraction point
 in each of acts 1 and 2 through their own load scripts, `openmenu worldmap`
 showed the act 1 and act 2 tabs with act 1 lit, Sanctuary focused, the region
@@ -1109,7 +1109,8 @@ and `openmenu team` (Magneto, level 40): `touch-team-stats` 14 of 14, a tap
 on strike moved the game's focus there without spending and a second tap
 took it 26 to 27 and the points 156 to 155; `touch-team-skills` 13 of 13,
 Magnetic Shell "Beam, rank 0/18" to "rank 1/18" and the points 39 to 38;
-`touch-team-gear` 20 of 20, two waistbands bought through the touch shop, a
+`touch-team-gear` 21 of 21 (2026-10-28), two waistbands bought by touch in
+the game's shop, a level-up popup dismissed, a
 tap on the empty slot opened both, the second tap on Waistband Nature equipped
 it (gear 2/20 to 1/20), Unequip took it off, Drop (RB) dropped one and Accept
 returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes;
