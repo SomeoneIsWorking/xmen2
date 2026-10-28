@@ -2,6 +2,7 @@
 
 #include "../input/touch_menu_parts.hpp"
 #include "../input/touch_runtime_menu.hpp"
+#include "../input/touch_targets.hpp"
 #include "control.h"
 #include "control_command_bridge.h"
 #include "control_query.h"
@@ -183,22 +184,31 @@ void put_hero(std::string *out, const native::HeroRecord &hero) {
   close_object(out);
 }
 
-/* A touch popup box's centre as a tap. */
-void put_box_tap(std::string *out, const input::SceneBox &box,
-                 const presentation::RetailScenePlane *plane) {
+/* The point `across` and `up` of the way over a touch box, as a tap named
+   `key`. */
+void put_box_point(std::string *out, const char *key,
+                   const input::SceneBox &box, float across, float up,
+                   const presentation::RetailScenePlane *plane) {
   float x = 0.0F;
   float y = 0.0F;
   if (plane == nullptr) {
     return;
   }
   const presentation::ClientPoint client = plane->to_client(
-      {0.5F * (box.left + box.right), 0.5F * (box.bottom + box.top)});
+      {box.left + across * box.width(), box.bottom + up * box.height()});
   if (native::win32_pointer_client_to_window(client.x, client.y, &x, &y) == 0) {
     return;
   }
-  char text[64];
-  std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x, y);
+  char text[96];
+  std::snprintf(text, sizeof text, "\"%s\":{\"x\":%.5f,\"y\":%.5f},", key, x,
+                y);
   out->append(text);
+}
+
+/* A touch box's centre as a tap. */
+void put_box_tap(std::string *out, const input::SceneBox &box,
+                 const presentation::RetailScenePlane *plane) {
+  put_box_point(out, "tap", box, 0.5F, 0.5F, plane);
 }
 
 /* A list box's cards where its last touch draw put them, each with the
@@ -369,9 +379,7 @@ void read_menu_body(void *context) {
   menu::MenuSnapshot menu;
   read->status = menu::read_live_menu(&menu, &read->failed);
   if (read->status == menu::ReadStatus::ok) {
-    const native::LiveGuestMemory memory;
-    const auto plane =
-        native::read_scene_plane(memory, x86_module_base("XMen2.exe"));
+    const auto plane = native::live_scene_plane();
     read->body = menu_json(menu, read->all_items, plane ? &*plane : nullptr);
   } else if (read->status != menu::ReadStatus::unreadable) {
     read->body = menu.popup_up
@@ -461,6 +469,28 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
   return out;
 }
 
+/* The finger buttons the last frame drew over small items: each one's centre
+   and a point near its top corner as taps, and the scene point a press on it
+   is delivered at. */
+void put_touch_targets(std::string *out,
+                       const presentation::RetailScenePlane *plane) {
+  put_key(out, "touch_buttons");
+  out->push_back('[');
+  for (const input::TouchTarget &target : input::touch_targets().shown()) {
+    out->push_back('{');
+    put_box_tap(out, target.area, plane);
+    put_box_point(out, "edge", target.area, 0.1F, 0.9F, plane);
+    put_float(out, "aim_x", target.aim.x);
+    put_float(out, "aim_z", target.aim.z);
+    close_object(out);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("],");
+}
+
 std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
                       const presentation::RetailScenePlane *plane) {
   std::string out = "{";
@@ -481,6 +511,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
     put_int(&out, "assigning_skill", static_cast<long>(*menu.assigning_skill));
   }
   put_int(&out, "item_count", static_cast<long>(menu.items.size()));
+  put_touch_targets(&out, plane);
   int focused_row = -1;
   for (std::size_t i = 0; i < menu.rows.size(); ++i) {
     if (menu.rows[i] == menu.focused) {

@@ -51,10 +51,10 @@ input::SceneBox bounds(guest::GuestCall &call, Vectors &vectors,
    without one is left alone. */
 void show_phase(guest::GuestCall &call, std::uint32_t entity, float phase);
 
-/* A menu style's packed text colour (FUN_005d8ae0): `custom` is the
-   entry's own colour or 0. */
+/* A menu style's packed text colour (FUN_005d8ae0): `lit` from 0 plain to
+   1 selected, `custom` the entry's own colour or 0. */
 std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
-                          std::uint32_t style, bool selected, bool enabled,
+                          std::uint32_t style, float lit, bool enabled,
                           std::uint32_t item = 0u, std::uint32_t custom = 0u);
 
 inline constexpr float kHidden = -9999.0F;

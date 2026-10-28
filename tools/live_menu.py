@@ -146,9 +146,34 @@ def menu_footer(menu: dict, token: str) -> dict:
     return {}
 
 
-def tap_footer(case: Case, token: str) -> bool:
-    """Tap the game's desctext item carrying `token`."""
-    return tap_menu_item(case, menu_footer(read_menu(case), token))
+def item_button(menu: dict, item: dict) -> dict:
+    """The finger button touch put over `item`: the one whose press is
+    delivered inside the box the game hit-tests."""
+    rect = item.get("rect")
+    if rect is None:
+        return {}
+    for button in menu.get("touch_buttons", []):
+        if (rect["left"] <= button["aim_x"] <= rect["right"]
+                and rect["top"] <= button["aim_z"] <= rect["bottom"]):
+            return button
+    return {}
+
+
+def footer_button(menu: dict, token: str) -> dict:
+    """The finger button over the desctext item carrying `token`."""
+    return item_button(menu, menu_footer(menu, token))
+
+
+def tap_button_edge(case: Case, button: dict) -> bool:
+    """Tap a finger button near its top corner, outside the game's own box."""
+    edge = button.get("edge")
+    return edge is not None and case.http(
+        "/touch?x=%g&y=%g" % (edge["x"], edge["y"]))[0] == 200
+
+
+def tap_footer_button(case: Case, token: str) -> bool:
+    """Tap the finger button over the footer carrying `token`."""
+    return tap_button_edge(case, footer_button(read_menu(case), token))
 
 
 def tap_menu_item(case: Case, item: dict) -> bool:
@@ -381,11 +406,14 @@ def option_tabs(case: Case, pattern: str) -> dict[str, bool]:
 
 
 def tap_tab(case: Case, pattern: str, label: str) -> bool:
-    """Tap the game's tab named by `pattern` whose text is `label`."""
-    return tap_menu_item(case, next(
-        (item for item in menu_items(case)
-         if re.fullmatch(pattern, item["name"]) and item["label"] == label),
-        {}))
+    """Tap the finger button over the game's tab named by `pattern` whose
+    text is `label`."""
+    code, body = case.http("/menu?items=all")
+    menu = json.loads(body) if code == 200 else {}
+    tab = next((item for item in menu.get("items", [])
+                if re.fullmatch(pattern, item["name"])
+                and item["label"] == label), {})
+    return tap_button_edge(case, item_button(menu, tab))
 
 
 def list_entry(box: dict, label: str) -> int:

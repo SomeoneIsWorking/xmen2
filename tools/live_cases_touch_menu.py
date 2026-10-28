@@ -12,6 +12,7 @@ from live_harness import Case
 from live_menu import (
     dismiss_level_up,
     drag_between,
+    footer_button,
     keyboard_into_gameplay,
     keyboard_into_the_pda,
     keyboard_past_the_intro,
@@ -29,7 +30,7 @@ from live_menu import (
     reveal_list_entry,
     reveal_touch_row,
     select_list_entry,
-    tap_footer,
+    tap_footer_button,
     tap_list_entry,
     tap_menu_item,
     tap_tab,
@@ -115,8 +116,9 @@ def case_touch_menu(case: Case) -> None:
     time.sleep(1.0)
     case.shot("options-changed")
 
-    back = menu_footer(read_menu(case), "$MENU_BACK")
-    case.check("Back was tapped", tap_menu_item(case, back))
+    case.check("Back is a finger button and was tapped",
+               tap_footer_button(case, "$MENU_BACK"),
+               str(read_menu(case).get("touch_buttons")))
     deadline = time.monotonic() + 20
     left = read_menu(case).get("menu")
     while time.monotonic() < deadline and left in (None, "options"):
@@ -355,9 +357,28 @@ def case_touch_shop(case: Case) -> None:
                    dragged.get("selected")))
     case.shot("dragged")
 
-    case.check("the shop offers the game's Accept footer",
-               tap_footer(case, "$MENU_OK"),
-               str([t["label"] for t in read_menu(case).get("texts", [])]))
+    menu = read_menu(case)
+    case.check("the shop's Buy and Accept are finger buttons",
+               bool(footer_button(menu, "$MENU_ACCEPT"))
+               and bool(footer_button(menu, "$MENU_OK")),
+               str(menu.get("touch_buttons")))
+    labels = menu_labels(case)
+    before_money = int(labels.get("money_value", "0"))
+    before_potions = int(labels.get("pot_health_value", "0"))
+    tap_footer_button(case, "$MENU_ACCEPT")
+    labels = wait_labels(
+        case, lambda now: now.get("money_value") != str(before_money))
+    case.check("a tap on the Buy button bought another Health Pack",
+               labels.get("money_value") == str(before_money - price)
+               and labels.get("pot_health_value") == str(before_potions + 1),
+               "money %d -> %s, health packs %d -> %s" % (
+                   before_money, labels.get("money_value"), before_potions,
+                   labels.get("pot_health_value")))
+    case.shot("buttons")
+
+    case.check("the shop offers the game's Accept button",
+               tap_footer_button(case, "$MENU_OK"),
+               str(read_menu(case).get("touch_buttons")))
     left = wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
     case.check("Accept left the shop",
                left.get("menu") != "shop", "now %r" % left.get("menu"))
@@ -411,7 +432,11 @@ def case_touch_codex(case: Case) -> None:
         target), "name %r" % labels.get("name"))
     case.shot("selected")
 
-    tap_footer(case, "$MENU_DETAILS")
+    case.check("its footers are finger buttons",
+               bool(footer_button(menu, "$MENU_BACK"))
+               and bool(footer_button(read_menu(case), "$MENU_DETAILS")),
+               str(read_menu(case).get("touch_buttons")))
+    tap_footer_button(case, "$MENU_DETAILS")
     game = wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
     labels = menu_labels(case)
     case.check("Details opened the description in the game",
@@ -423,14 +448,14 @@ def case_touch_codex(case: Case) -> None:
                                      labels.get("desc", "")[:60]))
     case.shot("reading")
 
-    tap_footer(case, "$MENU_DETAILS")
+    tap_footer_button(case, "$MENU_DETAILS")
     game = wait_game_menu(case, lambda m: m.get("mode") == 0, 10)
     case.check("Details again returned to the list on the same entry",
                game.get("mode") == 0 and menu_list(case).get("selected") == 3,
                "mode %s, selected %s" % (game.get("mode"),
                                          menu_list(case).get("selected")))
 
-    case.check("the list offers Back", tap_footer(case, "$MENU_BACK"))
+    case.check("the list offers Back", tap_footer_button(case, "$MENU_BACK"))
     left = wait_game_menu(case, lambda m: m.get("menu") != "codex", 10)
     case.check("Back left the codex",
                left.get("menu") != "codex", "now %r" % left.get("menu"))
@@ -611,7 +636,7 @@ def case_touch_stash(case: Case) -> None:
                "gear %s -> %s, money %s -> %s" % (
                    before.get("inventory_count"), labels.get("inventory_count"),
                    before.get("money_value"), labels.get("money_value")))
-    tap_footer(case, "$MENU_OK")
+    tap_footer_button(case, "$MENU_OK")
     wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
 
     case.http("/console?command=openmenu%20stash")
@@ -676,7 +701,7 @@ def case_touch_stash(case: Case) -> None:
     case.check("a tap on it took it back to the inventory",
                labels.get("inventory_count") == "1/20",
                "gear %s" % labels.get("inventory_count"))
-    case.check("the stash offers Accept", tap_footer(case, "$MENU_OK"))
+    case.check("the stash offers Accept", tap_footer_button(case, "$MENU_OK"))
     left = wait_game_menu(case, lambda m: m.get("menu") != "stash", 10)
     case.check("Accept left the stash",
                left.get("menu") != "stash", str(left.get("menu")))
@@ -740,7 +765,7 @@ def case_touch_review(case: Case) -> None:
                back.get("menu") == "review"
                and back.get("touch_menu", {}).get("visible") is False,
                str(back.get("menu")))
-    case.check("the review offers Back", tap_footer(case, "$MENU_BACK"))
+    case.check("the review offers Back", tap_footer_button(case, "$MENU_BACK"))
     left = wait_game_menu(case, lambda m: m.get("menu") != "review", 10)
     case.check("Back left the review",
                left.get("menu") != "review", str(left.get("menu")))
@@ -859,7 +884,7 @@ def case_touch_danger_room(case: Case) -> None:
                "%s, desc %r" % (tabs, desc))
     case.shot("status")
 
-    tap_footer(case, "$MENU_BACK")
+    tap_footer_button(case, "$MENU_BACK")
     box = wait_list(case, lambda b: b.get("entries") == grades)
     case.check("Back returned to the grades", box.get("entries") == grades,
                str(box.get("entries")))

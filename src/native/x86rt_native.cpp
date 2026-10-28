@@ -49,7 +49,7 @@ static x2::native::ModuleNameMemo g_module_names;
    answers for whichever unrelated module happened to keep the preferred base.
    That is the same collision this file's header describes for the function
    tables, and it is why registration is resolved against a named module. */
-#define X2_MAX_OVERRIDES 128
+#define X2_MAX_OVERRIDES 256
 static struct {
   const char *module; /* module name as pe_map/x86_module_register knows it */
   uint32_t linked_ep; /* entry point at that module's PREFERRED base */

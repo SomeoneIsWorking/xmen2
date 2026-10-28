@@ -30,6 +30,28 @@ void cut_with_ellipsis(std::uint32_t out);
 /* English cuts a long line with "..."; other languages are not cut. */
 bool is_english(guest::GuestCall &call);
 
+/* Text shrinks to fit down to this share of its size, found in this many
+   halvings. */
+inline constexpr float kSmallestText = 0.6F;
+inline constexpr int kFitSteps = 6;
+
+/* The largest scale from `high` down to kSmallestText of it at which
+   `fits(scale)` holds; the smallest when none does. */
+template <typename Fits> float fitted_scale(float high, Fits &&fits) {
+  float low = kSmallestText * high;
+  if (fits(high)) {
+    return high;
+  }
+  if (!fits(low)) {
+    return low;
+  }
+  for (int step = 0; step < kFitSteps; ++step) {
+    const float middle = 0.5F * (low + high);
+    (fits(middle) ? low : high) = middle;
+  }
+  return low;
+}
+
 /* The text box line (FUN_005eecf0) over `area` in the scene: `item` is the
    item whose box the text box belongs to, `align` its flags. */
 void line(guest::GuestCall &call, std::uint32_t item, std::uint32_t box,

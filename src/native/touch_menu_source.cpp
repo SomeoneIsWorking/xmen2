@@ -3,6 +3,7 @@
 #include "../input/native_touch_menus.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_runtime_menu.hpp"
+#include "guest_modules.h"
 #include "x86rt_native.h"
 
 #include <SDL3/SDL.h>
@@ -35,6 +36,11 @@ bool read_f32(const GuestMemoryView &memory, std::uint32_t address,
 TouchMenuSource source;
 
 } // namespace
+
+std::optional<presentation::RetailScenePlane> live_scene_plane() {
+  const LiveGuestMemory memory;
+  return read_scene_plane(memory, guest_exe_base());
+}
 
 std::optional<presentation::RetailScenePlane>
 read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base) {

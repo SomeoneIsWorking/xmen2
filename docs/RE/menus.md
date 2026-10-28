@@ -296,6 +296,18 @@ action into `DAT_00a09f54[player]` and sets `DAT_00a09fa0 = 1`:
 The footer prompts are the menu's `desctext1..5` text items, so a click inside
 the one carrying `$MENU_BACK` is the game's own Back.
 
+`CMenuItemText`'s draw is `FUN_005c61d0` (vtable `+0x20`, `__fastcall`): the
+gamevar refresh `FUN_005bbd10`, then nothing while it is hidden (vt `+0x04`),
+its text (vt `+0x7c`) is empty or its model (`+0x58`) is not ready (model vt
+`+0x18`). The text colour is the style's (`+0x94`, `FUN_005d8ae0`) lit by
+`+0x98` while the style's `+0x04` is above `[0x00680030]`, by the focus-lit
+bit otherwise. With `+0xaa` bit 0 the text is cut to the box width at `|`
+breaks. It draws one text box line (`+0xa4`, `FUN_005eecf0`) at the local
+`[0x78]`, `[0x7a] - [0x76]`, `[0x74]` by `[0x76]`, scale 1, aligned by
+`[0xa9] | [0xa8]`; in the scene that is `[0x70]` to `[0x70] + [0x74]` across
+and `[0x72] - [0x76]` to `[0x72]` up. Its destructor body is `FUN_005c6fb0`,
+which frees the text box.
+
 `CMenu::onMouse` is `FUN_005ae0a0`. It walks the menu's focus links
 (`FUN_00585be0`/`FUN_00585c10` over the chain at `menu+0x824`), skips items
 that are hidden or disabled (`item+0x54 & 8` is the enabled bit both this and

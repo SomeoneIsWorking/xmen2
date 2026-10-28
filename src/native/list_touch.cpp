@@ -12,7 +12,6 @@
 #include "../input/touch_runtime.h"
 #include "guest_body.h"
 #include "guest_call.hpp"
-#include "guest_memory_view.hpp"
 #include "guest_modules.h"
 #include "menu_action.hpp"
 #include "menu_item_memory.hpp"
@@ -93,10 +92,6 @@ constexpr float kFadeShown = 0.75F;
 constexpr float kFadeIn = 1.0F;
 /* A drag starts after this share of a card pitch. */
 constexpr float kDragStart = 0.25F;
-/* Text shrinks to fit down to this share of its size, found in this many
-   halvings. */
-constexpr float kSmallestText = 0.6F;
-constexpr int kFitSteps = 6;
 
 int s16(std::uint32_t address) {
   return static_cast<std::int16_t>(RD16(address));
@@ -138,7 +133,7 @@ public:
     if (!replaced_class(self)) {
       return false;
     }
-    const auto plane = touch_plane();
+    const auto plane = x2::native::live_scene_plane();
     menu_scene::Vectors vectors;
     if (!plane || !vectors) {
       return false;
@@ -354,11 +349,6 @@ private:
     int card = -1;
   };
 
-  static std::optional<x2::presentation::RetailScenePlane> touch_plane() {
-    const x2::native::LiveGuestMemory memory;
-    return x2::native::read_scene_plane(memory, x2::native::guest_exe_base());
-  }
-
   /* A posted action is a press for one controller round, and the message
      pump runs several before the menu reads them (0x005d3ba0), so a tap's
      accept is posted from the draw. */
@@ -558,11 +548,6 @@ private:
     return out;
   }
 
-  /* `source` in `out`, wrapped to `width` at `scale`; true when it is one
-     line. */
-
-  /* A wrapped line cut at its first break, as retail cuts a row. */
-
   /* The largest text scale up to the layout's at which every entry's columns
      stay on one line; retail's cut is left for what will not fit even at
      the smallest. */
@@ -594,19 +579,7 @@ private:
       }
       return true;
     };
-    float high = layout.text_scale;
-    float low = kSmallestText * layout.text_scale;
-    if (fits(high)) {
-      return high;
-    }
-    if (!fits(low)) {
-      return low;
-    }
-    for (int step = 0; step < kFitSteps; ++step) {
-      const float middle = 0.5F * (low + high);
-      (fits(middle) ? low : high) = middle;
-    }
-    return low;
+    return menu_text::fitted_scale(layout.text_scale, fits);
   }
 
   std::unordered_map<std::uint32_t, Cards> lists_;

@@ -11,7 +11,6 @@
 #include "../input/touch_runtime.h"
 #include "guest_body.h"
 #include "guest_call.hpp"
-#include "guest_memory_view.hpp"
 #include "guest_modules.h"
 #include "load_game_menu_runtime.h"
 #include "menu_action.hpp"
@@ -104,11 +103,6 @@ constexpr int kButtons = static_cast<int>(kPromptCount);
 
 enum class Scene { menu, world };
 
-std::optional<x2::presentation::RetailScenePlane> scene_plane() {
-  const x2::native::LiveGuestMemory memory;
-  return x2::native::read_scene_plane(memory, x86_module_base("XMen2.exe"));
-}
-
 std::uint32_t page_of(std::uint32_t popup) {
   return popup + popup::page_offset(static_cast<std::int32_t>(
                      RD32(popup + popup::kCurrentPage)));
@@ -118,18 +112,6 @@ bool entry_enabled(std::uint32_t page, int entry) {
   const std::uint32_t word = RD32(page + popup::kEnabledBits +
                                   static_cast<std::uint32_t>(entry / 32) * 4u);
   return ((word >> (entry % 32)) & 1u) != 0u;
-}
-
-/* A footer prompt's words: the text after its `$MENU_*` token. */
-std::string prompt_words(std::string_view prompt) {
-  const std::size_t token = prompt.find("$MENU");
-  if (token == std::string_view::npos) {
-    return std::string(prompt);
-  }
-  const std::size_t space = prompt.find(' ', token);
-  return space == std::string_view::npos
-             ? std::string()
-             : std::string(prompt.substr(space + 1));
 }
 
 class PopupTouch {
@@ -160,7 +142,7 @@ public:
     if ((RD8(page + popup::kFlags) & popup::kOpen) == 0u || bars_[0] == 0u) {
       return false;
     }
-    const auto plane = scene_plane();
+    const auto plane = x2::native::live_scene_plane();
     Vectors vectors;
     if (!plane || !vectors) {
       return false;
@@ -253,7 +235,7 @@ public:
     for (std::size_t i = 0; i < layout_.buttons.size(); ++i) {
       const SceneBox &button = layout_.buttons[i];
       place_bar(call, vectors, bars_[bar++], button);
-      const std::string words = prompt_words(prompts[i]);
+      const std::string words = x2::native::menu_token_label(prompts[i]);
       const x2::guest::GuestText label(words);
       if (label) {
         text(call, vectors, box, card_text_point(button), layout_.text_scale,

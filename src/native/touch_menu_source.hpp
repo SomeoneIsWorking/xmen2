@@ -15,6 +15,8 @@ namespace x2::native {
    (docs/RE/menus.md). */
 std::optional<presentation::RetailScenePlane>
 read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base);
+/* The running image's scene plane. Guest thread only. */
+std::optional<presentation::RetailScenePlane> live_scene_plane();
 
 /*
  * Feeds the touch menu: while touch play is the input, reads the active retail

@@ -18,4 +18,14 @@ ReadStatus read_live_menu(MenuSnapshot *out, std::uint32_t *failed_address) {
   return status;
 }
 
+std::string read_live_item_name(std::uint32_t item) {
+  std::string name;
+  const native::LiveGuestMemory memory;
+  RetailMenuModel model(memory, x86_module_base("XMen2.exe"));
+  if (!model.read_item_name(item, &name)) {
+    name.clear();
+  }
+  return name;
+}
+
 } // namespace x2::menu

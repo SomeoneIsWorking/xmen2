@@ -135,11 +135,30 @@ selection, and the menu's own arrows mark entries above and below. While touch
 draws a list its window rows (`+0xdb`) are the cards that fit and its
 navigation margin (`+0xdd`) is 0, so the game's own stepping and arrows agree
 with the cards; with touch off both go back and draw and onMouse are
-retail's. The tabs and footers beside a list are the game's own items, tapped
-where they are. `GET /menu?items=all` reports each list's cards where the
+retail's. `GET /menu?items=all` reports each list's cards where the
 last draw put them (`touch_cards`, with the entry each shows). Prove it with
 `tools/live_case.py touch-shop`, `touch-stash`, `touch-codex`, `touch-review`
 and `touch-danger-room`.
+
+**A menu native on touch draws its `$MENU_*` prompts as finger buttons**
+(CMenuItemText's draw `0x005c61d0`, `src/native/text_item_touch.cpp`; the rule
+is `x2::native::text_has_touch_button`): a finger tall and a quarter finger
+wider than the prompt's text, centred on it (`x2::input::text_button`), of the
+same option art as the list cards, lit while held, with the prompt's words
+and none of its keycap in the item's font at up to 0.42 of a finger, shrunk
+to fit. The tabs of the shop, stash, review and danger room, which their menu's
+`onMouse` finds by name (`x2::native::text_is_menu_tab`), keep their retail
+draw and get the same finger-sized area. Each such draw puts its area and the middle of the box the
+item's own handler hit-tests into `x2::input::TouchTargets`
+(`src/input/touch_targets.{hpp,cpp}`), and a press that starts in an area
+shown on the last frame is delivered at that point until it lifts
+(`src/native/touch_pointer_dispatch.cpp`), so the menu acts on it exactly as
+on a click on the item: the codex's Details through its own `onMouse`, a tab
+through its menu's raw-box test. `GET /menu` reports them
+(`touch_buttons`: `tap`, `edge` near the top corner outside the item, and the
+scene point a press is delivered at). Prove it with `touch-shop` (a tab, Buy,
+Accept), `touch-codex` (Details twice, Back), `touch-stash`, `touch-review`,
+`touch-danger-room` and `touch-menu` (Options' Back).
 
 **Every other screen that is not gameplay and has no touch menu draws the menu
 pad** -- dialogue, and the menu classes not yet native. The retail menus are
