@@ -6,8 +6,9 @@
 namespace x2::input {
 namespace {
 
-constexpr std::array<std::string_view, 3> kNativeClasses = {
-    "CMenuMain", "CMenuOptions", "CMenuPDA"};
+constexpr std::array<std::string_view, 8> kNativeClasses = {
+    "CMenuMain",  "CMenuOptions",     "CMenuPDA",        "CMenuShop",
+    "CMenuCodex", "CMenuReviewPaths", "CMenuDangerRoom", "CMenuTrivia"};
 
 } // namespace
 

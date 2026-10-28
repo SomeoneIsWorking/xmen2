@@ -15,6 +15,7 @@ from live_menu import (
     MAIN_MENU_LABELS,
     OPTIONS_MENU_LABELS,
     MenuTimeline,
+    drag_between,
     keyboard_past_the_intro,
     menu_row,
     open_options,
@@ -248,20 +249,6 @@ def popup_button(menu: dict, words: str) -> dict:
     return {}
 
 
-def drag_popup(case: Case, start: dict, end: dict) -> None:
-    """One finger from card `start` to card `end` through the contact phases."""
-    x = start["tap"]["x"]
-    y_from = start["tap"]["y"]
-    y_to = end["tap"]["y"]
-    steps = 4
-    case.http("/touch?x=%g&y=%g&phase=down" % (x, y_from))
-    for i in range(1, steps + 1):
-        time.sleep(0.1)
-        case.http("/touch?x=%g&y=%g&phase=motion"
-                  % (x, y_from + (y_to - y_from) * i / steps))
-    case.http("/touch?x=%g&y=%g&phase=up" % (x, y_to))
-
-
 def case_touch_popup(case: Case) -> None:
     """New Game's difficulty popup in its touch layout.
 
@@ -359,13 +346,14 @@ def case_touch_load(case: Case) -> None:
                all(c["tap"]["y"] < b["tap"]["y"] for c in cards
                    for b in page.get("footers", [])))
     case.shot("load")
-    drag_popup(case, cards[-1], cards[0])
+    drag_between(case, cards[-1]["tap"], cards[0]["tap"])
     time.sleep(1.0)
     dragged = read_menu(case).get("popup_page") or {}
     first = dragged.get("rows", [{}])[0].get("entry")
     case.check("a drag up scrolled the cards with the finger",
                first == len(cards) - 1, "first shown entry %r" % first)
-    drag_popup(case, dragged["rows"][-1], dragged["rows"][0])
+    drag_between(case, dragged["rows"][-1]["tap"],
+                 dragged["rows"][0]["tap"])
     time.sleep(1.0)
     end = read_menu(case).get("popup_page") or {}
     target = end.get("rows", [{}])[-1]

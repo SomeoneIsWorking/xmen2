@@ -1,0 +1,24 @@
+#ifndef X2_LIST_TOUCH_HPP
+#define X2_LIST_TOUCH_HPP
+
+#include "../input/touch_cards.hpp"
+
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+namespace x2::native {
+
+/* What the last touch draw of a list box showed: its cards from entry
+   `first`. */
+struct ListTouchDrawn {
+  int first = 0;
+  std::vector<input::SceneBox> cards;
+};
+
+/* The list box `list` as touch last drew it, or nullopt; guest thread. */
+std::optional<ListTouchDrawn> list_touch_drawn(std::uint32_t list);
+
+} // namespace x2::native
+
+#endif

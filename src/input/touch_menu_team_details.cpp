@@ -116,7 +116,7 @@ void append_fact(const menu::MenuSnapshot &menu, std::string label,
                  std::string_view value, TouchMenuView *view) {
   const std::string text = shown_text(menu, value);
   if (!label.empty() && !text.empty()) {
-    view->facts.push_back({std::move(label), text, false});
+    view->facts.push_back({std::move(label), text});
   }
 }
 
@@ -255,7 +255,7 @@ void build_skills(const menu::MenuSnapshot &menu, TouchMenuView *view) {
   if (list == nullptr || !list->list_box || !menu_item_shown(*list)) {
     return;
   }
-  append_list_entries(*list, ListTap::select, view);
+  append_list_entries(*list, view);
   const std::vector<std::vector<std::string>> &columns =
       list->list_box->columns;
   for (TouchMenuRow &row : view->rows) {
@@ -285,7 +285,7 @@ void build_gear(const menu::MenuSnapshot &menu, TouchMenuView *view) {
     const menu::MenuItem *list = find_menu_item(menu, name);
     if (list != nullptr && list->list_box && list->focused &&
         menu_item_shown(*list)) {
-      append_list_entries(*list, ListTap::select, view);
+      append_list_entries(*list, view);
     }
   }
   for (TouchMenuRow &row : view->rows) {

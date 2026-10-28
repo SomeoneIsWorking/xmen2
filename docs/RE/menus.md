@@ -262,13 +262,13 @@ takes the item's world bounding box, converts each axis through
 
 | field | meaning |
 |---|---|
-| `item+0x70` | box left |
-| `item+0x72` | box top |
+| `item+0x70` | box left, world |
+| `item+0x72` | box top, world |
 | `item+0x74` | box width |
 | `item+0x76` | box height |
-| `item+0x78` | box half-extent, x |
-| `item+0x7a` | box half-extent, z |
-| `item+0x7c` | depth extent |
+| `item+0x78` | box left, local (the model's minimum x) |
+| `item+0x7a` | box top, local (the model's maximum z) |
+| `item+0x7c` | box depth, world |
 
 `CMenuItem::onMouse` is `FUN_005bc1b0`. It rebuilds a `RECT` from those fields —
 `left = [0x70]`, `right = left + [0x74] - 1`, `bottom = [0x72] + [0x7a]/2`,
@@ -818,10 +818,18 @@ buy. What publishes that step is not established.
 | `item+0xdb` (u8) | rows the window holds (vfunc `+0xec`, `0x005bf100`) |
 | `item+0xdd` (u8) | rows kept between the selection and the window's edge |
 | `item+0xe0` (i32) | row height, scene units |
-| `item+0x2a4` | bit 1: skip entries vfunc `+0x88` refuses; bit 3: Up/Down wraps; bit 2: wordwrap |
+| `item+0xc0` | the columns, at most 4 of 6 bytes: i16 width, i16 alignment (1 centre, 2 right), i16 widest text; the count at `item+0xdc` (u8) |
+| `item+0xe4` | the `list_focus` cursor model, attached while `item+0x2a4` bit 0 is set |
+| `item+0xf0`, `+0xf8` | the icon sheet's entity and its sprite batch (`icons` attribute) |
+| `item+0x2a4` | bit 0: cursor attached; bit 1: skip entries vfunc `+0x88` refuses; bit 2: wordwrap; bit 3: Up/Down wraps; bit 4: icons; bit 6: icons on the right |
+
+The box every item takes from its model's bounds (`FUN_005bc530`, from the
+entity's vfunc `+0x28` min/max) is `+0x70`/`+0x72` world left and top, `+0x74`/
+`+0x76` width and height, `+0x78`/`+0x7a` the local left and top (world = local +
+the item's translation) and `+0x7c` the world depth; scene z grows up.
 
 An entry's text is a record in one table every list box shares:
-`0x8a83f4 + id * 0x70` (256 records). The entry getter (vfunc `+0xe4`,
+`0x8a83f4 + id * 0x70` (0x80 records). The entry getter (vfunc `+0xe4`,
 `0x005c23c0`) copies at most 0x3f bytes of it and cuts at the first tab; the
 rest of the line is further columns (`columns` attribute, at most 4), which
 the model reads up to the record's handle at `+0x58` as the entry's value.
@@ -835,21 +843,62 @@ the top edge, and its entry is `top + row`:
   selection, the same as the pad's Up/Down (`FUN_005c1740`, vfunc `+0x58`),
   which moves `top` when the selection leaves the window;
 - a button-down on an entry that is not selected publishes one axis 1 step
-  toward it and keeps the remaining steps at `item+0x88` (timed at `+0x8c`), so
-  the selection walks there;
+  toward it and keeps the remaining steps at `item+0x88` (timed at `+0x8c`,
+  `+0x90` set while walking), so the selection walks there: the list's tick
+  (`FUN_005c0c60`) publishes the next step when the timer runs out (positive
+  steps are down). The step the press publishes is lost when the menu does
+  not tick its items in the next controller round (measured in the codex:
+  the timer held for a dozen frames after a press, and the selection walked
+  one entry short); a queued step waits for the tick;
 - a button-up on the entry the same button went down on, when that press did
   not move the selection (`item+0x90` clear), publishes `MENU_ACCEPT` (4) for
   the left button and 8 for the right. So a click on the selected entry buys.
 
-While the shop's or the stash's selected entry is gear, clicks on the list
-are lost: measured in the jungle with `Abnormal Waistband` selected, a click
-on `Energy Pack` two rows up published one axis 1 step and the queued second
-step (`item+0x88`) was dropped, a further click published nothing, and a
-click on the selected gear never bought or stored it; with a pack selected
-the same clicks walked and bought. The tabs, the footers and the keyboard's
-Up/Down and Enter kept working. Why is not established: the list's store
-(`item+0xbc`) stayed the same, and the published axis slot (`DAT_00a09fa8`)
-was not overwritten between frames.
+The draw (vfunc `+0x20`, `0x005c1200`, plain `ret`) runs for every item of
+the menu each frame: the gamevar refresh (`FUN_005bbd10`), then it detaches the
+cursor, parks every entry's row model at -9999, and stops (arrows off) when the
+item is hidden (vfunc `+4`) or has no model at `+0x58`. Otherwise it sets the
+scroll arrows (`FUN_005bf690(up, down)`, `ret 8`, only while the list is the
+menu's focus at `menu+0x324` and the fade, vfunc `+0xc`, is 1) and, for each
+window row, places the cursor on the selected row (focus-lit, `+0x54` bit 0)
+and calls the row draw (vfunc `+0xe8`, `0x005c1d00`, `ret 0x14`) with
+`(entry, local left, row bottom, width, pitch)`. The row draw splits the
+record text (`FUN_005bfcd0(entry)`, `ret 4`, gives it) at its tabs, colours it
+with the style's `FUN_005d8ae0(selected, out, enabled, item, own colour)` (the
+entry's own colour from vfunc `+0x94(out, entry)` when its alpha is above
+0.001), draws icon tiles vfunc `+0xa0`/`+0xa8(entry)` (negative for none) as
+sprites `FUN_005ed120(pos, rgba, size, tile, turn)` on the batch at `+0xf8`, a
+pitch wide and centred on the row, the second 10 units deeper, then cuts each
+column to one line with the font manager's wrap (vfunc `+0x38(width, text,
+scale, font, 1)`, the font from the text box's `FUN_005ee590`, which pops no
+argument), replacing the first break with `...` in English, and draws it with
+the text box's line `FUN_005eecf0(x, z, w, h, scale, flags, colour, text, -1)`
+(`ret 0x24`) on `item+0xa4`, in the item's local units, `z` the bottom of `h`,
+flags the column's alignment with 8 (centred in `h`), scale always 1. The
+cursor and the option art are entities from `CMenuMgr` vfunc `+0x260(&entity,
+name, 0xd)` started with vfunc `+0x40(0)` (`FUN_005c10d0`), released by
+`FUN_00575980(&entity)`; an entity's animation is vfunc `+0x10` then `+0x14`,
+its phase set with `+0x30` (0 to 1). The list's base destructor is
+`FUN_005c2800`.
+
+On touch `src/native/list_touch.cpp` takes the draw and the list's `onMouse`
+for `CMenuItemListBox` and `CMenuItemListCodex` ([Touch play](../touch-play.md)).
+
+A published action is a press for one controller round only. The pending
+flag `DAT_00a09fa0[p]` is read by the controller poll `FUN_0061a810` (from
+the controller update `FUN_00554840`, which first copies the current bits at
+`ctl+0x2f8` to the previous at `ctl+0x374`), and what a menu reads is the
+edge, `cur & ~prev` (`FUN_00550b70`, controller vfunc `+0x18`, through
+`CMenuMgr` vfuncs `+0x130`/`+0x13c`). The shop's update (`FUN_005d3ba0`,
+vfunc `+0x38`) buys on bit 4 (`MENU_ACCEPT`). Normally one round runs per
+menu update, but on the frame of a tap posted from `onMouse` five rounds ran
+before the shop's update (measured 2026-10-28 in the stash case with
+`Fortified Waistband` selected): the accept's edge was gone and nothing was
+bought, while on a pack it happened to arrive in time. That is also what was
+measured earlier as clicks lost while gear is selected. The pad's A was
+pressed on an ordinary frame and always bought. On touch the accept is
+posted from the list's draw instead, so the next round is the one the
+menu's update reads.
 
 What the shop shows beside its list is written by its selection update
 (`FUN_005d30d0`, run after every `onMouse` the base menu does not take): it

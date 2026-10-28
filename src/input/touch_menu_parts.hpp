@@ -52,20 +52,10 @@ void append_menu_tabs(const menu::MenuSnapshot &menu,
                       std::span<const std::string_view> names,
                       TouchMenuView *view);
 
-/* What a tap on a list entry asks of the game. Both walk the list's
-   selection with the menu pad: a click on a CMenuShop entry is lost while a
-   gear entry is selected, the pad's Up/Down and A are not. */
-enum class ListTap {
-  /* Select it; a tap on the selected entry presses A, which accepts it. */
-  select,
-  /* Select it and press A on arrival. */
-  accept,
-};
-
-/* One row per entry of a list box (CMenuItemListBox or ListCodex), its
-   further columns as the row's value. The list's Up/Down does not wrap. */
-void append_list_entries(const menu::MenuItem &list, ListTap tap,
-                         TouchMenuView *view);
+/* One row per entry of a list box, its further columns as the row's value.
+   A tap walks the selection with the menu pad; a tap on the selected entry
+   presses A, which accepts it. The list's Up/Down does not wrap. */
+void append_list_entries(const menu::MenuItem &list, TouchMenuView *view);
 
 /* A view for `menu` with no rows yet. */
 TouchMenuView start_menu_view(const menu::MenuSnapshot &menu);

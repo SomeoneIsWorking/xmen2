@@ -66,8 +66,8 @@ void detail_content(std::ostringstream &rml, const input::TouchMenuState &state,
         rml << "<span class='tm-fact-label'>" << escape_rml(fact.label)
             << "</span>";
       }
-      rml << "<span class='tm-fact-value" << (fact.warn ? " warn" : "") << "'>"
-          << escape_rml(fact.value) << "</span></span>";
+      rml << "<span class='tm-fact-value'>" << escape_rml(fact.value)
+          << "</span></span>";
     }
     rml << "</div>";
   }

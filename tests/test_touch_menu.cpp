@@ -94,411 +94,6 @@ void retail_text_reads_as_a_player_sees_it() {
         "the style reset escape is removed");
 }
 
-const MenuItem *find_item(const MenuSnapshot &menu, const std::string &name) {
-  for (const MenuItem &candidate : menu.items) {
-    if (candidate.name == name) {
-      return &candidate;
-    }
-  }
-  return nullptr;
-}
-
-/* CMenuShop's training tab as GET /menu read it in the jungle: the three
-   tabs with training lit, the list box holding `entries` entries. */
-MenuSnapshot shop_menu(int entries, int top, int selected) {
-  MenuSnapshot menu;
-  menu.address = 0x27128964u;
-  menu.name = "shop";
-  menu.menu_class = "CMenuShop";
-  menu.mode = 0u;
-  menu.items.push_back(
-      item(1, "desctext2", "~05$MENU_ACCEPT Buy", 82, 21, 161, 35));
-  menu.items.push_back(
-      item(2, "desctext3", "~05$MENU_OK Accept", 215, 21, 294, 35));
-  menu.items.push_back(item(14, "shop_option01", "buy", 229, 354, 288, 368));
-  menu.items.push_back(item(15, "shop_option02", "sell", 319, 354, 378, 368));
-  MenuItem training = item(16, "shop_option03", "training", 409, 354, 468, 368);
-  training.flags |= x2::menu::kItemFocusLit;
-  menu.items.push_back(training);
-  MenuItem cost = item(31, "item_cost_value", "~0620000", 419, 53, 482, 67);
-  menu.items.push_back(item(30, "label_cost", "cost", 370, 54, 403, 68));
-  menu.items.push_back(item(24, "money_value", "2000", 50, 58, 108, 72));
-  menu.items.push_back(
-      item(26, "label_inventory_count", "gear", 360, 119, 403, 133));
-  menu.items.push_back(item(27, "inventory_count", "0/20", 419, 118, 482, 132));
-  menu.items.push_back(
-      item(28, "label_owner", "~02Limit:~~ 10", 216, 53, 290, 67));
-  menu.items.push_back(item(29, "item_desc",
-                            "Recovers 33% of max $HP with a chance for 66% "
-                            "based on\nBody\n",
-                            215, 75, 482, 123));
-  menu.items.push_back(cost);
-  MenuItem list = item(46, "list", "", 215, 191, 482, 377);
-  x2::menu::ListBoxState box;
-  for (int i = 0; i < entries; ++i) {
-    box.entries.push_back("Entry " + std::to_string(i));
-  }
-  box.top = top;
-  box.selected = selected;
-  box.visible_rows = 23;
-  box.row_height = 8;
-  box.hit = {215, 143, 482, 329};
-  list.list_box = box;
-  list.focused = true;
-  menu.items.push_back(list);
-  menu.rows = {static_cast<int>(menu.items.size()) - 1};
-  menu.focused = menu.rows[0];
-  return menu;
-}
-
-void main_options_and_the_pda_are_native() {
-  for (const char *native : {"CMenuMain", "CMenuOptions", "CMenuPDA"}) {
-    MenuSnapshot menu = options_menu();
-    menu.menu_class = native;
-    check(!x2::input::build_touch_menu_view(menu, plane_1280x720()),
-          std::string(native) + " is drawn and touched natively");
-  }
-  MenuSnapshot loading = shop_menu(3, 0, 0);
-  loading.menu_class = "CMenuLoading";
-  check(!x2::input::build_touch_menu_view(loading, plane_1280x720()),
-        "a menu class the touch menu does not replace keeps the retail screen");
-  MenuSnapshot popup = shop_menu(3, 0, 0);
-  popup.popup_up = true;
-  check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
-        "a popup over the menu keeps the retail screen");
-}
-
-void the_shop_is_its_tabs_and_entries() {
-  const RetailScenePlane plane = plane_1280x720();
-  const MenuSnapshot menu = shop_menu(30, 4, 6);
-  const auto view = x2::input::build_touch_menu_view(menu, plane);
-  check(view.has_value(), "the shop is replaced");
-  if (!view) {
-    return;
-  }
-  check(view->tabs.size() == 3u && view->tabs[0].label == "buy" &&
-            view->tabs[2].label == "training" && view->tabs[2].lit &&
-            !view->tabs[0].lit,
-        "the tabs are a bar of their own with the open one lit");
-  check(view->rows.size() == 30u && view->rows[0].label == "Entry 0",
-        "the rows are the list's entries only");
-  check(view->focused_row == 6 && view->rows[6].focused,
-        "the list's selection is the menu's focus");
-  check(!view->focus_wraps, "the list's Up/Down does not wrap");
-  bool tabs_inside = true;
-  for (std::size_t i = 0; i < 3u; ++i) {
-    const auto &rect =
-        find_item(menu, "shop_option0" + std::to_string(i + 1))->rect;
-    const auto scene = plane.to_scene(view->tabs[i].click);
-    tabs_inside = tabs_inside && scene.x >= static_cast<float>(rect.left) &&
-                  scene.x < static_cast<float>(rect.right) &&
-                  scene.z >= static_cast<float>(rect.top) + 3.0F &&
-                  scene.z < static_cast<float>(rect.bottom) - 3.0F;
-  }
-  check(tabs_inside, "a tab is clicked inside the box CMenuShop tests");
-  bool walked = true;
-  for (std::size_t entry = 0; entry < view->rows.size(); ++entry) {
-    const auto &row = view->rows[entry];
-    walked = walked && !row.clicks && row.entry == static_cast<int>(entry) &&
-             row.press_on_arrival == (entry == 6u);
-  }
-  check(walked, "every entry is walked to; only the selected one presses A");
-  check(view->rows[6].value == "20000" && view->rows[5].value.empty(),
-        "the selected entry shows the cost the game priced it at");
-  check(view->facts.size() == 4u && view->facts[0].label == "cost" &&
-            view->facts[0].value == "20000" && view->facts[0].warn &&
-            view->facts[1].label == "money" && view->facts[1].value == "2000" &&
-            !view->facts[1].warn && view->facts[2].label == "gear" &&
-            view->facts[2].value == "0/20" && view->facts[3].label.empty() &&
-            view->facts[3].value == "Limit: 10",
-        "cost, money, gear and limit, as the game's own items show them");
-  check(
-      view->detail ==
-          std::vector<std::string>{
-              "Recovers 33% of max HP with a chance for 66% based on", "Body"},
-      "the selected entry's description, in the game's own lines");
-  check(view->footers.size() == 2u && view->footers[0].label == "Buy",
-        "the shop's Buy and Accept footers");
-
-  MenuSnapshot stash = shop_menu(1, 0, 0);
-  stash.mode = 1u;
-  MenuItem stored = item(15, "stash_option01", "stash", 252, 354, 311, 368);
-  MenuItem carried =
-      item(16, "stash_option02", "inventory", 386, 354, 445, 368);
-  carried.flags |= x2::menu::kItemFocusLit;
-  stash.items.push_back(stored);
-  stash.items.push_back(carried);
-  const auto stash_view = x2::input::build_touch_menu_view(stash, plane);
-  check(stash_view.has_value() && stash_view->tabs.size() == 2u &&
-            stash_view->tabs[0].label == "stash" &&
-            stash_view->tabs[1].label == "inventory" &&
-            stash_view->tabs[1].lit && stash_view->rows.size() == 1u,
-        "the stash is its own stash and inventory tabs and the list");
-  if (stash_view) {
-    const auto at = plane.to_scene(stash_view->tabs[0].click);
-    check(at.x >= 252.0F && at.x < 311.0F,
-          "a stash tab is clicked where CMenuShop::onMouse tests the stash");
-  }
-  MenuSnapshot empty = shop_menu(0, 0, -1);
-  empty.mode = 1u;
-  empty.items.push_back(stored);
-  empty.items.push_back(carried);
-  const auto empty_view = x2::input::build_touch_menu_view(empty, plane);
-  check(empty_view.has_value() && empty_view->rows.empty() &&
-            empty_view->tabs.size() == 2u,
-        "an empty stash list keeps its tabs to switch with");
-  MenuSnapshot unread = shop_menu(3, 0, 0);
-  unread.mode.reset();
-  check(!x2::input::build_touch_menu_view(unread, plane),
-        "a shop whose mode was not read keeps the retail screen");
-
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  MenuSnapshot live = shop_menu(30, 4, 6);
-  touch.set_view(x2::input::build_touch_menu_view(live, plane), 0u);
-  const auto visible = *x2::input::build_touch_menu_view(live, plane);
-  const TouchMenuLayout &layout = touch.layout();
-  const auto *tab = find(layout, TouchMenuPart::tab, 0);
-  const auto *first_row = find(layout, TouchMenuPart::row, 0);
-  check(tab != nullptr && first_row != nullptr &&
-            tab->rect.bottom <= layout.list.top &&
-            layout.detail.top >= layout.list.bottom &&
-            layout.detail.bottom <= layout.footer.top &&
-            tab->rect.bottom - tab->rect.top >= 48.0F,
-        "the tab bar sits above the list and the detail below it");
-  auto out = tap(touch, tab->rect, 10u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::click &&
-            out[0].at.x == visible.tabs[0].click.x &&
-            out[0].at.y == visible.tabs[0].click.y,
-        "a tap on a tab is a click on the tab");
-  const x2::presentation::Rect entry_row =
-      find(touch.layout(), TouchMenuPart::row, 6)->rect;
-  out = tap(touch, entry_row, 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuA,
-        "a tap on the selected entry presses A, which buys it");
-
-  /* Entry 28 is below the window: walk the selection down to it, then stop. */
-  const float x = 0.5F * (entry_row.left + entry_row.right);
-  touch.contact(3, {x, entry_row.top}, lucent::touch::Phase::began, 25u);
-  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::moved,
-                25u);
-  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::ended,
-                25u);
-  const auto *pinned = find(touch.layout(), TouchMenuPart::tab, 0);
-  check(pinned != nullptr && pinned->rect.top == tab->rect.top,
-        "the tab bar does not scroll with the list");
-  const auto *far = find(touch.layout(), TouchMenuPart::row, 28);
-  check(far != nullptr, "the far entry has a button");
-  if (far == nullptr) {
-    return;
-  }
-  out = tap(touch, far->rect, 30u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuDown,
-        "an entry outside the window is walked to with Down, not the wrap");
-  live.items.back().list_box->selected = 28;
-  live.items.back().list_box->top = 6;
-  out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 40u);
-  check(out.empty(), "and only selected on arrival, as a click would");
-}
-
-/* CMenuCodex as GET /menu read it from gameplay: fifteen heroes, the list
-   (mode 0) or the loaded entry's name and description (mode 1). */
-MenuSnapshot codex_menu(std::uint32_t mode, int selected) {
-  MenuSnapshot menu;
-  menu.address = 0x27129014u;
-  menu.name = "codex";
-  menu.menu_class = "CMenuCodex";
-  menu.mode = mode;
-  menu.items.push_back(item(1, "title", "Codex", 29, 404, 298, 418));
-  menu.items.push_back(
-      item(2, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
-  menu.items.push_back(
-      item(3, "desctext3", "~05$MENU_DETAILS Details", 215, 21, 294, 35));
-  MenuItem name = item(4, "name", "~03Wolverine", 29, 404, 298, 418);
-  MenuItem desc = item(5, "desc",
-                       "A loner and a man without a memory, Wolverine was\n"
-                       "discovered by James MacDonald Hudson\n\n",
-                       29, 122, 298, 391);
-  MenuItem list = item(6, "list", "", 29, 122, 298, 391);
-  x2::menu::ListBoxState box;
-  for (int i = 0; i < 15; ++i) {
-    box.entries.push_back("Hero " + std::to_string(i));
-  }
-  box.selected = selected;
-  box.visible_rows = 11;
-  box.row_height = 24;
-  box.hit = {29, 122, 298, 391};
-  list.list_box = box;
-  if (mode == 0u) {
-    name.flags |= x2::menu::kItemHidden;
-    desc.flags |= x2::menu::kItemHidden;
-  } else {
-    list.flags |= x2::menu::kItemHidden;
-  }
-  menu.items.push_back(name);
-  menu.items.push_back(desc);
-  menu.items.push_back(list);
-  menu.rows = {static_cast<int>(menu.items.size()) - 1};
-  menu.focused = menu.rows[0];
-  return menu;
-}
-
-void the_codex_lists_its_heroes_and_reads_one() {
-  const RetailScenePlane plane = plane_1280x720();
-  const MenuSnapshot list = codex_menu(0u, 3);
-  const auto view = x2::input::build_touch_menu_view(list, plane);
-  check(view.has_value() && view->rows.size() == 15u &&
-            view->title == "Codex" && view->focused_row == 3,
-        "the codex list is its heroes, titled, with the selection focused");
-  if (!view) {
-    return;
-  }
-  bool accepts = true;
-  for (const auto &row : view->rows) {
-    accepts = accepts && !row.clicks && row.press_on_arrival;
-  }
-  check(accepts, "a codex entry is walked to and accepted, which loads it");
-  check(view->footers.size() == 2u && view->footers[1].label == "Details",
-        "the codex's Back and Details footers");
-
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  touch.set_view(view, 0u);
-  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 5)->rect, 10u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuDown,
-        "a tap below the selection walks down to it");
-  const MenuSnapshot arrived = codex_menu(0u, 5);
-  out = touch.set_view(x2::input::build_touch_menu_view(arrived, plane), 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuA,
-        "and accepts it on arrival");
-
-  const MenuSnapshot reading = codex_menu(1u, 3);
-  const auto read = x2::input::build_touch_menu_view(reading, plane);
-  check(read.has_value() && read->rows.empty() && read->title == "Wolverine" &&
-            read->detail ==
-                std::vector<std::string>{
-                    "A loner and a man without a memory, Wolverine was",
-                    "discovered by James MacDonald Hudson"},
-        "Details reads the loaded entry's name and its lines");
-  if (!read) {
-    return;
-  }
-  TouchMenuView longer = *read;
-  for (int i = 0; i < 30; ++i) {
-    longer.detail.push_back("line " + std::to_string(i));
-  }
-  touch.set_view(longer, 30u);
-  const TouchMenuLayout &layout = touch.layout();
-  check(layout.reading && layout.detail.top == layout.list.top &&
-            layout.detail.bottom == layout.list.bottom &&
-            layout.max_scroll > 0.0F,
-        "the text takes the list's place and scrolls when it is longer");
-  const float top = layout.detail_text_top;
-  const float x = 0.5F * (layout.list.left + layout.list.right);
-  const float y = layout.list.bottom - 10.0F;
-  touch.contact(4, {x, y}, lucent::touch::Phase::began, 40u);
-  touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::moved, 40u);
-  out = touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::ended, 40u);
-  check(out.empty() && touch.layout().detail_text_top == top - 200.0F,
-        "a drag scrolls the text and presses nothing");
-
-  const MenuSnapshot other = codex_menu(2u, 3);
-  check(!x2::input::build_touch_menu_view(other, plane),
-        "a codex mode not read keeps the retail screen");
-}
-
-/* The review on its stats tab as GET /menu read it from openmenu review. */
-MenuSnapshot review_menu(int selected) {
-  MenuSnapshot menu;
-  menu.address = 0x27129414u;
-  menu.name = "review";
-  menu.menu_class = "CMenuReviewPaths";
-  menu.items.push_back(item(14, "title", "Review", 31, 351, 160, 365));
-  MenuItem scroll = item(5, "desctext2", "~05$DPAD_UP scroll", 82, 21, 161, 35);
-  scroll.flags |= x2::menu::kItemHidden;
-  menu.items.push_back(scroll);
-  menu.items.push_back(
-      item(7, "desctext4", "~05$MENU_BACK back", 215, 21, 294, 35));
-  const char *tabs[] = {"screens", "cinematics", "comics", "concepts", "stats"};
-  for (int i = 0; i < 5; ++i) {
-    const std::string name = "option0" + std::to_string(i + 1) + "_text";
-    MenuItem tab = item(static_cast<unsigned>(31 + i), "", tabs[i], 33 + 91 * i,
-                        314, 112 + 91 * i, 328);
-    tab.name = name;
-    if (i == 4) {
-      tab.flags |= x2::menu::kItemFocusLit;
-    }
-    menu.items.push_back(tab);
-  }
-  MenuItem list = item(36, "list", "", 29, 112, 480, 331);
-  x2::menu::ListBoxState box;
-  box.entries = {"~02Act 1~~", "  Comic Books", "  Concept Art"};
-  box.columns = {{}, {"0 of 3"}, {"0 of 9"}};
-  box.selected = selected;
-  box.visible_rows = 27;
-  box.row_height = 8;
-  box.hit = {29, 112, 480, 331};
-  list.list_box = box;
-  menu.items.push_back(list);
-  return menu;
-}
-
-void the_review_is_its_tabs_and_entries() {
-  const RetailScenePlane plane = plane_1280x720();
-  const MenuSnapshot menu = review_menu(0);
-  const auto view = x2::input::build_touch_menu_view(menu, plane);
-  check(view.has_value() && view->title == "Review", "the review is replaced");
-  if (!view) {
-    return;
-  }
-  check(view->tabs.size() == 5u && view->tabs[0].label == "screens" &&
-            view->tabs[4].label == "stats" && view->tabs[4].lit &&
-            !view->tabs[0].lit,
-        "its five tabs with the open one lit");
-  bool tabs_inside = true;
-  for (std::size_t i = 0; i < 5u; ++i) {
-    const auto &rect =
-        find_item(menu, "option0" + std::to_string(i + 1) + "_text")->rect;
-    const auto scene = plane.to_scene(view->tabs[i].click);
-    tabs_inside = tabs_inside && scene.x >= static_cast<float>(rect.left) &&
-                  scene.x < static_cast<float>(rect.right) &&
-                  scene.z >= static_cast<float>(rect.top) + 3.0F &&
-                  scene.z < static_cast<float>(rect.bottom) - 3.0F;
-  }
-  check(tabs_inside,
-        "a tab is clicked inside the box CMenuReviewPaths::onMouse tests");
-  check(view->rows.size() == 3u && view->rows[0].label == "Act 1" &&
-            view->rows[0].value.empty() &&
-            view->rows[1].label == "Comic Books" &&
-            view->rows[1].value == "0 of 3",
-        "a stats entry shows its count from the record's second column");
-  bool walked = true;
-  for (std::size_t entry = 0; entry < view->rows.size(); ++entry) {
-    const auto &row = view->rows[entry];
-    walked = walked && !row.clicks && row.entry == static_cast<int>(entry) &&
-             row.press_on_arrival == (entry == 0u);
-  }
-  check(walked, "every entry is walked to; only the selected one presses A");
-  check(view->footers.size() == 1u && view->footers[0].label == "back",
-        "only the shown Back footer");
-
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  touch.set_view(view, 0u);
-  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 10u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuA,
-        "a tap on the selected entry presses A, which shows it");
-  out = tap(touch, find(touch.layout(), TouchMenuPart::row, 2)->rect, 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuDown,
-        "a tap on another walks the selection to it");
-}
-
 /* The online region list as GET /menu read it from openmenu region. */
 MenuSnapshot region_menu(const std::vector<std::string> &regions,
                          int selected) {
@@ -529,6 +124,30 @@ MenuSnapshot region_menu(const std::vector<std::string> &regions,
   list.list_box = box;
   menu.items.push_back(list);
   return menu;
+}
+
+void main_options_and_the_pda_are_native() {
+  for (const char *native : {"CMenuMain", "CMenuOptions", "CMenuPDA"}) {
+    MenuSnapshot menu = options_menu();
+    menu.menu_class = native;
+    check(!x2::input::build_touch_menu_view(menu, plane_1280x720()),
+          std::string(native) + " is drawn and touched natively");
+  }
+  for (const char *native : {"CMenuShop", "CMenuCodex", "CMenuReviewPaths",
+                             "CMenuDangerRoom", "CMenuTrivia"}) {
+    MenuSnapshot menu = region_menu({"Americas", "Europe"}, 0);
+    menu.menu_class = native;
+    check(!x2::input::build_touch_menu_view(menu, plane_1280x720()),
+          std::string(native) + " and its list box are drawn natively");
+  }
+  MenuSnapshot loading = region_menu({"Americas"}, 0);
+  loading.menu_class = "CMenuLoading";
+  check(!x2::input::build_touch_menu_view(loading, plane_1280x720()),
+        "a menu class the touch menu does not replace keeps the retail screen");
+  MenuSnapshot popup = region_menu({"Americas"}, 0);
+  popup.popup_up = true;
+  check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
+        "a popup over the menu keeps the retail screen");
 }
 
 void the_region_is_its_list_and_footers() {
@@ -564,114 +183,6 @@ void the_region_is_its_list_and_footers() {
   check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
             out[0].button == TouchAction::MenuA,
         "a tap on the selected region presses A");
-}
-
-/* The danger room as GET /menu read it: grades first, then a grade's courses
-   with its Overview and Status tabs. */
-MenuSnapshot danger_room_menu(bool courses) {
-  MenuSnapshot menu;
-  menu.address = 0x27128a34u;
-  menu.name = "danger_room";
-  menu.menu_class = "CMenuDangerRoom";
-  menu.items.push_back(
-      item(5, "desctext1", "~05$MENU_BACK Back", 29, 21, 108, 35));
-  menu.items.push_back(
-      item(6, "desctext2", "~05$MENU_ACCEPT Select", 162, 21, 241, 35));
-  MenuItem overview =
-      item(21, "option_text1", courses ? "Overview" : "", 31, 354, 90, 368);
-  if (courses) {
-    overview.flags |= x2::menu::kItemFocusLit;
-  }
-  menu.items.push_back(overview);
-  menu.items.push_back(
-      item(22, "option_text2", courses ? "Status" : "", 103, 354, 162, 368));
-  menu.items.push_back(item(23, "option_text3", "", 175, 354, 234, 368));
-  MenuItem list = item(24, "list", "", 25, 114, 244, 387);
-  x2::menu::ListBoxState box;
-  if (courses) {
-    box.entries = {"Setting 101 - Hidden Goods", "NOT AVAILABLE"};
-  } else {
-    box.entries = {"Freshman", "Sophomore", "Junior"};
-  }
-  box.columns.assign(box.entries.size(), {});
-  box.selected = 0;
-  box.visible_rows = 34;
-  box.row_height = 8;
-  box.hit = {25, 114, 244, 387};
-  list.list_box = box;
-  menu.items.push_back(list);
-  menu.items.push_back(item(25, "desc",
-                            courses ? "~03Status:~~ Incomplete\n"
-                                      "~03Recommended Level:~~ 1"
-                                    : "~03TRAINING MODE~~\n~03Grade:~~ "
-                                      "~70[PLEASE CHOOSE]~~",
-                            266, 114, 484, 387));
-  return menu;
-}
-
-void the_danger_room_is_its_steps() {
-  const RetailScenePlane plane = plane_1280x720();
-  const auto grades =
-      x2::input::build_touch_menu_view(danger_room_menu(false), plane);
-  check(grades.has_value() && grades->tabs.empty() &&
-            grades->rows.size() == 3u && grades->rows[0].label == "Freshman",
-        "the grades are its rows; tabs without text are not tabs");
-  if (!grades) {
-    return;
-  }
-  check(grades->detail ==
-            std::vector<std::string>{"TRAINING MODE", "Grade: [PLEASE CHOOSE]"},
-        "the game's description, in its own lines");
-  check(grades->footers.size() == 2u && grades->footers[1].label == "Select",
-        "the danger room's Back and Select footers");
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  touch.set_view(grades, 0u);
-  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 10u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuA,
-        "a tap on the selected grade presses A, which opens its courses");
-
-  const MenuSnapshot menu = danger_room_menu(true);
-  const auto courses = x2::input::build_touch_menu_view(menu, plane);
-  check(courses.has_value() && courses->tabs.size() == 2u &&
-            courses->tabs[0].label == "Overview" && courses->tabs[0].lit &&
-            courses->rows.size() == 2u,
-        "a grade's courses with its Overview and Status tabs");
-  if (!courses) {
-    return;
-  }
-  const auto &rect = find_item(menu, "option_text2")->rect;
-  const auto scene = plane.to_scene(courses->tabs[1].click);
-  check(scene.x >= static_cast<float>(rect.left) &&
-            scene.x < static_cast<float>(rect.right) &&
-            scene.z >= static_cast<float>(rect.top) + 3.0F &&
-            scene.z < static_cast<float>(rect.bottom) - 3.0F,
-        "a tab is clicked inside the box CMenuDangerRoom::onMouse tests");
-
-  TouchMenuView overview = *courses;
-  for (int i = 0; i < 14; ++i) {
-    overview.detail.push_back("award " + std::to_string(i));
-  }
-  TouchMenu reader;
-  reader.set_viewport(viewport_1280x720());
-  reader.set_view(overview, 0u);
-  const TouchMenuLayout &before = reader.layout();
-  check(before.detail_max_scroll > 0.0F && before.detail_scroll == 0.0F,
-        "an objective longer than the detail band scrolls on its own");
-  const float text_top = before.detail_text_top;
-  const float list_scroll = before.scroll;
-  const float x = 0.5F * (before.detail.left + before.detail.right);
-  const float y = before.detail.bottom - 10.0F;
-  reader.contact(3, {x, y}, lucent::touch::Phase::began, 10u);
-  reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::moved, 10u);
-  out = reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::ended, 10u);
-  check(out.empty() && reader.layout().detail_text_top == text_top - 60.0F &&
-            reader.layout().scroll == list_scroll,
-        "a drag on it scrolls its lines, not the list, and presses nothing");
-  reader.set_view(courses, 20u);
-  check(reader.layout().detail_scroll == 0.0F,
-        "another entry's text starts at its top");
 }
 
 void the_games_line_breaks_are_kept() {
@@ -976,6 +487,132 @@ void a_drag_scrolls_and_does_not_press() {
         "a second finger never acts");
 }
 
+/* Entry 28 is below the window: the selection is walked down to it, then
+   stops. */
+void an_entry_outside_the_window_is_walked_to() {
+  const RetailScenePlane plane = plane_1280x720();
+  std::vector<std::string> regions;
+  for (int i = 0; i < 30; ++i) {
+    regions.push_back("Region " + std::to_string(i));
+  }
+  MenuSnapshot live = region_menu(regions, 6);
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(x2::input::build_touch_menu_view(live, plane), 0u);
+  const x2::presentation::Rect entry_row =
+      find(touch.layout(), TouchMenuPart::row, 6)->rect;
+  const float x = 0.5F * (entry_row.left + entry_row.right);
+  touch.contact(3, {x, entry_row.top}, lucent::touch::Phase::began, 10u);
+  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::moved,
+                10u);
+  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::ended,
+                10u);
+  const auto *far = find(touch.layout(), TouchMenuPart::row, 28);
+  check(far != nullptr, "the far entry has a button");
+  if (far == nullptr) {
+    return;
+  }
+  auto out = tap(touch, far->rect, 20u);
+  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
+            out[0].button == TouchAction::MenuDown,
+        "an entry outside the window is walked to with Down, not the wrap");
+  live.items.back().list_box->selected = 28;
+  live.items.back().list_box->top = 6;
+  out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 30u);
+  check(out.empty(), "and only selected on arrival, as a click would");
+}
+
+/* The world map's acts over enough points to scroll. */
+TouchMenuView long_worldmap_view() {
+  auto view = *x2::input::build_touch_menu_view(worldmap_menu(true, 0),
+                                                plane_1280x720());
+  for (int i = 0; i < 20; ++i) {
+    view.rows.push_back(view.rows[1]);
+    view.rows.back().slot = 100u + static_cast<unsigned>(i);
+  }
+  return view;
+}
+
+void the_tab_bar_is_pinned_above_the_list() {
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(long_worldmap_view(), 0u);
+  const TouchMenuLayout &layout = touch.layout();
+  const auto *tab = find(layout, TouchMenuPart::tab, 0);
+  check(tab != nullptr && tab->rect.bottom <= layout.list.top &&
+            layout.detail.top >= layout.list.bottom &&
+            layout.detail.bottom <= layout.footer.top &&
+            tab->rect.bottom - tab->rect.top >= 48.0F,
+        "the tab bar sits above the list and the detail below it");
+  if (tab == nullptr) {
+    return;
+  }
+  const float tab_top = tab->rect.top;
+  const float x = 0.5F * (layout.list.left + layout.list.right);
+  const float y = 0.5F * (layout.list.top + layout.list.bottom);
+  touch.contact(3, {x, y}, lucent::touch::Phase::began, 10u);
+  touch.contact(3, {x, y - 5000.0F}, lucent::touch::Phase::moved, 10u);
+  touch.contact(3, {x, y - 5000.0F}, lucent::touch::Phase::ended, 10u);
+  const auto *pinned = find(touch.layout(), TouchMenuPart::tab, 0);
+  check(touch.layout().scroll > 0.0F && pinned != nullptr &&
+            pinned->rect.top == tab_top,
+        "the tab bar does not scroll with the list");
+}
+
+void a_long_detail_scrolls_on_its_own() {
+  const TouchMenuView view = long_worldmap_view();
+  TouchMenuView longer = view;
+  for (int i = 0; i < 14; ++i) {
+    longer.detail.push_back("line " + std::to_string(i));
+  }
+  TouchMenu reader;
+  reader.set_viewport(viewport_1280x720());
+  reader.set_view(longer, 0u);
+  const TouchMenuLayout &before = reader.layout();
+  check(before.detail_max_scroll > 0.0F && before.detail_scroll == 0.0F,
+        "a description longer than the detail band scrolls on its own");
+  const float text_top = before.detail_text_top;
+  const float list_scroll = before.scroll;
+  const float x = 0.5F * (before.detail.left + before.detail.right);
+  const float y = before.detail.bottom - 10.0F;
+  reader.contact(3, {x, y}, lucent::touch::Phase::began, 10u);
+  reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::moved, 10u);
+  const auto out =
+      reader.contact(3, {x, y - 60.0F}, lucent::touch::Phase::ended, 10u);
+  check(out.empty() && reader.layout().detail_text_top == text_top - 60.0F &&
+            reader.layout().scroll == list_scroll,
+        "a drag on it scrolls its lines, not the list, and presses nothing");
+  reader.set_view(view, 20u);
+  check(reader.layout().detail_scroll == 0.0F,
+        "another description starts at its top");
+}
+
+void a_view_without_rows_reads_its_text() {
+  auto view = options_view(options_menu(), plane_1280x720());
+  view.rows.clear();
+  view.focused_row = -1;
+  for (int i = 0; i < 40; ++i) {
+    view.detail.push_back("line " + std::to_string(i));
+  }
+  TouchMenu touch;
+  touch.set_viewport(viewport_1280x720());
+  touch.set_view(view, 0u);
+  const TouchMenuLayout &layout = touch.layout();
+  check(layout.reading && layout.detail.top == layout.list.top &&
+            layout.detail.bottom == layout.list.bottom &&
+            layout.max_scroll > 0.0F,
+        "the text takes the list's place and scrolls when it is longer");
+  const float top = layout.detail_text_top;
+  const float x = 0.5F * (layout.list.left + layout.list.right);
+  const float y = layout.list.bottom - 10.0F;
+  touch.contact(4, {x, y}, lucent::touch::Phase::began, 10u);
+  touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::moved, 10u);
+  const auto out =
+      touch.contact(4, {x, y - 200.0F}, lucent::touch::Phase::ended, 10u);
+  check(out.empty() && touch.layout().detail_text_top == top - 200.0F,
+        "a drag scrolls the text and presses nothing");
+}
+
 } // namespace
 
 int main() {
@@ -986,11 +623,11 @@ int main() {
   a_menu_without_footers_gives_their_band_to_the_list();
   a_menu_without_a_title_has_no_header_band();
   a_tap_delivers_the_games_own_input();
-  the_shop_is_its_tabs_and_entries();
-  the_codex_lists_its_heroes_and_reads_one();
-  the_review_is_its_tabs_and_entries();
   the_region_is_its_list_and_footers();
-  the_danger_room_is_its_steps();
+  an_entry_outside_the_window_is_walked_to();
+  the_tab_bar_is_pinned_above_the_list();
+  a_long_detail_scrolls_on_its_own();
+  a_view_without_rows_reads_its_text();
   the_games_line_breaks_are_kept();
   the_world_map_is_its_acts_and_points();
   a_drag_scrolls_and_does_not_press();

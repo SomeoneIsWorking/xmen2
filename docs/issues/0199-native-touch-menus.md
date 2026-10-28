@@ -30,7 +30,7 @@ refuses the finger:
 |---|---|---|
 | row without command | `CMenuItem::onMouse` `0x005bc1b0` (no `usecmd`) | none since `menu_item_tap` |
 | step | `CMenu::onMouse` `0x005ae0a0` (no left/right) | none: Options' volume rows were a misreading, `CMenuOptions::onMouse` `0x005cb5f0` steps its bars |
-| list | list box `onMouse` `0x005c0e10` (no scroll) | shop, codex, review, danger_room, trivia |
+| list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
 | footer token | `CMenuItemText::onMouse` `0x005c6490` | codex: `$MENU_DETAILS` |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
 | small target | the menu's own layout | every menu: each clickable row, footer and list row is under a tenth of the shorter client edge at 1280x720 |
@@ -80,4 +80,11 @@ layout on touch (cards of the game's bar art, a frame sized to its page, bar
 buttons for the prompts, one tap to act, a drag to scroll), shown working by
 `tools/live_case.py touch-popup` (13 of 13) and `touch-load` (9 of 9, eleven
 saves, the last past the page's ten reached by drag through Load Game's own
-window). The shop and the other list boxes are next.
+window). The list boxes are step 5's second screen, done: CMenuItemListBox and
+CMenuItemListCodex draw finger cards of the PDA's option art in their own box,
+with the entry's icons and fitted text, a tap selecting through retail's own
+press walk, a tap on the selected card accepting, a drag scrolling
+(`src/native/list_touch.cpp`); the RmlUi shop, codex, review and danger room
+views are deleted. Shown by `tools/live_case.py touch-shop`, `touch-stash`,
+`touch-codex`, `touch-review` and `touch-danger-room`. The tabs and footers
+beside them are still the game's small items (step 3).
