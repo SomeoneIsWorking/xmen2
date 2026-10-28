@@ -58,7 +58,6 @@ from live_cases_touch_menu import (
     case_touch_danger_room,
     case_touch_roster,
     case_touch_codex,
-    case_touch_menu,
     case_touch_region,
     case_touch_review,
     case_touch_shop,
@@ -66,6 +65,7 @@ from live_cases_touch_menu import (
     case_touch_team,
     case_touch_worldmap,
 )
+from live_cases_touch_rows import case_touch_menu, case_touch_pda
 from live_cases_touch_team import (
     case_touch_team_ai,
     case_touch_team_assign,
@@ -94,6 +94,7 @@ CASES = {
     "touch-popup": case_touch_popup,
     "touch-load": case_touch_load,
     "touch-menu": case_touch_menu,
+    "touch-pda": case_touch_pda,
     "menu-model": case_menu_model,
     "options-back": case_options_back,
     "touch-team": case_touch_team,

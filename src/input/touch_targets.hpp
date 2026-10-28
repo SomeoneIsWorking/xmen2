@@ -24,8 +24,8 @@ public:
   /* This frame's buttons become the shown ones; the pointer reads those. */
   void next_frame();
 
-  /* A press at `point`: the aim of the shown button it starts in, held
-     until release(). */
+  /* A press at `point`: the aim of the shown button it starts in, the one
+     whose middle is nearest where buttons overlap, held until release(). */
   std::optional<presentation::ScenePoint> press(presentation::ScenePoint point);
   void release();
   /* True while a press holds the button over `area`. */

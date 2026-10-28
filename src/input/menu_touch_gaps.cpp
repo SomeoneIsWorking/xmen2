@@ -108,6 +108,11 @@ float menu_finger_target(const presentation::RetailScenePlane &plane) {
                     std::min(plane.client_width(), plane.client_height()));
 }
 
+float menu_finger_units(const presentation::RetailScenePlane &plane) {
+  return menu_finger_target(plane) * plane.height() /
+         static_cast<float>(plane.client_height());
+}
+
 std::vector<MenuTouchGap>
 find_menu_touch_gaps(const menu::MenuSnapshot &menu,
                      const presentation::RetailScenePlane &plane) {
@@ -140,7 +145,8 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
           !tap_centre(menu, index).accept) {
         gaps.push_back({MenuTouchGapKind::row_without_command, named(item)});
       }
-    } else if (small(item.rect, plane)) {
+    } else if (small(item.rect, plane) &&
+               !native::text_has_finger_area(menu.menu_class, item.name)) {
       gaps.push_back({MenuTouchGapKind::small_target, item.name});
     }
   }

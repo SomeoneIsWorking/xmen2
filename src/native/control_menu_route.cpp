@@ -1,5 +1,6 @@
 #include "control_menu_route.hpp"
 
+#include "../input/menu_touch_gaps.hpp"
 #include "../input/touch_menu_parts.hpp"
 #include "../input/touch_runtime_menu.hpp"
 #include "../input/touch_targets.hpp"
@@ -8,6 +9,7 @@
 #include "control_query.h"
 #include "json_string.h"
 #include "list_touch.hpp"
+#include "options_touch.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
 #include "win32_pointer.h"
@@ -71,6 +73,19 @@ void put_tap(std::string *out, const menu::SceneRect &rect,
   }
   char text[64];
   std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x, y);
+  out->append(text);
+}
+
+/* A box's height in fingers. */
+void put_fingers(std::string *out, const input::SceneBox &box,
+                 const presentation::RetailScenePlane *plane) {
+  if (plane == nullptr) {
+    return;
+  }
+  char text[40];
+  std::snprintf(
+      text, sizeof text, "\"fingers\":%.3f,",
+      static_cast<double>(box.height() / input::menu_finger_units(*plane)));
   out->append(text);
 }
 
@@ -235,6 +250,28 @@ void put_list_touch(std::string *out, std::uint32_t list,
   out->append("],");
 }
 
+/* A CMenuOptions setting's card where its last touch draw put it: its
+   centre and a point near its top corner, its height over a finger's, and a
+   volume card's bar near each end, as taps. */
+void put_options_touch(std::string *out, std::uint32_t label,
+                       const presentation::RetailScenePlane *plane) {
+  const auto card = native::options_touch_card(label);
+  if (!card) {
+    return;
+  }
+  put_key(out, "touch_card");
+  out->push_back('{');
+  put_box_tap(out, card->card, plane);
+  put_box_point(out, "edge", card->card, 0.1F, 0.9F, plane);
+  put_fingers(out, card->card, plane);
+  if (card->bar) {
+    put_box_point(out, "bar_low", *card->bar, 0.1F, 0.5F, plane);
+    put_box_point(out, "bar_high", *card->bar, 0.9F, 0.5F, plane);
+  }
+  close_object(out);
+  out->push_back(',');
+}
+
 void put_item(std::string *out, const menu::MenuItem &item,
               const presentation::RetailScenePlane *plane) {
   out->push_back('{');
@@ -259,6 +296,7 @@ void put_item(std::string *out, const menu::MenuItem &item,
     put_list_box(out, *item.list_box);
     put_list_touch(out, item.address, plane);
   }
+  put_options_touch(out, item.address, plane);
   if (item.item_class == menu::ItemClass::char_summary) {
     put_bool(out, "masks_locked", item.masks_locked);
   }
@@ -470,8 +508,8 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
 }
 
 /* The finger buttons the last frame drew over small items: each one's centre
-   and a point near its top corner as taps, and the scene point a press on it
-   is delivered at. */
+   and a point near its top corner as taps, its height over a finger's, and
+   the scene point a press on it is delivered at. */
 void put_touch_targets(std::string *out,
                        const presentation::RetailScenePlane *plane) {
   put_key(out, "touch_buttons");
@@ -480,6 +518,7 @@ void put_touch_targets(std::string *out,
     out->push_back('{');
     put_box_tap(out, target.area, plane);
     put_box_point(out, "edge", target.area, 0.1F, 0.9F, plane);
+    put_fingers(out, target.area, plane);
     put_float(out, "aim_x", target.aim.x);
     put_float(out, "aim_z", target.aim.z);
     close_object(out);

@@ -60,6 +60,12 @@ struct SceneRect {
 SceneRect item_hit_rect(int left, int top, int width, int height,
                         int local_top);
 
+/* menu+0x324: the focused item. */
+inline constexpr std::uint32_t kMenuFocus = 0x324u;
+/* menu+0x18d8: the page a paged menu shows (CMenuPDA's rows or icons,
+   CMenuOptions' settings or controls, CMenuTeam's party or a hero). */
+inline constexpr std::uint32_t kMenuPage = 0x18d8u;
+
 /* item+0x54. */
 inline constexpr std::uint8_t kItemFocusLit = 0x01u;
 inline constexpr std::uint8_t kItemStartActive = 0x02u;

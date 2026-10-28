@@ -20,6 +20,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "options_touch.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
@@ -44,11 +45,7 @@ using x2::native::exe_linked;
    scalar destructor runs. */
 constexpr std::uint32_t kTextDraw = 0x005c61d0u;
 constexpr std::uint32_t kTextDestroy = 0x005c6fb0u;
-/* The draw's steps: the item's gamevar refresh, hidden (vt+0x04), its text
-   (vt+0x7c), and the model's ready check (vt+0x18). */
-constexpr std::uint32_t kRefresh = 0x005bbd10u;
-constexpr std::uint32_t kSlotHidden = 0x04u;
-constexpr std::uint32_t kSlotText = 0x7cu;
+/* The model's ready check (vt+0x18). */
 constexpr std::uint32_t kModelReady = 0x18u;
 /* The text's lit share, used while the style's +0x04 is above the
    threshold at 0x00680030; the focus-lit bit otherwise. */
@@ -60,19 +57,43 @@ constexpr std::string_view kToken = "$MENU_";
 constexpr std::string_view kPadHint = "$DPAD_";
 /* The tabs and rows a menu's onMouse finds by name and tests with their raw
    box: CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
-   0x005b5a90, CMenuWorldMap 0x005e7f10. */
+   0x005b5a90, CMenuWorldMap 0x005e7f10, CMenuMain 0x005c9320 (Quit). */
+/* Where a press on an item's area is delivered: the raw box its menu's
+   onMouse tests, or the box its own onMouse (0x005bc1b0) tests. */
+enum class Aim : std::uint8_t { raw_box, item_box };
 struct FingerItems {
   std::string_view menu_class;
   std::string_view prefix;
+  Aim aim = Aim::raw_box;
 };
-constexpr std::array<FingerItems, 6> kFingerItems{{
+constexpr std::array<FingerItems, 7> kFingerItems{{
     {"CMenuShop", "shop_option0"},
     {"CMenuShop", "stash_option0"},
     {"CMenuReviewPaths", "option0"},
     {"CMenuDangerRoom", "option_text"},
     {"CMenuWorldMap", "option0"},
     {"CMenuWorldMap", "list01_0"},
+    {"CMenuMain", "debug_text"},
 }};
+/* Rows drawn on a bar, the item named as the row without this prefix: those
+   CMenuMain 0x005c9320 and CMenuPDA 0x005cc1f0 test by raw box, and
+   Options' Accept, which its item's onMouse tests. */
+constexpr std::array<FingerItems, 3> kBarRows{{
+    {"CMenuMain", "label_option0"},
+    {"CMenuPDA", "label_option0"},
+    {"CMenuOptions", "label_accept", Aim::item_box},
+}};
+constexpr std::string_view kRowPrefix = "label_";
+
+template <std::size_t N>
+const FingerItems *listed(const std::array<FingerItems, N> &items,
+                          std::string_view menu_class, std::string_view name) {
+  const auto found =
+      std::find_if(items.begin(), items.end(), [&](const FingerItems &at) {
+        return menu_class == at.menu_class && name.starts_with(at.prefix);
+      });
+  return found == items.end() ? nullptr : &*found;
+}
 /* The game's option art: dark for a button, lit while it is held. */
 constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kHeldArt = "ui/models/m_pda_option_focus";
@@ -108,12 +129,6 @@ float retail_lit(std::uint32_t self) {
                                                                     : 0.0F;
 }
 
-/* A finger in scene units. */
-float finger_units(const x2::presentation::RetailScenePlane &plane) {
-  return x2::input::menu_finger_target(plane) * plane.height() /
-         static_cast<float>(plane.client_height());
-}
-
 /* The middle of the raw box a menu's onMouse tests a tab with. */
 x2::presentation::ScenePoint raw_centre(std::uint32_t self) {
   const auto height = static_cast<float>(s16(self + item::kBoxHeight));
@@ -138,10 +153,12 @@ public:
   /* The touch draw; false leaves the item to retail's. */
   bool draw(const CPU &cpu, std::uint32_t self) {
     const std::uint32_t image = x2::native::guest_exe_base();
-    /* CMenuItemListItems' draw (0x005c4250) is a jump here. */
+    /* CMenuItemListItems' draw (0x005c4250) is a jump here, and
+       CMenuItemBinary's vtable (0x006a04b4) names this draw. */
     const auto kind = x2::menu::classify_item(RD32(self), image);
     if (kind != x2::menu::ItemClass::text &&
-        kind != x2::menu::ItemClass::list_items) {
+        kind != x2::menu::ItemClass::list_items &&
+        kind != x2::menu::ItemClass::binary) {
       return false;
     }
     const std::string_view menu_class =
@@ -149,15 +166,27 @@ public:
     if (!x2::input::menu_is_native_on_touch(menu_class)) {
       return false;
     }
+    const std::string &name = name_of(self);
+    if (x2::native::options_touch_draw(cpu, self, menu_class, name)) {
+      return true;
+    }
+    if (kind == x2::menu::ItemClass::binary) {
+      return false;
+    }
     x2::guest::GuestCall call(cpu);
-    const std::uint32_t text_at = call.virtual_call(self, kSlotText);
+    const std::uint32_t text_at = call.virtual_call(self, item::kSlotText);
     const std::string text = text_at == 0u
                                  ? std::string()
                                  : std::string(x2::guest::guest_string(
                                        text_at, menu_text::kLineBytes));
-    if (x2::native::text_has_finger_area(menu_class, name_of(self))) {
+    const FingerItems *bar_row = listed(kBarRows, menu_class, name);
+    const FingerItems *finger_item =
+        bar_row != nullptr ? bar_row : listed(kFingerItems, menu_class, name);
+    if (finger_item != nullptr) {
       if (!text.empty()) {
-        put_finger_area(self);
+        put_finger_area(call, self,
+                        bar_row != nullptr ? bar_of(call, self, name) : 0u,
+                        finger_item->aim);
       }
       return false;
     }
@@ -173,15 +202,16 @@ public:
       return false;
     }
     Button &button = button_for(call, vectors, self);
-    call.thiscall(exe_linked(kRefresh), self);
+    call.thiscall(exe_linked(item::kRefresh), self);
     detach(call, button);
-    const bool hidden = (call.virtual_call(self, kSlotHidden) & 0xffu) != 0u;
+    const bool hidden =
+        (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u;
     const std::uint32_t model = RD32(self + item::kModel);
     if (hidden || model == 0u || call.virtual_call(model, kModelReady) == 0u) {
       return true;
     }
 
-    const float finger = finger_units(*plane);
+    const float finger = x2::input::menu_finger_units(*plane);
     const SceneBox area = x2::input::text_button(text_box(self), finger);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
     targets.put({area, hit_centre(self)});
@@ -242,6 +272,7 @@ public:
 
   void destroy(const CPU &cpu, std::uint32_t self) {
     names_.erase(self);
+    bars_.erase(self);
     const auto found = buttons_.find(self);
     if (found == buttons_.end()) {
       return;
@@ -254,17 +285,27 @@ public:
   }
 
 private:
-  /* A shown, enabled tab or row's target: the finger button over its text. */
-  static void put_finger_area(std::uint32_t self) {
+  /* A shown, enabled tab or row's target: the finger button over its text,
+     across its bar when it has one. */
+  static void put_finger_area(x2::guest::GuestCall &call, std::uint32_t self,
+                              std::uint32_t bar, Aim aim) {
     const auto plane = x2::native::live_scene_plane();
     const std::uint8_t flags = RD8(self + item::kFlags);
     if (!plane || (flags & x2::menu::kItemHidden) != 0u ||
-        (flags & x2::menu::kItemEnabled) == 0u) {
+        (flags & x2::menu::kItemEnabled) == 0u ||
+        (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u) {
       return;
     }
+    const float finger = x2::input::menu_finger_units(*plane);
+    SceneBox area = x2::input::text_button(text_box(self), finger);
+    if (bar != 0u) {
+      const auto left = static_cast<float>(s16(bar + item::kBoxLeft));
+      area = x2::input::row_button(
+          text_box(self), left,
+          left + static_cast<float>(s16(bar + item::kBoxWidth)), finger);
+    }
     x2::input::touch_targets().put(
-        {x2::input::text_button(text_box(self), finger_units(*plane)),
-         raw_centre(self)});
+        {area, aim == Aim::item_box ? hit_centre(self) : raw_centre(self)});
   }
 
   const std::string &name_of(std::uint32_t self) {
@@ -273,6 +314,23 @@ private:
       return found->second;
     }
     return names_[self] = x2::menu::read_live_item_name(self);
+  }
+
+  /* The bar model a row is drawn on (its x box is the art's; its z box is
+     never updated), or 0. */
+  std::uint32_t bar_of(x2::guest::GuestCall &call, std::uint32_t self,
+                       std::string_view name) {
+    const auto found = bars_.find(self);
+    if (found != bars_.end()) {
+      return found->second;
+    }
+    const x2::guest::GuestText bar_name(name.substr(kRowPrefix.size()));
+    std::uint32_t bar = 0u;
+    if (name.starts_with(kRowPrefix) && bar_name) {
+      bar = call.thiscall(x2::native::guest_exe_base() + item::kItemByNameRva,
+                          RD32(self + item::kMenu), {bar_name.address()});
+    }
+    return bars_[self] = bar;
   }
 
   struct Button {
@@ -313,6 +371,7 @@ private:
 
   std::unordered_map<std::uint32_t, Button> buttons_;
   std::unordered_map<std::uint32_t, std::string> names_;
+  std::unordered_map<std::uint32_t, std::uint32_t> bars_;
 };
 
 TextItemTouch g_text_item_touch;
@@ -338,20 +397,20 @@ extern "C" void x2_override_005c61d0(CPU *cpu) {
     return;
   }
   g_text_item_touch.restore(*cpu, self);
+  x2::native::options_touch_restore(*cpu, self);
   x86_guest_body(cpu, "XMen2.exe", kTextDraw);
 }
 
 extern "C" void x2_override_005c6fb0(CPU *cpu) {
   g_text_item_touch.destroy(*cpu, cpu->reg[kX86pEcx]);
+  x2::native::options_touch_destroy(*cpu, cpu->reg[kX86pEcx]);
   x86_guest_body(cpu, "XMen2.exe", kTextDestroy);
 }
 
 bool x2::native::text_has_finger_area(std::string_view menu_class,
                                       std::string_view name) {
-  return std::any_of(
-      kFingerItems.begin(), kFingerItems.end(), [&](const FingerItems &items) {
-        return menu_class == items.menu_class && name.starts_with(items.prefix);
-      });
+  return listed(kFingerItems, menu_class, name) != nullptr ||
+         listed(kBarRows, menu_class, name) != nullptr;
 }
 
 __attribute__((constructor)) static void x2_text_item_touch_register(void) {

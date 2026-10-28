@@ -10,6 +10,15 @@ namespace x2::native::menu_item {
 /* FUN_005adc10, thiscall(menu, name): the menu's item of that name, or 0. */
 inline constexpr std::uint32_t kItemByNameRva = 0x001adc10u;
 
+/* FUN_005bbd10, thiscall(item): the gamevar refresh every item draw starts
+   with. */
+inline constexpr std::uint32_t kRefresh = 0x005bbd10u;
+/* Virtual slots: hidden (al), hide (1 hides, as CMenu FUN_005ade10 does) and
+   the item's text. */
+inline constexpr std::uint32_t kSlotHidden = 0x04u;
+inline constexpr std::uint32_t kSlotHide = 0x08u;
+inline constexpr std::uint32_t kSlotText = 0x7cu;
+
 inline constexpr std::uint32_t kMenu = 0x04u;
 inline constexpr std::uint32_t kFlags = 0x54u;
 inline constexpr std::uint32_t kModel = 0x58u;

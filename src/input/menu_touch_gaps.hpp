@@ -38,6 +38,8 @@ struct MenuTouchGap {
 /* A finger's side in client pixels: a tenth of the shorter client edge, a
    fingertip on a phone held sideways. */
 float menu_finger_target(const presentation::RetailScenePlane &plane);
+/* The same finger in scene units. */
+float menu_finger_units(const presentation::RetailScenePlane &plane);
 
 std::vector<MenuTouchGap>
 find_menu_touch_gaps(const menu::MenuSnapshot &menu,

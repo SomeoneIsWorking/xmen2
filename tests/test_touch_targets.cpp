@@ -51,11 +51,32 @@ void a_button_not_drawn_again_is_gone() {
   check(!targets.press({80.0F, 40.0F}), "a closed menu's button is not hit");
 }
 
+/* Two main menu rows 36 apart, each a finger (38.4) tall. */
+void overlapping_buttons_split_at_their_middle() {
+  constexpr SceneBox kUpper{18.0F, 230.8F, 187.0F, 269.2F};
+  constexpr SceneBox kLower{18.0F, 194.8F, 187.0F, 233.2F};
+  constexpr x2::presentation::ScenePoint kUpperItem{93.0F, 250.0F};
+  constexpr x2::presentation::ScenePoint kLowerItem{93.0F, 214.0F};
+  TouchTargets targets;
+  targets.put({kUpper, kUpperItem});
+  targets.put({kLower, kLowerItem});
+  targets.next_frame();
+  const auto upper = targets.press({100.0F, 232.5F});
+  check(upper && upper->z == kUpperItem.z,
+        "a press above the middle of an overlap is the upper row");
+  check(targets.pressed(kUpper) && !targets.pressed(kLower),
+        "and lights only it");
+  const auto lower = targets.press({100.0F, 231.5F});
+  check(lower && lower->z == kLowerItem.z,
+        "a press below the middle is the lower row");
+}
+
 } // namespace
 
 int main() {
   a_press_on_a_shown_button_aims_at_its_item();
   a_press_off_every_button_is_the_finger();
   a_button_not_drawn_again_is_gone();
+  overlapping_buttons_split_at_their_middle();
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

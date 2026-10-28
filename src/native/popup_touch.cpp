@@ -184,8 +184,7 @@ public:
     input.text_top = static_cast<float>(
         static_cast<std::int32_t>(RD32(box + popup::kBoxTop)));
     input.line = line_height(call, popup);
-    input.finger = x2::input::menu_finger_target(*plane) * plane->height() /
-                   static_cast<float>(plane->client_height());
+    input.finger = x2::input::menu_finger_units(*plane);
     const auto projected = x2::native::load_game_menu_list(popup);
     projected_ = projected.has_value();
     input.entries = projected ? static_cast<int>(projected->entries) : count;
