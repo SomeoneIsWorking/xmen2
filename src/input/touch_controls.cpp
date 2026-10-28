@@ -12,6 +12,7 @@ namespace {
 
 constexpr std::uint32_t left_stick = 1;
 constexpr std::uint32_t camera_swipe = 2;
+constexpr std::uint32_t use_prompt_zone = 80;
 
 float clamp_unit(float value) { return std::clamp(value, 0.0F, 1.0F); }
 
@@ -265,12 +266,18 @@ TouchControls::set_hud(const x2::presentation::HudRegions &regions) {
       accept_regions(regions.potions, regions.potion_mask, next.potions);
   next.menu_icon_mask = accept_regions(regions.menu_icons,
                                        regions.menu_icon_mask, next.menu_icons);
+  next.use_prompt_mask =
+      accept_regions(std::span{&regions.use_prompt, 1}, regions.use_prompt_mask,
+                     std::span{&next.use_prompt, 1});
   if (same_rects(next.portraits, hud_.portraits) &&
       same_rects(next.potions, hud_.potions) &&
       same_rects(next.menu_icons, hud_.menu_icons) &&
+      same_rects(std::span{&next.use_prompt, 1},
+                 std::span{&hud_.use_prompt, 1}) &&
       next.portrait_mask == hud_.portrait_mask &&
       next.potion_mask == hud_.potion_mask &&
-      next.menu_icon_mask == hud_.menu_icon_mask)
+      next.menu_icon_mask == hud_.menu_icon_mask &&
+      next.use_prompt_mask == hud_.use_prompt_mask)
     return {};
   auto released = translate(hud_router_.cancel());
   hud_ = next;
@@ -419,7 +426,22 @@ void TouchControls::rebuild_zones() {
   add_hud(50, hud_.portraits, hud_.portrait_mask, heroes);
   add_hud(60, hud_.potions, hud_.potion_mask, potions);
   add_hud(70, hud_.menu_icons, hud_.menu_icon_mask, menus);
+  // The game draws the prompt as its button, so the overlay draws nothing.
+  if (hud_.use_prompt_mask) {
+    add(use_prompt_zone, hud_.use_prompt, 30, TouchAction::Use, false, false);
+    router_zones.push_back(zones_.back().zone);
+  }
   hud_router_.set_zones(router_zones);
+}
+
+std::optional<TouchControls::ZoneVisual> TouchControls::use_prompt() const {
+  const auto found =
+      std::find_if(zones_.begin(), zones_.end(), [](const ZoneVisual &zone) {
+        return zone.zone.id == use_prompt_zone;
+      });
+  if (found == zones_.end())
+    return std::nullopt;
+  return *found;
 }
 
 std::vector<ActionEvent>

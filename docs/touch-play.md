@@ -326,6 +326,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
+| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "[E] Use ..." line is the Use (X) button: the game's dark band behind it grows to a finger-sized button around the line (`hud_draw_runtime.cpp`, docs/RE/hud.md), the band brightens while held, and a tap anywhere in it presses Use through the virtual pad. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. It is a button only while it is the band's only line |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
@@ -444,12 +445,18 @@ already chose keeps player one.
 |---|---|
 | `ctest -R thumb_stick` | The stick's own policy: an off-centre landing steering nothing, equal travel in every direction, the circular clamp, the dead zone and its rescale, release, and a ring with no size |
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
-| `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, cancellation on layout change |
+| `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, the use prompt as an undrawn Use zone, cancellation on layout change |
 | `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, power buttons drawn only for published slots and chording RT with their own face button, a button shared by two held controls staying down until both lift, a vanished power releasing, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |
 | `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD/control bounds, and at least 48 output-pixel action targets in those cases |
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
+
+`tools/live_case.py touch-use-prompt` checks the use prompt in the running
+game: Sanctuary through `loadmap`, the hero teleported into the trivia
+console's use trigger, no prompt button away from it, a finger-sized prompt
+button inside it, and a press near the button's corner (outside the text and
+every overlay control) opening the game's trivia menu (`GET /menu`).
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.

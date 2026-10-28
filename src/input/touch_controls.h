@@ -173,6 +173,8 @@ public:
   route(std::span<const lucent::touch::Contact> contacts);
   std::vector<ActionEvent> cancel();
   std::span<const ZoneVisual> zones() const { return zones_; }
+  // The use prompt's zone while the game draws one; the overlay draws none.
+  std::optional<ZoneVisual> use_prompt() const;
   // What the movement ring should draw: its live deflection, -1..1 per axis.
   ThumbStick::Deflection stick_deflection() const {
     return stick_.deflection();

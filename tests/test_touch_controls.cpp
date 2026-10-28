@@ -444,6 +444,29 @@ int main() {
     return 1;
   }
 
+  /* The game's use prompt is a Use button anywhere inside its drawn button,
+     and the overlay draws nothing over it. */
+  hud.use_prompt = {400, 500, 600, 560};
+  hud.use_prompt_mask = 1;
+  controls.set_hud(hud);
+  const auto use =
+      controls.route({{{11, {404, 504}, lucent::touch::Phase::began}}});
+  const auto unused =
+      controls.route({{{11, {404, 504}, lucent::touch::Phase::ended}}});
+  const auto prompt = controls.use_prompt();
+  if (!has_value(use, x2::input::TouchAction::Use, 1.0F) ||
+      !has_value(unused, x2::input::TouchAction::Use, 0.0F) || !prompt ||
+      prompt->visible) {
+    std::cerr << "a tap on the use prompt was not an undrawn Use button\n";
+    return 1;
+  }
+  hud.use_prompt_mask = 0;
+  controls.set_hud(hud);
+  if (controls.use_prompt()) {
+    std::cerr << "the use prompt stayed a button after the game hid it\n";
+    return 1;
+  }
+
   const auto canceled = controls.cancel();
   /* Not a memorised count: cancel must release EVERY control still held, and
      a second cancel must then have nothing left to release. A fixed number

@@ -100,10 +100,16 @@ void hud_transform_matrix(HudTransform t, float matrix[16]) {
 
 Rect hud_output_rect(HudSpace s, float width, float height, float x, float z,
                      float radius) {
-  return (Rect){(x - radius - s.left) * width / s.width,
-                (s.top - z - radius) * height / s.height,
-                (x + radius - s.left) * width / s.width,
-                (s.top - z + radius) * height / s.height};
+  return hud_output_box(
+      s, width, height,
+      HudSpace{x - radius, z + radius, 2.0f * radius, 2.0f * radius});
+}
+
+Rect hud_output_box(HudSpace s, float width, float height, HudSpace box) {
+  return (Rect){(box.left - s.left) * width / s.width,
+                (s.top - box.top) * height / s.height,
+                (box.left + box.width - s.left) * width / s.width,
+                (s.top - box.top + box.height) * height / s.height};
 }
 
 } // namespace x2::presentation

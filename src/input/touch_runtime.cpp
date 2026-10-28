@@ -89,6 +89,7 @@ public:
   // The skip button's rectangle and whether a finger is on it, while one is
   // drawn: touch play, a window, and a skip offered.
   bool skip_button(x2::presentation::Rect &rect, bool &held) const;
+  bool use_prompt(x2::presentation::Rect &rect, bool &held) const;
 
   bool has_window() const { return window_ != nullptr; }
   // Is there anything for the overlay document to draw -- the gameplay
@@ -528,6 +529,16 @@ bool TouchRuntime::take_pointer(TouchPointer &out) {
   return pointer_.take(out);
 }
 
+bool TouchRuntime::use_prompt(x2::presentation::Rect &rect, bool &held) const {
+  const auto zone = controls_.use_prompt();
+  if (!overlay_visible() || !zone) {
+    return false;
+  }
+  rect = {zone->zone.left, zone->zone.top, zone->zone.right, zone->zone.bottom};
+  held = active_zones_.contains(zone->zone.id);
+  return true;
+}
+
 bool TouchRuntime::has_visuals() const {
   return overlay_visible() || menu_visible();
 }
@@ -613,6 +624,21 @@ int touch_runtime_skip_button(x2::presentation::Rect *rect, int *held) {
   x2::presentation::Rect placed{};
   bool pressed = false;
   if (!runtime.skip_button(placed, pressed)) {
+    return 0;
+  }
+  if (rect) {
+    *rect = placed;
+  }
+  if (held) {
+    *held = pressed ? 1 : 0;
+  }
+  return 1;
+}
+
+int touch_runtime_use_prompt(x2::presentation::Rect *rect, int *held) {
+  x2::presentation::Rect placed{};
+  bool pressed = false;
+  if (!runtime.use_prompt(placed, pressed)) {
     return 0;
   }
   if (rect) {

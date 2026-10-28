@@ -1,6 +1,8 @@
 /* Native CHud presentation adapters. Retail submits sprite/text records and
    scene transforms here; rasterization occurs later. See docs/RE/hud.md. */
 #include "hud_draw_runtime.h"
+#include "../input/menu_touch_gaps.hpp"
+#include "../input/text_touch_layout.hpp"
 #include "../input/touch_runtime.h"
 #include "../presentation/aspect_fit.h"
 #include "../presentation/hud_geometry.h"
@@ -8,6 +10,7 @@
 #include "guest_body.h"
 #include "hud_portrait_position.h"
 #include "settings_store.h"
+#include "touch_menu_source.hpp"
 #include "x86rt_native.h"
 
 #include <lucent/cvar_c.h>
@@ -27,7 +30,8 @@ enum {
   TEXT_SUBMIT = 0x005f11b0u,
   SCENE_MATRIX = 0x00570970u,
   MOUSE_OVERLAY_DRAW = 0x005fc100u,
-  MENU_ICON_SIZE = 0x00683ffcu
+  MENU_ICON_SIZE = 0x00683ffcu,
+  MESSAGE_DRAW = 0x0059dc00u
 };
 
 typedef struct {
@@ -49,6 +53,8 @@ static x2::presentation::HudRegions g_regions;
    overlay has drawn one. The overlay draws after the HUD, so a frame lines
    up with the row the previous frame drew. */
 static float g_menu_row_top = -1.0f;
+/* Inside the message draw while its bottom band holds the use prompt alone. */
+static int g_prompt_scope;
 static unsigned long g_groups[4], g_total[4], g_sprites, g_texts, g_matrices;
 static unsigned long g_sprite_calls, g_text_calls, g_matrix_calls;
 static unsigned g_trace_mask;
@@ -150,6 +156,7 @@ void hud_party_draw(CPU *cpu) {
   g_regions.portrait_mask = 0;
   g_regions.potion_mask = 0;
   g_regions.menu_icon_mask = 0;
+  g_regions.use_prompt_mask = 0;
   if (prepare()) {
     uint32_t self = cpu->reg[kX86pEcx];
     placement(0,
@@ -278,6 +285,83 @@ static void mouse_overlay_draw(CPU *cpu) {
       fminf(g_regions.menu_icons[0].top, g_regions.menu_icons[1].top);
 }
 
+/*
+ * The use prompt (FUN_0042eaf0, docs/RE/hud.md) is a type-0 GUI message: the
+ * message draw (0059dc00) lays its line out at the bottom centre and puts a
+ * dark band (sprite icon 0x1b) behind every type-0 line. On touch, while the
+ * prompt is that band's only line, the band is grown to a finger-sized button
+ * around it and published, and a tap is the Use button the prompt names.
+ */
+enum {
+  USE_PROMPT_HANDLE = 0x0070b7f0u,
+  MESSAGE_HEAD = 0x21e5du * 4u,
+  MESSAGE_RECORDS = 0x21ae6u * 4u,
+  MESSAGE_STRIDE = 0x15cu,
+  MESSAGE_POOL = 10,
+  MESSAGE_BACKDROP_ICON = 0x1bu
+};
+/* Added to the band's alpha while a finger is on it. */
+static constexpr float kPromptHeldAlpha = 0.35f;
+
+static int use_prompt_alone(uint32_t gui) {
+  const uint32_t prompt = RD32(USE_PROMPT_HANDLE);
+  int bottom_lines = 0;
+  int found = 0;
+  uint32_t index = RD32(gui + MESSAGE_HEAD);
+  for (int i = 0; i < MESSAGE_POOL && index < (uint32_t)MESSAGE_POOL; ++i) {
+    const uint32_t record = gui + MESSAGE_RECORDS + index * MESSAGE_STRIDE;
+    if (RD8(record + 0x20u) && RD8(record + 0x158u) == 0) {
+      ++bottom_lines;
+      found |= RD32(record + 0x124u) == prompt;
+    }
+    index = RD32(record);
+  }
+  return found && bottom_lines == 1;
+}
+
+static void message_draw(CPU *cpu) {
+  g_prompt_scope = x2::input::touch_runtime_overlay_visible() &&
+                   use_prompt_alone(cpu->reg[kX86pEcx]) && prepare_space();
+  x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
+  g_prompt_scope = 0;
+}
+
+static void prompt_band_submit(CPU *cpu) {
+  const uint32_t esp = cpu->reg[kX86pEsp];
+  const uint32_t position = RD32(esp + 4u);
+  const uint32_t size = RD32(esp + 8u);
+  const uint32_t colour = RD32(esp + 12u);
+  const auto plane = x2::native::live_scene_plane();
+  float old_position[3], old_size[2];
+  read_floats(position, old_position, 3);
+  read_floats(size, old_size, 2);
+  const float old_alpha = (float)RDF32(colour + 12u);
+  if (!plane) {
+    x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
+    return;
+  }
+  const x2::input::SceneBox button = x2::input::text_button(
+      x2::input::SceneBox{old_position[0], old_position[2] - old_size[1],
+                          old_position[0] + old_size[0], old_position[2]},
+      x2::input::menu_finger_units(*plane));
+  const float point[3] = {button.left, old_position[1], button.top};
+  const float dimensions[2] = {button.width(), button.height()};
+  write_floats(position, point, 3);
+  write_floats(size, dimensions, 2);
+  int held = 0;
+  if (x2::input::touch_runtime_use_prompt(NULL, &held) && held)
+    WRF32(colour + 12u, fminf(1.0f, old_alpha + kPromptHeldAlpha));
+  x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
+  write_floats(position, old_position, 3);
+  write_floats(size, old_size, 2);
+  WRF32(colour + 12u, old_alpha);
+  g_regions.use_prompt = x2::presentation::hud_output_box(
+      g_space, g_viewport.width, g_viewport.height,
+      x2::presentation::HudSpace{button.left, button.top, button.width(),
+                                 button.height()});
+  g_regions.use_prompt_mask = 1;
+}
+
 static void portrait_draw(CPU *cpu) {
   HudScope saved = g_scope;
   uint32_t portrait = cpu->reg[kX86pEcx];
@@ -313,6 +397,11 @@ static void portrait_draw(CPU *cpu) {
 
 static void sprite_submit(CPU *cpu) {
   ++g_sprite_calls;
+  if (g_prompt_scope &&
+      RD32(cpu->reg[kX86pEsp] + 24u) == (uint32_t)MESSAGE_BACKDROP_ICON) {
+    prompt_band_submit(cpu);
+    return;
+  }
   if (!g_scope.active) {
     x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
     return;
@@ -419,5 +508,6 @@ __attribute__((constructor)) static void register_hud(void) {
   x86_register_override("XMen2.exe", TEXT_SUBMIT, text_submit);
   x86_register_override("XMen2.exe", SCENE_MATRIX, scene_matrix);
   x86_register_override("XMen2.exe", MOUSE_OVERLAY_DRAW, mouse_overlay_draw);
+  x86_register_override("XMen2.exe", MESSAGE_DRAW, message_draw);
   x2::native::hud_portrait_position_mapper(capture_portrait, NULL);
 }
