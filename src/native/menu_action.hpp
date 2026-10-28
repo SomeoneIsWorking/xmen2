@@ -12,7 +12,13 @@ namespace x2::native {
    (CPopupDialog::onMouse 0x005ea2c0, CMenuItem::onMouse 0x005bc1b0). */
 enum class MenuAction : std::uint32_t {
   accept = 4u,
+  /* The pad's B, beside back. */
+  cancel = 5u,
   subtract = 8u,
+  /* LT: the team's skill Details while held, the codex's Details. */
+  details = 9u,
+  /* RB: the team's Assign and Drop. */
+  drop = 0xdu,
   ok = 0x14u,
   back = 0x15u,
   next = 0x16u,
@@ -23,6 +29,9 @@ enum class MenuAction : std::uint32_t {
 /* What a text line's `$MENU_*` token posts when CPopupDialog::onMouse
    releases on it; nothing when it names no action. */
 std::optional<MenuAction> menu_token_action(std::string_view text);
+/* What a touch button for a prompt posts itself, a token no retail onMouse
+   publishes: `$MENU_DROP`. */
+std::optional<MenuAction> touch_token_action(std::string_view text);
 /* Whether `menu_class`'s own onMouse acts on a click on the prompt carrying
    `token`, one CMenuItemText::onMouse does not publish. */
 bool menu_handles_token(std::string_view menu_class, std::string_view token);

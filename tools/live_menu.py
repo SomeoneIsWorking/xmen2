@@ -1,6 +1,5 @@
-"""Helpers for live cases on the retail menus and the touch menu: reading
-GET /menu, reaching a menu, tapping the game's items and list cards, and
-tapping touch menu buttons."""
+"""Helpers for live cases on the retail menus: reading GET /menu, reaching a
+menu, tapping the game's items, finger buttons and list cards."""
 
 from __future__ import annotations
 
@@ -73,13 +72,10 @@ class MenuTimeline:
         menu = read_menu(self.case)
         with self.path.open("a") as out:
             while True:
-                shown = menu.get("touch_menu", {})
-                out.write("%6.2f frames=%d menu=%s popup=%s focus=%s "
-                          "touch=%s/%s\n" % (
-                              time.monotonic() - self.start,
-                              self.case.status_frames(), menu.get("menu"),
-                              menu.get("popup"), menu.get("focused_row"),
-                              shown.get("visible"), shown.get("menu")))
+                out.write("%6.2f frames=%d menu=%s popup=%s focus=%s\n" % (
+                    time.monotonic() - self.start, self.case.status_frames(),
+                    menu.get("menu"), menu.get("popup"),
+                    menu.get("focused_row")))
                 if done(menu) or time.monotonic() >= deadline:
                     return menu
                 time.sleep(0.1)
@@ -252,53 +248,6 @@ def wait_menu_row_change(case: Case, label: str, key: str, before,
     return row
 
 
-def touch_menu(case: Case) -> dict:
-    """The touch menu as GET /menu reports it: rows, buttons, viewport."""
-    return read_menu(case).get("touch_menu", {})
-
-
-def wait_touch_menu(case: Case, name: str, timeout: float) -> dict:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        shown = touch_menu(case)
-        if shown.get("visible") and shown.get("menu") == name:
-            return shown
-        time.sleep(0.5)
-    return touch_menu(case)
-
-
-def wait_settled_touch_menu(case: Case, name: str, timeout: float) -> dict:
-    """The touch menu over `name` once its tabs and rows have held still for
-    a second: a shop or stash opens on its first tab and the game may step
-    it on a later frame."""
-    shown = wait_touch_menu(case, name, timeout)
-    deadline = time.monotonic() + timeout
-    still_since = time.monotonic()
-    while time.monotonic() < deadline and time.monotonic() - still_since < 1.0:
-        time.sleep(0.2)
-        now = touch_menu(case)
-        if (now.get("tabs"), now.get("rows")) != (shown.get("tabs"),
-                                                  shown.get("rows")):
-            still_since = time.monotonic()
-        shown = now
-    return shown
-
-
-def touch_button(shown: dict, part: str, label: str) -> dict | None:
-    for button in shown.get("buttons", []):
-        if button["part"] == part and button["label"].lower() == label:
-            return button
-    return None
-
-
-def tap_touch_button(case: Case, shown: dict, button: dict) -> bool:
-    """Tap a touch menu button's centre, in fractions of ITS viewport."""
-    return case.http("/touch?x=%g&y=%g" % (
-        (button["left"] + button["width"] * 0.5) / shown["viewport_width"],
-        (button["top"] + button["height"] * 0.5) / shown["viewport_height"])
-    )[0] == 200
-
-
 def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
     """From a Continue boot, Enter through any conversation and Escape until
     the game's own menu is the PDA."""
@@ -338,45 +287,6 @@ def keyboard_into_gameplay(case: Case, timeout: float) -> dict:
     held = conversation_held(case)
     case.check("no conversation holds the party", not held)
     return read_menu(case) if not held else {"active": None}
-
-
-def drag_touch(case: Case, shown: dict, x: float, y_from: float,
-               y_to: float) -> None:
-    """One finger from (x, y_from) to (x, y_to), in the touch menu's own
-    viewport pixels, through the routed contact phases."""
-    width = shown["viewport_width"]
-    height = shown["viewport_height"]
-    steps = 4
-    case.http("/touch?x=%g&y=%g&phase=down" % (x / width, y_from / height))
-    for i in range(1, steps + 1):
-        y = y_from + (y_to - y_from) * i / steps
-        time.sleep(0.15)
-        case.http("/touch?x=%g&y=%g&phase=motion" % (x / width, y / height))
-    case.http("/touch?x=%g&y=%g&phase=up" % (x / width, y_to / height))
-
-
-def reveal_touch_row(case: Case, label: str) -> tuple[dict, dict | None]:
-    """Drag the touch menu's list until the row `label` sits whole inside it;
-    the shown menu and that row's button, or None when it has no such row."""
-    shown = touch_menu(case)
-    for _ in range(12):
-        button = touch_button(shown, "row", label)
-        if button is None:
-            return shown, None
-        top = shown["list"]["top"]
-        bottom = shown["list"]["bottom"]
-        if top <= button["top"] and button["top"] + button["height"] <= bottom:
-            return shown, button
-        middle = 0.5 * (top + bottom)
-        reach = 0.4 * (bottom - top)
-        centre = button["top"] + button["height"] * 0.5
-        shift = max(-reach, min(reach, centre - middle))
-        start = middle
-        drag_touch(case, shown, button["left"] + button["width"] * 0.5,
-                   start, start - shift)
-        time.sleep(0.5)
-        shown = touch_menu(case)
-    return shown, touch_button(shown, "row", label)
 
 
 def wait_game_menu(case: Case, done, timeout: float) -> dict:

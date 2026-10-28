@@ -353,43 +353,6 @@ target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
 
-# The touch menu's pure parts: the view of a retail menu snapshot, its layout,
-# what a tap delivers, and the scene-plane mapping the clicks cross.
-add_executable(test_touch_menu tests/test_touch_menu.cpp
-               src/input/touch_menu.cpp
-               src/input/touch_menu_layout.cpp
-               src/input/touch_menu_view.cpp
-               src/input/touch_menu_parts.cpp
-               src/input/touch_menu_team.cpp
-               src/input/touch_menu_team_details.cpp
-               src/native/extraction_revive_policy.cpp
-               src/presentation/retail_scene_plane.cpp
-               src/presentation/hud_layout.cpp
-               src/presentation/touch_layout.cpp
-               src/config/hud_settings.cpp)
-target_include_directories(test_touch_menu PRIVATE src/input src/native
-                                           src/presentation src/config)
-target_link_libraries(test_touch_menu PRIVATE lucent::lucent)
-add_test(NAME touch_menu COMMAND test_touch_menu)
-
-# CMenuTeam's party and roster views and the input a tap on each owes.
-add_executable(test_touch_menu_team tests/test_touch_menu_team.cpp
-               src/input/touch_menu.cpp
-               src/input/touch_menu_layout.cpp
-               src/input/touch_menu_view.cpp
-               src/input/touch_menu_parts.cpp
-               src/input/touch_menu_team.cpp
-               src/input/touch_menu_team_details.cpp
-               src/native/extraction_revive_policy.cpp
-               src/presentation/retail_scene_plane.cpp
-               src/presentation/hud_layout.cpp
-               src/presentation/touch_layout.cpp
-               src/config/hud_settings.cpp)
-target_include_directories(test_touch_menu_team PRIVATE src/input src/native
-                                                src/presentation src/config)
-target_link_libraries(test_touch_menu_team PRIVATE lucent::lucent)
-add_test(NAME touch_menu_team COMMAND test_touch_menu_team)
-
 # The retail menu model read from a fake guest image: classes, labels, flags,
 # navigation order and value pairing through the shipping reader.
 add_executable(test_retail_menu_model tests/test_retail_menu_model.cpp
@@ -470,12 +433,6 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_pad_publisher.cpp
                src/input/touch_menu_controls.cpp
                src/input/touch_pointer.cpp
-               src/input/touch_menu.cpp
-               src/input/touch_menu_layout.cpp
-               src/input/touch_menu_view.cpp
-               src/input/touch_menu_parts.cpp
-               src/input/touch_menu_team.cpp
-               src/input/touch_menu_team_details.cpp
                src/native/extraction_revive_policy.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
@@ -1900,8 +1857,6 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
-configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_menu.rcss"
-               "${CMAKE_BINARY_DIR}/ui/touch_menu.rcss" COPYONLY)
 # The touch buttons' own art, authored as SVG and rasterized by SDL_image at
 # load time. tools/ui_resource_files.py lists the same files for packaging.
 foreach(x2_touch_icon punch smash use jump menu)
@@ -1918,8 +1873,6 @@ configure_file("${CMAKE_SOURCE_DIR}/packaging/xmen2-port.svg"
 add_library(x2_rmlui_ui STATIC
     src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
-    src/ui/touch_menu_document.cpp
-    src/ui/touch_label_fit.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
     src/ui/display_settings_document.cpp
@@ -1964,17 +1917,6 @@ if(NOT ANDROID AND NOT EMSCRIPTEN)
     add_subdirectory("${X2_SETUP_UI_DIR}" "${CMAKE_BINARY_DIR}/setup-ui"
                      EXCLUDE_FROM_ALL)
 endif()
-
-# The tab label fit on a real RmlUi layout with the shipped stylesheet.
-add_executable(test_touch_label_fit tests/test_touch_label_fit.cpp
-               src/ui/touch_label_fit.cpp)
-target_include_directories(test_touch_label_fit PRIVATE src/ui)
-target_link_libraries(test_touch_label_fit PRIVATE rmlui_core)
-target_compile_definitions(test_touch_label_fit PRIVATE
-    X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
-    X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
-    X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui")
-add_test(NAME touch_label_fit COMMAND test_touch_label_fit)
 
 include(cmake/Shaders.cmake)
 
@@ -2187,6 +2129,7 @@ set(X2_NATIVE_SOURCES
     src/native/menu_text.cpp
     src/native/text_item_touch.cpp
     src/native/options_touch.cpp
+    src/native/team_touch.cpp
     src/native/popup_touch_drawn.cpp
     src/native/menu_item_tap.cpp
     src/native/menu_item_mouse_override.cpp
@@ -2211,20 +2154,16 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_controls.cpp
     src/input/touch_pointer.cpp
     src/input/touch_visuals.cpp
-    src/input/touch_menu.cpp
-    src/input/touch_menu_layout.cpp
-    src/input/touch_menu_view.cpp
-    src/input/touch_menu_parts.cpp
     src/input/menu_touch_gaps.cpp
+    src/input/retail_text.cpp
     src/input/popup_touch_layout.cpp
     src/input/list_touch_layout.cpp
     src/input/touch_cards.cpp
     src/input/touch_targets.cpp
     src/input/text_touch_layout.cpp
     src/input/options_touch_layout.cpp
+    src/input/team_touch_layout.cpp
     src/input/native_touch_menus.cpp
-    src/input/touch_menu_team.cpp
-    src/input/touch_menu_team_details.cpp
     src/input/touch_inject.cpp
     src/input/touch_census.cpp
     src/input/touch_pad.cpp

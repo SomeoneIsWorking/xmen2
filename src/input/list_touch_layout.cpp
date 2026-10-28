@@ -31,6 +31,18 @@ ListTouchLayout layout_list_touch(const ListTouchInput &input) {
   return out;
 }
 
+SceneBox list_box_clear_of(const SceneBox &box, const SceneBox &other) {
+  if (other.left >= box.right || box.left >= other.right ||
+      other.bottom >= box.top || box.bottom >= other.top) {
+    return box;
+  }
+  SceneBox above = box;
+  above.bottom = std::max(box.bottom, other.top);
+  SceneBox below = box;
+  below.top = std::min(box.top, other.bottom);
+  return above.height() >= below.height() ? above : below;
+}
+
 bool list_has_touch_layout(menu::ItemClass item_class,
                            std::string_view menu_class) {
   return (item_class == menu::ItemClass::list_box ||

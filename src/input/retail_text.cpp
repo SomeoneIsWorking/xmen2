@@ -1,9 +1,5 @@
-#include "touch_menu_view.hpp"
+#include "retail_text.hpp"
 
-#include "touch_menu_parts.hpp"
-#include "touch_menu_team.hpp"
-
-#include <array>
 #include <cctype>
 
 namespace x2::input {
@@ -47,51 +43,7 @@ std::string close_letter_spacing(std::string_view text) {
 
 } // namespace
 
-bool TouchMenuView::same_screen(const TouchMenuView &other) const {
-  if (address != other.address || menu != other.menu || title != other.title ||
-      rows.size() != other.rows.size()) {
-    return false;
-  }
-  for (std::size_t i = 0; i < rows.size(); ++i) {
-    if (rows[i].slot != other.rows[i].slot ||
-        rows[i].entry != other.rows[i].entry) {
-      return false;
-    }
-  }
-  return true;
-}
-
-namespace {
-
-using ViewBuilder = std::optional<TouchMenuView> (*)(
-    const menu::MenuSnapshot &, const presentation::RetailScenePlane &);
-
-struct ReplacedClass {
-  std::string_view menu_class;
-  ViewBuilder build;
-};
-
-constexpr std::array<ReplacedClass, 1> kReplacedClasses = {{
-    {"CMenuTeam", build_team_view},
-}};
-
-} // namespace
-
-std::optional<TouchMenuView>
-build_touch_menu_view(const menu::MenuSnapshot &menu,
-                      const presentation::RetailScenePlane &plane) {
-  if (menu.popup_up) {
-    return std::nullopt;
-  }
-  for (const ReplacedClass &replaced : kReplacedClasses) {
-    if (replaced.menu_class == menu.menu_class) {
-      return replaced.build(menu, plane);
-    }
-  }
-  return std::nullopt;
-}
-
-std::string touch_menu_text(std::string_view raw) {
+std::string retail_shown_text(std::string_view raw) {
   std::string kept;
   for (std::size_t i = 0; i < raw.size();) {
     if (raw[i] == '~' && i + 2u < raw.size() && is_digit(raw[i + 1u]) &&

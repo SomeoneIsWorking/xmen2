@@ -65,10 +65,8 @@ def case_touch_menu(case: Case) -> None:
     time.sleep(1.0)
     main = read_menu_items(case)
     (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
-    case.check("nothing is drawn over the main menu",
-               main.get("touch_menu", {}).get("visible") is False)
     controls = live_controls(case)
-    case.check("not even the menu pad",
+    case.check("the menu pad is not drawn over the main menu",
                "menu-a" not in controls, "drawn: %s" % sorted(controls))
     rows = row_buttons(main)
     case.check("every main row is a finger tall across its bar",

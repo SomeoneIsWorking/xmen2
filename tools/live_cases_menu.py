@@ -203,8 +203,6 @@ def case_menu_touch(case: Case) -> None:
     # The main menu is drawn natively, so a tap on its row is the retail
     # pointer too; its rows are covered by the touch-menu case.
     main = wait_menu(case, "main", 30)
-    case.check("nothing is drawn over the main menu",
-               main.get("touch_menu", {}).get("visible") is False)
     case.check("the OPTIONS row was tapped",
                tap_menu_item(case, menu_row(main, "options")))
     case.check("and opened the game's Options",

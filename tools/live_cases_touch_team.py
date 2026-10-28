@@ -1,37 +1,66 @@
-"""Live cases for the touch menu over CMenuTeam's hero detail tabs."""
+"""Live cases for a finger on CMenuTeam, drawn natively on touch: the party,
+the roster and the hero detail tabs with their finger column.
+
+Every tap lands on a finger button at its edge, outside the game's own box,
+and is judged by the game's own state: the menu's mode, its items' values,
+the skill being assigned, a hero's power slots."""
 
 from __future__ import annotations
 
 import json
 import time
 
-from live_cases_touch_menu import shows_new_count, wait_labels, wait_tabs
+from live_cases_touch_menu import (
+    money,
+    roster_hero,
+    roster_names,
+    shows_new_count,
+    wait_labels,
+    wait_tabs,
+)
+from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     dismiss_level_up,
+    drag_between,
+    footer_button,
+    item_button,
     keyboard_into_gameplay,
+    keyboard_into_the_pda,
+    list_cards,
     menu_item,
     menu_labels,
     menu_list,
+    menu_row,
     menu_text,
     read_menu,
-    reveal_touch_row,
+    read_menu_items,
     select_list_entry,
+    tap_button_edge,
     tap_footer_button,
     tap_list_entry,
+    tap_menu_item,
     tap_tab,
-    tap_touch_button,
-    touch_button,
-    touch_menu,
     wait_game_menu,
+    wait_list,
     wait_settled_menu,
-    wait_settled_touch_menu,
 )
 
 ADD_MONEY = "runscript act1/genosha/genosha1/temp_addmoney"
 # Every playable hero to level 40, with points to spend and any gear wearable.
 LEVEL_UP = "runscript awardXPToPlayable(2000000)"
 DETAIL_TABS = ["stats", "skills", "gear", "ai"]
+STATS = ["body", "focus", "strike", "speed"]
+AI = ["ai_heal_pickup", "ai_heal", "ai_level", "ai_power", "ai_auto_traits",
+      "ai_auto_skills", "ai_auto_equip"]
+PARTY = ["char_summary0%d" % n for n in range(1, 5)]
+# FUN_005f01e0's rank glyphs: owned, added this visit, open, locked.
+RANK_GLYPHS = "\xd9\xda\xd8\xd7"
+# A scene unit in window heights at 16:9 (the plane is 384 units tall).
+SCENE_HEIGHT = 384.0
+# CMenuItemSkills draws its first row this far below its box's top (measured:
+# a tap there selects the row).
+SKILL_ROWS_DOWN = 67.0
 
 
 def console(case: Case, command: str) -> None:
@@ -53,178 +82,335 @@ def start_levelled(case: Case, extra: tuple[str, ...] = ()) -> bool:
     return menu.get("active") is False
 
 
-def open_details(case: Case, tab: str) -> dict:
-    """Open the team menu, the selected hero's details by two taps, then
-    `tab` by a tap on it; the touch menu shown, or {} when it never was."""
-    console(case, "openmenu team")
-    party = wait_settled_touch_menu(case, "team", 20)
-    case.check("the team menu opened on its party under the touch menu",
-               party.get("visible") is True and read_menu(case).get("mode") == 0,
-               str(read_menu(case).get("mode")))
-    selected = party.get("focused_row", -1)
-    hero = next((b for b in party.get("buttons", [])
-                 if b["part"] == "row" and b["index"] == selected), None)
-    if hero is None:
+def buttons_named(menu: dict, name: str) -> list[dict]:
+    return [b for b in menu.get("touch_buttons", []) if b.get("name") == name]
+
+
+def item_in(menu: dict, name: str) -> dict:
+    return next((i for i in menu.get("items", []) if i["name"] == name), {})
+
+
+def button_on(menu: dict, item: str, name: str) -> dict:
+    """The finger button called `name` whose press lands on `item`'s box."""
+    rect = item_in(menu, item).get("rect")
+    if rect is None:
         return {}
-    tap_touch_button(case, party, hero)
-    stats = wait_game_menu(case, lambda m: m.get("mode") == 2 and m.get(
-        "touch_menu", {}).get("tabs"), 10).get("touch_menu", {})
-    tabs = [t["label"] for t in stats.get("tabs", [])]
-    case.check("a tap on the selected hero opened its details under the "
-               "touch menu, with the game's tabs",
-               read_menu(case).get("mode") == 2 and tabs == DETAIL_TABS
-               and stats.get("visible") is True, str(tabs))
-    if tab == "stats" or tabs != DETAIL_TABS:
-        return stats
-    tap_touch_button(case, stats, touch_button(stats, "tab", tab))
-    want = 2 + DETAIL_TABS.index(tab)
-    opened = wait_game_menu(case, lambda m: m.get("mode") == want and any(
-        t["lit"] and t["label"] == tab
-        for t in m.get("touch_menu", {}).get("tabs", [])), 10)
-    case.check("a tap on the %s tab opened it in the game" % tab,
-               opened.get("mode") == want, "mode %s" % opened.get("mode"))
-    return opened.get("touch_menu", {})
+    for button in buttons_named(menu, name):
+        if (rect["left"] <= button["aim_x"] <= rect["right"]
+                and rect["top"] <= button["aim_z"] <= rect["bottom"]):
+            return button
+    return {}
 
 
-def row_value(shown: dict, label: str) -> str | None:
-    for row in shown.get("rows", []):
-        if row["label"].lower() == label:
-            return row.get("value")
-    return None
+def tap_named(case: Case, name: str, item: str | None = None) -> bool:
+    """Tap the finger button `name` (on `item`'s box) at its edge."""
+    menu = read_menu_items(case)
+    button = button_on(menu, item, name) if item else next(
+        iter(buttons_named(menu, name)), {})
+    return tap_button_edge(case, button)
 
 
-def fact(shown: dict, label: str) -> str | None:
-    for entry in shown.get("facts", []):
-        if entry["label"] == label:
-            return entry["value"]
-    return None
+def lit(menu: dict, name: str) -> bool:
+    return bool(item_in(menu, name).get("flags", 0) & 0x01)
 
 
-def focused_label(shown: dict) -> str | None:
-    index = shown.get("focused_row", -1)
-    rows = shown.get("rows", [])
-    return rows[index]["label"].lower() if 0 <= index < len(rows) else None
+def footer_word(menu: dict, word: str) -> dict:
+    """The finger button over the footer whose text ends with `word`."""
+    for text in menu.get("texts", []):
+        if text["name"].startswith("desctext") and \
+                menu_text(text["label"]).lower() == word:
+            return item_button(menu, text)
+    return {}
 
 
-def tap_row(case: Case, label: str) -> bool:
-    shown, button = reveal_touch_row(case, label)
-    if button is None:
-        return False
-    return tap_touch_button(case, shown, button)
+def tap_footer_word(case: Case, word: str) -> bool:
+    return tap_button_edge(case, footer_word(read_menu(case), word))
 
 
-def walk_then_press(case: Case, label: str, changed, what: str) -> dict:
-    """Tap `label` once, which only walks the game's focus to it, then again,
-    which presses A on it; `changed` judges the second tap's effect."""
-    before = touch_menu(case)
-    tap_row(case, label)
-    moved = wait_game_menu(case, lambda m: focused_label(
-        m.get("touch_menu", {})) == label, 10).get("touch_menu", {})
-    case.check("a tap on %s moved the game's focus to it" % label,
-               focused_label(moved) == label, str(focused_label(moved)))
-    case.check("and changed nothing else",
-               [r.get("value") for r in moved.get("rows", [])]
-               == [r.get("value") for r in before.get("rows", [])]
-               and moved.get("facts") == before.get("facts"),
-               "%s -> %s" % (before.get("facts"), moved.get("facts")))
-    tap_row(case, label)
-    after = wait_game_menu(case, lambda m: changed(
-        moved, m.get("touch_menu", {})), 10).get("touch_menu", {})
-    case.check("a second tap %s" % what, changed(moved, after),
-               "%s -> %s" % (row_value(moved, label), row_value(after, label)))
-    return after
+def lit_hero(menu: dict) -> str | None:
+    return next((n for n in PARTY if lit(menu, n)), None)
+
+
+def open_details(case: Case, tab: str) -> dict:
+    """Open the team menu, the selected hero's details by a tap on its card
+    and `tab` by a tap on it; the menu's items once it shows."""
+    console(case, "openmenu team")
+    party = wait_game_menu(case, lambda m: m.get("mode") == 0, 20)
+    case.check("the team menu opened on its party",
+               party.get("menu") == "team" and party.get("mode") == 0,
+               "%s mode %s" % (party.get("menu"), party.get("mode")))
+    items = read_menu_items(case)
+    hero = lit_hero(items) or PARTY[0]
+    tap_menu_item(case, item_in(items, hero))
+    wait_game_menu(case, lambda m: m.get("mode") == 2, 5)
+    if read_menu(case).get("mode") != 2:
+        tap_menu_item(case, item_in(items, hero))
+    stats = wait_game_menu(case, lambda m: m.get("mode") == 2, 10)
+    case.check("a tap on the selected hero's card opened its stats",
+               stats.get("mode") == 2, "mode %s" % stats.get("mode"))
+    if tab != "stats" and stats.get("mode") == 2:
+        tap_tab(case, r"detail_option0\d_text", tab)
+        want = 2 + DETAIL_TABS.index(tab)
+        opened = wait_game_menu(case, lambda m: m.get("mode") == want, 10)
+        case.check("a tap on the %s tab's finger area opened it" % tab,
+                   opened.get("mode") == want, "mode %s" % opened.get("mode"))
+    time.sleep(1.0)
+    return read_menu_items(case)
 
 
 def leave_details(case: Case) -> None:
-    shown = touch_menu(case)
-    tap_touch_button(case, shown, touch_button(shown, "footer", "accept"))
-    party = wait_game_menu(case, lambda m: m.get("mode") == 0, 10)
-    case.check("the details' Accept footer returned to the party",
+    """Accept (the game's Back) until the party shows: the gear pieces go
+    back to the slots first."""
+    party = read_menu(case)
+    for _ in range(2):
+        tap_footer_button(case, "$MENU_BACK")
+        party = wait_game_menu(case, lambda m: m.get("mode") == 0, 5)
+        if party.get("mode") == 0:
+            break
+    case.check("the details' Accept returned to the party",
                party.get("mode") == 0, "mode %s" % party.get("mode"))
     case.check("and the game is still running", case.alive())
 
 
+def wait_labels_change(case: Case, names: list[str], before: dict,
+                       timeout: float = 10) -> dict[str, str]:
+    return wait_labels(case, lambda now: any(
+        now.get(n) != before.get(n) for n in names), timeout)
+
+
+def check_column(case: Case, menu: dict, what: str) -> None:
+    """Every finger button is a finger across at least, and none of the
+    column's overlaps another button (scene units; a finger is 38.4 at
+    720p)."""
+    buttons = [b for b in menu.get("touch_buttons", []) if "area" in b]
+    areas = [b["area"] for b in buttons]
+    small = [a for a in areas if min(a["right"] - a["left"],
+                                     a["top"] - a["bottom"]) < 38.0]
+    case.check("the %s screen's finger buttons are a finger at least"
+               % what, bool(areas) and not small, str(small))
+    overlap = [(a.get("name"), b.get("name"))
+               for i, a in enumerate(buttons) for b in buttons[i + 1:]
+               if (a.get("name") or b.get("name"))
+               and a["area"]["left"] < b["area"]["right"]
+               and b["area"]["left"] < a["area"]["right"]
+               and a["area"]["bottom"] < b["area"]["top"]
+               and b["area"]["bottom"] < a["area"]["top"]]
+    case.check("and no column button overlaps another", not overlap,
+               str(overlap))
+
+
+def case_touch_team(case: Case) -> None:
+    """CMenuTeam's party from the PDA: a tap on a hero's card selects it, a
+    second opens its details, Accept leaves each."""
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave0.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    pda = keyboard_into_the_pda(case, 300)
+    case.check("the run reached the PDA", pda.get("menu") == "pda",
+               str(pda.get("menu")))
+    team_row = menu_row(pda, "team management")
+    case.check("the PDA has Team Management", bool(team_row))
+    if not team_row:
+        return
+    tap_menu_item(case, team_row)
+    team = wait_game_menu(case, lambda m: m.get("menu") == "team"
+                          and m.get("mode") == 0, 20)
+    case.check("the tap opened the game's team menu on its party",
+               team.get("menu") == "team" and team.get("mode") == 0,
+               "%s mode %s" % (team.get("menu"), team.get("mode")))
+    controls = live_controls(case)
+    case.check("and the menu pad is not drawn over it",
+               not any(c.startswith("menu-") for c in controls),
+               "drawn: %s" % sorted(controls))
+    time.sleep(1.0)
+    items = read_menu_items(case)
+    (case.dir / "team.json").write_text(json.dumps(items, indent=1) + "\n")
+    heroes = [item_in(items, n).get("label") for n in PARTY]
+    print("  party: %s" % heroes)
+    case.shot("team")
+    selected = lit_hero(items)
+    target = PARTY[1] if selected != PARTY[1] else PARTY[0]
+    tap_menu_item(case, item_in(items, target))
+    picked = wait_game_menu(case, lambda m: lit_hero(read_menu_items(case))
+                            == target, 10)
+    case.check("a tap on %s's card selected that hero in the game"
+               % item_in(items, target).get("label"),
+               lit_hero(read_menu_items(case)) == target
+               and picked.get("mode") == 0,
+               "lit %s, mode %s" % (lit_hero(read_menu_items(case)),
+                                    picked.get("mode")))
+    case.shot("team-selected")
+    tap_menu_item(case, item_in(items, target))
+    details = wait_game_menu(case, lambda m: m.get("mode") == 2, 10)
+    case.check("a second tap opened that hero's details",
+               details.get("mode") == 2, "mode %s" % details.get("mode"))
+    time.sleep(1.0)
+    case.shot("details")
+    leave_details(case)
+    case.check("the party offers Accept as a finger button",
+               bool(footer_button(read_menu(case), "$MENU_OK")))
+    tap_footer_button(case, "$MENU_OK")
+    left = wait_game_menu(case, lambda m: m.get("menu") != "team", 10)
+    case.check("Accept left the team menu", left.get("menu") != "team",
+               "now %r" % left.get("menu"))
+    case.check("and the game is still running", case.alive())
+
+
 def case_touch_team_stats(case: Case) -> None:
-    """The stats tab: a tap walks to a stat, a second tap adds a point."""
+    """The stats column: a tap on a stat's card selects it without spending,
+    + adds a point to it and - takes it back."""
     if not start_levelled(case):
         return
-    shown = open_details(case, "stats")
-    (case.dir / "stats.json").write_text(json.dumps(shown, indent=1) + "\n")
-    labels = [r["label"] for r in shown.get("rows", [])]
-    case.check("its rows are the game's four stats with their values",
-               labels == ["body", "focus", "strike", "speed"]
-               and all(r.get("value") for r in shown.get("rows", [])),
-               str(labels))
-    points = fact(shown, "remaining points")
-    case.check("and the points left to spend", points not in (None, "0"),
-               str(points))
-    case.check("and the resistances by name and value",
-               any(line.startswith("Mental Resistance ")
-                   for line in shown.get("detail", [])),
-               str(shown.get("detail")))
+    menu = open_details(case, "stats")
+    (case.dir / "stats.json").write_text(json.dumps(menu, indent=1) + "\n")
+    labels = menu_labels(case)
+    cards = [s for s in STATS if button_on(menu, "label_" + s, "select")]
+    case.check("the column has a card for each of the game's four stats",
+               cards == STATS, str(cards))
+    case.check("each with its add and remove buttons",
+               all(button_on(menu, "label_" + s, "add")
+                   and button_on(menu, "label_" + s, "remove")
+                   for s in STATS))
+    check_column(case, menu, "stats")
+    points = labels.get("points_stats")
+    case.check("and points to spend", points not in (None, "0"), str(points))
     case.shot("stats")
-    if labels != ["body", "focus", "strike", "speed"] or points is None:
+    if cards != STATS or points in (None, "0"):
         return
-    current = focused_label(shown)
-    target = "strike" if current != "strike" else "speed"
-    added = walk_then_press(
-        case, target,
-        lambda a, b: row_value(b, target) == str(
-            int(row_value(a, target) or 0) + 1)
-        and fact(b, "remaining points") == str(
-            int(fact(a, "remaining points") or 0) - 1),
-        "added a point to it in the game")
-    case.check("as the game's own item shows it",
-               menu_labels(case).get(target) == row_value(added, target),
-               "%r vs %r" % (menu_labels(case).get(target),
-                             row_value(added, target)))
+    target = "strike" if not lit(menu, "label_strike") else "speed"
+    before = menu_labels(case)
+    tap_named(case, "select", "label_" + target)
+    moved = wait_game_menu(case, lambda m: lit(read_menu_items(case),
+                                               "label_" + target), 10)
+    del moved
+    now = menu_labels(case)
+    case.check("a tap on %s's card selected it in the game" % target,
+               lit(read_menu_items(case), "label_" + target))
+    case.check("and spent nothing",
+               all(now.get(s) == before.get(s) for s in STATS)
+               and now.get("points_stats") == before.get("points_stats"),
+               "%s -> %s" % ([before.get(s) for s in STATS],
+                             [now.get(s) for s in STATS]))
+    case.shot("stats-selected")
+    other = "body" if target != "body" else "focus"
+    before = menu_labels(case)
+    tap_named(case, "add", "label_" + other)
+    added = wait_labels_change(case, [other], before)
+    case.check("+ on %s added a point to it, from the points left" % other,
+               added.get(other) == str(int(before[other]) + 1)
+               and added.get("points_stats")
+               == str(int(before["points_stats"]) - 1),
+               "%s %s -> %s %s" % (before.get(other),
+                                   before.get("points_stats"),
+                                   added.get(other),
+                                   added.get("points_stats")))
+    case.check("and selected it", lit(read_menu_items(case), "label_" + other))
     case.shot("stats-added")
+    before = added
+    tap_named(case, "remove", "label_" + other)
+    removed = wait_labels_change(case, [other], before)
+    case.check("- took that point back",
+               removed.get(other) == str(int(before[other]) - 1)
+               and removed.get("points_stats")
+               == str(int(before["points_stats"]) + 1),
+               "%s -> %s" % (before.get(other), removed.get(other)))
     leave_details(case)
 
 
+def skill_open(box: dict, index: int) -> bool:
+    """The skill has a rank the hero's level allows adding."""
+    values = box.get("values", [])
+    return 0 <= index < len(values) and RANK_GLYPHS[2] in values[index]
+
+
+def skill_rank(box: dict, index: int) -> tuple[int, int]:
+    """A skill's owned and total ranks, from its record's glyphs."""
+    values = box.get("values", [])
+    record = values[index] if 0 <= index < len(values) else ""
+    owned = sum(record.count(g) for g in RANK_GLYPHS[:2])
+    return owned, sum(record.count(g) for g in RANK_GLYPHS)
+
+
+def tap_skill_row(case: Case, index: int) -> bool:
+    """Tap the skill list's row `index` in the game's own list box."""
+    item = menu_item(case, "skill_list")
+    box = item.get("list_box", {})
+    row = index - box.get("top", 0)
+    if not 0 <= row < box.get("visible_rows", 0):
+        return False
+    rect, tap = item["rect"], item["tap"]
+    centre = 0.5 * (rect["top"] + rect["bottom"])
+    z = rect["bottom"] - SKILL_ROWS_DOWN - (row + 0.5) * box["row_height"]
+    return case.http("/touch?x=%g&y=%g" % (
+        tap["x"], tap["y"] + (centre - z) / SCENE_HEIGHT))[0] == 200
+
+
 def case_touch_team_skills(case: Case) -> None:
-    """The skills tab: ranks read from the game's glyphs; a tap walks to a
-    skill, a second tap adds a rank."""
+    """The skills column: the selected skill's card with its rank, + adds a
+    rank and - takes it back; a tap on a row of the list selects it."""
     if not start_levelled(case):
         return
-    shown = open_details(case, "skills")
-    (case.dir / "skills.json").write_text(json.dumps(shown, indent=1) + "\n")
-    rows = shown.get("rows", [])
-    ranked = [r for r in rows if ", rank " in str(r.get("value"))]
-    locked = [r for r in rows if "Req:" in str(r.get("value"))]
-    case.check("its rows are the hero's skills, ranked or locked",
-               len(rows) > 3 and ranked and locked,
-               str([(r["label"], r["value"]) for r in rows]))
-    points = fact(shown, "remaining points")
-    case.check("and the skill points left", points not in (None, "0"),
+    menu = open_details(case, "skills")
+    (case.dir / "skills.json").write_text(json.dumps(menu, indent=1) + "\n")
+    box = menu_list(case, "skill_list")
+    case.check("the column has the skill's add and remove buttons",
+               bool(buttons_named(menu, "add"))
+               and bool(buttons_named(menu, "remove")))
+    case.check("and the hero buttons",
+               bool(buttons_named(menu, "Prev hero"))
+               and bool(buttons_named(menu, "Next hero")))
+    check_column(case, menu, "skills")
+    points = menu_labels(case).get("points_skills")
+    case.check("and skill points to spend", points not in (None, "0"),
                str(points))
     case.shot("skills")
-    current = focused_label(shown)
-    target = next((r["label"].lower() for r in ranked
-                   if r["label"].lower() != current
-                   and r["value"].split("rank ")[1].split("/")[0]
-                   != r["value"].split("/")[1]), None)
-    if target is None or points is None:
+    target = next((i for i in range(len(box.get("entries", [])))
+                   if i != box.get("selected") and skill_open(box, i)), None)
+    if target is None or points in (None, "0"):
+        case.check("a skill with a rank to add", False, str(box))
         return
-
-    def rank(view: dict) -> int:
-        return int(str(row_value(view, target)).split("rank ")[1].split("/")[0])
-
-    walk_then_press(
-        case, target,
-        lambda a, b: row_value(b, target) is not None
-        and rank(b) == rank(a) + 1
-        and fact(b, "remaining points") == str(
-            int(fact(a, "remaining points") or 0) - 1),
-        "added a rank to it in the game")
+    before = menu_labels(case)
+    tap_skill_row(case, target)
+    picked = wait_list(case, lambda b: b.get("selected") == target,
+                       "skill_list")
+    now = menu_labels(case)
+    case.check("a tap on %s's row selected it" % box["entries"][target],
+               picked.get("selected") == target, str(picked.get("selected")))
+    case.check("and spent nothing",
+               now.get("points_skills") == before.get("points_skills")
+               and skill_rank(picked, target) == skill_rank(box, target),
+               "%s -> %s" % (before.get("points_skills"),
+                             now.get("points_skills")))
+    case.shot("skills-selected")
+    rank = skill_rank(picked, target)
+    tap_named(case, "add")
+    added = wait_list(case, lambda b: skill_rank(b, target) != rank,
+                      "skill_list")
+    now = menu_labels(case)
+    case.check("+ added a rank to it, from the points left",
+               skill_rank(added, target)[0] == rank[0] + 1
+               and now.get("points_skills")
+               == str(int(before["points_skills"]) - 1),
+               "%s %s -> %s %s" % (rank, before.get("points_skills"),
+                                   skill_rank(added, target),
+                                   now.get("points_skills")))
     case.shot("skills-added")
+    tap_named(case, "remove")
+    removed = wait_list(case, lambda b: skill_rank(b, target)[0] == rank[0],
+                        "skill_list")
+    case.check("- took the rank back",
+               skill_rank(removed, target)[0] == rank[0]
+               and menu_labels(case).get("points_skills")
+               == before.get("points_skills"),
+               str(skill_rank(removed, target)))
     leave_details(case)
 
 
 def case_touch_team_gear(case: Case) -> None:
-    """The gear tab: a slot's A opens the pieces that fit, a piece's A equips
-    it, Unequip takes it off and Drop (the pad's RB) drops one. The gear is
-    bought first in the game's own shop, which is native on touch."""
+    """The gear tab's two lists as cards: a slot's card opens the pieces
+    that fit, a piece's card equips it, Unequip takes it off and Drop (the
+    pad's RB) drops one. The gear is bought first in the native shop."""
     if not start_levelled(case, (ADD_MONEY, ADD_MONEY, ADD_MONEY)):
         return
     console(case, "openmenu shop")
@@ -250,221 +436,336 @@ def case_touch_team_gear(case: Case) -> None:
                count == "2/20", "%s, %s" % (bought, count))
     tap_footer_button(case, "$MENU_OK")
     wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
-    shown = open_details(case, "gear")
-    (case.dir / "gear.json").write_text(json.dumps(shown, indent=1) + "\n")
-    slots = [r["label"] for r in shown.get("rows", [])]
-    case.check("its rows are the game's three gear slots, empty",
-               slots == ["Nothing Equipped"] * 3, str(slots))
-    case.check("and the gear count", fact(shown, "gear") == "2/20",
-               str(shown.get("facts")))
+    menu = open_details(case, "gear")
+    (case.dir / "gear.json").write_text(json.dumps(menu, indent=1) + "\n")
+    slots = menu_list(case, "equipment")
+    cards = list_cards(case, "equipment")
+    case.check("the gear slots are finger cards in their own panel",
+               len(slots.get("entries", [])) == 3 and len(cards) >= 1,
+               "%d cards, %s" % (len(cards), slots.get("entries")))
+    pieces_box = list_cards(case, "equipment_inv")
+    case.check("clear of the pieces' cards",
+               not any(c["tap"]["y"] > p["tap"]["y"] for c in cards
+                       for p in pieces_box), str(cards))
     case.shot("gear")
-    if len(slots) != 3 or len(bought) != 2:
+    case.check("a drag up on the slot's card shows the next slot",
+               drag_one_card(case, "equipment", up=True) == 1,
+               str([c["entry"] for c in list_cards(case, "equipment")]))
+    case.check("and down the first again",
+               drag_one_card(case, "equipment", up=False) == 0,
+               str([c["entry"] for c in list_cards(case, "equipment")]))
+    if len(slots.get("entries", [])) != 3 or len(bought) != 2:
         return
-    tap_row(case, "nothing equipped")
-    pieces = wait_game_menu(case, lambda m: [
-        r["label"] for r in m.get("touch_menu", {}).get("rows", [])]
-        != slots, 10).get("touch_menu", {})
-    names = sorted(r["label"] for r in pieces.get("rows", []))
-    case.check("a tap on the selected slot opened the pieces that fit it",
+    tap_list_entry(case, slots.get("selected", 0), "equipment")
+    pieces = wait_list(case, lambda b: len(b.get("entries", [])) == 2,
+                       "equipment_inv")
+    names = sorted(menu_text(e) for e in pieces.get("entries", []))
+    case.check("a tap on the selected slot's card opened the pieces that fit",
                names == sorted(bought), str(names))
+    case.check("as finger cards", len(list_cards(case, "equipment_inv")) >= 1,
+               str(list_cards(case, "equipment_inv")))
     case.shot("gear-pieces")
-    target = bought[1].lower()
-    equipped = walk_then_press(
-        case, target,
-        lambda a, b: fact(b, "gear") == "1/20"
-        and any(r["label"].lower() == target for r in b.get("rows", [])),
-        "equipped it, back on the slots")
-    slot_names = [r["label"].lower() for r in equipped.get("rows", [])]
-    case.check("the first slot now names it",
-               slot_names[:1] == [target], str(slot_names))
+    target = [menu_text(e) for e in pieces["entries"]].index(bought[1])
+    select_list_entry(case, target, "equipment_inv")
+    tap_list_entry(case, target, "equipment_inv")
+    equipped = wait_list(case, lambda b: any(
+        menu_text(e) == bought[1] for e in b.get("entries", [])), "equipment")
+    case.check("a second tap on %s equipped it, back on the slots" % bought[1],
+               any(menu_text(e) == bought[1]
+                   for e in equipped.get("entries", [])),
+               str(equipped.get("entries")))
     case.shot("gear-equipped")
-
-    shown = touch_menu(case)
-    tap_touch_button(case, shown, touch_button(shown, "footer", "unequip"))
-    off = wait_game_menu(case, lambda m: fact(
-        m.get("touch_menu", {}), "gear") == "2/20", 10).get("touch_menu", {})
+    case.check("the slot offers Unequip", bool(footer_word(
+        read_menu(case), "unequip")), str(read_menu(case).get("desctext")))
+    tap_footer_word(case, "unequip")
+    off = wait_list(case, lambda b: not any(
+        menu_text(e) == bought[1] for e in b.get("entries", [])), "equipment")
     case.check("Unequip took it off",
-               fact(off, "gear") == "2/20"
-               and [r["label"] for r in off.get("rows", [])] == slots,
-               str(off.get("facts")))
-    tap_row(case, "nothing equipped")
-    wait_game_menu(case, lambda m: [
-        r["label"] for r in m.get("touch_menu", {}).get("rows", [])]
-        != slots, 10)
-    shown = touch_menu(case)
-    drop = touch_button(shown, "footer", "drop")
-    case.check("the pieces offer Drop", drop is not None,
-               str([b["label"] for b in shown.get("buttons", [])
-                    if b["part"] == "footer"]))
-    if drop is None:
-        return
-    tap_touch_button(case, shown, drop)
-    dropped = wait_game_menu(case, lambda m: fact(
-        m.get("touch_menu", {}), "gear") == "1/20", 10).get("touch_menu", {})
+               not any(menu_text(e) == bought[1]
+                       for e in off.get("entries", [])),
+               str(off.get("entries")))
+    tap_list_entry(case, off.get("selected", 0), "equipment")
+    wait_list(case, lambda b: len(b.get("entries", [])) == 2, "equipment_inv")
+    drop = footer_button(read_menu(case), "$MENU_DROP")
+    case.check("the pieces offer Drop as a finger button", bool(drop),
+               str(read_menu(case).get("desctext")))
+    tap_button_edge(case, drop)
+    dropped = wait_list(case, lambda b: len(b.get("entries", [])) == 1,
+                        "equipment_inv")
     case.check("a tap on Drop (the pad's RB) dropped the selected piece",
-               fact(dropped, "gear") == "1/20"
-               and len(dropped.get("rows", [])) == 1,
-               "%s %s" % (dropped.get("facts"),
-                          [r["label"] for r in dropped.get("rows", [])]))
+               len(dropped.get("entries", [])) == 1,
+               str(dropped.get("entries")))
     case.shot("gear-dropped")
-    shown = touch_menu(case)
-    tap_touch_button(case, shown, touch_button(shown, "footer", "accept"))
-    back = wait_game_menu(case, lambda m: [
-        r["label"] for r in m.get("touch_menu", {}).get("rows", [])]
-        == slots, 10)
-    case.check("Accept from the pieces returned to the slots",
-               back.get("mode") == 4, "mode %s" % back.get("mode"))
     leave_details(case)
 
 
+def drag_one_card(case: Case, name: str, up: bool) -> int | None:
+    """Drag the list's first shown card a card's height (a finger, a tenth
+    of the window) up or down; the first entry shown after."""
+    cards = list_cards(case, name)
+    if not cards:
+        return None
+    start = cards[0]["tap"]
+    end = {"x": start["x"], "y": start["y"] + (-0.12 if up else 0.12)}
+    drag_between(case, start, end)
+    time.sleep(1.0)
+    cards = list_cards(case, name)
+    return cards[0]["entry"] if cards else None
+
+
 def case_touch_team_ai(case: Case) -> None:
-    """The ai tab: a tap walks to a setting, a second tap changes it."""
+    """The ai column: a tap on a setting's card selects it, a tap on the
+    selected one changes it."""
     if not start_levelled(case):
         return
-    shown = open_details(case, "ai")
-    (case.dir / "ai.json").write_text(json.dumps(shown, indent=1) + "\n")
-    labels = [r["label"] for r in shown.get("rows", [])]
-    case.check("its rows are the game's seven ai settings with values",
-               len(labels) == 7 and labels[0] == "ai heal when full"
-               and all(r.get("value") for r in shown.get("rows", [])),
-               str(labels))
-    case.check("and the current setting's description",
-               bool(shown.get("detail")), str(shown.get("detail")))
+    menu = open_details(case, "ai")
+    (case.dir / "ai.json").write_text(json.dumps(menu, indent=1) + "\n")
+    cards = [a for a in AI if button_on(menu, "label_" + a, "select")
+             or button_on(menu, "label_" + a, "change")]
+    case.check("the column has a card for each of the seven ai settings",
+               cards == AI, str(cards))
+    check_column(case, menu, "ai")
     case.shot("ai")
-    if len(labels) != 7:
-        return
-    target = "ai auto-equip" if focused_label(shown) != "ai auto-equip" \
-        else "ai heal when full"
-    walk_then_press(
-        case, target,
-        lambda a, b: row_value(b, target) not in (None, row_value(a, target)),
-        "changed the setting in the game")
+    target = "ai_auto_equip" if not lit(menu, "label_ai_auto_equip") \
+        else "ai_heal_pickup"
+    before = menu_labels(case)
+    tap_named(case, "select", "label_" + target)
+    wait_game_menu(case, lambda m: lit(read_menu_items(case),
+                                       "label_" + target), 10)
+    case.check("a tap on its card selected %s" % target,
+               lit(read_menu_items(case), "label_" + target))
+    case.check("and changed nothing",
+               all(menu_labels(case).get(a) == before.get(a) for a in AI))
+    before = menu_labels(case)
+    tap_named(case, "change", "label_" + target)
+    changed = wait_labels_change(case, [target], before)
+    case.check("a second tap changed it in the game",
+               changed.get(target) not in (None, before.get(target)),
+               "%s -> %s" % (before.get(target), changed.get(target)))
     case.shot("ai-changed")
     leave_details(case)
 
 
 def hero_power_slots(case: Case) -> list[str]:
-    """The power slots of the hero the tabs show, from the party card whose
-    hero has that name."""
+    """The power slots of the hero the tabs show."""
     name = menu_labels(case).get("name")
-    for n in range(1, 5):
-        hero = menu_item(case, "char_summary0%d" % n).get("hero", {})
+    for n in PARTY:
+        hero = menu_item(case, n).get("hero", {})
         if hero.get("display_name") == name:
             return hero.get("power_slots", [])
     return []
 
 
-def footer_labels(shown: dict) -> list[str]:
-    return [b["label"] for b in shown.get("buttons", [])
-            if b["part"] == "footer"]
-
-
 def case_touch_team_assign(case: Case) -> None:
-    """The skills tab: Assign (RB) takes the selected skill, Power 2 (B) puts
-    it in slot 1, Cancel clicks Back; Next hero (RT) turns to the next
-    hero."""
+    """The skills tab: Assign (RB) takes the selected skill, the column
+    becomes three slot buttons and Cancel; Power 2 puts it in slot 1; Next
+    hero turns to the next hero."""
     if not start_levelled(case):
         return
-    shown = open_details(case, "skills")
-    ranked = [r["label"].lower() for r in shown.get("rows", [])
-              if ", rank " in str(r.get("value"))
-              and not str(r.get("value")).split("rank ")[1].startswith("0/")]
-    if ranked and focused_label(shown) not in ranked:
-        tap_row(case, ranked[0])
-        shown = wait_game_menu(case, lambda m: focused_label(
-            m.get("touch_menu", {})) == ranked[0], 10).get("touch_menu", {})
-    case.check("the selected skill has a rank, so the game offers Assign",
-               "Assign" in footer_labels(shown), str(footer_labels(shown)))
+    open_details(case, "skills")
+    box = menu_list(case, "skill_list")
+    ranked = next((i for i in range(len(box.get("entries", [])))
+                   if skill_rank(box, i)[0] > 0), None)
+    if ranked is not None and box.get("selected") != ranked:
+        tap_skill_row(case, ranked)
+        wait_list(case, lambda b: b.get("selected") == ranked, "skill_list")
     before = hero_power_slots(case)
     case.check("the hero's four power slots read", len(before) == 4,
                str(before))
-    if "Assign" not in footer_labels(shown) or len(before) != 4:
+    menu = read_menu_items(case)
+    case.check("the selected skill has a rank and the column offers Assign",
+               ranked is not None and bool(buttons_named(menu, "assign")))
+    case.check("in place of the game's Assign prompt",
+               not footer_button(read_menu(case), "$MENU_DROP"))
+    if not buttons_named(menu, "assign") or len(before) != 4:
         return
-
-    tap_touch_button(case, shown, touch_button(shown, "footer", "assign"))
-    assigning = wait_game_menu(case, lambda m: "assigning_skill" in m and
-                               "Power 2" in footer_labels(
-                                   m.get("touch_menu", {})), 10)
-    labels = footer_labels(assigning.get("touch_menu", {}))
-    case.check("a tap on Assign (RB) set the game assigning the skill, and "
-               "the footers became the three slots and Cancel",
-               labels == ["Power 1", "Power 2", "Power 3", "Cancel"],
-               "%s %s" % (assigning.get("assigning_skill"), labels))
+    tap_named(case, "assign")
+    assigning = wait_game_menu(case, lambda m: "assigning_skill" in m, 10)
+    menu = read_menu_items(case)
+    slots = [b.get("name") for b in menu.get("touch_buttons", [])
+             if b.get("name", "").startswith("Power") or b.get("name") ==
+             "Cancel"]
+    case.check("a tap on Assign set the game assigning the skill",
+               "assigning_skill" in assigning,
+               str(assigning.get("assigning_skill")))
+    case.check("and the column became the three slots and Cancel",
+               sorted(slots) == ["Cancel", "Power 1", "Power 2", "Power 3"],
+               str(slots))
+    case.check("with the hero buttons gone while it lasts",
+               not buttons_named(menu, "Next hero"))
+    check_column(case, menu, "assigning")
     case.shot("skills-assigning")
-    shown = assigning.get("touch_menu", {})
-    tap_touch_button(case, shown, touch_button(shown, "footer", "cancel"))
+    tap_named(case, "Cancel")
     cancelled = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
-    case.check("Cancel (a click on the game's Back) ended it unassigned",
+    case.check("Cancel ended it unassigned",
                "assigning_skill" not in cancelled
                and hero_power_slots(case) == before,
                str(hero_power_slots(case)))
-
-    shown = cancelled.get("touch_menu", {})
-    tap_touch_button(case, shown, touch_button(shown, "footer", "assign"))
-    assigning = wait_game_menu(case, lambda m: "Power 2" in footer_labels(
-        m.get("touch_menu", {})), 10)
-    shown = assigning.get("touch_menu", {})
-    tap_touch_button(case, shown, touch_button(shown, "footer", "power 2"))
+    tap_named(case, "assign")
+    wait_game_menu(case, lambda m: "assigning_skill" in m, 10)
+    tap_named(case, "Power 2")
     done = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
     after = hero_power_slots(case)
-    moved = before.index(after[1]) if len(after) == 4 and after[1] in before \
-        else None
-    case.check("a tap on Power 2 (B) put the skill in slot 1, swapping with "
-               "the slot it left",
+    case.check("a tap on Power 2 put the skill in slot 1",
                "assigning_skill" not in done and len(after) == 4
-               and after != before and after[1] != ""
-               and (moved is None or after[moved] == before[1]),
+               and after != before and after[1] != "",
                "%s -> %s" % (before, after))
     case.shot("skills-assigned")
-
-    shown = touch_menu(case)
     hero = menu_labels(case).get("name")
-    tap_touch_button(case, shown, touch_button(shown, "footer", "next hero"))
+    tap_named(case, "Next hero")
     turned = wait_game_menu(case, lambda m: menu_labels(case).get(
         "name") not in (None, hero), 10)
-    case.check("a tap on Next hero (RT) turned the tabs to the next hero",
+    case.check("a tap on Next hero turned the tabs to the next hero",
                menu_labels(case).get("name") not in (None, hero)
                and turned.get("mode") == 3,
                "%s -> %s, mode %s" % (hero, menu_labels(case).get("name"),
                                       turned.get("mode")))
     case.shot("next-hero")
+    tap_named(case, "Prev hero")
+    wait_game_menu(case, lambda m: menu_labels(case).get("name") == hero, 10)
+    case.check("and Prev hero back", menu_labels(case).get("name") == hero,
+               str(menu_labels(case).get("name")))
     leave_details(case)
 
 
 def case_touch_team_skill_details(case: Case) -> None:
-    """The skills tab's Details: a tap holds LT, which the game reads as its
-    Details view of the selected skill; a second tap lets go."""
+    """The skills tab's Details: the game shows it while its prompt is held;
+    on touch a tap opens it, it stays after the finger lifts, and a second
+    tap closes it."""
     if not start_levelled(case):
         return
-    shown = open_details(case, "skills")
-    skill = focused_label(shown)
-    tap_touch_button(case, shown, touch_button(shown, "footer", "details"))
-    details = wait_game_menu(case, lambda m: m.get("mode") == 6 and m.get(
-        "touch_menu", {}).get("detail"), 10)
-    lines = details.get("touch_menu", {}).get("detail", [])
-    (case.dir / "details.json").write_text(json.dumps(details, indent=1) + "\n")
-    labels = menu_labels(case)
+    open_details(case, "skills")
+    skill = menu_text(menu_list(case, "skill_list")["entries"][
+        menu_list(case, "skill_list")["selected"]])
+    tap_footer_button(case, "$MENU_DETAILS")
+    details = wait_game_menu(case, lambda m: m.get("mode") == 6, 10)
     case.check("a tap on Details opened the game's Details view (mode 6)",
                details.get("mode") == 6, "mode %s" % details.get("mode"))
-    case.check("the touch menu reads the selected skill's name, rank and "
-               "description",
-               len(lines) > 3 and lines[0].lower() == skill
-               and lines[1].startswith("rank ")
-               and labels.get("skill_title", "").lower() == skill
-               and "$" not in " ".join(lines),
-               str(lines[:4]))
-    case.shot("skill-details")
-    time.sleep(1.0)
-    case.check("the game stays in Details while LT is held",
+    time.sleep(2.0)
+    labels = menu_labels(case)
+    (case.dir / "details.json").write_text(
+        json.dumps(read_menu_items(case), indent=1) + "\n")
+    case.check("it stays open with no finger down",
                read_menu(case).get("mode") == 6,
                "mode %s" % read_menu(case).get("mode"))
-    shown = details.get("touch_menu", {})
-    tap_touch_button(case, shown, touch_button(shown, "footer", "details"))
-    back = wait_game_menu(case, lambda m: m.get("mode") == 3 and m.get(
-        "touch_menu", {}).get("rows"), 10)
-    case.check("a second tap let LT go, back to the skill list",
-               back.get("mode") == 3
-               and focused_label(back.get("touch_menu", {})) == skill,
-               "mode %s" % back.get("mode"))
+    case.check("on the selected skill",
+               menu_text(labels.get("skill_title", "")).lower()
+               == skill.lower(), "%r vs %r" % (labels.get("skill_title"),
+                                               skill))
+    case.shot("skill-details")
+    tap_footer_button(case, "$MENU_DETAILS")
+    back = wait_game_menu(case, lambda m: m.get("mode") == 3, 10)
+    case.check("a second tap closed it, back on the skill list",
+               back.get("mode") == 3, "mode %s" % back.get("mode"))
+    time.sleep(1.5)
+    case.check("and it stays closed", read_menu(case).get("mode") == 3)
     case.shot("skill-list")
     leave_details(case)
+
+
+def roster_middle(case: Case) -> str:
+    """The middle roster card's hero, by the name the card shows."""
+    card = menu_item(case, "roster_summary02")
+    return card.get("hero", {}).get("display_name") or card.get("label", "")
+
+
+def step_roster_to(case: Case, name: str) -> bool:
+    """Tap the roster's lower card until `name` is the middle one."""
+    for _ in range(len(roster_names(case)) + 1):
+        if roster_middle(case) == name:
+            return True
+        before = roster_middle(case)
+        tap_menu_item(case, menu_item(case, "roster_summary03"))
+        wait_game_menu(case, lambda m, before=before: roster_middle(case)
+                       != before, 5)
+        # The cards slide for a moment after the middle one changes.
+        time.sleep(1.0)
+        print("  roster middle %s" % roster_middle(case))
+    return roster_middle(case) == name
+
+
+def case_touch_roster(case: Case) -> None:
+    """CMenuTeam's roster, in the flow that has one: `loadmap <map> 0 1`
+    opens the team menu with Replace, Wolverine killed first so the roster
+    holds a fallen hero. A tap on the roster's lower card steps it, Replace
+    revives fallen Wolverine for the game's price, then puts Sabretooth in
+    the empty party slot."""
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    case.seed_save("autosave0.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    for command in (ADD_MONEY, ADD_MONEY, ADD_MONEY, LEVEL_UP):
+        console(case, command)
+    dismiss_level_up(case)
+    for command in ('runscript killEntity("wolverine")',
+                    "loadmap act2/jungle/jungle1 0 1"):
+        console(case, command)
+    party = wait_game_menu(case, lambda m: m.get("menu") == "team"
+                           and m.get("mode") == 0, 120)
+    time.sleep(2.0)
+    items = read_menu_items(case)
+    heroes = [item_in(items, n).get("label", "") for n in PARTY]
+    case.check("the team menu opened on its party",
+               party.get("mode") == 0, str(heroes))
+    empty = next((n for n, h in zip(PARTY, heroes, strict=False) if not h), None)
+    case.check("with an empty party slot", empty is not None, str(heroes))
+    if empty is None:
+        return
+    case.shot("party")
+    if lit_hero(items) != empty:
+        tap_menu_item(case, item_in(items, empty))
+        wait_game_menu(case, lambda m: lit_hero(read_menu_items(case))
+                       == empty, 10)
+    tap_footer_button(case, "$MENU_ACCEPT")
+    roster = wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
+    case.check("Replace opened the game's roster", roster.get("mode") == 1,
+               "mode %s" % roster.get("mode"))
+    names = roster_names(case)
+    case.check("it names the heroes, locked ones left out",
+               "Sabretooth" in names and "Wolverine" in names
+               and "Professor X" not in names, str(names))
+    if "Wolverine" not in names or "Sabretooth" not in names:
+        return
+    time.sleep(1.0)
+    case.shot("roster")
+    before = roster_middle(case)
+    tap_menu_item(case, menu_item(case, "roster_summary03"))
+    stepped = wait_game_menu(case, lambda m: roster_middle(case) != before, 5)
+    del stepped
+    case.check("a tap on the lower card stepped the roster",
+               roster_middle(case) != before,
+               "%s -> %s" % (before, roster_middle(case)))
+    case.check("Wolverine steps to the middle",
+               step_roster_to(case, "Wolverine"), roster_middle(case))
+    case.check("fallen", roster_hero(case, "wolverine").get("fallen") is True,
+               str(roster_hero(case, "wolverine")))
+    case.shot("fallen")
+    cash = money(case)
+    tap_footer_button(case, "$MENU_ACCEPT")
+    wait_game_menu(case, lambda m: not roster_hero(case, "wolverine").get(
+        "fallen", True), 20)
+    print("  money %d -> %d" % (cash, money(case)))
+    case.check("Replace on fallen Wolverine revived him for the game's price",
+               roster_hero(case, "wolverine").get("fallen") is False
+               and money(case) < cash,
+               "%s, %d -> %d" % (roster_hero(case, "wolverine"), cash,
+                                 money(case)))
+    case.shot("revived")
+    if read_menu(case).get("mode") != 1:
+        tap_footer_button(case, "$MENU_ACCEPT")
+        wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
+    case.check("Sabretooth steps to the middle",
+               step_roster_to(case, "Sabretooth"), roster_middle(case))
+    tap_footer_button(case, "$MENU_ACCEPT")
+    wait_game_menu(case, lambda m: m.get("mode") == 0, 20)
+    time.sleep(1.0)
+    now = [menu_item(case, n).get("hero", {}).get("display_name", "")
+           for n in PARTY]
+    case.check("Replace put Sabretooth in the empty slot",
+               read_menu(case).get("mode") == 0
+               and now[PARTY.index(empty)] == "Sabretooth", str(now))
+    case.shot("replaced")
+    case.check("and the game is still running", case.alive())

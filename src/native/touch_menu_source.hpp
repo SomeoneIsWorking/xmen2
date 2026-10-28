@@ -2,7 +2,7 @@
 #define X2_TOUCH_MENU_SOURCE_HPP
 
 #include "../input/menu_touch_gaps.hpp"
-#include "../input/touch_menu_view.hpp"
+#include "../presentation/retail_scene_plane.hpp"
 #include "guest_memory_view.hpp"
 
 #include <cstdint>
@@ -19,10 +19,10 @@ read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base);
 std::optional<presentation::RetailScenePlane> live_scene_plane();
 
 /*
- * Feeds the touch menu: while touch play is the input, reads the active retail
- * menu and the scene plane at a bounded cadence and hands the touch runtime
- * the view of a menu it replaces. With touch play off it reads nothing.
- * Guest thread only.
+ * While touch play is the input, reads the active retail menu at a bounded
+ * cadence, tells the touch runtime whether a finger drives it directly, and
+ * feeds the gap report. With touch play off it reads nothing. Guest thread
+ * only.
  */
 class TouchMenuSource {
 public:

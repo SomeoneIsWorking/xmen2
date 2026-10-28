@@ -25,10 +25,12 @@ void TouchTargets::put(const TouchTarget &target) {
   drawing_.push_back(target);
 }
 
-void TouchTargets::next_frame() { shown_ = std::exchange(drawing_, {}); }
+void TouchTargets::next_frame() {
+  shown_ = std::exchange(drawing_, {});
+  tapped_.reset();
+}
 
-std::optional<presentation::ScenePoint>
-TouchTargets::press(presentation::ScenePoint point) {
+std::optional<TouchTarget> TouchTargets::press(presentation::ScenePoint point) {
   held_.reset();
   const TouchTarget *hit = nullptr;
   for (const TouchTarget &target : shown_) {
@@ -38,17 +40,35 @@ TouchTargets::press(presentation::ScenePoint point) {
       hit = &target;
     }
   }
-  if (hit == nullptr) {
-    return std::nullopt;
+  if (hit != nullptr) {
+    held_ = *hit;
   }
-  held_ = hit->area;
-  return hit->aim;
+  return held_;
 }
 
-void TouchTargets::release() { held_.reset(); }
+void TouchTargets::release(presentation::ScenePoint point) {
+  if (held_ && held_->press == TouchPress::own && held_->area.contains(point)) {
+    tapped_ = held_->area;
+  }
+  held_.reset();
+}
 
 bool TouchTargets::pressed(const SceneBox &area) const {
-  return held_ && same(*held_, area);
+  return held_ && same(held_->area, area);
+}
+
+bool TouchTargets::take_tap(const SceneBox &area) {
+  if (!tapped_ || !same(*tapped_, area)) {
+    return false;
+  }
+  tapped_.reset();
+  return true;
+}
+
+void TouchTargets::hover(presentation::ScenePoint aim) { hover_ = aim; }
+
+std::optional<presentation::ScenePoint> TouchTargets::take_hover() {
+  return std::exchange(hover_, std::nullopt);
 }
 
 TouchTargets &touch_targets() { return targets; }
