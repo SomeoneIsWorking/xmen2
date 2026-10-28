@@ -58,18 +58,20 @@ constexpr std::uint32_t kStyleFadeThreshold = 0x00680030u;
 
 constexpr std::string_view kToken = "$MENU_";
 constexpr std::string_view kPadHint = "$DPAD_";
-/* The tabs a menu's onMouse finds by name and tests with their raw box:
-   CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
-   0x005b5a90. */
-struct MenuTabs {
+/* The tabs and rows a menu's onMouse finds by name and tests with their raw
+   box: CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
+   0x005b5a90, CMenuWorldMap 0x005e7f10. */
+struct FingerItems {
   std::string_view menu_class;
   std::string_view prefix;
 };
-constexpr std::array<MenuTabs, 4> kMenuTabs{{
+constexpr std::array<FingerItems, 6> kFingerItems{{
     {"CMenuShop", "shop_option0"},
     {"CMenuShop", "stash_option0"},
     {"CMenuReviewPaths", "option0"},
     {"CMenuDangerRoom", "option_text"},
+    {"CMenuWorldMap", "option0"},
+    {"CMenuWorldMap", "list01_0"},
 }};
 /* The game's option art: dark for a button, lit while it is held. */
 constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
@@ -136,8 +138,10 @@ public:
   /* The touch draw; false leaves the item to retail's. */
   bool draw(const CPU &cpu, std::uint32_t self) {
     const std::uint32_t image = x2::native::guest_exe_base();
-    if (x2::menu::classify_item(RD32(self), image) !=
-        x2::menu::ItemClass::text) {
+    /* CMenuItemListItems' draw (0x005c4250) is a jump here. */
+    const auto kind = x2::menu::classify_item(RD32(self), image);
+    if (kind != x2::menu::ItemClass::text &&
+        kind != x2::menu::ItemClass::list_items) {
       return false;
     }
     const std::string_view menu_class =
@@ -151,9 +155,9 @@ public:
                                  ? std::string()
                                  : std::string(x2::guest::guest_string(
                                        text_at, menu_text::kLineBytes));
-    if (x2::native::text_is_menu_tab(menu_class, name_of(self))) {
+    if (x2::native::text_has_finger_area(menu_class, name_of(self))) {
       if (!text.empty()) {
-        put_tab(self);
+        put_finger_area(self);
       }
       return false;
     }
@@ -250,10 +254,12 @@ public:
   }
 
 private:
-  /* A shown tab's target: the finger button over its text. */
-  static void put_tab(std::uint32_t self) {
+  /* A shown, enabled tab or row's target: the finger button over its text. */
+  static void put_finger_area(std::uint32_t self) {
     const auto plane = x2::native::live_scene_plane();
-    if (!plane || (RD8(self + item::kFlags) & x2::menu::kItemHidden) != 0u) {
+    const std::uint8_t flags = RD8(self + item::kFlags);
+    if (!plane || (flags & x2::menu::kItemHidden) != 0u ||
+        (flags & x2::menu::kItemEnabled) == 0u) {
       return;
     }
     x2::input::touch_targets().put(
@@ -340,11 +346,11 @@ extern "C" void x2_override_005c6fb0(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", kTextDestroy);
 }
 
-bool x2::native::text_is_menu_tab(std::string_view menu_class,
-                                  std::string_view name) {
+bool x2::native::text_has_finger_area(std::string_view menu_class,
+                                      std::string_view name) {
   return std::any_of(
-      kMenuTabs.begin(), kMenuTabs.end(), [&](const MenuTabs &tabs) {
-        return menu_class == tabs.menu_class && name.starts_with(tabs.prefix);
+      kFingerItems.begin(), kFingerItems.end(), [&](const FingerItems &items) {
+        return menu_class == items.menu_class && name.starts_with(items.prefix);
       });
 }
 

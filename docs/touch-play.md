@@ -149,9 +149,10 @@ wider than the prompt's text, centred on it (`x2::input::text_button`), of the
 same option art as the list cards, lit while held, with the prompt's words
 and none of its keycap in the item's font at up to 0.42 of a finger, shrunk
 to fit. A `$DPAD_*` hint (the codex's `Down Scroll`) is not drawn on touch
-(`x2::native::text_is_pad_hint`). The tabs of the shop, stash, review and danger room, which their menu's
-`onMouse` finds by name (`x2::native::text_is_menu_tab`), keep their retail
-draw and get the same finger-sized area. Each such draw puts its area and the middle of the box the
+(`x2::native::text_is_pad_hint`). The tabs of the shop, stash, review, danger room and world map and the world
+map's point rows, which their menu's `onMouse` finds by name
+(`x2::native::text_has_finger_area`), keep their retail draw and, while
+enabled, get the same finger-sized area: a locked act or point has none. Each such draw puts its area and the middle of the box the
 item's own handler hit-tests into `x2::input::TouchTargets`
 (`src/input/touch_targets.{hpp,cpp}`), and a press that starts in an area
 shown on the last frame is delivered at that point until it lifts
@@ -161,7 +162,8 @@ through its menu's raw-box test. `GET /menu` reports them
 (`touch_buttons`: `tap`, `edge` near the top corner outside the item, and the
 scene point a press is delivered at). Prove it with `touch-shop` (a tab, Buy,
 Accept), `touch-codex` (Details twice, Back), `touch-stash`, `touch-review`,
-`touch-danger-room` and `touch-menu` (Options' Back).
+`touch-danger-room`, `touch-worldmap` (an act, go, a point that travels,
+Back) and `touch-menu` (Options' Back).
 
 **Every other screen that is not gameplay and has no touch menu draws the menu
 pad** -- dialogue, and the menu classes not yet native. The retail menus are
@@ -185,9 +187,8 @@ each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
-**The team menu and the world map are still replaced by the
-touch menu**, until each is native (issue #199). While touch play is the input and one of those
-screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
+**The team menu is still replaced by the touch menu**, until it is native
+(issue #199). While touch play is the input and that screen is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
 when the menu has no title item), one button per
 enabled row with its value or bar, step buttons on rows with left/right, and
@@ -238,16 +239,7 @@ tap on the current row presses A (add a point or a rank, open a slot's
 pieces, equip, change a setting): the game's own click on another stat or
 setting would also act on it. The Drop footer, which the game's footer click
 does not publish, presses RB. Assigning a skill to a power slot, the skill
-details view and switching hero keep only the menu pad. The world
-map (`touch_menu_worldmap`) pins the unlocked acts as tabs with the open one
-lit, lists the open act's unlocked extraction points, and pins below them the
-act's region and the focused point's description. A tab is a click on the
-game's act; a tap on a point walks the game's focus to it with the menu pad,
-and a tap on the focused point presses A, which travels there (the game
-refuses the map the party is on). Locked acts and points, the region map and
-its marker are not shown, and a world map with no unlocked point keeps the
-retail screen. Footers with the same prompt are offered once (the world map
-has two Back footers.
+details view and switching hero keep only the menu pad.
 
 Mouse, keyboard and controller play never see it. The settings overlay hides
 it, and the touch menu hides the menu pad while it is up. Other menu classes
@@ -428,7 +420,7 @@ already chose keeps player one.
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
 | `ctest -R touch_label_fit` | Tab labels too wide for their tab, and the skills tab's six footers at 1280x720, shrink by one shared factor per row to fit on one line inside their padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read, the Drop and Assign footers pressed as RB, the three power slots as A, B and X while assigning with Cancel clicked, and Next hero as RT, the skills tab's Details held as LT with the skill's description read, the shop's and the stash's tabs and list entries and the codex's list and description, the world map's acts and points, the review's tabs and entries with their counts and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, a list walk that only selects or ends with A, and a held button let go by the next tap, a menu change or a cancel) |
+| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read, the Drop and Assign footers pressed as RB, the three power slots as A, B and X while assigning with Cancel clicked, and Next hero as RT, the skills tab's Details held as LT with the skill's description read, the shop's and the stash's tabs and list entries and the codex's list and description, the review's tabs and entries with their counts and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, a list walk that only selects or ends with A, and a held button let go by the next tap, a menu change or a cancel) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
