@@ -47,6 +47,7 @@
 #include "touch_census.h"
 #include "touch_inject.h"
 #include "touch_runtime.h"
+#include "touch_runtime_menu.hpp"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
 
@@ -656,14 +657,21 @@ int main() {
   x2::config::settings_store()->touch_controls =
       x2::config::kTouchControlsAlways;
 
-  /* THE MENU PAD. Off gameplay the overlay draws the controller the retail
-     menus are navigated with. Both classes of finger: one that begins on a
-     pad button presses that button, one that begins anywhere else is the
-     retail pointer's and presses nothing on the pad. */
+  /* THE MENU PAD. Over a retail menu with no touch path of its own the
+     overlay draws the controller the retail menus are navigated with; off
+     gameplay with no such menu (a cinematic) it draws nothing. Both classes
+     of finger: one that begins on a pad button presses that button, one
+     that begins anywhere else is the retail pointer's and presses nothing on
+     the pad. */
   x2_gameplay_control_reset();
   check(!x2::input::touch_runtime_overlay_visible() &&
+            x2::input::touch_runtime_has_visuals() == 0,
+        "off gameplay with no menu up nothing is drawn", "no HUD heartbeat");
+  x2::input::touch_runtime_set_menu(true);
+  check(!x2::input::touch_runtime_overlay_visible() &&
             x2::input::touch_runtime_has_visuals() != 0,
-        "off gameplay the menu pad is drawn instead of the controls",
+        "over a menu without a touch path the menu pad is drawn instead of "
+        "the controls",
         "no HUD heartbeat");
   {
     const auto menu = visuals();
@@ -709,8 +717,8 @@ int main() {
     while (touch_runtime_take_pointer(&drained)) {
     }
 
-    /* A conversation or cinematic offers Skip; its choices are answered with
-       the pad, so both are drawn, and neither on the other. */
+    /* Skip offered over a padded menu: both are drawn, neither on the
+       other. */
     x2_cutscene_skip_offer(1);
     x2::presentation::Rect skip{};
     int skip_held = 0;
@@ -725,7 +733,7 @@ int main() {
     }
     check(skip_drawn && find_action(beside, TouchAction::MenuA) != nullptr &&
               !overlap,
-          "a cinematic draws its Skip and the menu pad, apart",
+          "Skip and the menu pad are drawn apart",
           std::to_string(beside.size()) + " pad button(s) beside Skip");
     x2_cutscene_skip_offer(0);
 
@@ -739,6 +747,7 @@ int main() {
           "gameplay taking the screen lets go of a held menu button",
           "no finger event arrived");
     send_finger(SDL_EVENT_FINGER_UP, 22, a_x, a_y, width, height);
+    x2::input::touch_runtime_set_menu(false);
   }
 
   /* The control channel's d-pad press ends with its hold, as its buttons do. */

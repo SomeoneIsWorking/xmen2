@@ -20,7 +20,12 @@ scratch/run/live.json.
     tools/live_case.py touch-game-tip         # a Game Tip on touch, closed by a tap
     tools/live_case.py touch-conversation     # a conversation's responses tapped
                                               # (-4x3, -16x9, -20x9: other shapes)
-    tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
+    tools/live_case.py touch-cinematic        # no menu pad over a cinematic or its lines
+    tools/live_case.py touch-automap          # the automap dragged, turned, closed
+    tools/live_case.py touch-text-entry       # a name typed, Backspace, Done and Back
+    tools/live_case.py touch-hero-list        # the hero list scrolled, a hero chosen, Back
+                                              # (-4x3, -tablet, -20x9: other shapes)
+    tools/live_case.py combat-bench          # boss fight frame times, no JIT flush
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -69,6 +74,9 @@ from live_cases_touch_menu import (
     case_touch_stash,
     case_touch_worldmap,
 )
+from live_cases_touch_map import SHAPES as AUTOMAP_SHAPES, case_touch_automap
+from live_cases_touch_text import SHAPES as TEXT_SHAPES, case_touch_text_entry
+from live_cases_touch_hero import SHAPES as HERO_SHAPES, case_touch_hero_list
 from live_cases_touch_rows import case_touch_menu, case_touch_pda
 from live_cases_touch_team import (
     ASPECT_CASES,
@@ -90,7 +98,7 @@ from live_cases_extraction import (
     case_extraction_off,
     case_extraction_paid,
 )
-from live_cases_conversation import case_touch_conversation
+from live_cases_conversation import case_touch_cinematic, case_touch_conversation
 from live_cases_game_tip import case_touch_game_tip
 from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
@@ -112,6 +120,7 @@ CASES = {
     "touch-conversation-4x3": case_touch_conversation,
     "touch-conversation-16x9": case_touch_conversation,
     "touch-conversation-20x9": case_touch_conversation,
+    "touch-cinematic": case_touch_cinematic,
     "menu-touch": case_menu_touch,
     "touch-popup": case_touch_popup,
     "touch-load": case_touch_load,
@@ -161,6 +170,9 @@ except ImportError as exc:
 CASES.update({
     name + suffix: CASES[name] for name in ASPECT_CASES for suffix in WINDOWS
 })
+CASES.update({name: case_touch_automap for name in AUTOMAP_SHAPES})
+CASES.update({name: case_touch_text_entry for name in TEXT_SHAPES})
+CASES.update({name: case_touch_hero_list for name in HERO_SHAPES})
 CASES.update({
     "live-resolution": case_live_resolution,
     "mouse-click": case_mouse_click,

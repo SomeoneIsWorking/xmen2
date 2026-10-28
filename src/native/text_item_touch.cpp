@@ -13,6 +13,7 @@
 #include "../input/text_touch_layout.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_targets.hpp"
+#include "automap_touch.hpp"
 #include "guest_body.h"
 #include "guest_call.hpp"
 #include "guest_modules.h"
@@ -56,7 +57,12 @@ constexpr std::uint32_t kStyleFade = 0x04u;
 constexpr std::uint32_t kStyleFadeThreshold = 0x00680030u;
 
 constexpr std::string_view kToken = "$MENU_";
-constexpr std::string_view kPadHint = "$DPAD_";
+/* Hints for the d-pad and the move stick, which touch scrolls by a drag. */
+constexpr std::array<std::string_view, 2> kPadHints{"$DPAD_", "$MOVE_"};
+/* The camera stick's pair, the automap's Rotate: two buttons a finger
+   holds. */
+constexpr std::string_view kTurnPair = "$CAMERA_LEFT$CAMERA_RIGHT";
+constexpr std::array<std::string_view, 2> kTurnNames{"turn left", "turn right"};
 /* Where a press on an item's area is delivered: the raw box its menu's
    onMouse tests, or the box its own onMouse (0x005bc1b0) tests. */
 enum class Aim : std::uint8_t { raw_box, item_box };
@@ -195,7 +201,8 @@ public:
       restore(cpu, self);
       return true;
     }
-    if (!x2::native::text_has_touch_button(menu_class, text)) {
+    const bool turn_pair = x2::native::text_is_turn_pair(menu_class, text);
+    if (!turn_pair && !x2::native::text_has_touch_button(menu_class, text)) {
       return false;
     }
     const auto plane = x2::native::live_scene_plane();
@@ -203,9 +210,8 @@ public:
     if (!plane || !vectors) {
       return false;
     }
-    Button &button = button_for(call, vectors, self);
     call.thiscall(exe_linked(item::kRefresh), self);
-    detach(call, button);
+    detach_all(call, self);
     const bool hidden =
         (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u;
     const std::uint32_t model = RD32(self + item::kModel);
@@ -214,8 +220,25 @@ public:
     }
 
     const float finger = x2::input::menu_finger_units(*plane);
-    const SceneBox area = footer_area(call, self, menu_class, finger);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
+    if (turn_pair) {
+      const auto areas = x2::input::pair_buttons(text_box(self), finger);
+      const std::array<std::string, 2> labels = turn_labels(text);
+      int turn = 0;
+      for (std::size_t side = 0; side < areas.size(); ++side) {
+        targets.put({areas[side], hit_centre(self), x2::input::TouchPress::own,
+                     kTurnNames[side]});
+        const bool held = targets.pressed(areas[side]);
+        if (held) {
+          turn = side == 0u ? -1 : 1;
+        }
+        draw_button(call, vectors, self, side, areas[side], labels[side], held,
+                    finger);
+      }
+      x2::native::automap_touch_turn(turn);
+      return true;
+    }
+    const SceneBox area = footer_area(call, self, menu_class, finger);
     const auto own = x2::native::touch_token_action(text);
     targets.put(
         {area, hit_centre(self),
@@ -223,8 +246,44 @@ public:
     if (own && targets.take_tap(area)) {
       x2::native::post_menu_action(*own);
     }
-    const bool held = targets.pressed(area);
+    draw_button(call, vectors, self, 0u, area,
+                x2::native::menu_token_label(text), targets.pressed(area),
+                finger);
+    return true;
+  }
 
+  /* The button gone, when retail draws the item. */
+  void restore(const CPU &cpu, std::uint32_t self) {
+    if (!buttons_.contains(self)) {
+      return;
+    }
+    x2::guest::GuestCall call(cpu);
+    detach_all(call, self);
+  }
+
+  void destroy(const CPU &cpu, std::uint32_t self) {
+    names_.erase(self);
+    bars_.erase(self);
+    const auto found = buttons_.find(self);
+    if (found == buttons_.end()) {
+      return;
+    }
+    x2::guest::GuestCall call(cpu);
+    for (Button &button : found->second) {
+      detach(call, button);
+      menu_scene::release(call, button.plain);
+      menu_scene::release(call, button.held);
+    }
+    buttons_.erase(found);
+  }
+
+private:
+  /* One finger button of the option art over `area`, lit while held, with
+     `label` in the item's font fitted inside it. */
+  void draw_button(x2::guest::GuestCall &call, menu_scene::Vectors &vectors,
+                   std::uint32_t self, std::size_t index, const SceneBox &area,
+                   const std::string &label, bool held, float finger) {
+    Button &button = button_for(call, vectors, self, index);
     const std::uint32_t art = held ? button.held : button.plain;
     menu_scene::stretch(
         call, vectors, art, held ? button.held_art : button.plain_art, area,
@@ -233,11 +292,10 @@ public:
     menu_scene::attach(call, art);
     button.attached = art;
 
-    const std::string label = x2::native::menu_token_label(text);
     const std::uint32_t box = RD32(self + item::kTextBox);
     const x2::guest::GuestBlock line(menu_text::kLineBytes);
     if (label.empty() || box == 0u || !line) {
-      return true;
+      return;
     }
     const float pad = kTextPad * finger;
     const SceneBox words{area.left + pad, area.bottom, area.right - pad,
@@ -265,34 +323,8 @@ public:
     menu_text::line(call, self, box, words, button.scale,
                     menu_text::kAlignCentre | menu_text::kAlignMiddle, colour,
                     line.address());
-    return true;
   }
 
-  /* The button gone, when retail draws the item. */
-  void restore(const CPU &cpu, std::uint32_t self) {
-    const auto found = buttons_.find(self);
-    if (found == buttons_.end() || found->second.attached == 0u) {
-      return;
-    }
-    x2::guest::GuestCall call(cpu);
-    detach(call, found->second);
-  }
-
-  void destroy(const CPU &cpu, std::uint32_t self) {
-    names_.erase(self);
-    bars_.erase(self);
-    const auto found = buttons_.find(self);
-    if (found == buttons_.end()) {
-      return;
-    }
-    x2::guest::GuestCall call(cpu);
-    detach(call, found->second);
-    menu_scene::release(call, found->second.plain);
-    menu_scene::release(call, found->second.held);
-    buttons_.erase(found);
-  }
-
-private:
   /* The button over `self` among the footers of its menu drawn as buttons:
      its text's, unless it would touch a neighbour's. */
   SceneBox footer_area(x2::guest::GuestCall &call, std::uint32_t self,
@@ -417,13 +449,13 @@ private:
     float fitted_finger = 0.0F;
   };
 
+  /* An item's button `index`: its prompt's one, or a pair's side. */
   Button &button_for(x2::guest::GuestCall &call, menu_scene::Vectors &vectors,
-                     std::uint32_t self) {
-    const auto found = buttons_.find(self);
-    if (found != buttons_.end()) {
-      return found->second;
+                     std::uint32_t self, std::size_t index) {
+    Button &button = buttons_[self][index];
+    if (button.plain != 0u) {
+      return button;
     }
-    Button &button = buttons_[self];
     button.plain = menu_scene::load_model(call, kButtonArt);
     button.held = menu_scene::load_model(call, kHeldArt);
     button.plain_art = menu_scene::bounds(call, vectors, button.plain);
@@ -440,13 +472,34 @@ private:
     }
   }
 
+  void detach_all(x2::guest::GuestCall &call, std::uint32_t self) {
+    const auto found = buttons_.find(self);
+    if (found == buttons_.end()) {
+      return;
+    }
+    for (Button &button : found->second) {
+      detach(call, button);
+    }
+  }
+
+  /* The turn pair's two buttons' words: the prompt's words without its
+     tokens, an arrow toward each side, after any style escape before the
+     tokens. */
+  static std::array<std::string, 2> turn_labels(std::string_view text) {
+    const std::size_t at = std::min(text.find(kTurnPair), text.size());
+    const std::string style(text.substr(0, at));
+    const std::string words =
+        x2::native::prompt_label(text.substr(at), kTurnPair);
+    return {style + "< " + words, style + words + " >"};
+  }
+
   /* A menu's footer items, found while its vtable was this. */
   struct Footers {
     std::uint32_t vtable = 0u;
     std::vector<std::uint32_t> items;
   };
 
-  std::unordered_map<std::uint32_t, Button> buttons_;
+  std::unordered_map<std::uint32_t, std::array<Button, 2>> buttons_;
   std::unordered_map<std::uint32_t, Footers> footers_;
   std::unordered_map<std::uint32_t, std::string> names_;
   std::unordered_map<std::uint32_t, std::uint32_t> bars_;
@@ -459,7 +512,16 @@ TextItemTouch g_text_item_touch;
 bool x2::native::text_is_pad_hint(std::string_view menu_class,
                                   std::string_view text) {
   return x2::input::menu_is_native_on_touch(menu_class) &&
-         text.find(kPadHint) != std::string_view::npos;
+         std::any_of(kPadHints.begin(), kPadHints.end(),
+                     [&](std::string_view hint) {
+                       return text.find(hint) != std::string_view::npos;
+                     });
+}
+
+bool x2::native::text_is_turn_pair(std::string_view menu_class,
+                                   std::string_view text) {
+  return x2::input::menu_is_native_on_touch(menu_class) &&
+         text.find(kTurnPair) != std::string_view::npos;
 }
 
 bool x2::native::text_has_touch_button(std::string_view menu_class,

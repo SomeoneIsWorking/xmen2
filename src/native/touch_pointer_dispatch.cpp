@@ -26,9 +26,6 @@
 namespace {
 
 constexpr std::uint32_t kFrameUpdate = 0x00401d70u;
-/* igWin32Window's callback for the game: (hwnd, msg, wparam, lparam),
-   __cdecl; mouse messages go on to FUN_005f9eb0. */
-constexpr std::uint32_t kGameWindowEvent = 0x005faa20u;
 
 class TouchPointerDispatch {
 public:
@@ -136,8 +133,9 @@ private:
 
   void send(const CPU &cpu, std::uint32_t hwnd, std::uint32_t message,
             std::int32_t x, std::int32_t y) const {
-    const std::uint32_t entry = x2::native::guest_exe_base() +
-                                (kGameWindowEvent - x2::native::kExePreferred);
+    const std::uint32_t entry =
+        x2::native::guest_exe_base() +
+        (x2::native::kGameWindowEvent - x2::native::kExePreferred);
     x2::guest::GuestCall(cpu).cdecl_call(
         entry,
         {hwnd, message, held_, x2::native::win32_mouse_pack_point(x, y)});

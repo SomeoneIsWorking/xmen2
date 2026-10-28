@@ -211,3 +211,85 @@ def case_touch_conversation(case: Case) -> None:
     case.check("gameplay's controls are back after it", gameplay_back(case),
                "drawn: %s" % sorted(live_controls(case)))
     case.shot("after")
+
+
+def skip_drawn(case: Case) -> bool:
+    return any(line.startswith("skip button")
+               for line in case.get_text("/controls").splitlines())
+
+
+def case_touch_cinematic(case: Case) -> None:
+    """The tutorial's opening cinematic on touch, from the autosave's Continue
+    to gameplay: the stretches with no conversation up and every line of the
+    conversations inside it, each line tapped on its card. Sampled four times
+    a second, no screen of it draws the menu pad, the cinematic offers its
+    Skip, and gameplay's controls come back at its end."""
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2",
+                          "video.width=1280", "video.height=720",
+                          "video.mode=windowed"])
+    case.seed_save("autosave0.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+
+    samples = {"cinematic": 0, "conversation": 0}
+    padded = {"cinematic": [], "conversation": []}
+    skip_seen = 0
+    lines_tapped = 0
+    conversation_seen = False
+    gap_shot = False
+    last_tap = 0.0
+    gameplay = False
+    deadline = time.monotonic() + 240
+    while time.monotonic() < deadline:
+        menu = read_menu(case)
+        controls = live_controls(case)
+        if menu.get("active"):
+            time.sleep(0.25)
+            continue
+        if any(not name.startswith("menu-") for name in controls):
+            if conversation_seen:
+                gameplay = True
+                break
+            time.sleep(0.25)
+            continue
+        pad = sorted(name for name in controls if name.startswith("menu-"))
+        shown = menu.get("conversation")
+        kind = "conversation" if shown else "cinematic"
+        samples[kind] += 1
+        if pad:
+            padded[kind].append(pad)
+        skip_seen += skip_drawn(case)
+        if shown:
+            conversation_seen = True
+        elif conversation_seen:
+            if not gap_shot:
+                case.shot("between-lines")
+                gap_shot = True
+        if shown and shown.get("touch") and shown.get("accepts") \
+                and shown.get("responses") \
+                and time.monotonic() - last_tap > 1.5:
+            if lines_tapped == 0:
+                case.shot("line")
+            if tap(case, shown["responses"][0]):
+                lines_tapped += 1
+            last_tap = time.monotonic()
+        time.sleep(0.25)
+
+    case.check("the opening's stretches with no conversation up were seen",
+               samples["cinematic"] > 0, str(samples))
+    case.check("no cinematic stretch draws the menu pad",
+               not padded["cinematic"],
+               "%d of %d sample(s) drew %s" % (
+                   len(padded["cinematic"]), samples["cinematic"],
+                   padded["cinematic"][:1]))
+    case.check("no conversation line draws the menu pad",
+               samples["conversation"] > 0 and not padded["conversation"],
+               "%d of %d sample(s) drew it" % (len(padded["conversation"]),
+                                               samples["conversation"]))
+    case.check("the opening's lines were tapped through on their cards",
+               lines_tapped >= 3, "%d tap(s)" % lines_tapped)
+    case.check("the cinematic offers its Skip", skip_seen > 0,
+               "%d sample(s)" % skip_seen)
+    case.check("gameplay's controls are back after the cinematic", gameplay,
+               "drawn: %s" % sorted(live_controls(case)))
+    case.shot("gameplay")

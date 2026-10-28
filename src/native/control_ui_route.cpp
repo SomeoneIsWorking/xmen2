@@ -18,7 +18,17 @@
 
 #include <stdlib.h>
 
+#include <deque>
+#include <string>
+
 namespace x2::native {
+namespace {
+
+/* SDL keeps a pushed text event's pointer, not its text: what was typed
+   lives as long as the channel. */
+std::deque<std::string> g_typed;
+
+} // namespace
 
 /*
  * Press a key at the HOST window layer, not at the guest's keyboard.
@@ -143,6 +153,34 @@ void control_ui_click_route(x2::native::Socket fd, const char *query) {
   }
   control_reply_text(fd, 200, "OK", "clicked host (%.0f, %.0f) at frame %lu\n",
                      (double)x, (double)y, gpu_frames_presented());
+}
+
+/*
+ * Type at the HOST window: one SDL text event, the one a keyboard or a
+ * phone's screen keyboard sends. It reaches the game only while the
+ * platform's text input is on.
+ */
+void control_ui_text_route(x2::native::Socket fd, const char *query) {
+  char text[128] = "";
+  SDL_Event event;
+
+  if (!control_query_arg(query, "text", text, sizeof text) || !text[0]) {
+    control_reply_text(fd, 400, "Bad Request",
+                       "no text given. Use /ui/text?text=Logan.\n");
+    return;
+  }
+  g_typed.emplace_back(text);
+  SDL_zero(event);
+  event.text.type = SDL_EVENT_TEXT_INPUT;
+  event.text.timestamp = SDL_GetTicksNS();
+  event.text.text = g_typed.back().c_str();
+  if (!SDL_PushEvent(&event)) {
+    control_reply_text(fd, 503, "Service Unavailable",
+                       "SDL refused the text: %s\n", SDL_GetError());
+    return;
+  }
+  control_reply_text(fd, 200, "OK", "typed \"%s\" at frame %lu\n", text,
+                     gpu_frames_presented());
 }
 
 } // namespace x2::native

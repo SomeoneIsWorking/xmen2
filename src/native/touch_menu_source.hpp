@@ -20,7 +20,7 @@ std::optional<presentation::RetailScenePlane> live_scene_plane();
 
 /*
  * While touch play is the input, reads the active retail menu at a bounded
- * cadence, tells the touch runtime whether a finger drives it directly, and
+ * cadence, tells the touch runtime whether the menu pad goes over it, and
  * feeds the gap report. With touch play off it reads nothing. Guest thread
  * only.
  */

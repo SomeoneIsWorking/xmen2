@@ -9,6 +9,7 @@ namespace x2::native {
    values here so translation and its tests share one vocabulary. */
 inline constexpr unsigned kWmActivate = 0x0006u;
 inline constexpr unsigned kWmQuit = 0x0012u;
+inline constexpr unsigned kWmChar = 0x0102u;
 inline constexpr unsigned kWmMouseMove = 0x0200u;
 inline constexpr unsigned kWmLButtonDown = 0x0201u;
 inline constexpr unsigned kWmLButtonUp = 0x0202u;

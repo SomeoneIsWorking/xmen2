@@ -3,6 +3,7 @@
 #include "../input/menu_touch_gaps.hpp"
 #include "../input/touch_runtime_menu.hpp"
 #include "../input/touch_targets.hpp"
+#include "automap_touch.hpp"
 #include "control.h"
 #include "control_command_bridge.h"
 #include "control_query.h"
@@ -14,6 +15,7 @@
 #include "options_touch.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
+#include "win32_events.h"
 #include "win32_pointer.h"
 #include "x86rt_native.h"
 
@@ -345,6 +347,31 @@ void put_scene_box(std::string *out, const char *key,
   out->push_back(',');
 }
 
+void put_exact(std::string *out, const char *key, float value) {
+  char text[64];
+  std::snprintf(text, sizeof text, "\"%s\":%.5g,", key,
+                static_cast<double>(value));
+  out->append(text);
+}
+
+/* CMenuAutoMap's view: where the map looks, its turn and bounds in world
+   units, and the map's scene units per world unit. */
+void put_automap(std::string *out, std::uint32_t menu) {
+  const input::MapView view = native::automap_view(menu);
+  put_key(out, "automap");
+  out->push_back('{');
+  put_exact(out, "x", view.at.x);
+  put_exact(out, "y", view.at.y);
+  put_exact(out, "turn", view.turn);
+  put_exact(out, "low_x", view.low.x);
+  put_exact(out, "low_y", view.low.y);
+  put_exact(out, "high_x", view.high.x);
+  put_exact(out, "high_y", view.high.y);
+  put_exact(out, "scale", native::automap_scale());
+  close_object(out);
+  out->push_back(',');
+}
+
 /* The shown popup page: on touch each card and button where the last draw
    put it; the retail footers otherwise. */
 void put_popup(std::string *out, const menu::PopupSnapshot &popup,
@@ -489,6 +516,7 @@ void read_menu_body(void *context) {
     read->body = "{";
     put_bool(&read->body, "active", false);
     put_bool(&read->body, "popup", menu.popup_up);
+    put_bool(&read->body, "text_input", native::win32_events_text_input_on());
     const auto plane = native::live_scene_plane();
     if (menu.popup) {
       put_popup(&read->body, *menu.popup, plane ? &*plane : nullptr);
@@ -557,6 +585,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   std::snprintf(address, sizeof address, "0x%08x", menu.address);
   put_text(&out, "address", address);
   put_bool(&out, "popup", menu.popup_up);
+  put_bool(&out, "text_input", native::win32_events_text_input_on());
   if (menu.popup) {
     put_popup(&out, *menu.popup, plane);
   }
@@ -566,6 +595,9 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   }
   if (menu.assigning_skill) {
     put_int(&out, "assigning_skill", static_cast<long>(*menu.assigning_skill));
+  }
+  if (menu.menu_class == "CMenuAutoMap") {
+    put_automap(&out, menu.address);
   }
   put_int(&out, "item_count", static_cast<long>(menu.items.size()));
   put_touch_targets(&out, plane);

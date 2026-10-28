@@ -3,6 +3,7 @@
 
 #include "touch_cards.hpp"
 
+#include <array>
 #include <vector>
 
 /* A small text item on touch, a `$MENU_*` prompt, a shop tab or a menu row:
@@ -10,8 +11,11 @@
    up. */
 namespace x2::input {
 
-/* Button width past the item's text, in fingers. */
+/* Button width past the item's text, a pair's button's width past that for
+   its arrow, and the gap between a pair's buttons, in fingers. */
 inline constexpr float kTextButtonGrow = 0.25F;
+inline constexpr float kPairArrow = 0.5F;
+inline constexpr float kPairGap = 0.1F;
 
 /* The button over an item whose text is drawn in `text`, for a finger of
    `finger`. */
@@ -26,6 +30,11 @@ inline constexpr float kFooterGap = 0.1F;
    shares a gap apart, in the texts' order across. */
 std::vector<SceneBox> footer_buttons(const std::vector<SceneBox> &texts,
                                      float finger);
+
+/* The two buttons of a prompt for a pair of directions (the automap's
+   Rotate): each as wide as text_button and its arrow and a finger tall,
+   side by side about the prompt's middle, the left one first. */
+std::array<SceneBox, 2> pair_buttons(const SceneBox &text, float finger);
 
 /* The button over a row whose text is drawn in `text` on a bar from `left`
    to `right`: the bar's width, a finger tall about the text. */

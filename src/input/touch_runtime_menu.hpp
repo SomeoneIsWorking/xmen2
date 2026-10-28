@@ -3,9 +3,10 @@
 
 namespace x2::input {
 
-/* The touch runtime's side of the retail menu: `native` is a menu up that a
-   finger drives directly, over which no menu pad is drawn. Guest thread. */
-void touch_runtime_set_menu(bool native);
+/* The touch runtime's side of the retail menu: `padded` is a retail menu up
+   that has no touch path of its own, the only screen the menu pad is drawn
+   over. Guest thread. */
+void touch_runtime_set_menu(bool padded);
 
 } // namespace x2::input
 

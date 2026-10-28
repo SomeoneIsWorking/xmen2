@@ -1242,12 +1242,60 @@ from the screen centre, `0x211` (right held) turns by its horizontal offset.
 Everything else goes to the base `CMenu::onMouse`, where only the footers
 take a click.
 
+The view is the singleton `FUN_0059ee20` (`0x0081d7e0`, vtable `0x0069dca4`).
+Its `+0xa0` (`FUN_005a0150`) sets the mode and, in modes 2 and 3, the map
+scale `DAT_008a61c8` (0.175 or 0.15 scene units a world unit); its `+0xb0`
+(`FUN_005a05e0`) stores the position at `0x008a61e8` and the turn at
+`0x008a61d4`. The markers' draw (`FUN_005a0bb0`) takes a ground point `w` to
+the screen as `R(-turn)·(w - position)·scale`, so a finger keeps its ground
+by moving the position by its travel turned by the turn, over the scale. The
+update's turn step is `turn -= axis * DAT_00682f98`.
+
 Measured (Continue into `act2/jungle/jungle1`, `openmenu automap` from
-gameplay, touch play): bounds 1920..7920 by 240..6720, turn -pi/2. A finger
-held on the map for 1.5 s is the retail pointer and panned the map
-(3827,2264 -> 7167,3462); the menu pad's d-pad held 1 s scrolled to the bound
-on each side; LB and RB did not turn it; B closed it. Nothing a touch player
-has turns the map.
+gameplay, touch play, before the touch path): bounds 1920..7920 by 240..6720,
+turn -pi/2. A finger held on the map for 1.5 s was the retail pointer and
+panned the map (3827,2264 -> 7167,3462); the menu pad's d-pad held 1 s
+scrolled to the bound on each side; LB and RB did not turn it; B closed it.
+With the touch path (`src/native/automap_touch.cpp`) a 0.1-window drag moved
+the player's marker 128 px with the finger.
+
+## The text entry (`CMenuTextEntry`)
+
+`CMenuTextEntry` (vtable `0x0069f06c`) edits one line: init `+0x10`
+`FUN_005e6ec0`, close `+0x18` `FUN_005e7490`, commit `+0x28` `FUN_005e6fa0`
+(the buffer to `FUN_0060c730`), update `+0x38` `FUN_005e72f0`, parse `+0x44`
+`FUN_005e7090`; its `onMouse` (`+0x80`, `FUN_005bb590`) is the base's alone.
+The parse copies the current text (`FUN_0060c4b0`) into the buffer
+`menu+0x1c10` and a copy at `menu+0x1d14`, the limit at `menu+0x1d10`, and
+binds the field `data_playername`. The update takes the one character at
+`DAT_00a0a061`, which the game's window callback `FUN_005faa20` stores for a
+`WM_CHAR` (`0x102`): `0x1b` copies `menu+0x1d14` back and accepts, `0x0d`
+accepts, `0x08` deletes one (`FUN_005e7220`), and any other character of
+`abc..XYZ1234567890<>,. -` (`1234567890.` when `FUN_0060b9a0()` is 3) is
+appended (`FUN_005e6ef0`, then `FUN_005e6fc0` redraws the field) or refused
+with sound 7 at the limit; it then zeroes the byte. Pad `MENU_OK` (0x14)
+accepts and `MENU_BACK` (0x15) reloads the current text and accepts. Accept
+(`FUN_005e6f30`) refuses an all-blank buffer with sound 7. The developer
+console in the frame update `FUN_00401d70` reads the same byte while it is
+open. Retail Windows gets `WM_CHAR` from `TranslateMessage`; the port's is a
+no-op, so nothing reached the byte before `src/native/text_entry_input.cpp`.
+
+Measured (`openmenu text_entry` from `act2/jungle/jungle1`): a console-opened
+entry is the same instance each time, parsed once, so its `menu+0x1d14` copy
+and the field keep the first open's text. Five `WM_CHAR`s in one frame left
+only the last character: the update takes one a frame.
+
+## The hero list (`CMenuHeroList`)
+
+`CMenuHeroList` (vtable `0x0069f7ec`, `Select Hero`) is the online lobby's
+hero choice: update `+0x38` `FUN_005b9f50` takes `MENU_OK`, `MENU_BACK`,
+`MENU_ACCEPT` and `MENU_SUBTRACT`, and on the input manager's accept
+(`+0x160`) selects (`FUN_005bfc70`) and closes; parse `+0x44` `FUN_005ba120`
+binds the list box `text_list` and writes the footers `$MENU_BACK Back` and
+`$MENU_ACCEPT Select`. Its `onMouse` (`+0x80`, `FUN_005caa80`) is shared with
+the lobby's setup screens (`text_gamename`, `text_playername`, ...); with none
+of those items it is the base's. Measured: 18 entries (`Any`, then the
+heroes), rows 8 scene units apart.
 
 ## The danger room (`CMenuDangerRoom`)
 
