@@ -7,6 +7,9 @@
    the item. */
 namespace x2::native::menu_item {
 
+/* FUN_005adc10, thiscall(menu, name): the menu's item of that name, or 0. */
+inline constexpr std::uint32_t kItemByNameRva = 0x001adc10u;
+
 inline constexpr std::uint32_t kMenu = 0x04u;
 inline constexpr std::uint32_t kFlags = 0x54u;
 inline constexpr std::uint32_t kModel = 0x58u;

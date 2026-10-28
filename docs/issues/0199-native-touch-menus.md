@@ -31,7 +31,7 @@ refuses the finger:
 | row without command | `CMenuItem::onMouse` `0x005bc1b0` (no `usecmd`) | none since `menu_item_tap` |
 | step | `CMenu::onMouse` `0x005ae0a0` (no left/right) | none: Options' volume rows were a misreading, `CMenuOptions::onMouse` `0x005cb5f0` steps its bars |
 | list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
-| footer token | `CMenuItemText::onMouse` `0x005c6490` | codex: `$MENU_DETAILS` |
+| footer token | `CMenuItemText::onMouse` `0x005c6490`, unless the menu's own `onMouse` acts on it (`x2::native::menu_handles_token`: the codex's and the team's `$MENU_DETAILS`) | none |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
 | small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; native ones: their rows (step 4) |
 

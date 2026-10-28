@@ -23,6 +23,10 @@ enum class MenuAction : std::uint32_t {
 /* What a text line's `$MENU_*` token posts when CPopupDialog::onMouse
    releases on it; nothing when it names no action. */
 std::optional<MenuAction> menu_token_action(std::string_view text);
+/* Whether `menu_class`'s own onMouse acts on a click on the prompt carrying
+   `token`, one CMenuItemText::onMouse does not publish. */
+bool menu_handles_token(std::string_view menu_class, std::string_view token);
+
 /* `text` without its `$MENU_*` token: what a touch button for it reads. */
 std::string menu_token_label(std::string_view text);
 

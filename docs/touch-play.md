@@ -146,7 +146,8 @@ is `x2::native::text_has_touch_button`): a finger tall and a quarter finger
 wider than the prompt's text, centred on it (`x2::input::text_button`), of the
 same option art as the list cards, lit while held, with the prompt's words
 and none of its keycap in the item's font at up to 0.42 of a finger, shrunk
-to fit. The tabs of the shop, stash, review and danger room, which their menu's
+to fit. A `$DPAD_*` hint (the codex's `Down Scroll`) is not drawn on touch
+(`x2::native::text_is_pad_hint`). The tabs of the shop, stash, review and danger room, which their menu's
 `onMouse` finds by name (`x2::native::text_is_menu_tab`), keep their retail
 draw and get the same finger-sized area. Each such draw puts its area and the middle of the box the
 item's own handler hit-tests into `x2::input::TouchTargets`

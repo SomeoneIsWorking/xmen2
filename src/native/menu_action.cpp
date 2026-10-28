@@ -4,6 +4,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
 
@@ -25,7 +26,20 @@ constexpr std::array<std::pair<std::string_view, MenuAction>, 7> kTokens{{
     {"$MENU_SUBTRACT", MenuAction::subtract},
 }};
 
+/* CMenuCodex::onMouse 0x005b0c80 publishes action 9 on desctext3;
+   CMenuTeam's update holds it while the pointer is on desctext4. */
+constexpr std::array<std::pair<std::string_view, std::string_view>, 2>
+    kMenuTokens{{
+        {"CMenuCodex", "$MENU_DETAILS"},
+        {"CMenuTeam", "$MENU_DETAILS"},
+    }};
+
 } // namespace
+
+bool menu_handles_token(std::string_view menu_class, std::string_view token) {
+  return std::find(kMenuTokens.begin(), kMenuTokens.end(),
+                   std::pair{menu_class, token}) != kMenuTokens.end();
+}
 
 std::optional<MenuAction> menu_token_action(std::string_view text) {
   const std::size_t at = text.find("$MENU");

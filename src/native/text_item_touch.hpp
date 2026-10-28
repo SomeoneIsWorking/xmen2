@@ -9,6 +9,10 @@ namespace x2::native {
    menu that is native on touch. */
 bool text_has_touch_button(std::string_view menu_class, std::string_view text);
 
+/* The text items touch does not draw: a `$DPAD_*` hint (`Down Scroll`) in a
+   menu native on touch, where a drag does what the pad would. */
+bool text_is_pad_hint(std::string_view menu_class, std::string_view text);
+
 /* The text items touch gives a finger target and leaves retail's draw: the
    tabs of the shop, stash, review and danger room. */
 bool text_is_menu_tab(std::string_view menu_class, std::string_view name);

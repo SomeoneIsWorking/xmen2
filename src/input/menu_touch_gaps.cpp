@@ -152,7 +152,8 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
     if (token.empty()) {
       continue;
     }
-    if (!native::menu_token_action(token)) {
+    if (!native::menu_token_action(token) &&
+        !native::menu_handles_token(menu.menu_class, token)) {
       gaps.push_back({MenuTouchGapKind::footer_token, std::string(token)});
     } else if (!native::text_has_touch_button(menu.menu_class, item.label) &&
                small(item.rect, plane)) {
