@@ -19,8 +19,8 @@ inline constexpr std::uint32_t kViewportScaleX = 0x48u;
 inline constexpr std::uint32_t kViewportScaleZ = 0x4cu;
 inline constexpr std::uint32_t kClientWidthRva = 0x00609ffcu;
 inline constexpr std::uint32_t kClientHeightRva = 0x0060a000u;
-/* The menu model is a few hundred guest reads; a 30 Hz read keeps the touch
-   menu and a focus walk current. */
+/* The menu model is a few hundred guest reads; a 30 Hz read keeps the menu
+   pad's gate current. */
 inline constexpr std::uint64_t kRefreshMs = 33u;
 
 bool read_f32(const GuestMemoryView &memory, std::uint32_t address,
@@ -65,7 +65,7 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   if (!x2::input::touch_runtime_active()) {
     if (offered_) {
       offered_ = false;
-      input::touch_runtime_set_menu(std::nullopt, false);
+      input::touch_runtime_set_menu(false);
     }
     return;
   }
@@ -74,7 +74,6 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   }
   last_ms_ = now_ms;
   offered_ = true;
-  std::optional<input::TouchMenuView> view;
   bool native = false;
   const std::uint32_t image = x86_module_base("XMen2.exe");
   menu::MenuSnapshot snapshot;
@@ -86,12 +85,9 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
     const LiveGuestMemory memory;
     if (const auto plane = read_scene_plane(memory, image)) {
       gaps_.observe(snapshot, *plane);
-      if (!native) {
-        view = input::build_touch_menu_view(snapshot, *plane);
-      }
     }
   }
-  input::touch_runtime_set_menu(std::move(view), native);
+  input::touch_runtime_set_menu(native);
 }
 
 void refresh_touch_menu() { source.refresh(SDL_GetTicks()); }

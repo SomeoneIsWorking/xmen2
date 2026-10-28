@@ -1,7 +1,7 @@
 #ifndef X2_CONTROL_MENU_ROUTE_HPP
 #define X2_CONTROL_MENU_ROUTE_HPP
 
-#include "../input/touch_menu.hpp"
+#include "../presentation/retail_scene_plane.hpp"
 #include "platform_socket.h"
 #include "retail_menu_model.hpp"
 
@@ -13,9 +13,6 @@ namespace x2::control {
    a scene plane adds each item's tap point. */
 std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
                       const presentation::RetailScenePlane *plane);
-
-/* The touch menu as drawn: its rows and every button's output rectangle. */
-std::string touch_menu_json(const input::TouchMenuState &state);
 
 /* GET /menu[?items=all]: the active retail menu, read at the guest input
    poll so it never sees a menu half-updated. */

@@ -392,27 +392,15 @@ scene_z = viewport_height - (client_z * viewport_height / DAT_00a0a000)
 `DAT_00a09ffc` and `DAT_00a0a000` are the logical backbuffer the game is
 presenting. Both are read, never assumed, so the mapping is the presenter's own.
 `x2::presentation::RetailScenePlane` reproduces this truncating arithmetic and
-its inverse; the touch menu uses the inverse to place a click inside a row's hit
-box.
-
-## The touch menu's delivery
-
-The touch menu (see [Touch play](../touch-play.md)) drives only the paths above.
-A row with a `usecmd` gets a click at the centre of its hit box, converted to
-client space by the inverse mapping; `CMenu::onMouse` focuses it and the item
-publishes `MENU_ACCEPT`. A footer gets a click on its `desctext` item. A row
-without a `usecmd`, and a left/right step, cannot be reached by the mouse, so
-the touch menu presses the virtual pad's Up or Down (the shorter way round the
-game's own order) until the model's focused row is the target, then A, Left or
-Right. The pad's d-pad release is held until the game has read the pressed
-state, as its buttons already were; a release in the same frame was never seen.
+its inverse; touch uses the inverse to deliver a finger button's press inside
+the item's hit box.
 
 ## The menu model: what a reader can recover from memory
 
 `x2::menu::RetailMenuModel` (`src/native/retail_menu_model.cpp`) reads the
 active menu into a plain snapshot through checked reads only, and `GET /menu`
 serves it. Both readers run on the guest's own thread between guest updates:
-the touch menu at the host event pump, `GET /menu` at the input poll
+the touch menu source at the host event pump, `GET /menu` at the input poll
 (`control_command_guest_read`). Read from the control server's thread, the
 model saw half-applied purchases (the money taken, the gear count not yet
 written). Everything below was read from the code named and checked live on
@@ -649,11 +637,12 @@ switches on:
 In modes 2..6 a click on `detail_option01..04_text` (stats, skills, gear, ai)
 switches tab through `menu+0x40` with the tab delta.
 
-The stats and ai rows take any mouse message as a move: a click on another
-row moves the focus there (`menu+0x40` with the row delta) and the same
-click's button message then acts on the row it moved to, so one click on
-another stat adds a point to it and one click on another ai setting changes
-it. The pad walks both with Up/Down, wrapping, and A acts on the current row
+The stats and ai rows take any mouse message as a move: a message over
+another row moves the focus one row toward it (`menu+0x40` with the row
+delta; measured 2026-10-28: one `WM_MOUSEMOVE` over `label_strike` with body
+current lit focus), and a button message on the current row acts on it. A
+real mouse sends several moves on its way to a row, so one click on another
+stat reaches it and adds a point. The pad walks both with Up/Down, wrapping, and A acts on the current row
 (stats: A adds, X subtracts; ai: A is `$MENU_ACCEPT Change`). The current
 stat is the menu's focus (`menu+0x324`) and its label is lit; the current ai
 setting's label and value are lit. A label's hit box runs past its own box
@@ -679,7 +668,8 @@ this visit, and `assign_help` reads `$MENU_DROP Assign` while the
 selected skill can be assigned and is empty otherwise.
 
 `$MENU_DETAILS Details` (`desctext4`) is a hold, not a toggle. The team
-update (`FUN_005e66c0`) reads the held-action mask (input vfunc `+0x148`):
+update (`FUN_005e66c0`, vtable `+0x38`) reads the held-action mask (input
+vfunc `+0x148`):
 mode 3 goes to 6 while action 9 (`Ally`, LT) is held and back to 3 when it
 is let go (`FUN_005e1f90`). Mode 6 hides `skill_list` and shows the selected
 skill's `skill_title`, `skill_ranks` (the rank glyphs) and `skill_desc`; the
@@ -688,8 +678,9 @@ description draws icons by token: `$DMG_<type>` a damage type, `$RES_<type>`
 a resistance, `$EP`, `$HP` and `$DR` the stat icons. The mouse holds it
 too: every `onMouse` message clears `menu+0x1d3c` and sets it again while
 the pointer is over `desctext4`, and the update publishes action 9 each
-frame the flag is set and `FUN_0061a600` holds (not decompiled; read as the
-button being down).
+frame the flag is set and `FUN_0061a600(player, 0)` holds: the player's left
+mouse button byte in the table at `0x00a68ca0` (0x28 bytes a player). A
+posted action 9 each update holds the view the same way.
 
 Assigning a skill to a power slot (`FUN_005e5900`, the skills-mode update,
 reading the pressed-action mask from input vfunc `+0x140`):
@@ -714,9 +705,11 @@ reading the pressed-action mask from input vfunc `+0x140`):
   top of the diamond, the gameplay ring's A, B, X, Y.
 
 RT (input vfunc `+0x1f8`, `FUN_005e3c70` then `FUN_005e22a0`) turns every
-hero tab to the next party hero, wrapping. The previous hero is action `0x17`
-(`Solo`), which the shipped binding table gives only a keyboard key (C) and
-no pad button; LT does nothing here. No click turns hero: `onMouse` modes
+hero tab to the next party hero, wrapping. `FUN_005e3c70` reads actions
+`0x16` and `0x17` through `FUN_005da1a0`; `0x17` (`Solo`), the previous hero,
+has in the shipped binding table only a keyboard key (C) and no pad button,
+and posted (`DAT_00a09f54`) it turns back (measured 2026-10-28); LT does
+nothing here. No click turns hero: `onMouse` modes
 2..6 test only the tabs and the tab's own items.
 
 The gear tab has two list boxes: `equipment`, the three slots (`--- [
@@ -1322,30 +1315,28 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   entries are; a subclass that overrides the entry getter (`+0xe4`) is not
   assumed to share the record table.
 - **The codex's description scroll and model turn** (axes 3 and 2) are not
-  driven by the touch menu; it shows the whole description itself and no
-  model. `FUN_005b1340`, `FUN_005adcf0` and the manager's vfunc `+0xe8` are
+  driven by touch; a drag scrolls the codex list only. `FUN_005b1340`, `FUN_005adcf0` and the manager's vfunc `+0xe8` are
   not read.
 - **A shop list longer than its window.** The jungle shop's lists hold at most
   13 entries against 23 rows, so walking the selection to an entry outside the
   window is unit-tested only.
 - **The price of an unselected shop entry.** The game computes it only on
-  selection (`FUN_005a9b00`); the touch menu shows the selected entry's price
-  and does not compute the others.
+  selection (`FUN_005a9b00`); touch shows the game's own price item, which is
+  the selected entry's.
 - **`menu+0x18e8` beyond bit 0.** It read 0 when the shop opened and 2 after a
   tab change and a purchase; only bit 0 (the stash) is used.
 - **The command-less main rows by touch** (`danger room`, `play online`) are
   reached by the pad walk and A; only the keyboard path has been measured.
 - **The `~NN` text escape's table.** `~06` is the shop's cannot-afford red;
-  the other styles are not read. The touch menu strips the escapes.
-- **No title item on the PDA or the team menu.** Neither has a `label_<menu>`
-  or `title*` item, so their touch menus have no header band.
+  the other styles are not read. `x2::input::retail_shown_text` strips the
+  escapes for the gap report.
 - **Navigation of a menu whose links are all 0** (`pause`): the model offers
   only the anchor row.
 - **The anchor fallback** uses slot order where the game's default focus walks
   the name tree.
 - **The skills tab's mouse assignment.** The icon strip left of the list
   publishes `0xd` and fixed scene boxes publish 8, 5 or 4; only the pad path
-  (RB, then A/B/X) is measured.
+  (RB, then A/B/X) is measured, and touch posts those actions.
 - **Which skill a power name is.** A slot holds the power's internal name
   (`power5`); the map from it to the `skill_list` entry is not read, so the
-  touch menu names slots, not the skills in them.
+  touch assigning column names slots (Power 1, 2, 3), not the skills in them.

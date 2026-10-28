@@ -7,7 +7,6 @@
 #include "../config/settings_store.h"
 #include "touch_census.h"
 #include "touch_controls.h"
-#include "touch_menu.hpp"
 #include "touch_menu_controls.h"
 #include "touch_pad.h"
 #include "touch_pad_publisher.h"
@@ -104,13 +103,8 @@ public:
   // gameplay -- a conversation's choices and a cinematic's lines are
   // answered with the pad too, beside the cinematic's own Skip button.
   bool menu_visible() const;
-  // The port's touch menu: touch play, a window, and a retail menu it
-  // replaces. It covers the screen, so neither pad is drawn under it.
-  bool touch_menu_shown() const;
-  // The retail menu as touch meets it: the touch menu's view of a class it
-  // replaces, or `native` for one a finger drives directly.
-  void set_menu(std::optional<TouchMenuView> view, bool native);
-  TouchMenuState touch_menu_state() const { return touch_menu_.state(); }
+  // Whether the retail menu up is one a finger drives directly.
+  void set_menu(bool native);
 
 private:
   struct Contact {
@@ -129,9 +123,6 @@ private:
   void release_menu();
   // A finger on the cinematic's skip button: the offered skip.
   bool route_to_skip(const SDL_TouchFingerEvent &finger);
-  // Every finger while the touch menu is shown.
-  void route_to_touch_menu(const SDL_TouchFingerEvent &finger);
-  void deliver(std::span<const TouchMenuDelivery> deliveries);
   void publish(std::span<const ActionEvent> actions);
   void count_contact(Uint32 event_type) const;
   bool window_size(int &width, int &height) const;
@@ -142,7 +133,6 @@ private:
   PortraitPointer portraits_;
   RetailPointer pointer_;
   SkipButton skip_;
-  TouchMenu touch_menu_;
   std::map<SDL_FingerID, Contact> contacts_;
   // Fingers the menu pad captured; every other finger outside gameplay is
   // the pointer's.
@@ -171,20 +161,16 @@ bool TouchRuntime::active() {
 }
 
 bool TouchRuntime::overlay_visible() const {
-  return window_ != nullptr && active() && !touch_menu_shown() &&
+  return window_ != nullptr && active() &&
          x2_gameplay_control_active(guest_clock_now_s());
 }
 
 bool TouchRuntime::menu_visible() const {
-  return window_ != nullptr && active() && !touch_menu_shown() &&
-         !native_menu_ && !x2_gameplay_control_active(guest_clock_now_s());
+  return window_ != nullptr && active() && !native_menu_ &&
+         !x2_gameplay_control_active(guest_clock_now_s());
 }
 
-bool TouchRuntime::touch_menu_shown() const {
-  return window_ != nullptr && active() && touch_menu_.shown();
-}
-
-void TouchRuntime::set_menu(std::optional<TouchMenuView> view, bool native) {
+void TouchRuntime::set_menu(bool native) {
   /* The game must be reading the pad before the first tap on a pad control:
      the press that claims it is lost while player one resolves. */
   if (window_ != nullptr && active()) {
@@ -192,57 +178,6 @@ void TouchRuntime::set_menu(std::optional<TouchMenuView> view, bool native) {
     touch_pad::claim_player_one();
   }
   native_menu_ = native;
-  const auto owed = touch_menu_.set_view(std::move(view), SDL_GetTicks());
-  deliver(owed);
-}
-
-void TouchRuntime::deliver(std::span<const TouchMenuDelivery> deliveries) {
-  /* One synthetic contact for the touch menu's pad taps; a tap is a press the
-     publisher releases once the game has read it. */
-  constexpr std::int64_t kTouchMenuContact = -2;
-  constexpr std::uint32_t kTouchMenuZone = 0x7f000000u;
-  for (const TouchMenuDelivery &delivery : deliveries) {
-    if (delivery.kind == TouchMenuDelivery::Kind::click) {
-      pointer_.click_client(delivery.at.x, delivery.at.y);
-      x2::input::touch_census()->touch_menu_clicks++;
-      continue;
-    }
-    ActionEvent press;
-    press.contact_id = kTouchMenuContact;
-    press.zone_id =
-        kTouchMenuZone + static_cast<std::uint32_t>(delivery.button);
-    press.action = delivery.button;
-    press.value = 1.0F;
-    press.phase = lucent::touch::Phase::began;
-    ActionEvent release = press;
-    release.phase = lucent::touch::Phase::ended;
-    if (delivery.kind == TouchMenuDelivery::Kind::press) {
-      publish(std::array<ActionEvent, 1>{press});
-      continue;
-    }
-    if (delivery.kind == TouchMenuDelivery::Kind::release) {
-      publish(std::array<ActionEvent, 1>{release});
-      continue;
-    }
-    const std::array<ActionEvent, 2> tap{press, release};
-    x2::input::touch_census()->touch_menu_pad_taps++;
-    publish(tap);
-  }
-}
-
-void TouchRuntime::route_to_touch_menu(const SDL_TouchFingerEvent &finger) {
-  int width = 0;
-  int height = 0;
-  if (!window_size(width, height)) {
-    return;
-  }
-  const auto owed =
-      touch_menu_.contact(static_cast<std::int64_t>(finger.fingerID),
-                          {finger.x * static_cast<float>(width),
-                           finger.y * static_cast<float>(height)},
-                          phase_of(finger.type), SDL_GetTicks());
-  x2::input::touch_census()->touch_menu_contacts++;
-  deliver(owed);
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {
@@ -279,11 +214,9 @@ void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.cancel());
   contacts_.clear();
   release_menu();
-  deliver(touch_menu_.cancel());
   publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
-    touch_menu_.set_viewport({});
     return;
   }
   touch_pad::prepare_for_host();
@@ -308,7 +241,6 @@ void TouchRuntime::set_window(SDL_Window *window) {
                          viewport_.safe_right, viewport_.safe_bottom}};
   publish(controls_.set_viewport(layout));
   publish(menu_.set_viewport(layout));
-  touch_menu_.set_viewport(viewport_);
 }
 
 bool TouchRuntime::viewport(x2::presentation::LayoutViewport &out) const {
@@ -470,25 +402,6 @@ bool TouchRuntime::handle(const SDL_Event &event) {
     }
     return false;
   }
-  if (touch_menu_shown()) {
-    if (!contacts_.empty()) {
-      cancel(TouchCancelCause::OverlayHidden);
-    }
-    if (!menu_contacts_.empty()) {
-      release_menu();
-    }
-    if (pointer_.release_if_held()) {
-      x2::input::touch_census()->pointer_events++;
-    }
-    if (!finger) {
-      return false;
-    }
-    /* It covers the retail screen: no contact reaches the retail pointer. */
-    if (!route_to_skip(event.tfinger)) {
-      route_to_touch_menu(event.tfinger);
-    }
-    return true;
-  }
   if (!overlay_visible()) {
     if (!contacts_.empty()) {
       cancel(TouchCancelCause::OverlayHidden);
@@ -575,7 +488,6 @@ void TouchRuntime::cancel(TouchCancelCause cause) {
   release_menu();
   active_zones_.clear();
   skip_.release();
-  deliver(touch_menu_.cancel());
 }
 
 void TouchRuntime::set_hud_placement(
@@ -630,11 +542,7 @@ std::size_t TouchRuntime::visuals(TouchVisual *out,
                          controls_.stick_ring(), out, capacity);
 }
 
-void touch_runtime_set_menu(std::optional<TouchMenuView> view, bool native) {
-  runtime.set_menu(std::move(view), native);
-}
-
-TouchMenuState touch_menu_state() { return runtime.touch_menu_state(); }
+void touch_runtime_set_menu(bool native) { runtime.set_menu(native); }
 
 /* ------------------------------------------------------------------------ */
 /* The C surface the host event pump, the HUD and the renderer call. It holds

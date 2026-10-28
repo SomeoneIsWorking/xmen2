@@ -22,6 +22,7 @@
 #include "menu_text.hpp"
 #include "options_touch.hpp"
 #include "retail_menu_model.hpp"
+#include "team_touch.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -55,9 +56,6 @@ constexpr std::uint32_t kStyleFadeThreshold = 0x00680030u;
 
 constexpr std::string_view kToken = "$MENU_";
 constexpr std::string_view kPadHint = "$DPAD_";
-/* The tabs and rows a menu's onMouse finds by name and tests with their raw
-   box: CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
-   0x005b5a90, CMenuWorldMap 0x005e7f10, CMenuMain 0x005c9320 (Quit). */
 /* Where a press on an item's area is delivered: the raw box its menu's
    onMouse tests, or the box its own onMouse (0x005bc1b0) tests. */
 enum class Aim : std::uint8_t { raw_box, item_box };
@@ -66,7 +64,11 @@ struct FingerItems {
   std::string_view prefix;
   Aim aim = Aim::raw_box;
 };
-constexpr std::array<FingerItems, 7> kFingerItems{{
+/* The tabs and rows a menu's onMouse finds by name and tests with their raw
+   box: CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
+   0x005b5a90, CMenuWorldMap 0x005e7f10, CMenuMain 0x005c9320 (Quit),
+   CMenuTeam 0x005e25c0. */
+constexpr std::array<FingerItems, 8> kFingerItems{{
     {"CMenuShop", "shop_option0"},
     {"CMenuShop", "stash_option0"},
     {"CMenuReviewPaths", "option0"},
@@ -74,6 +76,7 @@ constexpr std::array<FingerItems, 7> kFingerItems{{
     {"CMenuWorldMap", "option0"},
     {"CMenuWorldMap", "list01_0"},
     {"CMenuMain", "debug_text"},
+    {"CMenuTeam", "detail_option0"},
 }};
 /* Rows drawn on a bar, the item named as the row without this prefix: those
    CMenuMain 0x005c9320 and CMenuPDA 0x005cc1f0 test by raw box, and
@@ -127,15 +130,6 @@ float retail_lit(std::uint32_t self) {
   }
   return (RD8(self + item::kFlags) & x2::menu::kItemFocusLit) != 0u ? 1.0F
                                                                     : 0.0F;
-}
-
-/* The middle of the raw box a menu's onMouse tests a tab with. */
-x2::presentation::ScenePoint raw_centre(std::uint32_t self) {
-  const auto height = static_cast<float>(s16(self + item::kBoxHeight));
-  return {static_cast<float>(s16(self + item::kBoxLeft)) +
-              0.5F * static_cast<float>(s16(self + item::kBoxWidth)),
-          static_cast<float>(s16(self + item::kBoxTop)) -
-              0.5F * (height + 1.0F)};
 }
 
 /* The middle of the box the item's onMouse (0x005c6490) hit-tests. */
@@ -193,6 +187,10 @@ public:
     if (x2::native::text_is_pad_hint(menu_class, text)) {
       return true;
     }
+    if (x2::native::team_touch_hides(self, text)) {
+      restore(cpu, self);
+      return true;
+    }
     if (!x2::native::text_has_touch_button(menu_class, text)) {
       return false;
     }
@@ -214,7 +212,13 @@ public:
     const float finger = x2::input::menu_finger_units(*plane);
     const SceneBox area = x2::input::text_button(text_box(self), finger);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
-    targets.put({area, hit_centre(self)});
+    const auto own = x2::native::touch_token_action(text);
+    targets.put(
+        {area, hit_centre(self),
+         own ? x2::input::TouchPress::own : x2::input::TouchPress::click});
+    if (own && targets.take_tap(area)) {
+      x2::native::post_menu_action(*own);
+    }
     const bool held = targets.pressed(area);
 
     const std::uint32_t art = held ? button.held : button.plain;
@@ -305,7 +309,8 @@ private:
           left + static_cast<float>(s16(bar + item::kBoxWidth)), finger);
     }
     x2::input::touch_targets().put(
-        {area, aim == Aim::item_box ? hit_centre(self) : raw_centre(self)});
+        {area, aim == Aim::item_box ? hit_centre(self)
+                                    : x2::native::text_item_raw_centre(self)});
   }
 
   const std::string &name_of(std::uint32_t self) {
@@ -392,6 +397,7 @@ bool x2::native::text_has_touch_button(std::string_view menu_class,
 
 extern "C" void x2_override_005c61d0(CPU *cpu) {
   const std::uint32_t self = cpu->reg[kX86pEcx];
+  x2::native::team_touch_text_draw(*cpu, self, on_touch());
   if (on_touch() && g_text_item_touch.draw(*cpu, self)) {
     cpu->reg[kX86pEsp] += 4u;
     return;
@@ -402,9 +408,19 @@ extern "C" void x2_override_005c61d0(CPU *cpu) {
 }
 
 extern "C" void x2_override_005c6fb0(CPU *cpu) {
+  x2::native::team_touch_text_destroy(*cpu, cpu->reg[kX86pEcx]);
   g_text_item_touch.destroy(*cpu, cpu->reg[kX86pEcx]);
   x2::native::options_touch_destroy(*cpu, cpu->reg[kX86pEcx]);
   x86_guest_body(cpu, "XMen2.exe", kTextDestroy);
+}
+
+x2::presentation::ScenePoint
+x2::native::text_item_raw_centre(std::uint32_t self) {
+  const auto height = static_cast<float>(s16(self + item::kBoxHeight));
+  return {static_cast<float>(s16(self + item::kBoxLeft)) +
+              0.5F * static_cast<float>(s16(self + item::kBoxWidth)),
+          static_cast<float>(s16(self + item::kBoxTop)) -
+              0.5F * (height + 1.0F)};
 }
 
 bool x2::native::text_has_finger_area(std::string_view menu_class,

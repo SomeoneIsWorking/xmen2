@@ -198,14 +198,17 @@ is delivered at that point until it lifts
 (`src/native/touch_pointer_dispatch.cpp`), so the menu acts on it exactly as
 on a click on the item: the codex's Details through its own `onMouse`, a tab
 through its menu's raw-box test. `GET /menu` reports them
-(`touch_buttons`: `tap`, `edge` near the top corner outside the item, and the
-scene point a press is delivered at). Prove it with `touch-shop` (a tab, Buy,
+(`touch_buttons`: `tap`, `edge` near the top corner outside the item, the
+`area` in scene units, the scene point a press is delivered at, its `press`,
+`click` or `own`, and a port-drawn button's `name`). An `own` button sends the
+game no pointer: the port acts on the tap itself, as the prompt carrying
+`$MENU_DROP`, which no retail click publishes, posts RB. Prove it with `touch-shop` (a tab, Buy,
 Accept), `touch-codex` (Details twice, Back), `touch-stash`, `touch-review`,
 `touch-danger-room`, `touch-worldmap` (an act, go, a point that travels,
 Back) and `touch-menu` (Options' Back).
 
-**Every other screen that is not gameplay and has no touch menu draws the menu
-pad** -- dialogue, and the menu classes not yet native. The retail menus are
+**Every other screen that is not gameplay and is not a native menu draws the
+menu pad** -- dialogue, and the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -226,67 +229,56 @@ each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
-**The team menu is still replaced by the touch menu**, until it is native
-(issue #199). While touch play is the input and that screen is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
-built from the live retail menu model (`GET /menu`): the title (no header band
-when the menu has no title item), one button per
-enabled row with its value or bar, step buttons on rows with left/right, and
-one button per footer prompt. Tab labels too wide for their tab, and footer
-labels too wide for theirs, each shrink together by one factor per row
-(`touch_label_fit`) to fit on one line inside the padding. It scrolls by drag, keeps to the safe area, scales
-with the shorter screen edge, and re-reads the model every 33 ms. A tap runs
-only the game's own input paths, never a guest call or write:
+**The team menu is the game's own screen on touch** (CMenuTeam, issue #199).
+The party's hero cards and the roster's three cards are already finger-sized
+in retail: a tap on a party card selects that hero and a second opens its
+details, a tap on the roster's upper or lower card steps the carousel, and
+the footers are finger buttons like every native menu's. The detail tabs are
+finger areas over the game's own tabs. The retail panel's stat and ai rows
+sit 14 scene units apart, so on touch the column left of the panel, where
+the hero stands (`x2::input::kTeamColumn`), holds the tab's controls, each
+drawn by the game's own item in the option art and the item's font
+(`src/native/team_touch.cpp`, geometry in `src/input/team_touch_layout.cpp`):
 
-- a row with a command: a retail mouse click at the centre of the row's own hit
-  box, so `CMenu::onMouse` focuses it and the item publishes `MENU_ACCEPT`;
-- a footer: a click on the `desctext` item carrying its `$MENU_` token, which
-  the game turns into that action;
-- a row without a command, or a step: the menu pad's Up/Down until the game's
-  own focus is on the row, then A, Left or Right.
+- every tab: Prev hero and Next hero across the top, which post the pad's
+  actions `0x17` and `0x16` (`FUN_005e3c70`), gone while a skill is being
+  assigned;
+- stats: a card per stat with its value and a remove and an add button, a
+  finger square each. A tap on a card only selects the stat; + and - select
+  it and then post A or X, which add a point or take back one added in this
+  visit (`FUN_005e5730`), so nothing is spent by a tap meant to look;
+- skills: the selected skill's card with "owned/ranks" read from its record's
+  rank glyphs (`FUN_005f01e0`), - and + below it (X and A), and Assign while
+  the skill has a rank, in place of the game's `assign_help` prompt beside
+  the footers, which touch does not draw. Assign posts RB (`0xd`); while the
+  game assigns (`menu+0x18e8`) the column is Power 1, Power 2, Power 3 and
+  Cancel (A, B, X and `0x15`) and every footer is hidden. A tap on a skill row
+  of the game's own list selects it and a tap on the selected row adds a
+  rank, as a click does;
+- gear: the slots and the fitting pieces are the game's two lists as cards
+  (below); the slots' cards keep clear of the pieces' list inside their box
+  (`x2::input::list_box_clear_of`), one slot a panel, dragged for the others;
+- ai: a card per setting with its value; a tap selects it, a tap on the
+  selected one posts A, which changes it.
 
-Each replaced class has its own builder (`touch_menu_view` dispatches): the
-team menu lists the
-four hero summaries by the names the cards draw, with their levels and the
-empty slot as "Empty slot", where a tap selects a hero and a tap on the
-selected hero opens its details through the game's own click
-(`touch_menu_team`). The roster lists the heroes its cards name, locked ones
-left out, each with its level, and when dead "Fallen" and the revive cost
-(`extraction::revive_cost`, the game's `max(200, 2 * level^2)`); a tap walks the
-carousel to the hero with the menu pad, counting the hidden locked entries,
-and presses A, which chooses the hero or revives a fallen one for the game's
-price. A hero's details (`touch_menu_team_details`) pin the game's
-stats/skills/gear/ai tabs, a tap on a tab clicking the game's own: stats lists
-the four stats with the points left, the derived stats and the current
-stat's description with its resistance icons read as values; skills lists
-each skill's type and "rank owned/ranks" read from the game's rank glyphs, or
-what a locked skill needs, with Assign (the game's `assign_help`, pressed as
-RB) while the selected skill has a rank: the footers then become Power 1,
-Power 2 and Power 3, the menu pad's A, B and X, which put the skill in that
-power button's slot, and Cancel, a click on the game's Back (the pad's B
-would assign); gear lists whichever of the slots or the fitting
-pieces has the game's focus, with the gear count and the selected piece's
-description; ai lists the seven settings and the current one's description.
-On the skills tab Details puts LT down, which the game reads, held, as its
-Details view: the touch menu then shows the selected skill's name, rank and
-description, icon tokens read as words ("mental damage"). The game shows them
-only while LT is held, so a tap holds it, drawing Details lit as the open
-tab is, and the next tap on Details, or on any other button, lets go; LT is also let go when the menu closes or touch is
-cancelled. Next hero, on every tab, presses RT; the game has no pad input for the
-previous hero (only the keyboard's C), so the touch menu offers none.
-On every tab a tap walks the game's focus to the row with the menu pad and a
-tap on the current row presses A (add a point or a rank, open a slot's
-pieces, equip, change a setting): the game's own click on another stat or
-setting would also act on it. The Drop footer, which the game's footer click
-does not publish, presses RB. Assigning a skill to a power slot, the skill
-details view and switching hero keep only the menu pad.
+A card's select is the pointer passing over the row's label: CMenuTeam's
+`onMouse` (`0x005e25c0`) steps its focus one row toward the label under the
+pointer per mouse message, so after the tap the column asks the pointer
+(`x2::input::TouchTargets::hover`) to pass over the label again on each update
+until the label is lit, then posts the card's action. The Details footer
+on the skills tab: the game shows a skill's Details only while the mouse
+button is held over its prompt (`menu+0x1d3c`, the button table at
+`0x00a68ca0`); on touch a tap opens it and it stays open with no finger down,
+action 9 posted each update, until the next tap on Details, a tab change or
+the menu closing.
 
-Mouse, keyboard and controller play never see it. The settings overlay hides
-it, and the touch menu hides the menu pad while it is up. Other menu classes
-keep the retail menu and the menu pad. Owners: `x2::input::TouchMenu` (taps,
-scroll, deliveries), `touch_menu_view` (the model to rows), `touch_menu_layout`
-(geometry), `x2::native::TouchMenuSource` (the model read on the event pump),
-`x2::presentation::RetailScenePlane` (scene to client),
-`x2::ui::TouchMenuDocument` (drawing). See [Menus](RE/menus.md).
+Mouse, keyboard and controller play never see the column. Prove it with
+`tools/live_case.py touch-team` (PDA, select a hero, details, Accept twice),
+`touch-team-stats`, `touch-team-skills`, `touch-team-gear`, `touch-team-ai`,
+`touch-team-assign`, `touch-team-skill-details` and `touch-roster` (revive a
+fallen hero and fill the empty slot); each taps finger buttons at their edge
+outside the game's own box and judges by the game's mode, values, slots and
+power slots.
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
@@ -458,8 +450,6 @@ already chose keeps player one.
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
-| `ctest -R touch_label_fit` | Tab labels too wide for their tab, and the skills tab's six footers at 1280x720, shrink by one shared factor per row to fit on one line inside their padding, measured by RmlUi with the shipped stylesheet and font; labels that fit keep their size |
-| `ctest -R touch_menu` | The touch menu: retail text cleaned, which menus and rows it offers (the team's party and roster with display names, levels, the fallen state with its revive cost and a walk over the carousel's locked entries, a hero's stats, skills, gear and ai tabs with rank glyphs read, the Drop and Assign footers pressed as RB, the three power slots as A, B and X while assigning with Cancel clicked, and Next hero as RT, the skills tab's Details held as LT with the skill's description read, the shop's and the stash's tabs and list entries and the codex's list and description, the review's tabs and entries with their counts and the danger room's steps and its scrolling description included), a delivered click landing inside the game's hit box at every aspect, finger-sized layout inside the safe area, scrolling, and each tap's delivery (click, footer click, pad walk, step, a list walk that only selects or ends with A, and a held button let go by the next tap, a menu change or a cancel) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
@@ -503,7 +493,7 @@ stick, the four actions inside their own circles, the port menu button, and the 
 potions and party portraits stay clear. This is native UI presentation
 evidence, not Android touchscreen or performance qualification. A headless
 `--no-window` run draws the port UI into its capture target, so its
-`/screenshot` shows the overlay and the touch menu.
+`/screenshot` shows the overlay.
 
 ## Driving it without a touchscreen
 

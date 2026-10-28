@@ -23,7 +23,6 @@
 #include "settings_overlay_state.h"
 #include "skip_document.hpp"
 #include "touch_document.hpp"
-#include "touch_menu_document.hpp"
 #include "touch_runtime.h"
 #include "ui_resources.h"
 #include "x2_log.h"
@@ -38,7 +37,6 @@ Rml::Context *context;
 x2::ui::SkipDocument skip_document;
 x2::ui::ExtractionReviveDocument revive_document;
 x2::ui::AutosaveNoticeDocument autosave_document;
-x2::ui::TouchMenuDocument touch_menu_document;
 SDL_Window *host_window;
 bool initialized;
 
@@ -109,7 +107,6 @@ void discard_partial_initialization() {
   autosave_document.shutdown();
   revive_document.shutdown();
   skip_document.shutdown();
-  touch_menu_document.shutdown();
   x2::ui::touch_document_shutdown();
   x2::ui::settings_document_shutdown();
   context = nullptr;
@@ -185,10 +182,6 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   if (!autosave_document.load(context)) {
     discard_partial_initialization();
     return initialize_failed("loading the autosave notice document");
-  }
-  if (!touch_menu_document.load(context)) {
-    discard_partial_initialization();
-    return initialize_failed("loading the touch menu document");
   }
   initialized = true;
   x2_log_info("RMLUI: Port Settings overlay initialized.\n");
@@ -273,18 +266,13 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
       x2::ui::ExtractionReviveDocument::wanted() && !settings_visible;
   const bool autosave_visible =
       x2::ui::AutosaveNoticeDocument::wanted() && !settings_visible;
-  /* The touch menu: touch play over a retail menu it replaces, under the
-     modal port settings. */
-  const bool menu_visible =
-      x2::ui::TouchMenuDocument::wanted() && !settings_visible;
-  if ((!settings_visible && !touch_visible && !skip_visible && !menu_visible &&
+  if ((!settings_visible && !touch_visible && !skip_visible &&
        !revive_visible && !autosave_visible) ||
       !device || !command_buffer || !swapchain || !window)
     return;
   if (!initialize(device, window, width, height))
     return;
   x2::ui::settings_document_set_visible(settings_visible);
-  touch_menu_document.set_visible(menu_visible);
   x2::ui::touch_document_set_visible(touch_visible);
   /* The overlay may have been hidden while the window moved to a display
      with another DPI. Hidden events deliberately bypass RmlUi, so reconcile
@@ -300,7 +288,6 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   skip_document.update();
   revive_document.update();
   autosave_document.update();
-  touch_menu_document.update();
   context->Update();
   context->Render();
   render_interface->EndFrame();
@@ -309,7 +296,6 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
 void ui_gpu_shutdown(void) {
   if (!initialized)
     return;
-  touch_menu_document.shutdown();
   autosave_document.shutdown();
   revive_document.shutdown();
   skip_document.shutdown();

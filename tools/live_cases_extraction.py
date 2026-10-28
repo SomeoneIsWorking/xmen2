@@ -16,9 +16,10 @@ import urllib.parse
 from live_harness import Case
 from live_game import png_mean_diff, wait_controls_unlocked
 from live_cases_touch_menu import roster_hero
-from live_menu import (keyboard_into_gameplay, menu_item, read_menu, tap_touch_button,
-                       touch_button, touch_menu, wait_game_menu,
-                       wait_settled_touch_menu)
+from live_cases_touch_team import PARTY, item_in, lit_hero
+from live_menu import (footer_button, keyboard_into_gameplay, menu_item,
+                       read_menu, read_menu_items, tap_footer_button,
+                       tap_menu_item, wait_game_menu)
 
 PAD_MAP = "act1/genosha/genosha1"
 ADD_MONEY = "act1/genosha/genosha1/temp_addmoney"
@@ -243,23 +244,27 @@ def wait_pad_autosaves(case: Case, count: int) -> bool:
 
 def choose_team(case: Case) -> dict:
     """The choose-team load of the pad map, which moves a fallen party hero
-    to the bench (docs/RE/menus.md); returns the team menu's touch model."""
+    to the bench (docs/RE/menus.md); returns the team menu's items once its
+    party shows."""
     case.http("/console?command=loadmap%20" + PAD_MAP + "%200%201")
-    return wait_settled_touch_menu(case, "team", 120)
+    wait_game_menu(case, lambda m: m.get("menu") == "team"
+                   and m.get("mode") == 0, 120)
+    time.sleep(2.0)
+    return read_menu_items(case)
 
 
-def benched_hero(case: Case, shown: dict, internal: str) -> dict:
+def benched_hero(case: Case, items: dict, internal: str) -> dict:
     """`internal`'s roster record, read with the roster open through Replace
     on the empty party slot, then back to the party."""
-    rows = [r["label"] for r in shown.get("rows", [])]
-    if "Empty slot" not in rows:
+    empty = next((n for n in PARTY if not item_in(items, n).get("label")),
+                 None)
+    if empty is None:
         return {}
-    empty = rows.index("Empty slot")
-    if shown.get("focused_row") != empty:
-        tap_touch_button(case, shown, touch_button(shown, "row", "empty slot"))
-        shown = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
-            "focused_row") == empty, 10).get("touch_menu", {})
-    tap_touch_button(case, shown, touch_button(shown, "footer", "replace"))
+    if lit_hero(items) != empty:
+        tap_menu_item(case, item_in(items, empty))
+        wait_game_menu(case, lambda m: lit_hero(read_menu_items(case))
+                       == empty, 10)
+    tap_footer_button(case, "$MENU_ACCEPT")
     wait_game_menu(case, lambda m: m.get("mode") == 1, 10)
     hero = roster_hero(case, internal)
     case.http("/key?name=Escape&hold=0.2")
@@ -268,12 +273,10 @@ def benched_hero(case: Case, shown: dict, internal: str) -> dict:
 
 
 def accept_team(case: Case) -> None:
-    shown = touch_menu(case)
-    accept = touch_button(shown, "footer", "accept")
-    case.check("the team menu offers Accept", accept is not None,
-               str([b["label"] for b in shown.get("buttons", [])]))
-    if accept is not None:
-        tap_touch_button(case, shown, accept)
+    case.check("the team menu offers Accept",
+               bool(footer_button(read_menu(case), "$MENU_OK")),
+               str(read_menu(case).get("desctext")))
+    tap_footer_button(case, "$MENU_OK")
     left = wait_game_menu(case, lambda m: m.get("menu") != "team", 20)
     case.check("Accept left the team menu", left.get("menu") != "team",
                str(left.get("menu")))

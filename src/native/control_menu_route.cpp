@@ -1,7 +1,6 @@
 #include "control_menu_route.hpp"
 
 #include "../input/menu_touch_gaps.hpp"
-#include "../input/touch_menu_parts.hpp"
 #include "../input/touch_runtime_menu.hpp"
 #include "../input/touch_targets.hpp"
 #include "control.h"
@@ -67,7 +66,8 @@ void put_tap(std::string *out, const menu::SceneRect &rect,
     return;
   }
   const presentation::ClientPoint client =
-      input::menu_item_centre(rect, *plane);
+      plane->to_client({0.5F * static_cast<float>(rect.left + rect.right),
+                        0.5F * static_cast<float>(rect.top + rect.bottom)});
   if (native::win32_pointer_client_to_window(client.x, client.y, &x, &y) == 0) {
     return;
   }
@@ -329,27 +329,6 @@ void put_float(std::string *out, const char *key, float value) {
   out->append(text);
 }
 
-void put_button(std::string *out, const input::TouchMenuState &state,
-                const input::TouchMenuButton &button) {
-  out->push_back('{');
-  put_text(out, "part", input::touch_menu_part_name(button.part));
-  put_int(out, "index", button.index);
-  const auto index = static_cast<std::size_t>(button.index);
-  if (button.part == input::TouchMenuPart::footer) {
-    put_text(out, "label", state.view.footers[index].label);
-    put_text(out, "token", state.view.footers[index].token);
-  } else if (button.part == input::TouchMenuPart::tab) {
-    put_text(out, "label", state.view.tabs[index].label);
-  } else {
-    put_text(out, "label", state.view.rows[index].label);
-  }
-  put_float(out, "left", button.rect.left);
-  put_float(out, "top", button.rect.top);
-  put_float(out, "width", button.rect.right - button.rect.left);
-  put_float(out, "height", button.rect.bottom - button.rect.top);
-  close_object(out);
-}
-
 /* The shown popup page: on touch each card and button where the last draw
    put it; the retail footers otherwise. */
 void put_popup(std::string *out, const menu::PopupSnapshot &popup,
@@ -430,86 +409,20 @@ void read_menu_body(void *context) {
 
 } // namespace
 
-std::string touch_menu_json(const input::TouchMenuState &state) {
-  std::string out = "{";
-  put_bool(&out, "visible", state.shown);
-  if (!state.shown) {
-    close_object(&out);
-    return out;
+const char *touch_press_name(input::TouchPress press) {
+  switch (press) {
+  case input::TouchPress::click:
+    return "click";
+  case input::TouchPress::own:
+    return "own";
   }
-  put_text(&out, "menu", state.view.menu);
-  put_text(&out, "title", state.view.title);
-  put_int(&out, "focused_row", state.view.focused_row);
-  put_float(&out, "viewport_width", state.viewport.width);
-  put_float(&out, "viewport_height", state.viewport.height);
-  put_float(&out, "scroll", state.layout.scroll);
-  put_key(&out, "list");
-  out.push_back('{');
-  put_float(&out, "top", state.layout.list.top);
-  put_float(&out, "bottom", state.layout.list.bottom);
-  close_object(&out);
-  out.push_back(',');
-  put_key(&out, "rows");
-  out.push_back('[');
-  for (const input::TouchMenuRow &row : state.view.rows) {
-    out.push_back('{');
-    put_text(&out, "label", row.label);
-    put_text(&out, "value", row.value);
-    put_fill(&out, row.fill);
-    put_bool(&out, "focused", row.focused);
-    put_bool(&out, "clicks", row.clicks);
-    put_bool(&out, "steps", row.steps);
-    close_object(&out);
-    out.push_back(',');
-  }
-  if (out.back() == ',') {
-    out.pop_back();
-  }
-  out.append("],");
-  put_key(&out, "tabs");
-  out.push_back('[');
-  for (const input::TouchMenuTab &tab : state.view.tabs) {
-    out.push_back('{');
-    put_text(&out, "label", tab.label);
-    put_bool(&out, "lit", tab.lit);
-    close_object(&out);
-    out.push_back(',');
-  }
-  if (out.back() == ',') {
-    out.pop_back();
-  }
-  out.append("],");
-  put_key(&out, "facts");
-  out.push_back('[');
-  for (const input::TouchMenuFact &fact : state.view.facts) {
-    out.push_back('{');
-    put_text(&out, "label", fact.label);
-    put_text(&out, "value", fact.value);
-    close_object(&out);
-    out.push_back(',');
-  }
-  if (out.back() == ',') {
-    out.pop_back();
-  }
-  out.append("],");
-  put_strings(&out, "detail", state.view.detail);
-  out.push_back(',');
-  put_key(&out, "buttons");
-  out.push_back('[');
-  for (const input::TouchMenuButton &button : state.layout.buttons) {
-    put_button(&out, state, button);
-    out.push_back(',');
-  }
-  if (out.back() == ',') {
-    out.pop_back();
-  }
-  out.append("]}");
-  return out;
+  return "click";
 }
 
 /* The finger buttons the last frame drew over small items: each one's centre
-   and a point near its top corner as taps, its height over a finger's, and
-   the scene point a press on it is delivered at. */
+   and a point near its top corner as taps, its height over a finger's, the
+   scene point a press on it is delivered at and what the press hands the
+   game. */
 void put_touch_targets(std::string *out,
                        const presentation::RetailScenePlane *plane) {
   put_key(out, "touch_buttons");
@@ -519,8 +432,20 @@ void put_touch_targets(std::string *out,
     put_box_tap(out, target.area, plane);
     put_box_point(out, "edge", target.area, 0.1F, 0.9F, plane);
     put_fingers(out, target.area, plane);
+    put_key(out, "area");
+    out->push_back('{');
+    put_float(out, "left", target.area.left);
+    put_float(out, "bottom", target.area.bottom);
+    put_float(out, "right", target.area.right);
+    put_float(out, "top", target.area.top);
+    close_object(out);
+    out->push_back(',');
     put_float(out, "aim_x", target.aim.x);
     put_float(out, "aim_z", target.aim.z);
+    put_text(out, "press", touch_press_name(target.press));
+    if (!target.name.empty()) {
+      put_text(out, "name", std::string(target.name));
+    }
     close_object(out);
     out->push_back(',');
   }
@@ -626,10 +551,6 @@ void menu_route(x2::native::Socket fd, const char *query) {
     return;
   }
   std::string &body = read.body;
-  body.resize(body.size() - 2u);
-  body.append(",\"touch_menu\":");
-  body.append(touch_menu_json(input::touch_menu_state()));
-  body.append("}\n");
   control_reply_json(fd, 200, "OK", body.c_str(), body.size());
 }
 

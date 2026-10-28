@@ -64,6 +64,20 @@ void a_short_list_shows_all() {
   check(out.icon == 0.0F, "no icon column without icons");
 }
 
+void a_list_keeps_clear_of_a_list_inside_it() {
+  using x2::input::list_box_clear_of;
+  using x2::input::SceneBox;
+  const SceneBox slots{215.0F, 112.0F, 482.0F, 287.0F};
+  const SceneBox pieces{215.0F, 131.0F, 482.0F, 204.0F};
+  const SceneBox clear = list_box_clear_of(slots, pieces);
+  check(clear.bottom == 204.0F && clear.top == 287.0F,
+        "the taller part, above the inner list");
+  const SceneBox beside{500.0F, 131.0F, 600.0F, 204.0F};
+  const SceneBox kept = list_box_clear_of(slots, beside);
+  check(kept.bottom == slots.bottom && kept.top == slots.top,
+        "a list beside it changes nothing");
+}
+
 void only_native_menus_lay_out_lists() {
   using x2::input::list_has_touch_layout;
   using x2::menu::ItemClass;
@@ -71,8 +85,10 @@ void only_native_menus_lay_out_lists() {
         "the shop's list box is laid out");
   check(list_has_touch_layout(ItemClass::list_codex, "CMenuCodex"),
         "the codex's list is laid out");
-  check(!list_has_touch_layout(ItemClass::list_box, "CMenuTeam"),
-        "a list in a menu the touch menu covers is left to it");
+  check(list_has_touch_layout(ItemClass::list_box, "CMenuTeam"),
+        "the team's gear lists are laid out");
+  check(!list_has_touch_layout(ItemClass::list_box, "CMenuHost"),
+        "a list in a menu not native on touch is left to retail");
   check(!list_has_touch_layout(ItemClass::text, "CMenuShop"),
         "a text item is not a list");
 }
@@ -84,6 +100,7 @@ int main() {
   a_late_top_is_clamped();
   a_short_list_shows_all();
   only_native_menus_lay_out_lists();
+  a_list_keeps_clear_of_a_list_inside_it();
   if (failures != 0) {
     std::fprintf(stderr, "%d failure(s)\n", failures);
     return EXIT_FAILURE;

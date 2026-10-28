@@ -104,5 +104,30 @@ box, and by `touch-menu` leaving Options by its Back button. The online region
 list and the world map are native on touch and their RmlUi views are deleted:
 the world map is the game's own screen with finger areas on its enabled act
 tabs and point rows, shown by `touch-worldmap` (an act tap opening act 2, a tap
-on the focused Avalon travelling, Back) and `touch-region`. The team menu is
-the last screen the RmlUi touch menu replaces.
+on the focused Avalon travelling, Back) and `touch-region`.
+
+The team menu is native on touch and the RmlUi touch menu is deleted (step 6's
+first half). The party and roster cards are retail's and finger-sized; the
+detail tabs put their controls in a finger column left of the panel, drawn by
+the tab's own items (`src/native/team_touch.cpp`): stat and ai cards that
+select by walking the game's focus with pointer hovers and spend only from
+their + and - (or a tap on the selected ai card), the selected skill's card
+with -, + and Assign, Power 1/2/3 and Cancel while assigning, Prev and Next
+hero, and a Details view a tap holds open. The gear tab's slot cards keep
+clear of the pieces' list inside their box. Shown by `touch-team` (12/12),
+`touch-team-stats` (18/18), `touch-team-skills` (18/18), `touch-team-gear`
+(21/21), `touch-team-ai` (15/15), `touch-team-assign` (21/21),
+`touch-team-skill-details` (14/14) and `touch-roster` (15/15).
+
+The menu pad is not deleted: conversation choices and cinematic lines are
+answered with it, and the classes not native on touch (CMenuAutoMap,
+CMenuTextEntry, the online lobby menus, CMenuHeroList, CMenuPersonal,
+CMenuSebas, CMenuImageViewer, CMenuCredits, CMenuOptionsController) have no
+other touch path yet.
+
+Open on the team menu: with five footers the finger buttons of two
+neighbouring prompts overlap (Subtract and Add after a skill rank is added;
+`x2::input::text_button`); Power 1/2/3 do not show which of the diamond's
+slots they fill; the gear tab shows one slot and one piece card a panel,
+reached by drag; a skill row of the game's list is 37 scene units, just under
+a finger.

@@ -5,7 +5,7 @@
 #include "../native/text_item_touch.hpp"
 #include "../native/x2_log.h"
 #include "list_touch_layout.hpp"
-#include "touch_menu_view.hpp"
+#include "retail_text.hpp"
 
 #include <algorithm>
 #include <string_view>
@@ -17,7 +17,7 @@ constexpr std::string_view kTokenPrefix = "$MENU_";
 constexpr std::string_view kFooterPrefix = "desctext";
 /* The item's name and, when it shows text, that text. */
 std::string named(const menu::MenuItem &item) {
-  const std::string text = touch_menu_text(item.label);
+  const std::string text = retail_shown_text(item.label);
   return text.empty() ? item.name : item.name + " \"" + text + "\"";
 }
 
@@ -159,6 +159,7 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
       continue;
     }
     if (!native::menu_token_action(token) &&
+        !native::touch_token_action(token) &&
         !native::menu_handles_token(menu.menu_class, token)) {
       gaps.push_back({MenuTouchGapKind::footer_token, std::string(token)});
     } else if (!native::text_has_touch_button(menu.menu_class, item.label) &&

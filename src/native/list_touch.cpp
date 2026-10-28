@@ -153,7 +153,7 @@ public:
     const std::uint32_t box = RD32(self + item::kTextBox);
 
     x2::input::ListTouchInput input;
-    input.box = list_box(self);
+    input.box = clear_of_other_lists(self);
     input.line = menu_text::line_height(call, box);
     input.finger = x2::input::menu_finger_units(*plane);
     input.entries = entries;
@@ -214,6 +214,21 @@ public:
     accept_arrived(cards, self);
     cards.drawn = true;
     return true;
+  }
+
+  /* The list's box less any smaller shown list of its menu inside it. */
+  SceneBox clear_of_other_lists(std::uint32_t self) const {
+    const SceneBox own = list_box(self);
+    SceneBox box = own;
+    const std::uint32_t menu = RD32(self + item::kMenu);
+    for (const auto &[other, cards] : lists_) {
+      if (other != self && cards.drawn && RD32(other + item::kMenu) == menu &&
+          (RD8(other + item::kFlags) & x2::menu::kItemHidden) == 0u &&
+          list_box(other).height() < own.height()) {
+        box = x2::input::list_box_clear_of(box, list_box(other));
+      }
+    }
+    return box;
   }
 
   /* Retail's own row count and cards gone, when touch has left. */

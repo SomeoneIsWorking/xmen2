@@ -10,12 +10,10 @@ import time
 from live_game import live_controls
 from live_harness import Case
 from live_menu import (
-    dismiss_level_up,
     drag_between,
     footer_button,
     item_button,
     keyboard_into_gameplay,
-    keyboard_into_the_pda,
     list_cards,
     list_entry,
     menu_footer,
@@ -23,117 +21,21 @@ from live_menu import (
     menu_items,
     menu_labels,
     menu_list,
-    menu_row,
     menu_text,
     option_tabs,
     read_menu,
     read_menu_items,
     reveal_list_entry,
-    reveal_touch_row,
     select_list_entry,
     tap_button_edge,
     tap_footer_button,
     tap_list_entry,
     tap_menu_item,
     tap_tab,
-    tap_touch_button,
-    touch_button,
-    touch_menu,
     wait_game_menu,
     wait_list,
     wait_settled_menu,
-    wait_settled_touch_menu,
-    wait_touch_menu,
 )
-
-
-def case_touch_team(case: Case) -> None:
-    """The touch menu over CMenuTeam's party screen, opened from the PDA.
-
-    Each tap is judged by the game's own state: which hero summary is lit, the
-    class's mode, and the menu it has open.
-    """
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave0.save")
-    case.launch({"X2_FILES": "1"})
-    case.wait_control(60)
-    pda = keyboard_into_the_pda(case, 300)
-    case.check("the run reached the PDA", pda.get("menu") == "pda",
-               str(pda.get("menu")))
-    team_row = menu_row(pda, "team management")
-    case.check("the PDA has Team Management", bool(team_row))
-    if not team_row:
-        return
-    case.shot("pda")
-    tap_menu_item(case, team_row)
-    team = wait_touch_menu(case, "team", 20)
-    (case.dir / "team.json").write_text(json.dumps(team, indent=1) + "\n")
-    heroes = [row["label"] for row in team.get("rows", [])]
-    print("  party: %s" % heroes)
-    case.check("the tap opened the game's team menu on its party",
-               read_menu(case).get("menu") == "team"
-               and read_menu(case).get("mode") == 0
-               and team.get("visible") is True, str(heroes))
-    case.check("the touch menu offers one row per hero",
-               len(heroes) >= 2 and all(heroes))
-    if team.get("visible") is not True or len(heroes) < 2:
-        return
-    controls = live_controls(case)
-    case.check("and the menu pad is not drawn under it",
-               "menu-a" not in controls, "drawn: %s" % sorted(controls))
-    case.shot("team")
-
-    selected = team.get("focused_row", -1)
-    target = 1 if selected != 1 else 0
-    row = next(b for b in team["buttons"]
-               if b["part"] == "row" and b["index"] == target)
-    tap_touch_button(case, team, row)
-    picked = wait_game_menu(
-        case, lambda m: m.get("touch_menu", {}).get("focused_row") == target,
-        10)
-    case.check("a tap on %s selected that hero in the game" % heroes[target],
-               picked.get("touch_menu", {}).get("focused_row") == target,
-               "the lit hero is row %s" %
-               picked.get("touch_menu", {}).get("focused_row"))
-    case.shot("team-selected")
-
-    tap_touch_button(case, team, row)
-    details = wait_game_menu(case, lambda m: m.get("mode", 0) != 0, 10)
-    case.check("a second tap opened that hero's details",
-               details.get("menu") == "team" and details.get("mode", 0) >= 2,
-               "mode %s" % details.get("mode"))
-    details_view = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
-        "tabs"), 10).get("touch_menu", {})
-    case.check("under the touch menu, on the game's detail tabs",
-               details_view.get("visible") is True
-               and [t["label"] for t in details_view.get("tabs", [])]
-               == ["stats", "skills", "gear", "ai"],
-               str(details_view.get("tabs")))
-    case.shot("details")
-    back = touch_button(details_view, "footer", "accept")
-    if back is None:
-        return
-    tap_touch_button(case, details_view, back)
-    team = wait_game_menu(
-        case, lambda m: m.get("mode") == 0
-        and m.get("touch_menu", {}).get("visible") is True, 10)
-    case.check("the details' Accept (the game's Back) returned to the party",
-               team.get("mode") == 0
-               and team.get("touch_menu", {}).get("visible") is True,
-               "mode %s" % team.get("mode"))
-    shown = touch_menu(case)
-    accept = touch_button(shown, "footer", "accept")
-    case.check("the party offers the game's Accept footer", accept is not None,
-               str([b["label"] for b in shown.get("buttons", [])
-                    if b["part"] == "footer"]))
-    if accept is None:
-        return
-    tap_touch_button(case, shown, accept)
-    left = wait_game_menu(case, lambda m: m.get("menu") != "team", 10)
-    case.check("Accept left the team menu",
-               left.get("menu") != "team", "now %r" % left.get("menu"))
-    case.shot("after-accept")
-    case.check("and the game is still running", case.alive())
 
 
 def into_gameplay(case: Case, money_runs: int = 0) -> bool:
@@ -158,9 +60,6 @@ def check_native_list(case: Case, menu_class: str, name: str = "list") -> bool:
     menu = read_menu(case)
     case.check("the game's %s is up" % menu_class,
                menu.get("class") == menu_class, str(menu.get("class")))
-    case.check("and no touch menu is drawn over it",
-               menu.get("touch_menu", {}).get("visible") is False,
-               str(menu.get("touch_menu")))
     box = menu_list(case, name)
     cards = list_cards(case, name)
     entries = len(box.get("entries", []))
@@ -433,8 +332,7 @@ def case_touch_worldmap(case: Case) -> None:
     case.http("/console?command=openmenu%20worldmap")
     shown = wait_game_menu(case, lambda m: m.get("menu") == "worldmap", 20)
     case.check("the world map is the game's own screen",
-               shown.get("class") == "CMenuWorldMap"
-               and not shown.get("touch_menu", {}).get("visible"),
+               shown.get("class") == "CMenuWorldMap",
                str(shown.get("class")))
     menu = read_menu_items(case)
     (case.dir / "worldmap.json").write_text(json.dumps(menu, indent=1) + "\n")
@@ -683,16 +581,14 @@ def case_touch_review(case: Case) -> None:
     tap_list_entry(case, credits)
     shown = wait_game_menu(case, lambda m: m.get("menu") == "credits", 10)
     case.check("a tap on the selected Credits played them",
-               shown.get("class") == "CMenuCredits"
-               and shown.get("touch_menu", {}).get("visible") is False,
+               shown.get("class") == "CMenuCredits",
                "%s %s" % (shown.get("menu"), shown.get("class")))
     case.shot("credits")
 
     case.http("/key?name=Escape&hold=0.2")
     back = wait_game_menu(case, lambda m: m.get("menu") == "review", 10)
-    case.check("Esc returned to the review with no touch menu over it",
-               back.get("menu") == "review"
-               and back.get("touch_menu", {}).get("visible") is False,
+    case.check("Esc returned to the review",
+               back.get("menu") == "review",
                str(back.get("menu")))
     case.check("the review offers Back", tap_footer_button(case, "$MENU_BACK"))
     left = wait_game_menu(case, lambda m: m.get("menu") != "review", 10)
@@ -715,10 +611,8 @@ def case_touch_region(case: Case) -> None:
     (case.dir / "region.json").write_text(
         json.dumps(menu_items(case), indent=1) + "\n")
     menu = read_menu(case)
-    case.check("the game's CMenuRegion is up with no touch menu over it",
-               menu.get("class") == "CMenuRegion"
-               and menu.get("touch_menu", {}).get("visible") is False,
-               "%s %s" % (menu.get("class"), menu.get("touch_menu")))
+    case.check("the game's CMenuRegion is up",
+               menu.get("class") == "CMenuRegion", str(menu.get("class")))
     case.check("its Back, Refresh and Select are finger buttons",
                all(footer_button(menu, token) for token in
                    ("$MENU_BACK", "$MENU_SUBTRACT", "$MENU_ACCEPT")),
@@ -834,101 +728,3 @@ def roster_hero(case: Case, internal: str) -> dict:
 
 def money(case: Case) -> int:
     return int(menu_item(case, "money_value").get("label", "0") or 0)
-
-
-def case_touch_roster(case: Case) -> None:
-    """The touch menu over CMenuTeam's roster, in the flow that has one.
-
-    `loadmap <map> 0 1` opens the team menu with Replace; the heroes are
-    levelled past the cost floor and Wolverine is killed first so the roster
-    holds a fallen hero. A tap on him walks the carousel
-    with the menu pad and A revives him for the game's price; a tap on
-    Sabretooth then puts him in the empty party slot.
-    """
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave0.save")
-    case.launch({"X2_FILES": "1"})
-    case.wait_control(60)
-    menu = keyboard_into_gameplay(case, 300)
-    case.check("the run reached gameplay through the PDA",
-               menu.get("active") is False, str(menu.get("menu")))
-    for command in ("runscript act1/genosha/genosha1/temp_addmoney",
-                    "runscript act1/genosha/genosha1/temp_addmoney",
-                    "runscript act1/genosha/genosha1/temp_addmoney",
-                    "runscript awardXPToPlayable(2000000)"):
-        case.http("/console?command=" + command.replace(" ", "%20"))
-        time.sleep(1)
-    dismiss_level_up(case)
-    for command in ('runscript killEntity("wolverine")',
-                    "loadmap act2/jungle/jungle1 0 1"):
-        case.http("/console?command=" + command.replace(" ", "%20"))
-        time.sleep(1)
-    party = wait_settled_touch_menu(case, "team", 120)
-    rows = [r["label"] for r in party.get("rows", [])]
-    case.check("the team menu opened on its party under the touch menu",
-               read_menu(case).get("mode") == 0
-               and party.get("visible") is True, str(rows))
-    case.check("the empty party slot is named as one", "Empty slot" in rows,
-               str(rows))
-    if "Empty slot" not in rows:
-        return
-    case.shot("party")
-    empty = rows.index("Empty slot")
-    if party.get("focused_row") != empty:
-        tap_touch_button(case, party, touch_button(party, "row", "empty slot"))
-        party = wait_game_menu(case, lambda m: m.get("touch_menu", {}).get(
-            "focused_row") == empty, 10).get("touch_menu", {})
-    tap_touch_button(case, party, touch_button(party, "footer", "replace"))
-    roster = wait_game_menu(case, lambda m: m.get("mode") == 1 and m.get(
-        "touch_menu", {}).get("visible") is True, 10).get("touch_menu", {})
-    (case.dir / "roster.json").write_text(json.dumps(roster, indent=1) + "\n")
-    names = [r["label"] for r in roster.get("rows", [])]
-    values = {r["label"]: r.get("value") for r in roster.get("rows", [])}
-    case.check("Replace opened the game's roster under the touch menu",
-               read_menu(case).get("mode") == 1
-               and roster.get("visible") is True, str(names))
-    case.check("its rows are the heroes the cards name, locked ones left out",
-               names == roster_names(case) and "Sabretooth" in names
-               and "Jean Grey" in names and "Professor X" not in names,
-               str(names))
-    case.check("and fallen Wolverine says so beside his level and cost",
-               str(values.get("Wolverine", "")).startswith("Fallen, level"),
-               str(values.get("Wolverine")))
-    if "Wolverine" not in names or "Sabretooth" not in names:
-        return
-    case.shot("roster")
-
-    before = money(case)
-    roster, wolverine = reveal_touch_row(case, "wolverine")
-    case.check("Wolverine's row scrolls into reach", wolverine is not None)
-    if wolverine is None:
-        return
-    case.shot("fallen")
-    tap_touch_button(case, roster, wolverine)
-    wait_game_menu(case, lambda m: not roster_hero(case, "wolverine").get(
-        "fallen", True), 20)
-    after = money(case)
-    print("  money %d -> %d" % (before, after))
-    case.check("a tap on Wolverine revived him in the game",
-               roster_hero(case, "wolverine").get("fallen") is False,
-               str(roster_hero(case, "wolverine")))
-    shown_cost = re.search(r"revive (\d+)$",
-                           str(values.get("Wolverine", "")))
-    case.check("and the game took the revive cost the row showed",
-               shown_cost is not None
-               and before - after == int(shown_cost.group(1)),
-               "%d -> %d, row %r" % (before, after, values.get("Wolverine")))
-    case.shot("revived")
-
-    roster, sabretooth = reveal_touch_row(case, "sabretooth")
-    if sabretooth is None:
-        return
-    tap_touch_button(case, roster, sabretooth)
-    party = wait_game_menu(case, lambda m: m.get("mode") == 0 and m.get(
-        "touch_menu", {}).get("visible") is True, 20).get("touch_menu", {})
-    rows = [r["label"] for r in party.get("rows", [])]
-    case.check("a tap on Sabretooth put him in the empty slot",
-               read_menu(case).get("mode") == 0 and len(rows) > empty
-               and rows[empty] == "Sabretooth", str(rows))
-    case.shot("replaced")
-    case.check("and the game is still running", case.alive())

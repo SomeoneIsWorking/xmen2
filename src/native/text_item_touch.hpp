@@ -1,6 +1,9 @@
 #ifndef X2_TEXT_ITEM_TOUCH_HPP
 #define X2_TEXT_ITEM_TOUCH_HPP
 
+#include "../presentation/retail_scene_plane.hpp"
+
+#include <cstdint>
 #include <string_view>
 
 namespace x2::native {
@@ -17,6 +20,9 @@ bool text_is_pad_hint(std::string_view menu_class, std::string_view text);
    tabs of the shop, stash, review, danger room and world map, the world
    map's point rows, and the rows of the main menu and the PDA. */
 bool text_has_finger_area(std::string_view menu_class, std::string_view name);
+
+/* The middle of the raw box a menu's onMouse tests a text item with. */
+presentation::ScenePoint text_item_raw_centre(std::uint32_t self);
 
 } // namespace x2::native
 

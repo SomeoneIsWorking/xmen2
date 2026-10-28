@@ -34,6 +34,9 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 2>
         {"CMenuTeam", "$MENU_DETAILS"},
     }};
 
+/* The pad binds it to RB (FUN_00619c40, binding row 10). */
+constexpr std::string_view kDropToken = "$MENU_DROP";
+
 } // namespace
 
 bool menu_handles_token(std::string_view menu_class, std::string_view token) {
@@ -53,6 +56,13 @@ std::optional<MenuAction> menu_token_action(std::string_view text) {
     }
   }
   return std::nullopt;
+}
+
+std::optional<MenuAction> touch_token_action(std::string_view text) {
+  if (text.find(kDropToken) == std::string_view::npos) {
+    return std::nullopt;
+  }
+  return MenuAction::drop;
 }
 
 std::string menu_token_label(std::string_view text) {

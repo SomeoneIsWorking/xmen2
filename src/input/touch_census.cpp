@@ -94,11 +94,6 @@ void touch_census_report(const char *tag, int has_window, int touch_devices,
       x2_gameplay_control_name(
           (int)x2_gameplay_control_state(guest_clock_now_s())),
       g_census.pointer_refused);
-  lucent_log_info("touch",
-                  "%s%lu contact event(s) went to the touch menu; it delivered "
-                  "%lu retail click(s) and %lu menu pad tap(s)",
-                  prefix, g_census.touch_menu_contacts,
-                  g_census.touch_menu_clicks, g_census.touch_menu_pad_taps);
   lucent_log_info(
       "touch",
       "%s%lu zone action(s) routed; held zones let go %lu time(s): %lu with "
