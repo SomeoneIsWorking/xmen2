@@ -8,6 +8,8 @@
 #include "../presentation/hud_geometry.h"
 #include "../presentation/hud_layout.h"
 #include "guest_body.h"
+#include "guest_call.hpp"
+#include "guest_modules.h"
 #include "hud_portrait_position.h"
 #include "settings_store.h"
 #include "touch_menu_source.hpp"
@@ -55,6 +57,8 @@ static x2::presentation::HudRegions g_regions;
 static float g_menu_row_top = -1.0f;
 /* Inside the message draw while its bottom band holds the use prompt alone. */
 static int g_prompt_scope;
+/* A submit the port makes itself, drawn as it is given. */
+static int g_own_submit;
 static unsigned long g_groups[4], g_total[4], g_sprites, g_texts, g_matrices;
 static unsigned long g_sprite_calls, g_text_calls, g_matrix_calls;
 static unsigned g_trace_mask;
@@ -298,31 +302,64 @@ enum {
   MESSAGE_RECORDS = 0x21ae6u * 4u,
   MESSAGE_STRIDE = 0x15cu,
   MESSAGE_POOL = 10,
+  MESSAGE_TEXT = 0x24u,
+  MESSAGE_TEXT_BYTES = 0x100u,
   MESSAGE_BACKDROP_ICON = 0x1bu
 };
-/* Added to the band's alpha while a finger is on it. */
-static constexpr float kPromptHeldAlpha = 0.35f;
+/* The menus' button look: an orange frame round a dark fill, the fill lit
+   while a finger is on it. */
+static constexpr float kPromptFrame[4] = {0.95f, 0.45f, 0.08f, 0.95f};
+static constexpr float kPromptFill[4] = {0.30f, 0.07f, 0.03f, 0.90f};
+static constexpr float kPromptHeldFill[4] = {0.85f, 0.32f, 0.06f, 0.95f};
+/* The frame's width as a share of a finger. */
+static constexpr float kPromptFrameShare = 0.06f;
 
-static int use_prompt_alone(uint32_t gui) {
+/* The record of player one's prompt when it is the band's only line, or 0. */
+static uint32_t use_prompt_alone(uint32_t gui) {
   const uint32_t prompt = RD32(USE_PROMPT_HANDLE);
   int bottom_lines = 0;
-  int found = 0;
+  uint32_t found = 0;
   uint32_t index = RD32(gui + MESSAGE_HEAD);
   for (int i = 0; i < MESSAGE_POOL && index < (uint32_t)MESSAGE_POOL; ++i) {
     const uint32_t record = gui + MESSAGE_RECORDS + index * MESSAGE_STRIDE;
     if (RD8(record + 0x20u) && RD8(record + 0x158u) == 0) {
       ++bottom_lines;
-      found |= RD32(record + 0x124u) == prompt;
+      if (RD32(record + 0x124u) == prompt)
+        found = record;
     }
     index = RD32(record);
   }
-  return found && bottom_lines == 1;
+  return bottom_lines == 1 ? found : 0;
+}
+
+/* The prompt's words without its leading button token ("$GUARD1 Use ..."):
+   on touch the band itself is the button. */
+static void drop_button_token(uint32_t text, uint8_t *saved) {
+  for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
+    saved[i] = RD8(text + i);
+  if (saved[0] != '$')
+    return;
+  uint32_t words = 0;
+  while (words < MESSAGE_TEXT_BYTES && saved[words] && saved[words] != ' ')
+    ++words;
+  while (words < MESSAGE_TEXT_BYTES && saved[words] == ' ')
+    ++words;
+  for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
+    WR8(text + i, words + i < MESSAGE_TEXT_BYTES ? saved[words + i] : 0);
 }
 
 static void message_draw(CPU *cpu) {
-  g_prompt_scope = x2::input::touch_runtime_overlay_visible() &&
-                   use_prompt_alone(cpu->reg[kX86pEcx]) && prepare_space();
+  const uint32_t record = x2::input::touch_runtime_overlay_visible()
+                              ? use_prompt_alone(cpu->reg[kX86pEcx])
+                              : 0;
+  g_prompt_scope = record != 0 && prepare_space();
+  uint8_t saved[MESSAGE_TEXT_BYTES];
+  if (g_prompt_scope)
+    drop_button_token(record + MESSAGE_TEXT, saved);
   x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
+  if (g_prompt_scope)
+    for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
+      WR8(record + MESSAGE_TEXT + i, saved[i]);
   g_prompt_scope = 0;
 }
 
@@ -335,7 +372,8 @@ static void prompt_band_submit(CPU *cpu) {
   float old_position[3], old_size[2];
   read_floats(position, old_position, 3);
   read_floats(size, old_size, 2);
-  const float old_alpha = (float)RDF32(colour + 12u);
+  float old_colour[4];
+  read_floats(colour, old_colour, 4);
   if (!plane) {
     x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
     return;
@@ -344,17 +382,34 @@ static void prompt_band_submit(CPU *cpu) {
       x2::input::SceneBox{old_position[0], old_position[2] - old_size[1],
                           old_position[0] + old_size[0], old_position[2]},
       x2::input::menu_finger_units(*plane));
-  const float point[3] = {button.left, old_position[1], button.top};
-  const float dimensions[2] = {button.width(), button.height()};
-  write_floats(position, point, 3);
-  write_floats(size, dimensions, 2);
+  const float frame = kPromptFrameShare * x2::input::menu_finger_units(*plane);
   int held = 0;
-  if (x2::input::touch_runtime_use_prompt(NULL, &held) && held)
-    WRF32(colour + 12u, fminf(1.0f, old_alpha + kPromptHeldAlpha));
+  const bool lit = x2::input::touch_runtime_use_prompt(NULL, &held) && held;
+  const float outer[3] = {button.left, old_position[1], button.top};
+  const float outer_size[2] = {button.width(), button.height()};
+  write_floats(position, outer, 3);
+  write_floats(size, outer_size, 2);
+  write_floats(colour, kPromptFrame, 4);
+  {
+    const uint32_t esp = cpu->reg[kX86pEsp];
+    g_own_submit = 1;
+    x2::guest::GuestCall(*cpu).thiscall(
+        x2::native::exe_linked(SPRITE_SUBMIT), cpu->reg[kX86pEcx],
+        {RD32(esp + 4u), RD32(esp + 8u), RD32(esp + 12u), RD32(esp + 16u),
+         RD32(esp + 20u), RD32(esp + 24u), RD32(esp + 28u), RD32(esp + 32u)});
+    g_own_submit = 0;
+  }
+  const float inner[3] = {button.left + frame, old_position[1],
+                          button.top - frame};
+  const float inner_size[2] = {button.width() - 2.0f * frame,
+                               button.height() - 2.0f * frame};
+  write_floats(position, inner, 3);
+  write_floats(size, inner_size, 2);
+  write_floats(colour, lit ? kPromptHeldFill : kPromptFill, 4);
   x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
   write_floats(position, old_position, 3);
   write_floats(size, old_size, 2);
-  WRF32(colour + 12u, old_alpha);
+  write_floats(colour, old_colour, 4);
   g_regions.use_prompt = x2::presentation::hud_output_box(
       g_space, g_viewport.width, g_viewport.height,
       x2::presentation::HudSpace{button.left, button.top, button.width(),
@@ -396,6 +451,10 @@ static void portrait_draw(CPU *cpu) {
 }
 
 static void sprite_submit(CPU *cpu) {
+  if (g_own_submit) {
+    x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
+    return;
+  }
   ++g_sprite_calls;
   if (g_prompt_scope &&
       RD32(cpu->reg[kX86pEsp] + 24u) == (uint32_t)MESSAGE_BACKDROP_ICON) {
