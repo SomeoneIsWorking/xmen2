@@ -24,6 +24,8 @@ from live_menu import (footer_button, keyboard_into_gameplay, menu_item,
 PAD_MAP = "act1/genosha/genosha1"
 ADD_MONEY = "act1/genosha/genosha1/temp_addmoney"
 HEROES = 4
+# kAutosaveCooldownSeconds (src/save/autosave_policy.h).
+COOLDOWN_SECONDS = 10.0
 OFFSETS = ((0, 0), (0, 60), (-60, 0), (0, -60))
 AWAY = (2700.0, 3400.0, -115.0)
 BEHIND = (2680.0, 4271.0, -119.0)
@@ -84,18 +86,18 @@ def place(case: Case, at: tuple[float, float, float],
 
 
 def hop(case: Case, at: tuple[float, float, float]) -> None:
-    """Every hero around `at`, twice, with short gaps, so a step off and back
-    on fits inside the autosave cooldown."""
+    """Every hero around `at` with short gaps, so a step off and back on fits
+    inside the autosave cooldown."""
     lines = []
     for hero in range(1, HEROES + 1):
         x, y = OFFSETS[hero - 1]
         lines += ["setPosY('_HERO%d_',%d)" % (hero, at[1] + y),
                   "setPosX('_HERO%d_',%d)" % (hero, at[0] + x),
                   "setPosZ('_HERO%d_',%d)" % (hero, at[2])]
-    for line in lines * 2:
+    for line in lines:
         case.http("/console?command=runscript%20" + urllib.parse.quote(line))
-        time.sleep(0.1)
-    time.sleep(1.0)
+        time.sleep(0.05)
+    time.sleep(0.5)
 
 
 def put_party_on_pad(case: Case) -> dict:
@@ -235,34 +237,47 @@ def case_extraction_free(case: Case) -> None:
                "%s restores %d" % (fallen(left), restores(case)))
     put_party_on_pad(case)
     clear_cinematic(case)
-    again = wait_full(case)
     case.check("stepping back onto the pad autosaves again",
                wait_pad_autosaves(case, 2), autosave_lines(case))
+    again = party(case)
+    revived = case.log_text().count(
+        "free: restored 4 party heroes (1 revived)")
     case.check("stepping back onto the pad restores the party again",
-               full(again) and restores(case) == 2,
-               "restores %d %s" % (restores(case), again.get("heroes")))
+               restores(case) == 2 and revived == 2 and not fallen(again),
+               "restores %d, %d revived restores, fallen %s" % (
+                   restores(case), revived, fallen(again)))
     pad = party(case)["pads"][0]
     off = (pad["x"], pad["y"] + 900, pad["z"] + 4)
     on = (pad["x"], pad["y"], pad["z"] + 4)
     hop(case, off)
     hop(case, on)
-    case.check("a touch after the cooldown autosaves",
-               wait_pad_autosaves(case, 3), autosave_lines(case))
-    started = time.monotonic()
     hop(case, off)
     hop(case, on)
-    hopped = time.monotonic() - started
     time.sleep(4)
-    case.check("stepping off and back on within the cooldown takes no save",
-               hopped < 8.0 and pad_autosaves(case) == 3
-               and "within the autosave cooldown" in case.log_text(),
-               "%.1fs %s" % (hopped, autosave_lines(case)))
+    touches = pad_touches(case)
+    case.check("every pad touch saved exactly when the cooldown had run out",
+               bool(touches) and all(
+                   taken == (since < 0 or since >= COOLDOWN_SECONDS)
+                   for since, taken in touches)
+               and pad_autosaves(case) == sum(t for _, t in touches),
+               str(touches))
+    case.check("a touch inside the cooldown was ignored",
+               any(not taken for _, taken in touches), str(touches))
     case.shot("free-after")
 
 
 def autosave_lines(case: Case) -> str:
     return str([line for line in case.log_text().splitlines()
                 if "[autosave]" in line])
+
+
+def pad_touches(case: Case) -> list[tuple[float, bool]]:
+    """(guest seconds since the last pad checkpoint, whether it was taken)."""
+    return [(float(since), verdict == "checkpoint scheduled")
+            for since, verdict in re.findall(
+                r"\[autosave\] extraction pad (-?[\d.]+)s after the last: "
+                r"(checkpoint scheduled|within the autosave cooldown)",
+                case.log_text())]
 
 
 def pad_autosaves(case: Case) -> int:
