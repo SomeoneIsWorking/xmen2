@@ -61,6 +61,20 @@ SCENE_HEIGHT = 384.0
 # CMenuItemSkills draws its first row this far below its box's top (measured:
 # a tap there selects the row).
 SKILL_ROWS_DOWN = 67.0
+# The least clear space between a card's name and its value, scene units.
+TEXT_GAP = 3.0
+# The share of an option-art button's width its slanted right end covers at
+# the text's height (measured: 0.11 to 0.14 in 16:9 screenshots).
+ART_SLANT = 0.14
+# A case named with one of these suffixes runs in a window of that aspect:
+# 4:3, a 1.52 tablet and a 20:9 phone; 16:9 without one.
+WINDOWS = {
+    "-4x3": (960, 720),
+    "-tablet": (1216, 800),
+    "-20x9": (1600, 720),
+}
+# The cases run at every aspect.
+ASPECT_CASES = ("touch-team-stats", "touch-roster")
 
 
 def console(case: Case, command: str) -> None:
@@ -68,8 +82,20 @@ def console(case: Case, command: str) -> None:
     time.sleep(0.5)
 
 
+def prepare_touch_profile(case: Case) -> None:
+    """A Continue boot with touch controls, in the window the case's name
+    asks for."""
+    conf = ["boot.mode=continue", "input.touch_controls=2"]
+    window = next((size for suffix, size in WINDOWS.items()
+                   if case.name.endswith(suffix)), None)
+    if window:
+        conf += ["video.width=%d" % window[0], "video.height=%d" % window[1],
+                 "video.mode=windowed"]
+    case.prepare_profile(conf)
+
+
 def start_levelled(case: Case, extra: tuple[str, ...] = ()) -> bool:
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    prepare_touch_profile(case)
     case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
@@ -197,6 +223,57 @@ def check_column(case: Case, menu: dict, what: str) -> None:
                and b["area"]["bottom"] < a["area"]["top"]]
     case.check("and no column button overlaps another", not overlap,
                str(overlap))
+    check_lettering(case, buttons, what)
+    check_footers(case, menu, what)
+
+
+def inside(inner: dict, outer: dict) -> bool:
+    return (outer["left"] <= inner["left"] and inner["right"] <= outer["right"]
+            and outer["bottom"] <= inner["bottom"]
+            and inner["top"] <= outer["top"])
+
+
+def overlaps(a: dict, b: dict) -> bool:
+    return (a["left"] < b["right"] and b["left"] < a["right"]
+            and a["bottom"] < b["top"] and b["bottom"] < a["top"])
+
+
+def art_inside(area: dict) -> dict:
+    """The part of a button's area its option art's panel fills: short of
+    the slanted right end."""
+    width = area["right"] - area["left"]
+    return dict(area, right=area["right"] - ART_SLANT * width)
+
+
+def check_lettering(case: Case, buttons: list[dict], what: str) -> None:
+    """Each column button's letters land inside its art's panel, and a
+    card's name ends a clear gap short of its value."""
+    lettered = [b for b in buttons if "name_text" in b]
+    outside = [b.get("name") for b in lettered
+               if not inside(b["name_text"], art_inside(b["area"]))
+               or ("value_text" in b
+                   and not inside(b["value_text"], art_inside(b["area"])))]
+    case.check("the %s column's text is inside its buttons" % what,
+               bool(lettered) and not outside, str(outside))
+    jammed = ["%s %.1f" % (b.get("name"),
+                           b["value_text"]["left"] - b["name_text"]["right"])
+              for b in lettered if "value_text" in b
+              and b["value_text"]["left"] - b["name_text"]["right"]
+              < TEXT_GAP]
+    case.check("and each card's name stands clear of its value", not jammed,
+               str(jammed))
+
+
+def check_footers(case: Case, menu: dict, what: str) -> None:
+    """The footer prompts' finger buttons do not overlap one another."""
+    footers = [(menu_text(t["label"]), item_button(menu, t).get("area"))
+               for t in menu.get("texts", [])
+               if t["name"].startswith("desctext")]
+    footers = [(label, area) for label, area in footers if label and area]
+    overlap = [(a[0], b[0]) for i, a in enumerate(footers)
+               for b in footers[i + 1:] if overlaps(a[1], b[1])]
+    case.check("the %s screen's %d footer buttons are disjoint"
+               % (what, len(footers)), not overlap, str(overlap))
 
 
 def case_touch_team(case: Case) -> None:
@@ -229,6 +306,7 @@ def case_touch_team(case: Case) -> None:
     heroes = [item_in(items, n).get("label") for n in PARTY]
     print("  party: %s" % heroes)
     case.shot("team")
+    check_footers(case, items, "party")
     selected = lit_hero(items)
     target = PARTY[1] if selected != PARTY[1] else PARTY[0]
     tap_menu_item(case, item_in(items, target))
@@ -465,7 +543,8 @@ def case_touch_team_gear(case: Case) -> None:
     case.check("as finger cards", len(list_cards(case, "equipment_inv")) >= 1,
                str(list_cards(case, "equipment_inv")))
     case.shot("gear-pieces")
-    target = [menu_text(e) for e in pieces["entries"]].index(bought[1])
+    check_footers(case, read_menu(case), "gear pieces")
+    target =[menu_text(e) for e in pieces["entries"]].index(bought[1])
     select_list_entry(case, target, "equipment_inv")
     tap_list_entry(case, target, "equipment_inv")
     equipped = wait_list(case, lambda b: any(
@@ -475,6 +554,7 @@ def case_touch_team_gear(case: Case) -> None:
                    for e in equipped.get("entries", [])),
                str(equipped.get("entries")))
     case.shot("gear-equipped")
+    check_footers(case, read_menu(case), "gear slot")
     case.check("the slot offers Unequip", bool(footer_word(
         read_menu(case), "unequip")), str(read_menu(case).get("desctext")))
     tap_footer_word(case, "unequip")
@@ -653,6 +733,7 @@ def case_touch_team_skill_details(case: Case) -> None:
                == skill.lower(), "%r vs %r" % (labels.get("skill_title"),
                                                skill))
     case.shot("skill-details")
+    check_footers(case, read_menu(case), "skill details")
     tap_footer_button(case, "$MENU_DETAILS")
     back = wait_game_menu(case, lambda m: m.get("mode") == 3, 10)
     case.check("a second tap closed it, back on the skill list",
@@ -690,7 +771,7 @@ def case_touch_roster(case: Case) -> None:
     holds a fallen hero. A tap on the roster's lower card steps it, Replace
     revives fallen Wolverine for the game's price, then puts Sabretooth in
     the empty party slot."""
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    prepare_touch_profile(case)
     case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
@@ -715,6 +796,7 @@ def case_touch_roster(case: Case) -> None:
     if empty is None:
         return
     case.shot("party")
+    check_footers(case, items, "party")
     if lit_hero(items) != empty:
         tap_menu_item(case, item_in(items, empty))
         wait_game_menu(case, lambda m: lit_hero(read_menu_items(case))
@@ -731,6 +813,7 @@ def case_touch_roster(case: Case) -> None:
         return
     time.sleep(1.0)
     case.shot("roster")
+    check_footers(case, read_menu(case), "roster")
     before = roster_middle(case)
     tap_menu_item(case, menu_item(case, "roster_summary03"))
     stepped = wait_game_menu(case, lambda m: roster_middle(case) != before, 5)

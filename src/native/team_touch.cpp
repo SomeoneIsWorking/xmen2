@@ -14,6 +14,7 @@
  * prompt is held stays open after the finger lifts, until the next tap on it.
  */
 #include "team_touch.hpp"
+#include "../input/menu_touch_gaps.hpp"
 #include "../input/team_touch_layout.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_targets.hpp"
@@ -81,15 +82,13 @@ constexpr std::string_view kLitArt = "ui/models/m_pda_option_focus";
 constexpr float kSettled = 0.999F;
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
-/* Text inset from a card's ends, in fingers, and the share of its width the
-   art's slanted right end takes. */
+/* The space text keeps from a card's left end, from the art's slanted right
+   end and between a name and its value, in fingers; and the share of a
+   card's width that slanted end takes. */
 constexpr float kTextPad = 0.15F;
 constexpr float kArtSlant = 0.12F;
 /* A remove or add sign's height, in fingers. */
 constexpr float kSignText = 0.7F;
-/* A card's name takes its share of the letters, within these bounds. */
-constexpr float kNameShareLeast = 0.3F;
-constexpr float kNameShareMost = 0.75F;
 
 /* A row the game walks with Up/Down: the label onMouse hit-tests and the
    value beside it. */
@@ -173,26 +172,6 @@ bool team_menu(std::uint32_t menu) {
              RD32(menu), x2::native::guest_exe_base())) == "CMenuTeam";
 }
 
-/* A finger in scene units. */
-float finger_units(const x2::presentation::RetailScenePlane &plane) {
-  return x2::input::menu_finger_target(plane) * plane.height() /
-         static_cast<float>(plane.client_height());
-}
-
-/* Letters a player sees: a `$TOKEN` draws as one icon. */
-std::size_t shown_letters(std::string_view text) {
-  std::size_t count = 0;
-  for (std::size_t i = 0; i < text.size(); ++i) {
-    if (text[i] == '$') {
-      while (i + 1 < text.size() && text[i + 1] != ' ' && text[i + 1] != '(') {
-        ++i;
-      }
-    }
-    ++count;
-  }
-  return count;
-}
-
 /* A selected skill's ranks, "owned/ranks", from its record's glyphs; empty
    for a skill not yet open, whose record names what it needs. */
 std::string rank_text(std::string_view glyphs) {
@@ -217,8 +196,6 @@ struct Part {
   std::string name;
   std::string value;
   bool lit = false;
-  /* The name's share of the text's width. */
-  float split = 1.0F;
   /* The text's height in fingers, and the column's shared scale for it, or
      0 to fit the part alone. */
   float text = x2::input::kCardText;
@@ -229,31 +206,34 @@ struct Part {
   std::uint32_t walk_to = 0u;
 };
 
-/* Where a card's text goes: the name from the left, the value at the
-   right. */
+/* Where a card's text goes at `scale`: the value at the right as wide as
+   it draws, the name from the left up to a pad short of it. */
 struct TextSpans {
   SceneBox name;
   SceneBox value;
 };
 
-TextSpans text_spans(const Part &part, float finger) {
+/* The text as drawn: the spans its lines are put in, and where its
+   letters land in them. */
+struct Lettering {
+  TextSpans spans;
+  SceneBox name;
+  std::optional<SceneBox> value;
+};
+
+TextSpans text_spans(x2::guest::GuestCall &call, std::uint32_t box,
+                     std::uint32_t line, const Part &part, float finger,
+                     float scale) {
   const float pad = kTextPad * finger;
   const float left = part.box.left + pad;
-  const float inner =
-      part.box.width() - pad - std::max(pad, kArtSlant * part.box.width());
-  const float split = left + part.split * inner;
-  return {{left, part.box.bottom, split - pad, part.box.top},
-          {split + pad, part.box.bottom, left + inner, part.box.top}};
-}
-
-float name_share(std::string_view name, std::string_view value) {
-  if (value.empty()) {
-    return 1.0F;
+  const float right = part.box.right - kArtSlant * part.box.width() - pad;
+  if (part.value.empty()) {
+    return {{left, part.box.bottom, right, part.box.top}, {}};
   }
-  const auto letters = static_cast<float>(shown_letters(name));
-  return std::clamp(
-      letters / (letters + static_cast<float>(shown_letters(value) + 1u)),
-      kNameShareLeast, kNameShareMost);
+  const float value_left =
+      right - menu_text::width(call, box, line, part.value, scale);
+  return {{left, part.box.bottom, value_left - pad, part.box.top},
+          {value_left, part.box.bottom, right, part.box.top}};
 }
 
 class TeamTouch {
@@ -280,30 +260,37 @@ public:
         (RD8(self + item::kFlags) & x2::menu::kItemHidden) != 0u) {
       return;
     }
-    const float finger = finger_units(*plane);
+    const float finger = x2::input::menu_finger_units(*plane);
+    const x2::guest::GuestBlock line(menu_text::kLineBytes);
+    if (!line) {
+      return;
+    }
     std::vector<Part> parts = parts_for(call, menu, self, owner.name, finger);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
     const float depth = static_cast<float>(s16(self + item::kDepth));
     for (std::size_t i = 0; i < parts.size(); ++i) {
       Part &part = parts[i];
+      Art &art = art_for(call, vectors, owner, i);
+      if (part.scale <= 0.0F) {
+        part.scale = alone_scale(call, box, part, finger, art);
+      }
+      const Lettering text = lettering(call, box, line.address(), part, finger);
       if (part.target) {
+        part.target->name_text = text.name;
+        part.target->value_text = text.value;
         targets.put(*part.target);
         if (targets.take_tap(part.box)) {
           tapped(menu, part);
         }
       }
       const bool lit = part.lit || targets.pressed(part.box);
-      Art &art = art_for(call, vectors, owner, i);
       const std::uint32_t entity = lit ? art.lit : art.plain;
       menu_scene::stretch(call, vectors, entity, lit ? lit_art_ : plain_art_,
                           part.box, depth + kButtonDepth);
       menu_scene::show_phase(call, entity, kSettled);
       menu_scene::attach(call, entity);
       owner.attached.push_back(entity);
-      if (part.scale <= 0.0F) {
-        part.scale = alone_scale(call, box, part, finger, art);
-      }
-      words(call, vectors, self, box, part, lit, finger);
+      words(call, vectors, self, box, line.address(), part, text.spans, lit);
     }
   }
 
@@ -494,7 +481,6 @@ private:
     Part row;
     row.name = text_of(call, self);
     row.value = text_of(call, item_named(call, menu, at->value));
-    row.split = name_share(row.name, row.value);
     row.lit = current;
     row.walk_to = self;
     if (!stats) {
@@ -559,7 +545,6 @@ private:
     if (last_tab != std::string::npos) {
       row.value = rank_text(std::string_view(record).substr(last_tab + 1u));
     }
-    row.split = name_share(row.name, row.value);
     row.scale = column_scale(call, RD32(self + item::kTextBox), skill_, 1, 0,
                              row, finger);
     Part remove = command(buttons[0], "-", MenuAction::subtract);
@@ -611,7 +596,6 @@ private:
         shown.name = row.substr(0, tab);
         shown.value =
             tab == std::string::npos ? std::string() : row.substr(tab + 1u);
-        shown.split = name_share(shown.name, shown.value);
         if (!fits(call, box, line.address(), shown, finger, scale)) {
           return false;
         }
@@ -644,11 +628,9 @@ private:
   static bool fits(x2::guest::GuestCall &call, std::uint32_t box,
                    std::uint32_t line, const Part &part, float finger,
                    float scale) {
-    const TextSpans spans = text_spans(part, finger);
+    const TextSpans spans = text_spans(call, box, line, part, finger, scale);
     return menu_text::wrap(call, box, line, part.name, spans.name.width(),
-                           scale) &&
-           (part.value.empty() || menu_text::wrap(call, box, line, part.value,
-                                                  spans.value.width(), scale));
+                           scale);
   }
 
   /* The menu's item named `name` (FUN_005adc10), remembered per menu. */
@@ -683,28 +665,44 @@ private:
                             text, menu_text::kLineBytes));
   }
 
+  /* Where the part's name lands, centred when it has no value and from
+     its span's left otherwise, and its value; a line's height tall about
+     the part's middle. */
+  static Lettering lettering(x2::guest::GuestCall &call, std::uint32_t box,
+                             std::uint32_t line, const Part &part,
+                             float finger) {
+    Lettering out;
+    out.spans = text_spans(call, box, line, part, finger, part.scale);
+    const float half = 0.5F * menu_text::line_height(call, box) * part.scale;
+    const float middle = 0.5F * (part.box.bottom + part.box.top);
+    const float wide = menu_text::width(call, box, line, part.name, part.scale);
+    const SceneBox &name = out.spans.name;
+    const float left =
+        part.value.empty() ? 0.5F * (name.left + name.right - wide) : name.left;
+    out.name = {left, middle - half, left + wide, middle + half};
+    if (!part.value.empty()) {
+      out.value = SceneBox{out.spans.value.left, middle - half,
+                           out.spans.value.right, middle + half};
+    }
+    return out;
+  }
+
   /* The part's name, centred when it has no value, and its value at the
      right, in the item's font. */
   static void words(x2::guest::GuestCall &call, menu_scene::Vectors &vectors,
-                    std::uint32_t self, std::uint32_t box, const Part &part,
-                    bool lit, float finger) {
-    const x2::guest::GuestBlock line(menu_text::kLineBytes);
-    if (!line) {
-      return;
-    }
+                    std::uint32_t self, std::uint32_t box, std::uint32_t line,
+                    const Part &part, const TextSpans &spans, bool lit) {
     const std::uint32_t colour =
         menu_scene::style_color(call, vectors, RD32(self + item::kStyle),
                                 lit ? 1.0F : 0.0F, true, self);
-    const TextSpans spans = text_spans(part, finger);
     const std::uint32_t name_align =
         part.value.empty() ? menu_text::kAlignCentre | menu_text::kAlignMiddle
                            : menu_text::kAlignMiddle;
-    line_at(call, self, box, line.address(), part.name, spans.name, part.scale,
+    line_at(call, self, box, line, part.name, spans.name, part.scale,
             name_align, colour);
     if (!part.value.empty()) {
-      line_at(call, self, box, line.address(), part.value, spans.value,
-              part.scale, menu_text::kAlignRight | menu_text::kAlignMiddle,
-              colour);
+      line_at(call, self, box, line, part.value, spans.value, part.scale,
+              menu_text::kAlignRight | menu_text::kAlignMiddle, colour);
     }
   }
 

@@ -34,8 +34,8 @@ vtable-mediated.
 | +0x00| `0x005980f0` | loadFonts                                               |
 | +0x18| `0x00597200` | getRecord(index) -- x3211/run                            |
 | +0x1c| `0x005972a0` | getTexture(index) -> texture object -- x4931/run         |
-| +0x34| `0x00596df0` | setColor-ish state helper -- x538/run                    |
-| +0x38| `0x00597c90` | measureExtent(string, ...) -> float in ST0 -- x645/run   |
+| +0x34| `0x00596df0` | widestLine(string, scale, font) -> float in ST0 -- x538/run |
+| +0x38| `0x00597c90` | wrap(width, string, scale, font, 1) -> height in ST0 -- x645/run |
 | +0x3c| `0x005972d0` | markup tokenizer -- x212/run                             |
 
 * Glyph entry (`record + wchar*0x1c`), named by the loader's own attribute
@@ -45,6 +45,15 @@ vtable-mediated.
 * The measurer reads ONLY bytes (narrow walk); the drawer walks a WIDE
   string and gates on `(wchar & 0xff) == wchar`, so both representations
   agree that glyphs live in 0..255.
+
+## Width: FUN_00596df0
+
+`__thiscall(this = table, string, scale, font)`, `ret 0xc`. The same
+character walk as the wrap below, without breaking: each glyph's advance
+times `scale` is added to the pen, a newline restarts it, and the widest
+line times the display object's `+0x40` (`FUN_005f6df0`, vtable `+0x5c`) is
+returned in ST0. Live, at 4:3, 16:9, 1216x800 and 20:9 that is the drawn
+width in menu scene units, within a few pixels of the screenshot.
 
 ## Measurement: FUN_00597c90
 

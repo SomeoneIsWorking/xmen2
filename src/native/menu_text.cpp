@@ -6,6 +6,7 @@
 #include "x86rt_native.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace x2::native::menu_text {
@@ -17,9 +18,10 @@ namespace item = menu_item;
    to the item, z the bottom of h; and its font. */
 constexpr std::uint32_t kTextLine = 0x005eecf0u;
 constexpr std::uint32_t kTextFont = 0x005ee590u;
-/* The font manager's wrap (width, text, scale, font, 1), the text's height
-   on x87, and "A". */
+/* The font manager's widest line (text, scale, font) and wrap (width, text,
+   scale, font, 1), which breaks only at a space, both on x87, and "A". */
 constexpr std::uint32_t kFonts = 0x00597c20u;
+constexpr std::uint32_t kWidth = 0x34u;
 constexpr std::uint32_t kWrap = 0x38u;
 constexpr std::uint32_t kLineProbe = 0x0069a444u;
 /* The language object; vt+0x18 its code, "e..." for English. */
@@ -44,7 +46,28 @@ float wrapped_height(guest::GuestCall &call, std::uint32_t box,
   return static_cast<float>(call.x87_result());
 }
 
+void copy_line(std::uint32_t out, std::string_view text) {
+  const std::size_t length =
+      std::min<std::size_t>(text.size(), kLineBytes - 4u);
+  std::memcpy(guest_memory_as<char>(out), text.data(), length);
+  WR8(out + static_cast<std::uint32_t>(length), 0u);
+}
+
+float widest_line(guest::GuestCall &call, std::uint32_t box, std::uint32_t text,
+                  float scale) {
+  const std::uint32_t font = call.thiscall(exe_linked(kTextFont), box);
+  const std::uint32_t fonts = call.cdecl_call(exe_linked(kFonts));
+  call.virtual_call(fonts, kWidth, {text, guest::float_bits(scale), font});
+  return static_cast<float>(call.x87_result());
+}
+
 } // namespace
+
+float width(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
+            std::string_view text, float scale) {
+  copy_line(out, text);
+  return widest_line(call, box, out, scale);
+}
 
 float line_height(guest::GuestCall &call, std::uint32_t box) {
   return wrapped_height(call, box, exe_linked(kLineProbe), kWideLine, 1.0F);
@@ -52,13 +75,11 @@ float line_height(guest::GuestCall &call, std::uint32_t box) {
 
 bool wrap(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
           std::string_view text, float width, float scale) {
-  const std::size_t length =
-      std::min<std::size_t>(text.size(), kLineBytes - 4u);
-  std::memcpy(guest_memory_as<char>(out), text.data(), length);
-  WR8(out + static_cast<std::uint32_t>(length), 0u);
-  wrapped_height(call, box, out, width, scale);
+  copy_line(out, text);
+  wrapped_height(call, box, out, std::ceil(width), scale);
   return guest::guest_string(out, kLineBytes).find('\n') ==
-         std::string_view::npos;
+             std::string_view::npos &&
+         widest_line(call, box, out, scale) <= width;
 }
 
 void cut_with_ellipsis(std::uint32_t out) {

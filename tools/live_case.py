@@ -67,6 +67,8 @@ from live_cases_touch_menu import (
 )
 from live_cases_touch_rows import case_touch_menu, case_touch_pda
 from live_cases_touch_team import (
+    ASPECT_CASES,
+    WINDOWS,
     case_touch_roster,
     case_touch_team,
     case_touch_team_ai,
@@ -142,6 +144,9 @@ try:
 except ImportError as exc:
     refuse("visible live cases could not be loaded: %s" % exc)
 
+CASES.update({
+    name + suffix: CASES[name] for name in ASPECT_CASES for suffix in WINDOWS
+})
 CASES.update({
     "live-resolution": case_live_resolution,
     "mouse-click": case_mouse_click,

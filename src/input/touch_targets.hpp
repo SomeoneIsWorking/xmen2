@@ -28,6 +28,10 @@ struct TouchTarget {
   TouchPress press = TouchPress::click;
   /* What a port-drawn button does, for GET /menu; empty for an item's. */
   std::string_view name;
+  /* Where a port-drawn button's name and value letters land, for GET
+     /menu. */
+  std::optional<SceneBox> name_text;
+  std::optional<SceneBox> value_text;
 };
 
 class TouchTargets {
