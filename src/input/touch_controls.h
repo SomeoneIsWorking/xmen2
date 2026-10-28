@@ -175,6 +175,10 @@ public:
   std::span<const ZoneVisual> zones() const { return zones_; }
   // The use prompt's zone while the game draws one; the overlay draws none.
   std::optional<ZoneVisual> use_prompt() const;
+  // Where a box the game draws over the controls goes: `natural` moved clear
+  // of every drawn control, the resting stick ring and the vitals.
+  x2::presentation::Rect
+  clear_of_controls(x2::presentation::Rect natural) const;
   // What the movement ring should draw: its live deflection, -1..1 per axis.
   ThumbStick::Deflection stick_deflection() const {
     return stick_.deflection();

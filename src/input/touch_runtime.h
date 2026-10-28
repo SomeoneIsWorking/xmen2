@@ -106,6 +106,13 @@ int touch_runtime_skip_button(x2::presentation::Rect *rect, int *held);
    when there is none. */
 int touch_runtime_use_prompt(x2::presentation::Rect *rect, int *held);
 
+/* Where a box the game draws in gameplay goes, in output pixels, so that no
+   drawn control covers it: `natural` moved to the nearest clear place.
+   Returns 0 while the gameplay overlay is not drawn, leaving *placed
+   untouched. */
+int touch_runtime_clear_of_controls(x2::presentation::Rect natural,
+                                    x2::presentation::Rect *placed);
+
 /* IS TOUCH THE INPUT THE PLAYER IS USING RIGHT NOW?
  *
  * One answer, two consumers: the on-screen pad and the mobile HUD placement.

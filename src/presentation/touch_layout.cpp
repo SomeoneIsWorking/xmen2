@@ -294,6 +294,73 @@ int layout_build_menu(LayoutViewport v, Rect *out) {
   return 1;
 }
 
+Rect layout_clear_of(LayoutViewport v, Rect natural, const Rect *drawn,
+                     unsigned count) {
+  const auto clear = [&](Rect box, float margin) {
+    for (unsigned i = 0; i < count; ++i) {
+      const Rect grown = {drawn[i].left - margin, drawn[i].top - margin,
+                          drawn[i].right + margin, drawn[i].bottom + margin};
+      if (layout_rects_overlap(box, grown))
+        return false;
+    }
+    return true;
+  };
+  if (!finite_viewport(v) || clear(natural, 0.0F))
+    return natural;
+  const float left = v.safe_left;
+  const float top = v.safe_top;
+  const float right = v.width - v.safe_right;
+  const float bottom = v.height - v.safe_bottom;
+  const float width = natural.right - natural.left;
+  const float height = natural.bottom - natural.top;
+  const float gap = fminf(right - left, bottom - top) * kButtonGap;
+  /* Flush against an obstacle at the gap; the margin is a hair under it so
+     that flush placement counts as clear. */
+  const float margin = gap * 0.99F;
+  Rect best = natural;
+  float best_distance = INFINITY;
+  const auto consider = [&](float x, float y) {
+    const Rect box = {x, y, x + width, y + height};
+    if (box.left < left || box.top < top || box.right > right ||
+        box.bottom > bottom || !clear(box, margin))
+      return;
+    const float dx = x - natural.left;
+    const float dy = y - natural.top;
+    const float distance = dx * dx + dy * dy;
+    if (distance < best_distance) {
+      best_distance = distance;
+      best = box;
+    }
+  };
+  /* Every place the box can stop at: where it is, against a safe edge, or
+     flush beside, above or below something drawn, on each axis. */
+  const auto stop_x = [&](unsigned i) {
+    if (i == 0)
+      return natural.left;
+    if (i == 1)
+      return left;
+    if (i == 2)
+      return right - width;
+    const Rect &d = drawn[(i - 3) / 2];
+    return (i - 3) % 2 ? d.right + gap : d.left - gap - width;
+  };
+  const auto stop_y = [&](unsigned i) {
+    if (i == 0)
+      return natural.top;
+    if (i == 1)
+      return top;
+    if (i == 2)
+      return bottom - height;
+    const Rect &d = drawn[(i - 3) / 2];
+    return (i - 3) % 2 ? d.bottom + gap : d.top - gap - height;
+  };
+  const unsigned stops = 3 + 2 * count;
+  for (unsigned i = 0; i < stops; ++i)
+    for (unsigned j = 0; j < stops; ++j)
+      consider(stop_x(i), stop_y(j));
+  return best;
+}
+
 Rect layout_stick_reach(LayoutViewport viewport, const Rect *slots) {
   const Rect ring = slots[kSlotStick];
   float right = viewport.width * 0.5F;

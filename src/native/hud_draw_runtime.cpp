@@ -302,7 +302,9 @@ enum {
   MESSAGE_RECORDS = 0x21ae6u * 4u,
   MESSAGE_STRIDE = 0x15cu,
   MESSAGE_POOL = 10,
+  MESSAGE_POSITION = 0x10u,
   MESSAGE_TEXT = 0x24u,
+  MESSAGE_TARGET = 0x14cu,
   MESSAGE_TEXT_BYTES = 0x100u,
   MESSAGE_BACKDROP_ICON = 0x1bu
 };
@@ -313,6 +315,14 @@ static constexpr float kPromptFill[4] = {0.30f, 0.07f, 0.03f, 0.90f};
 static constexpr float kPromptHeldFill[4] = {0.85f, 0.32f, 0.06f, 0.95f};
 /* The frame's width as a share of a finger. */
 static constexpr float kPromptFrameShare = 0.06f;
+/* The type-0 line anchor (x, y, z), bottom centre (0059dc00). */
+static constexpr uint32_t kPromptAnchor = 0x0081d798u;
+/* How far the prompt is moved clear of the touch controls, in HUD units (z
+   up): the band's submit measures it and the next message draw moves the
+   anchor its line is laid out from by it. */
+static float g_prompt_shift[2];
+/* The prompt's message record, inside g_prompt_scope. */
+static uint32_t g_prompt_record;
 
 /* The record of player one's prompt when it is the band's only line, or 0. */
 static uint32_t use_prompt_alone(uint32_t gui) {
@@ -353,13 +363,22 @@ static void message_draw(CPU *cpu) {
                               ? use_prompt_alone(cpu->reg[kX86pEcx])
                               : 0;
   g_prompt_scope = record != 0 && prepare_space();
+  g_prompt_record = record;
   uint8_t saved[MESSAGE_TEXT_BYTES];
-  if (g_prompt_scope)
+  float anchor[3];
+  if (g_prompt_scope) {
     drop_button_token(record + MESSAGE_TEXT, saved);
+    read_floats(kPromptAnchor, anchor, 3);
+    const float moved[3] = {anchor[0] + g_prompt_shift[0], anchor[1],
+                            anchor[2] + g_prompt_shift[1]};
+    write_floats(kPromptAnchor, moved, 3);
+  }
   x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
-  if (g_prompt_scope)
+  if (g_prompt_scope) {
+    write_floats(kPromptAnchor, anchor, 3);
     for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
       WR8(record + MESSAGE_TEXT + i, saved[i]);
+  }
   g_prompt_scope = 0;
 }
 
@@ -378,10 +397,37 @@ static void prompt_band_submit(CPU *cpu) {
     x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
     return;
   }
-  const x2::input::SceneBox button = x2::input::text_button(
-      x2::input::SceneBox{old_position[0], old_position[2] - old_size[1],
-                          old_position[0] + old_size[0], old_position[2]},
+  /* The line moves toward its anchor over a few frames: how far it is from
+     where the unmoved anchor puts it. The band follows the line in z, not in
+     x, which is the viewport middle's. */
+  float line[3], target[3];
+  read_floats(g_prompt_record + MESSAGE_POSITION, line, 3);
+  read_floats(g_prompt_record + MESSAGE_TARGET, target, 3);
+  /* No target yet: the line was put on the moved anchor this frame. */
+  const bool targeted =
+      target[0] != 0.0f || target[1] != 0.0f || target[2] != 0.0f;
+  const float moved[2] = {
+      targeted ? line[0] - target[0] + g_prompt_shift[0] : g_prompt_shift[0],
+      targeted ? line[2] - target[2] + g_prompt_shift[1] : g_prompt_shift[1]};
+  const float natural_top = old_position[2] - moved[1];
+  const x2::input::SceneBox natural = x2::input::text_button(
+      x2::input::SceneBox{old_position[0], natural_top - old_size[1],
+                          old_position[0] + old_size[0], natural_top},
       x2::input::menu_finger_units(*plane));
+  const x2::presentation::Rect natural_out = x2::presentation::hud_output_box(
+      g_space, g_viewport.width, g_viewport.height,
+      x2::presentation::HudSpace{natural.left, natural.top, natural.width(),
+                                 natural.height()});
+  x2::presentation::Rect placed_out = natural_out;
+  x2::input::touch_runtime_clear_of_controls(natural_out, &placed_out);
+  g_prompt_shift[0] =
+      (placed_out.left - natural_out.left) * g_space.width / g_viewport.width;
+  g_prompt_shift[1] =
+      (natural_out.top - placed_out.top) * g_space.height / g_viewport.height;
+  /* Drawn round the line where it is now. */
+  const x2::input::SceneBox button{
+      natural.left + moved[0], natural.bottom + moved[1],
+      natural.right + moved[0], natural.top + moved[1]};
   const float frame = kPromptFrameShare * x2::input::menu_finger_units(*plane);
   int held = 0;
   const bool lit = x2::input::touch_runtime_use_prompt(NULL, &held) && held;

@@ -111,6 +111,15 @@ is submitted twice, an orange frame and an inset dark fill (lit while held),
 and for that draw the record's text (`+24`, 0x100 bytes of ASCII such as
 `$GUAR1 Use Trivia Game`) is the words after the leading token, restored after.
 
+The line's position is the record's `+10`. The first layout copies the type's
+anchor (`0081d798 + type*0xc`, built once from the viewport middle,
+`0081d7d4`) into it; later frames write the anchor, less the lines stacked
+above, to `+14c`, and the record's update eases `+10` toward it. The band's z
+follows the lines; its x is always `0081d7d4` less half its width. To move the
+prompt clear of the touch controls, the wrap shifts the type-0 anchor for the
+draw and restores it after, and frames the band round the line where `+10`
+has got to.
+
 ## Portrait position and pointer selection
 
 `005a1650` is CHudCharacter's position getter, called through virtual `+18`.
