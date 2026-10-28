@@ -273,9 +273,13 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   refresh_projection();
 }
 
+/* The page still holds the projected rows: the game reuses it for the
+   result popup that follows a load. */
 static int projection_is_current(uint32_t ui) {
   return g_active && ui == g_ui && dialog_page(ui) == g_page && g_manager &&
-         RD32(g_manager + MANAGER_MODE) == SAVE_MODE_LOAD;
+         RD32(g_manager + MANAGER_MODE) == SAVE_MODE_LOAD &&
+         RD8(g_page + popup::kEntryCount) ==
+             x2::save::load_game_menu_window_count(&g_plan, &g_window);
 }
 
 static int poll_navigation_delta(const CPU *source, uint32_t ui, int *delta) {
@@ -419,6 +423,19 @@ static void x2_override_0049f010(CPU *C) {
 }
 
 } // namespace
+
+std::optional<LoadGameMenuList> load_game_menu_list(uint32_t popup) {
+  if (!projection_is_current(popup))
+    return std::nullopt;
+  return LoadGameMenuList{g_plan.count, g_window.first};
+}
+
+void load_game_menu_show(size_t first, size_t rows) {
+  if (g_active &&
+      x2::save::load_game_menu_window_show(&g_plan, &g_window, first, rows)) {
+    refresh_projection();
+  }
+}
 
 size_t load_game_menu_runtime_report(char *out, size_t capacity) {
   int written;

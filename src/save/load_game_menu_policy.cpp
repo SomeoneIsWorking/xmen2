@@ -94,6 +94,31 @@ int load_game_menu_window_select(const LoadGameMenuPlan *plan,
   return 1;
 }
 
+int load_game_menu_window_show(const LoadGameMenuPlan *plan,
+                               LoadGameMenuWindow *window, size_t first,
+                               size_t rows) {
+  size_t last_first;
+  size_t selected;
+  LoadGameMenuWindow before;
+
+  if (!plan || !window || plan->count == 0u)
+    return 0;
+  before = *window;
+  window->rows = rows == 0u                     ? 1u
+                 : rows > kLoadGameResidentRows ? kLoadGameResidentRows
+                                                : rows;
+  last_first = plan->count > window->rows ? plan->count - window->rows : 0u;
+  window->first = first > last_first ? last_first : first;
+  selected = window->selected < plan->count ? window->selected : 0u;
+  if (selected < window->first)
+    selected = window->first;
+  if (selected >= window->first + window->rows)
+    selected = window->first + window->rows - 1u;
+  window->selected = selected;
+  return before.first != window->first || before.rows != window->rows ||
+         before.selected != window->selected;
+}
+
 size_t load_game_menu_window_count(const LoadGameMenuPlan *plan,
                                    const LoadGameMenuWindow *window) {
   if (!plan || !window)

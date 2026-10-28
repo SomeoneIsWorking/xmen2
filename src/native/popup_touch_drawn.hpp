@@ -8,8 +8,9 @@
 
 namespace x2::native {
 
-/* What the last touch popup draw showed: each card from the page's first shown
-   entry, and each footer button with its words. */
+/* What the last touch popup draw showed: each card from the page's entry
+   `first_shown`, which is list entry `first_entry`, and each footer button
+   with its words. */
 struct PopupTouchButton {
   input::SceneBox box;
   std::string label;
@@ -18,6 +19,7 @@ struct PopupTouchButton {
 struct PopupTouchDrawn {
   bool shown = false;
   int first_shown = 0;
+  int first_entry = 0;
   std::vector<input::SceneBox> cards;
   std::vector<PopupTouchButton> buttons;
 };
