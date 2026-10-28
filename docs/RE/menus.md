@@ -509,8 +509,10 @@ these offsets; `x2::menu::PopupSnapshot` is this page.
   1); its art spans about x 77..437, z 91..321. `FUN_005e91c0`/`FUN_005e93b0`
   attach and detach them to the menu scene (`CMenuMgr +0x108`/`+0x10c`),
   `FUN_005e90d0`/`FUN_005e92d0` to the world scene (`0x0059ee20` `+0x24`/
-  `+0x28`); `p+0x4056` bit 0 says they are attached. There is no tint per
-  entity.
+  `+0x28`); `p+0x4056` bit 0 says they are attached. Vtable slot 2
+  (`FUN_005e9070`) releases all four through `FUN_00575980(&entity)` and
+  zeroes them; an entity held past it points at freed art. There is no tint
+  per entity.
 
 - **Draw** `FUN_005ea9e0`: the title and each shown entry go through the text
   box's line call `FUN_004552f0`, which adds a line with `FUN_005ef270(lines,

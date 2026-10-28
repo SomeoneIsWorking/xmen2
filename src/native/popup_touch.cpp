@@ -54,6 +54,9 @@ constexpr std::uint32_t kWorldAttach = 0x24u;
 constexpr std::uint32_t kWorldDetach = 0x28u;
 /* FUN_005e9510(name, &entity): one entity of a model's art. */
 constexpr std::uint32_t kLoadModel = 0x005e9510u;
+/* Vtable slot 2 (FUN_005e9070): the popup releasing its models, after which
+   their art is gone. */
+constexpr std::uint32_t kReleaseModels = 0x005e9070u;
 constexpr std::uint32_t kBarArtName = 0x006a32d4u;
 /* The text line call (lines, x, z, width, style, scale, flags, colour,
    format, ...) and its "%s". */
@@ -132,6 +135,16 @@ public:
       if (bar != 0u) {
         scene_call(call, scene, false, bar);
       }
+    }
+  }
+
+  /* The bars go with the popup's own models; the next attach loads them
+     again. */
+  void release(const CPU &cpu) {
+    x2::guest::GuestCall call(cpu);
+    for (std::uint32_t &bar : bars_) {
+      menu_scene::release(call, bar);
+      bar = 0u;
     }
   }
 
@@ -491,6 +504,11 @@ extern "C" void x2_override_005ea2c0(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", kPopupOnMouse);
 }
 
+extern "C" void x2_override_005e9070(CPU *cpu) {
+  g_popup_touch.release(*cpu);
+  x86_guest_body(cpu, "XMen2.exe", kReleaseModels);
+}
+
 extern "C" void x2_override_005e91c0(CPU *cpu) {
   scene_hook(cpu, kAttachMenu, Scene::menu, true);
 }
@@ -510,6 +528,7 @@ extern "C" void x2_override_005e92d0(CPU *cpu) {
 __attribute__((constructor)) static void x2_popup_touch_register(void) {
   x86_register_override("XMen2.exe", kPopupDraw, x2_override_005ea9e0);
   x86_register_override("XMen2.exe", kPopupOnMouse, x2_override_005ea2c0);
+  x86_register_override("XMen2.exe", kReleaseModels, x2_override_005e9070);
   x86_register_override("XMen2.exe", kAttachMenu, x2_override_005e91c0);
   x86_register_override("XMen2.exe", kAttachWorld, x2_override_005e90d0);
   x86_register_override("XMen2.exe", kDetachMenu, x2_override_005e93b0);

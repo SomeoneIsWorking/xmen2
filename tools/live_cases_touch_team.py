@@ -5,18 +5,26 @@ from __future__ import annotations
 import json
 import time
 
+from live_cases_touch_menu import shows_new_count, wait_labels, wait_tabs
 from live_harness import Case
 from live_menu import (
     dismiss_level_up,
     keyboard_into_gameplay,
     menu_item,
     menu_labels,
+    menu_list,
+    menu_text,
     read_menu,
     reveal_touch_row,
+    select_list_entry,
+    tap_footer_button,
+    tap_list_entry,
+    tap_tab,
     tap_touch_button,
     touch_button,
     touch_menu,
     wait_game_menu,
+    wait_settled_menu,
     wait_settled_touch_menu,
 )
 
@@ -215,30 +223,32 @@ def case_touch_team_skills(case: Case) -> None:
 
 def case_touch_team_gear(case: Case) -> None:
     """The gear tab: a slot's A opens the pieces that fit, a piece's A equips
-    it, Unequip takes it off and Drop (the pad's RB) drops one."""
+    it, Unequip takes it off and Drop (the pad's RB) drops one. The gear is
+    bought first in the game's own shop, which is native on touch."""
     if not start_levelled(case, (ADD_MONEY, ADD_MONEY, ADD_MONEY)):
         return
     console(case, "openmenu shop")
-    shop = wait_settled_touch_menu(case, "shop", 20)
-    tap_touch_button(case, shop, touch_button(shop, "tab", "buy"))
-    time.sleep(1.5)
+    wait_settled_menu(case, "shop", 20)
+    tap_tab(case, r"shop_option0\d", "buy")
+    wait_tabs(case, r"shop_option0\d", lambda t: t.get("buy") is True)
     bought = []
     for _ in range(2):
-        shop = touch_menu(case)
-        gear = next((r["label"] for r in shop.get("rows", [])
-                     if "Pack" not in r["label"] and r["label"] != "Grab Bag"
-                     and r["label"] not in bought), None)
-        if gear is None:
+        entries = [menu_text(e) for e in menu_list(case).get("entries", [])]
+        gear = next((i for i, e in enumerate(entries)
+                     if "Pack" not in e and e != "Grab Bag"
+                     and e not in bought), -1)
+        if gear < 0:
             break
-        for _tap in range(2):
-            tap_row(case, gear.lower())
-            time.sleep(1.5)
-        bought.append(gear)
+        select_list_entry(case, gear)
+        before = menu_labels(case)
+        tap_list_entry(case, gear)
+        # The shop blanks its count for one frame before writing the new one.
+        wait_labels(case, lambda now: shows_new_count(now, before))
+        bought.append(entries[gear])
     count = menu_labels(case).get("inventory_count")
     case.check("two pieces of gear bought through the touch shop",
                count == "2/20", "%s, %s" % (bought, count))
-    shop = touch_menu(case)
-    tap_touch_button(case, shop, touch_button(shop, "footer", "accept"))
+    tap_footer_button(case, "$MENU_OK")
     wait_game_menu(case, lambda m: m.get("menu") != "shop", 10)
     shown = open_details(case, "gear")
     (case.dir / "gear.json").write_text(json.dumps(shown, indent=1) + "\n")
