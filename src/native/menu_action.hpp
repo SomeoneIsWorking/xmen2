@@ -36,7 +36,10 @@ std::optional<MenuAction> touch_token_action(std::string_view text);
    `token`, one CMenuItemText::onMouse does not publish. */
 bool menu_handles_token(std::string_view menu_class, std::string_view token);
 
-/* `text` without its `$MENU_*` token: what a touch button for it reads. */
+/* `text` without the run of tokens starting at `token` and the space after
+   it: what a touch button for the prompt reads. */
+std::string prompt_label(std::string_view text, std::string_view token);
+/* `text` without its `$MENU_*` token. */
 std::string menu_token_label(std::string_view text);
 
 /* Queues `action` for the menu's player, read on the next menu update. */

@@ -50,6 +50,8 @@ public:
   void release(presentation::ScenePoint point);
   /* True while a press holds the button over `area`. */
   bool pressed(const SceneBox &area) const;
+  /* True while a press holds any button. */
+  bool holding() const { return held_.has_value(); }
   /* True once for a tap on the own button over `area`, in the draws of
      the frame it lifted in. */
   bool take_tap(const SceneBox &area);

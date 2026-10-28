@@ -250,8 +250,10 @@ the speaker and line, the panel and text boxes, and each card's `tap`,
 continue-only lines tapped through, then Cyclops' Sanctuary question list,
 whose second question must lead to its own line.
 
-**Every other screen that is not gameplay and is not a native menu, a popup
-or a conversation draws the menu pad** -- the menu classes not yet native. The retail menus are
+**A retail menu with no touch path of its own draws the menu pad** -- the
+menu classes not yet native, and nothing else: never a cinematic or the
+stretch between a conversation's lines with no menu up, a popup or a
+conversation drawn for touch (`x2::native::TouchMenuSource::refresh`). The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -262,8 +264,11 @@ buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
 drawn from. A finger that begins on a pad button holds it until it lifts; one
 that begins anywhere else is the retail pointer for its whole life, so a drag
 across the pad never presses it. A held button is let go when gameplay takes
-the screen, even if the finger never moves. Cinematics draw the pad too,
-beside their Skip button.
+the screen, even if the finger never moves. A cinematic draws only its Skip
+button. Prove it with `tools/live_case.py touch-cinematic`: a Continue of the
+autosave plays the briefing and the Sanctuary opening, sampled four times a
+second, and no sample of a cinematic or a conversation draws any `menu-*`
+control.
 
 The port once made the footer's words themselves tappable instead, pairing
 each prompt with the draw that placed it by glyph count. The World Map's level
@@ -345,6 +350,48 @@ Mouse, keyboard and controller play never see the column. Prove it with
 fallen hero and fill the empty slot); each taps finger buttons at their edge
 outside the game's own box and judges by the game's mode, values, slots and
 power slots.
+
+**The automap is the game's own screen, moved like a phone's map**
+(CMenuAutoMap, issue #199, `src/native/automap_touch.cpp`, geometry in
+`x2::input::automap_dragged`). A drag that starts off every touch button
+keeps the ground under the finger: the map's centre (`menu+0x18ec`) moves by
+the finger's travel turned by the map's turn and divided by the view's map
+scale (`0x008a61c8`), held in the map's bounds as the update holds them.
+Retail's held-button pan and turn (`0x210`, `0x211`, steering by the
+pointer's offset from the middle) are not run for a finger, so a finger held
+still moves nothing. The `$CAMERA_LEFT$CAMERA_RIGHT Rotate` prompt is two
+finger buttons side by side (`x2::input::pair_buttons`), `< Rotate` and
+`Rotate >`, which turn the map while held at the rate the update turns it
+for a full camera axis (`0x00682f98`); the `$MOVE_ Scroll` hint is not drawn,
+and Back is the footer's finger button. `GET /menu` reports the view as
+`automap` (centre, turn, bounds, scale). Prove it with
+`tools/live_case.py touch-automap` (and `-4x3`, `-tablet`, `-20x9`): a drag
+across and one up each land the map where the finger's ground says, a
+1.5 s hold pans nothing, each Rotate turns its own way, Back closes it.
+
+**The game's text entry is typed on the platform's keyboard** (CMenuTextEntry,
+issue #199, `src/native/text_entry_input.cpp`). Its update takes one
+character a frame from what the game's window callback (`0x005faa20`)
+stored for a `WM_CHAR` (`0x00a0a061`). While the menu is up the platform's
+text input is on (`x2::native::win32_events_text_input`), which on a phone
+is its screen keyboard and on a desktop the physical one; typed text and
+Return, Escape and Backspace are queued as Win32 would send them in
+`WM_CHAR` and handed to the callback one per update, so a word a phone's
+keyboard commits at once lands whole. Text input goes off when the menu
+closes (its vtable `+0x18`, `0x005e7490`). The name bar sits at the top of
+the screen, clear of a phone's keyboard; Back and Done are the footers'
+finger buttons and no pad is drawn. `GET /menu` reports `text_input`.
+Prove it with `tools/live_case.py touch-text-entry` (and `-4x3`, `-tablet`,
+`-20x9`): a word typed in one event (`/ui/text`) and Backspace (`/ui/key`)
+change the entry's field, Done and Back close it, and text input is on
+exactly while it is up.
+
+**The online hero list is a list of finger cards** (CMenuHeroList, `Select
+Hero`, issue #199): its `text_list` list box has the list touch layout, so
+the heroes are finger-tall cards of the option art that scroll with a drag,
+a tap selects a hero and a tap on the selected one accepts it, and Back and
+Select are finger buttons. Prove it with `tools/live_case.py touch-hero-list`
+(and `-4x3`, `-tablet`, `-20x9`).
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
@@ -588,8 +635,16 @@ its rectangle and action name (`menu-a`, `jump`, ...), and the viewport those
 rectangles are in, so a run driving itself taps what the game is drawing
 rather than a coordinate chosen before the run started.
 
+A phone's screen keyboard sends text as SDL text events, so `/ui/text?text=`
+pushes one, and `/ui/key?name=` a host key (Backspace, Return); both reach the
+game only through the host pump, as a keyboard's would.
+
 ## Not established
 
+- The text entry's screen keyboard has not been shown on a phone or the
+  emulator: the desktop runs prove the text input switch and the typed
+  characters, not how Android places its keyboard or what a dismissed one
+  does while the entry is still up.
 - No touchscreen desktop run has been recorded. The classification and the
   layout are unit-verified and the code path is platform-neutral by
   construction, but "a Windows tablet was played on" is not a claim this

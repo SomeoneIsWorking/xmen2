@@ -133,11 +133,24 @@ that a tap picks (`src/native/conversation_touch.cpp`, see
 [touch play](../touch-play.md)); no pad is drawn over them. Shown by
 `touch-conversation`, `-4x3`, `-16x9` and `-20x9`.
 
-The menu pad is not deleted: cinematic lines are answered with it, and the
-classes not native on touch (CMenuAutoMap,
-CMenuTextEntry, the online lobby menus, CMenuHeroList, CMenuPersonal,
-CMenuSebas, CMenuImageViewer, CMenuCredits, CMenuOptionsController) have no
-other touch path yet.
+A cinematic draws no pad: the pad goes only over a readable retail menu with
+no touch path (`x2::native::TouchMenuSource::refresh`), where it had gone
+over every control-locked stretch with no menu up, the cinematic gaps between
+a conversation's lines included. Shown by `touch-cinematic` (CINEMATIC_COUNT).
+The automap is native on touch: a drag keeps the ground under the finger, a
+held finger pans nothing, the Rotate prompt is two hold buttons
+(`src/native/automap_touch.cpp`), shown by `touch-automap`, `-4x3`, `-tablet`
+and `-20x9` (AUTOMAP_COUNT). The text entry is native on touch and typed on
+the platform's keyboard, a phone's screen keyboard: the port had delivered no
+`WM_CHAR`, the only way characters reach it
+(`src/native/text_entry_input.cpp`), shown by `touch-text-entry`, `-4x3`,
+`-tablet` and `-20x9` (TEXT_COUNT). The online hero list is native on touch
+through the list layout, shown by `touch-hero-list`, `-4x3`, `-tablet` and
+`-20x9` (HERO_COUNT).
+
+The menu pad is not deleted: the classes not native on touch (the online
+lobby menus, CMenuPersonal, CMenuSebas, CMenuImageViewer, CMenuCredits,
+CMenuOptionsController) have no other touch path yet.
 
 The team menu's open items are closed: footer buttons disjoint with five
 footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),

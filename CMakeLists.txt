@@ -2131,6 +2131,8 @@ set(X2_NATIVE_SOURCES
     src/native/menu_scene.cpp
     src/native/menu_text.cpp
     src/native/text_item_touch.cpp
+    src/native/automap_touch.cpp
+    src/native/text_entry_input.cpp
     src/native/options_touch.cpp
     src/native/team_touch.cpp
     src/native/popup_touch_drawn.cpp
@@ -2165,6 +2167,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_cards.cpp
     src/input/touch_targets.cpp
     src/input/text_touch_layout.cpp
+    src/input/automap_touch_layout.cpp
     src/input/options_touch_layout.cpp
     src/input/team_touch_layout.cpp
     src/input/native_touch_menus.cpp

@@ -81,17 +81,19 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   const menu::ReadStatus status = image != 0u
                                       ? menu::read_live_menu(&snapshot, &failed)
                                       : menu::ReadStatus::unreadable;
-  /* A popup is read before the menu, so one up in gameplay, with no menu
-     under it, still counts; so does a conversation drawn for touch. */
-  bool native = snapshot.popup_up || conversation_touch_drawn().shown;
+  /* The pad goes only over a retail menu with no touch path: never over a
+     cinematic with no menu up, a popup (read before the menu, so one up in
+     gameplay counts) or a conversation drawn for touch. */
+  bool padded = false;
   if (status == menu::ReadStatus::ok) {
-    native = native || input::menu_is_native_on_touch(snapshot.menu_class);
+    padded = !snapshot.popup_up && !conversation_touch_drawn().shown &&
+             !input::menu_is_native_on_touch(snapshot.menu_class);
     const LiveGuestMemory memory;
     if (const auto plane = read_scene_plane(memory, image)) {
       gaps_.observe(snapshot, *plane);
     }
   }
-  input::touch_runtime_set_menu(native);
+  input::touch_runtime_set_menu(padded);
 }
 
 void refresh_touch_menu() { source.refresh(SDL_GetTicks()); }

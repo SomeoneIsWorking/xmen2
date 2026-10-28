@@ -61,6 +61,15 @@ std::vector<SceneBox> footer_buttons(const std::vector<SceneBox> &texts,
   return out;
 }
 
+std::array<SceneBox, 2> pair_buttons(const SceneBox &text, float finger) {
+  const SceneBox one = text_button(text, finger);
+  const float width = one.width() + kPairArrow * finger;
+  const float x = 0.5F * (text.left + text.right);
+  const float gap = 0.5F * kPairGap * finger;
+  return {SceneBox{x - gap - width, one.bottom, x - gap, one.top},
+          SceneBox{x + gap, one.bottom, x + gap + width, one.top}};
+}
+
 SceneBox row_button(const SceneBox &text, float left, float right,
                     float finger) {
   const float half_height = 0.5F * kCardHeight * finger;

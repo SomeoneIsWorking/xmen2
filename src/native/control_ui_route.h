@@ -9,5 +9,7 @@ namespace x2::native {
    reach an SDL document. */
 void control_ui_key_route(x2::native::Socket fd, const char *query);
 void control_ui_click_route(x2::native::Socket fd, const char *query);
+/* Type text at the host window, as the platform's text input delivers it. */
+void control_ui_text_route(x2::native::Socket fd, const char *query);
 
 } // namespace x2::native

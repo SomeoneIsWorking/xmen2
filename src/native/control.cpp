@@ -399,6 +399,8 @@ static void serve(x2::native::Socket fd) {
     x2::native::control_ui_key_route(fd, query ? query : "");
   else if (!strcmp(path, "/ui/click"))
     x2::native::control_ui_click_route(fd, query ? query : "");
+  else if (!strcmp(path, "/ui/text"))
+    x2::native::control_ui_text_route(fd, query ? query : "");
   else if (!strcmp(path, "/pad"))
     x2::native::control_route_pad(fd, query ? query : "");
   else if (!strcmp(path, "/touch"))
@@ -437,6 +439,7 @@ static void serve(x2::native::Socket fd) {
         "  GET /key?name=X   press a key (&hold=<seconds>)\n"
         "  GET /ui/key?name=F2  press a key at the PORT's own UI\n"
         "  GET /ui/click?x=X&y=Y  click at the PORT's own UI\n"
+        "  GET /ui/text?text=T  type T at the host window\n"
         "  GET /controls     where the overlay's controls are, and the "
         "stick's deflection\n"
         "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"

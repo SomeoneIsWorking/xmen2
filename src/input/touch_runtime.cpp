@@ -102,12 +102,12 @@ public:
   // can look at until it is on a phone is a layout that ships wrong.
   static bool active();
   bool overlay_visible() const;
-  // The menu pad: touch play and a window, on any screen that is not
-  // gameplay -- a conversation's choices and a cinematic's lines are
-  // answered with the pad too, beside the cinematic's own Skip button.
+  // The menu pad: touch play and a window, over a retail menu that has no
+  // touch path of its own. A cinematic, a conversation, a popup and a native
+  // menu have none drawn over them.
   bool menu_visible() const;
-  // Whether the retail menu up is one a finger drives directly.
-  void set_menu(bool native);
+  // Whether the retail menu up is one the pad is drawn over.
+  void set_menu(bool padded);
 
 private:
   struct Contact {
@@ -147,7 +147,7 @@ private:
      where the screen is. */
   x2::presentation::LayoutViewport viewport_{};
   bool menu_requested_ = false;
-  bool native_menu_ = false;
+  bool padded_menu_ = false;
 };
 
 namespace {
@@ -169,18 +169,18 @@ bool TouchRuntime::overlay_visible() const {
 }
 
 bool TouchRuntime::menu_visible() const {
-  return window_ != nullptr && active() && !native_menu_ &&
+  return window_ != nullptr && active() && padded_menu_ &&
          !x2_gameplay_control_active(guest_clock_now_s());
 }
 
-void TouchRuntime::set_menu(bool native) {
+void TouchRuntime::set_menu(bool padded) {
   /* The game must be reading the pad before the first tap on a pad control:
      the press that claims it is lost while player one resolves. */
   if (window_ != nullptr && active()) {
     touch_pad::ensure();
     touch_pad::claim_player_one();
   }
-  native_menu_ = native;
+  padded_menu_ = padded;
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {
@@ -564,7 +564,7 @@ std::size_t TouchRuntime::visuals(TouchVisual *out,
                          controls_.stick_ring(), out, capacity);
 }
 
-void touch_runtime_set_menu(bool native) { runtime.set_menu(native); }
+void touch_runtime_set_menu(bool padded) { runtime.set_menu(padded); }
 
 /* ------------------------------------------------------------------------ */
 /* The C surface the host event pump, the HUD and the renderer call. It holds

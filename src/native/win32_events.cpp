@@ -14,6 +14,8 @@
 #include "touch_menu_source.hpp"
 
 #include <SDL3/SDL.h>
+#include <deque>
+#include <optional>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +32,8 @@ static int g_hidden;
    owned before giving the desktop back. */
 static int g_cursor_hidden;
 static x2::native::Win32Mouse g_mouse;
+/* Characters typed while text input is on, not yet handed to the game. */
+std::deque<std::uint8_t> g_typed;
 
 static void set_cursor_visible(int visible) {
   int applied = visible ? SDL_ShowCursor() : SDL_HideCursor();
@@ -108,6 +112,30 @@ uint32_t win32_events_hwnd() { return g_hwnd; }
 
 void win32_events_set_wndproc(uint32_t wndproc) { g_wndproc = wndproc; }
 
+void win32_events_text_input(bool on) {
+  if (!g_window || SDL_TextInputActive(g_window) == on) {
+    return;
+  }
+  g_typed.clear();
+  if (!(on ? SDL_StartTextInput(g_window) : SDL_StopTextInput(g_window))) {
+    x2_log_error("win32 events: SDL could not %s text input: %s\n",
+                 on ? "start" : "stop", SDL_GetError());
+  }
+}
+
+bool win32_events_text_input_on() {
+  return g_window && SDL_TextInputActive(g_window);
+}
+
+std::optional<std::uint8_t> win32_events_take_char() {
+  if (g_typed.empty()) {
+    return std::nullopt;
+  }
+  const std::uint8_t code = g_typed.front();
+  g_typed.pop_front();
+  return code;
+}
+
 void win32_events_modal(int visible) {
   x2::native::win32_mouse_modal(&g_mouse, visible);
   apply_cursor_policy();
@@ -170,6 +198,31 @@ static void post_activation(int active, uint64_t timestamp) {
   post_message_or_abort(&message, "WM_ACTIVATE");
 }
 
+/* The game's text entry takes ASCII: a byte of a multi-byte character is
+   not one. */
+static void type_text(const char *text) {
+  for (const char *at = text; *at; ++at) {
+    const auto byte = (unsigned char)*at;
+    if (byte >= 0x20u && byte < 0x7fu) {
+      g_typed.push_back(byte);
+    }
+  }
+}
+
+/* Return, Escape and Backspace are characters to Win32 but keys to SDL. */
+static uint32_t key_char(SDL_Keycode key) {
+  if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+    return 0x0du;
+  }
+  if (key == SDLK_ESCAPE) {
+    return 0x1bu;
+  }
+  if (key == SDLK_BACKSPACE) {
+    return 0x08u;
+  }
+  return 0u;
+}
+
 static void pump_sdl(void) {
   SDL_Event event;
 
@@ -227,6 +280,11 @@ static void pump_sdl(void) {
         event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
         event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
       x2::native::win32_pointer_translate_mouse(&event, &g_mouse, g_hwnd);
+    } else if (event.type == SDL_EVENT_TEXT_INPUT) {
+      type_text(event.text.text);
+    } else if (event.type == SDL_EVENT_KEY_DOWN && g_window &&
+               SDL_TextInputActive(g_window) && key_char(event.key.key)) {
+      g_typed.push_back(key_char(event.key.key));
     } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
       static int told;
       if (!told++)

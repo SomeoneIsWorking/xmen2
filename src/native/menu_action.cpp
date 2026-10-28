@@ -65,14 +65,18 @@ std::optional<MenuAction> touch_token_action(std::string_view text) {
   return MenuAction::drop;
 }
 
-std::string menu_token_label(std::string_view text) {
-  const std::size_t at = text.find("$MENU");
+std::string prompt_label(std::string_view text, std::string_view token) {
+  const std::size_t at = text.find(token);
   if (at == std::string_view::npos) {
     return std::string(text);
   }
   std::size_t end = text.find(' ', at);
   end = end == std::string_view::npos ? text.size() : end + 1u;
   return std::string(text.substr(0, at)) + std::string(text.substr(end));
+}
+
+std::string menu_token_label(std::string_view text) {
+  return prompt_label(text, "$MENU");
 }
 
 void post_menu_action(MenuAction action) {

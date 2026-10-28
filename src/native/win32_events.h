@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 struct SDL_Window;
 
@@ -18,6 +19,19 @@ std::uint32_t win32_events_registered_wndproc();
 void win32_events_set_wndproc(std::uint32_t wndproc);
 /* The guest window's handle, 0 while there is none. */
 std::uint32_t win32_events_hwnd();
+
+/* igWin32Window's callback for the game: (hwnd, msg, wparam, lparam),
+   __cdecl. Mouse messages go on to FUN_005f9eb0; a WM_CHAR's character is
+   stored at 0x00a0a061. */
+inline constexpr std::uint32_t kGameWindowEvent = 0x005faa20u;
+
+/* The platform's text input on the window, and its screen keyboard where it
+   has one. Turning it either way drops what was typed and not taken. */
+void win32_events_text_input(bool on);
+bool win32_events_text_input_on();
+/* The oldest character typed while text input is on, as Win32 would send it
+   in WM_CHAR (Return 0x0d, Escape 0x1b, Backspace 0x08). */
+std::optional<std::uint8_t> win32_events_take_char();
 
 void win32_events_modal(int visible);
 int win32_events_guest_show_cursor(int show);
