@@ -4,7 +4,9 @@
 #include "../native/retail_menu_model.hpp"
 #include "touch_cards.hpp"
 
+#include <optional>
 #include <string_view>
+#include <vector>
 
 /* A CMenuItemListBox on touch: its entries as finger-tall cards over the
    list's own box, scrolled by a drag (docs/touch-play.md). Scene units, z
@@ -39,10 +41,19 @@ struct ListTouchLayout {
 
 ListTouchLayout layout_list_touch(const ListTouchInput &input);
 
-/* `box` without the rows `other` covers: the part above it or below it,
-   whichever is taller. CMenuTeam's gear slots list holds the pieces list
-   inside its box. */
-SceneBox list_box_clear_of(const SceneBox &box, const SceneBox &other);
+/* A shown list of a menu: its box, and whether it has the menu's focus. */
+struct ListPlace {
+  SceneBox box;
+  bool focused = false;
+};
+
+/* Where `self`'s cards go beside `others`, the other shown lists of its
+   menu. Lists whose boxes nest (CMenuTeam's gear slots hold the pieces list
+   inside their box) take turns in the outer box: the one with the menu's
+   focus, or the outer one while none has it. nullopt while another
+   shows. */
+std::optional<SceneBox> nested_list_area(const ListPlace &self,
+                                         const std::vector<ListPlace> &others);
 
 /* The lists touch lays out: those whose rows are CMenuItemListBox's row draw
    (0x005c1d00), in a menu that is native on touch. */

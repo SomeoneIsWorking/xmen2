@@ -2,10 +2,10 @@
  * CMenuItemText on touch (docs/touch-play.md). A `$MENU_*` prompt (a
  * footer) is drawn as a finger-tall button of the game's option art with the
  * prompt's words in the game's font, lit while held, in place of its keycap
- * line; a menu's tab keeps retail's draw and gets a finger-sized target. A
- * press on either is the pointer at the item until it lifts
- * (x2::input::TouchTargets), so the menu's own handlers act on it as on a
- * click.
+ * line, clear of the other footers' buttons; a menu's tab keeps retail's draw
+ * and gets a finger-sized target. A press on either is the pointer at the item
+ * until it lifts (x2::input::TouchTargets), so the menu's own handlers act on
+ * it as on a click.
  */
 #include "text_item_touch.hpp"
 #include "../input/menu_touch_gaps.hpp"
@@ -33,6 +33,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -87,6 +88,9 @@ constexpr std::array<FingerItems, 3> kBarRows{{
     {"CMenuOptions", "label_accept", Aim::item_box},
 }};
 constexpr std::string_view kRowPrefix = "label_";
+/* A menu's footers are its items `desctext1` to `desctext9`. */
+constexpr std::string_view kFooterName = "desctext";
+constexpr int kFooterNames = 9;
 
 template <std::size_t N>
 const FingerItems *listed(const std::array<FingerItems, N> &items,
@@ -210,7 +214,7 @@ public:
     }
 
     const float finger = x2::input::menu_finger_units(*plane);
-    const SceneBox area = x2::input::text_button(text_box(self), finger);
+    const SceneBox area = footer_area(call, self, menu_class, finger);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
     const auto own = x2::native::touch_token_action(text);
     targets.put(
@@ -289,6 +293,68 @@ public:
   }
 
 private:
+  /* The button over `self` among the footers of its menu drawn as buttons:
+     its text's, unless it would touch a neighbour's. */
+  SceneBox footer_area(x2::guest::GuestCall &call, std::uint32_t self,
+                       std::string_view menu_class, float finger) {
+    std::vector<SceneBox> texts{text_box(self)};
+    for (const std::uint32_t other :
+         footers_of(call, RD32(self + item::kMenu))) {
+      if (other != self && drawn_as_button(call, other, menu_class)) {
+        texts.push_back(text_box(other));
+      }
+    }
+    return x2::input::footer_buttons(texts, finger).front();
+  }
+
+  /* Whether this draw puts a button over the shown footer `self`. */
+  static bool drawn_as_button(x2::guest::GuestCall &call, std::uint32_t self,
+                              std::string_view menu_class) {
+    if ((RD8(self + item::kFlags) & x2::menu::kItemHidden) != 0u ||
+        (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u) {
+      return false;
+    }
+    const std::uint32_t model = RD32(self + item::kModel);
+    if (model == 0u || call.virtual_call(model, kModelReady) == 0u) {
+      return false;
+    }
+    const std::uint32_t text_at = call.virtual_call(self, item::kSlotText);
+    if (text_at == 0u) {
+      return false;
+    }
+    const std::string_view text =
+        x2::guest::guest_string(text_at, menu_text::kLineBytes);
+    return !x2::native::text_is_pad_hint(menu_class, text) &&
+           !x2::native::team_touch_hides(self, text) &&
+           x2::native::text_has_touch_button(menu_class, text);
+  }
+
+  /* The menu's footers, `desctext1` on, remembered per menu. */
+  const std::vector<std::uint32_t> &footers_of(x2::guest::GuestCall &call,
+                                               std::uint32_t menu) {
+    Footers &footers = footers_[menu];
+    std::vector<std::uint32_t> &found = footers.items;
+    if (footers.vtable == RD32(menu) &&
+        (found.empty() || RD32(found.front() + item::kMenu) == menu)) {
+      return found;
+    }
+    footers.vtable = RD32(menu);
+    found.clear();
+    for (int n = 1; n <= kFooterNames; ++n) {
+      const x2::guest::GuestText name(std::string(kFooterName) +
+                                      std::to_string(n));
+      const std::uint32_t at =
+          name ? call.thiscall(x2::native::guest_exe_base() +
+                                   item::kItemByNameRva,
+                               menu, {name.address()})
+               : 0u;
+      if (at != 0u) {
+        found.push_back(at);
+      }
+    }
+    return found;
+  }
+
   /* A shown, enabled tab or row's target: the finger button over its text,
      across its bar when it has one. */
   static void put_finger_area(x2::guest::GuestCall &call, std::uint32_t self,
@@ -374,7 +440,14 @@ private:
     }
   }
 
+  /* A menu's footer items, found while its vtable was this. */
+  struct Footers {
+    std::uint32_t vtable = 0u;
+    std::vector<std::uint32_t> items;
+  };
+
   std::unordered_map<std::uint32_t, Button> buttons_;
+  std::unordered_map<std::uint32_t, Footers> footers_;
   std::unordered_map<std::uint32_t, std::string> names_;
   std::unordered_map<std::uint32_t, std::uint32_t> bars_;
 };

@@ -1347,4 +1347,5 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   (RB, then A/B/X) is measured, and touch posts those actions.
 - **Which skill a power name is.** A slot holds the power's internal name
   (`power5`); the map from it to the `skill_list` entry is not read, so the
-  touch assigning column names slots (Power 1, 2, 3), not the skills in them.
+  touch assigning column names slots by their place in the diamond (Left,
+  Right, Bottom), not the skills in them.

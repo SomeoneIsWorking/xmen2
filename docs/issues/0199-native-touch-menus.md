@@ -6,7 +6,7 @@ symptom: "Touch menus are a port-styled RmlUi panel over the retail menu, and th
 state_items: S025, S020
 tags: touch,menus,ui
 created: 2026-10-27
-updated: 2026-10-28
+updated: 2026-10-29
 ---
 
 # 0199 — Native touch menus
@@ -115,11 +115,16 @@ detail tabs put their controls in a finger column left of the panel, drawn by
 the tab's own items (`src/native/team_touch.cpp`): stat and ai cards that
 select by walking the game's focus with pointer hovers and spend only from
 their + and - (or a tap on the selected ai card), the selected skill's card
-with -, + and Assign, Power 1/2/3 and Cancel while assigning, Prev and Next
-hero, and a Details view a tap holds open. The gear tab's slot cards keep
-clear of the pieces' list inside their box. Shown by `touch-team` (12/12),
-`touch-team-stats` (18/18), `touch-team-skills` (18/18), `touch-team-gear`
-(21/21), `touch-team-ai` (15/15), `touch-team-assign` (21/21),
+with -, + and Assign, the power diamond's Left, Right and Bottom slots laid
+out as the diamond holds them and Cancel while assigning, Prev and Next hero,
+and a Details view a tap holds open. The game's skill rows are a finger
+apart. The gear tab's slots and pieces take turns in the slots' whole box as
+finger cards, the three slots at once and the pieces four at a time, CMenuTeam's
+onMouse handing a message on them to the list drawn there. A footer row whose
+buttons would touch (the skills tab's five after a rank is added) splits its
+span into equal buttons. Shown by `touch-team` (12/12),
+`touch-team-stats` (21/21), `touch-team-skills` (23/23), `touch-team-gear`
+(22/22), `touch-team-ai` (18/18), `touch-team-assign` (27/27),
 `touch-team-skill-details` (14/14) and `touch-roster` (15/15).
 
 Conversations are native on touch: the speaker and line readable in the
@@ -134,9 +139,11 @@ CMenuTextEntry, the online lobby menus, CMenuHeroList, CMenuPersonal,
 CMenuSebas, CMenuImageViewer, CMenuCredits, CMenuOptionsController) have no
 other touch path yet.
 
-Open on the team menu: with five footers the finger buttons of two
-neighbouring prompts overlap (Subtract and Add after a skill rank is added;
-`x2::input::text_button`); Power 1/2/3 do not show which of the diamond's
-slots they fill; the gear tab shows one slot and one piece card a panel,
-reached by drag; a skill row of the game's list is 37 scene units, just under
-a finger.
+The team menu's open items are closed: footer buttons disjoint with five
+footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),
+slot buttons that name and mirror the diamond (`touch-team-assign`, each
+slot button putting the skill in its slot), gear cards filling the panel
+(`touch-team-gear`: three slots, then both pieces, a tap equipping), finger
+skill rows (`touch-team-skills`: pitch 39 against a 38.4 finger). A popup's
+frame stands on the screen's bottom edge, so the dialog art's prompt strip
+below it is off the screen (`touch-game-tip`, `-720`).

@@ -129,7 +129,10 @@ lays out a dialog and drawn by the game in its own art
 (`src/native/popup_touch.cpp`, geometry in `x2::input::layout_popup_touch`).
 The popup's frame `ui/hud/dialog` spans 94% of the screen's width and is as
 tall as its page needs, up to 90% of the height, in front of the menu it
-covers. The page's text, a selector's title or a message popup's whole
+covers, standing on the screen's bottom edge: the art runs on below the frame
+(to z 56 against the frame's 91) in a strip where retail draws the prompts,
+and on touch the prompts are the frame's own buttons, so the strip is below
+the screen. The page's text, a selector's title or a message popup's whole
 message (a tutorial Game Tip), is broken across the grown frame by the font's
 own wrap at 1.4 times the frame's growth, or smaller down to 0.6 of that until
 it fits beside the cards and buttons, and the frame is as tall as its lines
@@ -187,14 +190,21 @@ draws a list its window rows (`+0xdb`) are the cards that fit and its
 navigation margin (`+0xdd`) is 0, so the game's own stepping and arrows agree
 with the cards; with touch off both go back and draw and onMouse are
 retail's. `GET /menu?items=all` reports each list's cards where the
-last draw put them (`touch_cards`, with the entry each shows). Prove it with
+last draw put them (`touch_cards`, with the entry each shows and its height
+in `fingers`). Lists of one menu whose boxes nest take turns in the outer box,
+the one with the menu's focus shown (`x2::input::nested_list_area`; the team's
+gear tab). Prove it with
 `tools/live_case.py touch-shop`, `touch-stash`, `touch-codex`, `touch-review`
 and `touch-danger-room`.
 
 **A menu native on touch draws its `$MENU_*` prompts as finger buttons**
 (CMenuItemText's draw `0x005c61d0`, `src/native/text_item_touch.cpp`; the rule
 is `x2::native::text_has_touch_button`): a finger tall and a quarter finger
-wider than the prompt's text, centred on it (`x2::input::text_button`), of the
+wider than the prompt's text, centred on it (`x2::input::text_button`); where
+two of a footer row would touch (the team's skills tab puts Subtract's box 33
+units from Add's), every button of that row takes an equal share of the
+row's span a tenth of a finger apart (`x2::input::footer_buttons`, over the
+menu's `desctext1..9` drawn as buttons). They are of the
 same option art as the list cards, lit while held, with the prompt's words
 and none of its keycap in the item's font at up to 0.42 of a finger, shrunk
 to fit. A `$DPAD_*` hint (the codex's `Down Scroll`) is not drawn on touch
@@ -282,13 +292,24 @@ drawn by the game's own item in the option art and the item's font
   rank glyphs (`FUN_005f01e0`), - and + below it (X and A), and Assign while
   the skill has a rank, in place of the game's `assign_help` prompt beside
   the footers, which touch does not draw. Assign posts RB (`0xd`); while the
-  game assigns (`menu+0x18e8`) the column is Power 1, Power 2, Power 3 and
-  Cancel (A, B, X and `0x15`) and every footer is hidden. A tap on a skill row
-  of the game's own list selects it and a tap on the selected row adds a
-  rank, as a click does;
+  game assigns (`menu+0x18e8`) the column is the power diamond's slots laid
+  out as the diamond holds them, Left slot and Right slot side by side and
+  Bottom slot below (X, B and A: slots 2, 1 and 0, `assign_icon03`, `02`,
+  `01`), then Cancel (`0x15`), and every footer is hidden
+  (`x2::input::team_slot_buttons`). The game's skill rows are a finger apart:
+  the list's row pitch (`+0xe0`, 37 in retail) is raised to a finger and its
+  shown rows lowered to fit retail's span (7 to 6), and both go back when
+  touch leaves. A tap on a skill row of the game's own list selects it and a
+  tap on the selected row adds a rank, as a click does;
 - gear: the slots and the fitting pieces are the game's two lists as cards
-  (below); the slots' cards keep clear of the pieces' list inside their box
-  (`x2::input::list_box_clear_of`), one slot a panel, dragged for the others;
+  (below). The pieces' list sits inside the slots' box, so the two take
+  turns in the slots' whole box (`x2::input::nested_list_area`): the slots'
+  three cards while they have the focus, the pieces' cards (four fit, the
+  rest by drag) once a slot is opened. CMenuTeam's `onMouse` hands a message
+  to the slots only in their top three rows and to the pieces only in their
+  own box, so on touch a message on a gear list's cards, or while a finger
+  holds one, goes to that list (`x2::native::list_touch_owner`), and the menu
+  refreshes as after its own call;
 - ai: a card per setting with its value; a tap selects it, a tap on the
   selected one posts A, which changes it.
 
@@ -301,8 +322,9 @@ space, so a one-word name it leaves on one line can still be too wide;
 `menu_text::wrap` reports a fit only when the line is no wider than asked. `GET /menu` reports each
 column button's drawn letters (`name_text`, `value_text`); the team cases
 check they are inside the art's panel with a gap between name and value, and
-that the footer buttons are disjoint, in a 16:9 window and, for
-`touch-team-stats` and `touch-roster`, `-4x3`, `-tablet` (1216x800) and
+that the footer buttons are disjoint (the skills tab's five once a rank is
+added among them), in a 16:9 window and, for `touch-team-stats`,
+`touch-team-skills` and `touch-roster`, `-4x3`, `-tablet` (1216x800) and
 `-20x9` windows.
 
 A card's select is the pointer passing over the row's label: CMenuTeam's

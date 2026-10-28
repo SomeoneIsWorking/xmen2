@@ -242,6 +242,7 @@ void put_list_touch(std::string *out, std::uint32_t list,
   for (std::size_t i = 0; i < drawn->cards.size(); ++i) {
     out->push_back('{');
     put_box_tap(out, drawn->cards[i], plane);
+    put_fingers(out, drawn->cards[i], plane);
     put_int(out, "entry",
             static_cast<long>(drawn->first) + static_cast<long>(i));
     close_object(out);

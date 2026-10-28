@@ -8,7 +8,9 @@
  * setting walk there too, then post the pad's X or A. The skills tab's
  * column holds the selected skill with its rank, remove and add buttons and
  * Assign, in place of the game's Assign prompt beside the footers, or while
- * a skill is being assigned the three power slots and Cancel; the
+ * a skill is being assigned the power diamond's left, right and bottom slots,
+ * laid out as the diamond holds them, and Cancel; the game's skill rows are
+ * a finger apart. The
  * hero's name item draws the previous and next hero buttons. Those post the
  * pad's action themselves. The skill Details view the game shows while its
  * prompt is held stays open after the finger lifts, until the next tap on it.
@@ -21,6 +23,7 @@
 #include "guest_body.h"
 #include "guest_call.hpp"
 #include "guest_modules.h"
+#include "list_touch.hpp"
 #include "menu_action.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
@@ -32,6 +35,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -50,8 +54,18 @@ using x2::input::TouchPress;
 using x2::native::exe_linked;
 using x2::native::MenuAction;
 
-/* CMenuTeam's update (vtable 0x006a2c94 +0x38). */
+/* CMenuTeam's update (vtable 0x006a2c94 +0x38) and onMouse (+0x80,
+   ret 0x14); the item with the menu's focus, and the gear refresh onMouse
+   gives it. */
 constexpr std::uint32_t kTeamUpdate = 0x005e66c0u;
+constexpr std::uint32_t kTeamOnMouse = 0x005e25c0u;
+constexpr std::uint32_t kFocusedItem = 0x005ab0c0u;
+constexpr std::uint32_t kGearRefresh = 0x005e0950u;
+/* A list box's onMouse slot, and the releases after which onMouse skips
+   the refresh. */
+constexpr std::uint32_t kListOnMouse = 0x74u;
+constexpr std::uint32_t kButtonUp = 0x202u;
+constexpr std::uint32_t kRightButtonUp = 0x205u;
 /* The menu's screen (0 party, 1 roster, 2 stats, 3 skills, 4 gear, 5 ai,
    6 a skill's Details), the skill being assigned or -1, and the flag
    onMouse sets while the pointer is over the Details prompt. */
@@ -60,6 +74,7 @@ constexpr std::uint32_t kAssigning = 0x18e8u;
 constexpr std::uint32_t kOverDetails = 0x1d3cu;
 constexpr std::uint32_t kStatsMode = 2u;
 constexpr std::uint32_t kSkillsMode = 3u;
+constexpr std::uint32_t kGearMode = 4u;
 constexpr std::uint32_t kAiMode = 5u;
 constexpr std::uint32_t kSkillDetailsMode = 6u;
 /* The menu's player, and the mouse button table FUN_0061a600 reads per
@@ -130,17 +145,17 @@ constexpr char kRankAdded = '\xda';
 
 /* FUN_005e5900 assigns the skill being assigned to slot 0, 1 or 2 on
    actions 4, 5 and 8, and ends it on 0x15; without one, A adds a rank to
-   the selected skill and X takes back one added in this visit. */
+   the selected skill and X takes back one added in this visit.
+   assign_icon01..03 draw slots 0..2 at the diamond's bottom, right and
+   left. */
 struct Command {
   std::string_view label;
   MenuAction action;
 };
-constexpr std::array<Command, 4> kAssignCommands{{
-    {"Power 1", MenuAction::accept},
-    {"Power 2", MenuAction::cancel},
-    {"Power 3", MenuAction::subtract},
-    {"Cancel", MenuAction::back},
-}};
+constexpr Command kLeftSlot{"Left slot", MenuAction::subtract};
+constexpr Command kRightSlot{"Right slot", MenuAction::cancel};
+constexpr Command kBottomSlot{"Bottom slot", MenuAction::accept};
+constexpr Command kCancelAssign{"Cancel", MenuAction::back};
 /* FUN_005e3c70 turns every tab to the previous or next party hero on
    actions 0x17 and 0x16 (FUN_005da1a0; RT is 0x16). */
 constexpr std::array<Command, 2> kHeroCommands{{
@@ -308,10 +323,18 @@ public:
     owners_.erase(found);
   }
 
-  /* Before CMenuTeam's update: on touch a walk a card started steps on,
-     and the Details view a tap opened is held as the mouse holds it, by
-     action 9 each update. */
-  void before_update(std::uint32_t menu, bool touch) {
+  /* Before CMenuTeam's update, so before any draw: on touch the skill rows
+     are a finger apart, a walk a card started steps on, and the Details view
+     a tap opened is held as the mouse holds it, by action 9 each update. */
+  void before_update(const CPU &cpu, std::uint32_t menu, bool touch) {
+    x2::guest::GuestCall call(cpu);
+    const auto plane = x2::native::live_scene_plane();
+    if (touch && plane) {
+      finger_skill_rows(item_named(call, menu, kSkillList),
+                        x2::input::menu_finger_units(*plane));
+    } else {
+      restore_skill_rows(menu);
+    }
     walk(menu, touch);
     const std::uint32_t mode = mode_of(menu);
     if (!touch || menu != details_menu_ ||
@@ -408,11 +431,11 @@ private:
     }
     if (name == kHeroOwner) {
       return assigning(menu) ? std::vector<Part>{}
-                             : commands(kHeroCommands, finger, true);
+                             : commands(kHeroCommands, finger);
     }
     if (name == kSkillsOwner && skills_tab(mode)) {
       if (assigning(menu)) {
-        return commands(kAssignCommands, finger, false);
+        return slot_commands(finger);
       }
       return skill_row(call, menu, self, finger);
     }
@@ -425,23 +448,27 @@ private:
     return {};
   }
 
-  /* The buttons that post their action, in the hero row or down the
-     column. */
+  /* The hero row's buttons, which post their action. */
   template <std::size_t N>
   static std::vector<Part> commands(const std::array<Command, N> &list,
-                                    float finger, bool hero_row) {
-    std::vector<SceneBox> boxes;
-    if (hero_row) {
-      const auto hero = x2::input::team_hero_buttons(finger);
-      boxes.assign(hero.begin(), hero.end());
-    } else {
-      boxes = x2::input::team_rows(static_cast<int>(N), finger);
-    }
+                                    float finger) {
+    const auto boxes = x2::input::team_hero_buttons(finger);
     std::vector<Part> out;
     for (std::size_t i = 0; i < N && i < boxes.size(); ++i) {
       out.push_back(command(boxes[i], list[i].label, list[i].action));
     }
     return out;
+  }
+
+  /* The diamond's slots the skill being assigned can go to, where the
+     diamond has them, and Cancel. */
+  static std::vector<Part> slot_commands(float finger) {
+    const x2::input::TeamSlotButtons boxes =
+        x2::input::team_slot_buttons(finger);
+    return {command(boxes.left, kLeftSlot.label, kLeftSlot.action),
+            command(boxes.right, kRightSlot.label, kRightSlot.action),
+            command(boxes.bottom, kBottomSlot.label, kBottomSlot.action),
+            command(boxes.cancel, kCancelAssign.label, kCancelAssign.action)};
   }
 
   static Part command(const SceneBox &box, std::string_view label,
@@ -516,6 +543,40 @@ private:
     add.action = MenuAction::accept;
     add.walk_to = self;
     return {row, remove, add};
+  }
+
+  /* The skill list's rows a finger apart, as many shown as fit where
+     retail's show; retail's pitch is kept to put back. */
+  void finger_skill_rows(std::uint32_t list, float finger) {
+    if (list == 0u) {
+      return;
+    }
+    if (skill_rows_.list != list) {
+      skill_rows_ = {
+          list, static_cast<std::int32_t>(RD32(list + list_box::kRowHeight)),
+          RD8(list + list_box::kVisibleRows)};
+    }
+    if (skill_rows_.pitch <= 0) {
+      return;
+    }
+    const auto pitch = std::max(skill_rows_.pitch,
+                                static_cast<std::int32_t>(std::ceil(finger)));
+    WR32(list + list_box::kRowHeight, static_cast<std::uint32_t>(pitch));
+    WR8(list + list_box::kVisibleRows,
+        static_cast<std::uint8_t>(skill_rows_.rows * skill_rows_.pitch /
+                                  pitch));
+  }
+
+  /* Retail's skill rows, when touch has left the team menu `menu`. */
+  void restore_skill_rows(std::uint32_t menu) {
+    if (skill_rows_.list == 0u ||
+        RD32(skill_rows_.list + item::kMenu) != menu) {
+      return;
+    }
+    WR32(skill_rows_.list + list_box::kRowHeight,
+         static_cast<std::uint32_t>(skill_rows_.pitch));
+    WR8(skill_rows_.list + list_box::kVisibleRows, skill_rows_.rows);
+    skill_rows_ = {};
   }
 
   /* The selected skill with its ranks, and the buttons that take one back
@@ -749,6 +810,12 @@ private:
   Column skill_;
   std::uint32_t items_menu_ = 0u;
   std::unordered_map<std::string, std::uint32_t> items_;
+  struct SkillRows {
+    std::uint32_t list = 0u;
+    std::int32_t pitch = 0;
+    std::uint8_t rows = 0u;
+  };
+  SkillRows skill_rows_;
   std::uint32_t details_menu_ = 0u;
   bool details_held_ = false;
   bool details_open_ = false;
@@ -777,12 +844,48 @@ bool x2::native::team_touch_hides(std::uint32_t self, std::string_view text) {
          (assigning(menu) && text.find("$MENU_") != std::string_view::npos);
 }
 
+/* On touch the gear lists' cards are not where CMenuTeam's onMouse looks
+   for them (the slots' top three rows, then the pieces' box): a message on
+   a gear list's cards, or while a finger holds one, goes to that list, and
+   the menu refreshes as it does after its own call (FUN_005e0950 of
+   FUN_005ab0c0, both on the menu). */
+extern "C" void x2_override_005e25c0(CPU *cpu) {
+  const std::uint32_t menu = cpu->reg[kX86pEcx];
+  const std::uint32_t esp = cpu->reg[kX86pEsp];
+  const x2::presentation::ScenePoint point{
+      static_cast<float>(static_cast<std::int32_t>(RD32(esp + 4u))),
+      static_cast<float>(static_cast<std::int32_t>(RD32(esp + 8u)))};
+  const std::uint32_t list =
+      x2::input::touch_runtime_active() != 0 && mode_of(menu) == kGearMode
+          ? x2::native::list_touch_owner(menu, point)
+          : 0u;
+  if (list == 0u) {
+    x86_guest_body(cpu, "XMen2.exe", kTeamOnMouse);
+    return;
+  }
+  WR8(menu + kOverDetails, 0u);
+  const std::uint32_t message = RD32(esp + 16u);
+  x2::guest::GuestCall call(*cpu);
+  const std::uint32_t taken =
+      call.virtual_call(list, kListOnMouse,
+                        {RD32(esp + 4u), RD32(esp + 8u), RD32(esp + 12u),
+                         message, RD32(esp + 20u)}) &
+      0xffu;
+  if (taken != 0u && message != kButtonUp && message != kRightButtonUp) {
+    call.thiscall(exe_linked(kGearRefresh), menu,
+                  {call.thiscall(exe_linked(kFocusedItem), menu)});
+  }
+  cpu->reg[kX86pEax] = (cpu->reg[kX86pEax] & ~0xffu) | 1u;
+  cpu->reg[kX86pEsp] += 4u + 20u;
+}
+
 extern "C" void x2_override_005e66c0(CPU *cpu) {
-  g_team_touch.before_update(cpu->reg[kX86pEcx],
+  g_team_touch.before_update(*cpu, cpu->reg[kX86pEcx],
                              x2::input::touch_runtime_active() != 0);
   x86_guest_body(cpu, "XMen2.exe", kTeamUpdate);
 }
 
 __attribute__((constructor)) static void x2_team_touch_register(void) {
   x86_register_override("XMen2.exe", kTeamUpdate, x2_override_005e66c0);
+  x86_register_override("XMen2.exe", kTeamOnMouse, x2_override_005e25c0);
 }

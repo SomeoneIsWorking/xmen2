@@ -93,9 +93,10 @@ PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
   out.frame_scale = {scale_x, scale_z};
 
   const float centre_x = plane.left() + 0.5F * plane.width();
-  const float centre_z = 0.5F * plane.height();
+  /* The frame stands on the screen's bottom edge, so the art's prompt strip
+     below it is off the screen: the buttons are the frame's. */
   out.frame_offset = {centre_x - scale_x * 0.5F * (native.left + native.right),
-                      centre_z - scale_z * 0.5F * (native.bottom + native.top)};
+                      -scale_z * native.bottom};
   out.frame = {out.frame_offset.x + scale_x * native.left,
                out.frame_offset.z + scale_z * native.bottom,
                out.frame_offset.x + scale_x * native.right,

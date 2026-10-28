@@ -142,7 +142,9 @@ public:
     cards.drawn = false;
     const bool hidden =
         (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u;
-    if (hidden || RD32(self + item::kModel) == 0u) {
+    cards.shown = !hidden && RD32(self + item::kModel) != 0u;
+    const std::optional<SceneBox> area = card_area(self);
+    if (!cards.shown || !area) {
       call.thiscall(exe_linked(kSetArrows), self, {0u, 0u});
       return true;
     }
@@ -153,7 +155,7 @@ public:
     const std::uint32_t box = RD32(self + item::kTextBox);
 
     x2::input::ListTouchInput input;
-    input.box = clear_of_other_lists(self);
+    input.box = *area;
     input.line = menu_text::line_height(call, box);
     input.finger = x2::input::menu_finger_units(*plane);
     input.entries = entries;
@@ -216,19 +218,38 @@ public:
     return true;
   }
 
-  /* The list's box less any smaller shown list of its menu inside it. */
-  SceneBox clear_of_other_lists(std::uint32_t self) const {
-    const SceneBox own = list_box(self);
-    SceneBox box = own;
+  /* Where the list's cards go beside its menu's other shown lists, or
+     nullopt while a list it nests with shows in its place. */
+  std::optional<SceneBox> card_area(std::uint32_t self) const {
     const std::uint32_t menu = RD32(self + item::kMenu);
+    const auto place = [&](std::uint32_t list) {
+      return x2::input::ListPlace{list_box(list),
+                                  RD32(menu + x2::menu::kMenuFocus) == list};
+    };
+    std::vector<x2::input::ListPlace> others;
     for (const auto &[other, cards] : lists_) {
-      if (other != self && cards.drawn && RD32(other + item::kMenu) == menu &&
-          (RD8(other + item::kFlags) & x2::menu::kItemHidden) == 0u &&
-          list_box(other).height() < own.height()) {
-        box = x2::input::list_box_clear_of(box, list_box(other));
+      if (other != self && cards.shown && RD32(other + item::kMenu) == menu &&
+          (RD8(other + item::kFlags) & x2::menu::kItemHidden) == 0u) {
+        others.push_back(place(other));
       }
     }
-    return box;
+    return x2::input::nested_list_area(place(self), others);
+  }
+
+  /* The list of `menu` a pointer message at `point` belongs to: the one a
+     finger holds, else the one whose cards are under it; 0 for none. */
+  std::uint32_t owner(std::uint32_t menu, ScenePoint point) const {
+    if (press_.held && lists_.contains(press_.list) &&
+        RD32(press_.list + item::kMenu) == menu) {
+      return press_.list;
+    }
+    for (const auto &[list, cards] : lists_) {
+      if (cards.drawn && RD32(list + item::kMenu) == menu &&
+          cards.box.contains(point)) {
+        return list;
+      }
+    }
+    return 0u;
   }
 
   /* Retail's own row count and cards gone, when touch has left. */
@@ -240,6 +261,7 @@ public:
     x2::guest::GuestCall call(cpu);
     detach_all(call, found->second);
     found->second.touched = false;
+    found->second.shown = false;
     found->second.drawn = false;
     WR8(self + list::kMargin, found->second.margin);
     const int pitch = static_cast<std::int32_t>(RD32(self + list::kRowHeight));
@@ -347,6 +369,8 @@ private:
     int accept_on_arrival = -1;
     int accept_frames = 0;
     bool touched = false;
+    /* Shown by its menu, and its cards drawn this frame. */
+    bool shown = false;
     bool drawn = false;
   };
 
@@ -603,6 +627,11 @@ ListTouch g_list_touch;
 std::optional<x2::native::ListTouchDrawn>
 x2::native::list_touch_drawn(std::uint32_t list) {
   return g_list_touch.drawn(list);
+}
+
+std::uint32_t x2::native::list_touch_owner(std::uint32_t menu,
+                                           x2::presentation::ScenePoint point) {
+  return g_list_touch.owner(menu, point);
 }
 
 extern "C" void x2_override_005c1200(CPU *cpu) {

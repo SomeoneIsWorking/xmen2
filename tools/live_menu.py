@@ -149,11 +149,15 @@ def item_button(menu: dict, item: dict) -> dict:
     rect = item.get("rect")
     if rect is None:
         return {}
-    for button in menu.get("touch_buttons", []):
-        if (rect["left"] <= button["aim_x"] <= rect["right"]
-                and rect["top"] <= button["aim_z"] <= rect["bottom"]):
-            return button
-    return {}
+    # Neighbouring footers' boxes overlap; the aim nearest the box's middle
+    # is this item's.
+    middle = (0.5 * (rect["left"] + rect["right"]),
+              0.5 * (rect["top"] + rect["bottom"]))
+    inside = [b for b in menu.get("touch_buttons", [])
+              if rect["left"] <= b["aim_x"] <= rect["right"]
+              and rect["top"] <= b["aim_z"] <= rect["bottom"]]
+    return min(inside, default={}, key=lambda b: (b["aim_x"] - middle[0]) ** 2
+               + (b["aim_z"] - middle[1]) ** 2)
 
 
 def finger_tall(button: dict) -> bool:
