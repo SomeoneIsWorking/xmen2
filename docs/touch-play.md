@@ -85,6 +85,27 @@ a press and chosen with `MENU_ACCEPT` on the release, as a row with a usecmd
 is. Prove a screen with `tools/live_case.py touch-menu`, which taps the boxes
 `GET /menu` reports as each item's `tap`.
 
+**Every popup has a touch layout** (CPopupDialog: the difficulty choice, Load
+Game, confirmations and messages; issue #199), laid out the way a mobile game
+lays out a dialog and drawn by the game in its own art
+(`src/native/popup_touch.cpp`, geometry in `x2::input::layout_popup_touch`).
+The popup's frame `ui/hud/dialog` spans 94% of the screen's width and is as
+tall as its page needs, up to 90% of the height, in front of the menu it
+covers. Each entry is a finger-tall card: a stretched copy of the selection
+bar `ui/hud/dialog_select` with the entry in the game's font at 0.42 of a
+finger; a locked entry (Hard before the game is beaten) has no bar and the
+game's greyed text. The page's prompts are bar buttons along the bottom with
+their words alone. One tap on a card selects that entry and accepts it; a tap
+on a button posts its prompt's action; a drag scrolls the cards with the
+finger, a card per pitch, and the game's arrows mark entries above and below.
+The draw and onMouse are the port's on touch, and the extra bar entities
+attach and detach with the popup's own models; with touch off both are
+retail's and the frame goes back to its retail placement. `GET /menu` reports
+each card and button where the last draw put it (`popup_page.rows`,
+`popup_page.footers`, `touch`). Prove it with `tools/live_case.py touch-popup`
+(difficulty: Hard refused, Back, one tap on Easy starts) and `touch-load`
+(eleven saves: drag, tap to load, Continue).
+
 **Every other screen that is not gameplay and has no touch menu draws the menu
 pad** -- dialogue, and the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that

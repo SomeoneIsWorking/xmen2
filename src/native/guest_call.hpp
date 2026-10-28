@@ -50,6 +50,9 @@ public:
     return thiscall(RD32(RD32(self) + offset), self, arguments);
   }
 
+  /* The float the last call left on the x87 stack. */
+  long double x87_result() { return x87_pop(&cpu_); }
+
 private:
   static uint32_t bytes(std::initializer_list<uint32_t> arguments) {
     return static_cast<uint32_t>(arguments.size() * 4u);
