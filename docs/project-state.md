@@ -163,7 +163,13 @@ extraction helper. Reinstall startup checks that retained package installation
 before showing the picker when Android retained app data. OBB is app-specific:
 an ordinary uninstall removes it, so reliable import-free uninstall/reinstall
 still needs a shared-storage SAF design. The user reported that the Android
-setup and game path runs on a device. An API 35 x86-64 emulator installed the debug APK, and
+setup and game path runs on a device. On the user's Huawei BKY-W09 tablet
+(Android 12, 2800x1840) on 2026-10-28 the native touch menus answered real
+taps (Options opened from its row's edge, Combat Music toggled by its card),
+and the game fills the screen behind the hidden system bars: before
+`android-port` a8e8e2f the hidden status bar's 72-pixel strip showed the
+light theme's background, because a decor that fits the system bars keeps
+their inset below API 35. An API 35 x86-64 emulator installed the debug APK, and
 its ZIP control opened Android's DocumentsUI picker.
 
 A loader-image-only DocumentsUI fixture exposed an install-validation defect:

@@ -38,7 +38,7 @@ SHARED_REPOS = (
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "9bb391e1ddfb3a878ac8350e3d28c484e9ecc4a6", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "ba3c758d5aaeef0c79f1f4a19a6ce113f02760cf", "tools/android_port.py"),
+               "a8e8e2f208203e9abc61118f67e92222129c604b", "tools/android_port.py"),
     SharedRepo("setup-ui", "https://github.com/SomeoneIsWorking/setup-ui.git",
                "d4ca35e501733966229b49d49716e00a31e2ad69", "include/setup_ui/setup_ui.h"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
