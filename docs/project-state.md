@@ -1031,10 +1031,9 @@ face buttons bottom right (A below, B right, X left, Y above), and a shoulder
 above each cluster, publishing through the same virtual pad as the gameplay
 controls. The footers name that pad's buttons, so the prompts and the buttons
 beside them agree. Conversations draw it beside their Skip button, and A
-advances their lines. Measured by `tools/live_case.py menu-pad`, 8 of 8 on
-2026-10-06: New Game's difficulty popup hides the touch menu, the pad's ten
-buttons are drawn and none of the gameplay controls, and the pad's B closes the
-popup. This replaced making the footer's words tappable, whose prompt-to-draw
+advances their lines. Popups no longer draw it: every `CPopupDialog` is
+touched natively, its options a finger apart, measured by
+`tools/live_case.py touch-popup`, 11 of 11 on 2026-10-28. The pad replaced making the footer's words tappable, whose prompt-to-draw
 pairing by glyph count put the World Map's Back and Go on level names and left
 that screen with no way out (issue #190).
 

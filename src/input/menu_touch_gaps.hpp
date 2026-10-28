@@ -25,8 +25,6 @@ enum class MenuTouchGapKind : std::uint8_t {
   footer_token,
   /* A hit box narrower or shorter than a finger. */
   small_target,
-  /* A popup takes the pointer first (popup+0x7c); not mapped yet. */
-  popup,
 };
 
 const char *menu_touch_gap_kind_name(MenuTouchGapKind kind);

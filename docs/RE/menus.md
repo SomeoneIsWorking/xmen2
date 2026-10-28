@@ -476,6 +476,15 @@ Its vtable is `0x006a332c`; the list it shows (New Game's difficulty, Load
 Game's saves, a yes/no) lives in the current page `p+0x18+idx*0x1560`: entry
 `i`'s text at `+(i+8)*0x80`, then the count `+0x1558`, the visible rows
 `+0x1559`, the first shown `+0x155a` and the selected `+0x155b` (all `char`).
+Bit `i` of the dwords at `+0x130c` is set for an entry the player may choose;
+the draw passes it to the text style (`FUN_005d8ae0`), which greys a clear
+one, and the game refuses it (Hard on New Game before the game is beaten).
+The text box at `p+0x4050` keeps every line it drew from `+0x43c`, `0x214`
+apart, counted at `+0x21844`: a RECT `{top, bottom, left, right}` at `+4` in
+the scene plane and the text at `+0x14`. Only a line with a `$MENU` token is a
+footer to onMouse. `x2::menu::PopupSnapshot` is this page; `GET /menu`
+reports it as `popup_page` with each footer's tap point and each option's,
+taken from where the draw last put it.
 
 - **Draw** `FUN_005ea9e0` (`+0x6c` path): each shown entry is laid out by the
   text layout `FUN_00597c20` `+0x38(width = s16 p+0x4054, text, scale 1.0, 0, 1)`
@@ -504,7 +513,7 @@ accepts it, but only if a frame's update runs between the press and the release
 and no held message reaches the popup in between: a move with the button down,
 or a `0x210` in the frame the release is pumped, re-arms `p+4` and the release
 is refused. Hard on New Game refuses `MENU_ACCEPT` from the keyboard as well,
-with touch off; that is the game's own rule.
+with touch off: its enabled bit is clear.
 
 On touch each option's row is at least a finger target tall
 (`x2::native::popup_row_slot`, `src/native/popup_rows.cpp`), on both halves of

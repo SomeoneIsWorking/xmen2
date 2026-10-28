@@ -32,7 +32,7 @@ refuses the finger:
 | step | `CMenu::onMouse` `0x005ae0a0` (no left/right) | none: Options' volume rows were a misreading, `CMenuOptions::onMouse` `0x005cb5f0` steps its bars |
 | list | list box `onMouse` `0x005c0e10` (no scroll) | shop, codex, review, danger_room, trivia |
 | footer token | `CMenuItemText::onMouse` `0x005c6490` | codex: `$MENU_DETAILS` |
-| popup | `popup+0x7c`, not mapped | main: New Game's difficulty, Load Game's saves |
+| popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
 | small target | the menu's own layout | every menu: each clickable row, footer and list row is under a tenth of the shorter client edge at 1280x720 |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
@@ -74,5 +74,6 @@ The difficulty popup is step 5's first screen: on touch its options are finger
 rows in the game's own font and bar, a tap on Easy selects it and a second tap,
 short or held 0.6 s, starts the new game. Touch reaches the game through its
 own event callback at the frame boundary (`touch_pointer_dispatch.cpp`), not
-the Win32 queue. The popup still draws the menu pad. Load Game (needs a save)
-and the shop are next.
+the Win32 queue. Every popup is native on touch, with nothing drawn over it
+(`tools/live_case.py touch-popup`, 11 of 11). Load Game (needs a save) and the
+shop are next.
