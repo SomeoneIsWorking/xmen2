@@ -152,11 +152,11 @@ static void refresh_projection(void) {
     return;
   count = x2::save::load_game_menu_window_count(&g_plan, &g_window);
   focus = x2::save::load_game_menu_window_focus(&g_plan, &g_window);
-  if (count > x2::save::kLoadGameVisibleRows || focus >= count) {
+  if (count > g_window.rows || focus >= count) {
     g_active = 0;
     return;
   }
-  for (resident = 0u; resident < x2::save::kLoadGameVisibleRows; resident++) {
+  for (resident = 0u; resident < x2::save::kLoadGameResidentRows; resident++) {
     x2::save::LoadGameEntry entry;
     const ResidentRow *row;
 
@@ -182,7 +182,7 @@ static void refresh_projection(void) {
   WR32(g_page + PAGE_SECONDARY_BITS, secondary_bits);
   WR32(g_page + PAGE_SELECTABLE_BITS, selectable_bits);
   WR8(g_page + PAGE_COUNT, (uint8_t)count);
-  WR8(g_page + PAGE_CAPACITY, x2::save::kLoadGameVisibleRows);
+  WR8(g_page + PAGE_CAPACITY, (uint8_t)g_window.rows);
   WR8(g_page + PAGE_ORIGIN, 0u);
   WR8(g_page + PAGE_FOCUS, (uint8_t)focus);
   g_refreshes++;
@@ -276,7 +276,8 @@ static void activate_projection(const CPU *source, uint32_t manager) {
     capture_row(g_page, (unsigned)logical, &g_rows[logical]);
   for (logical = 0u; logical < g_autosave_count; logical++)
     make_autosave_row(&g_rows[manual_count + logical], (unsigned)logical);
-  x2::save::load_game_menu_window_init(&g_plan, &g_window);
+  x2::save::load_game_menu_window_init(&g_plan, &g_window,
+                                       RD8(g_page + PAGE_CAPACITY));
   g_manager = manager;
   g_active = 1;
   refresh_projection();

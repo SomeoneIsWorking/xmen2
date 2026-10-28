@@ -8,7 +8,7 @@
 namespace x2::save {
 
 inline constexpr unsigned kLoadGameManualSlots = 10u;
-inline constexpr unsigned kLoadGameVisibleRows = 10u;
+inline constexpr unsigned kLoadGameResidentRows = 10u;
 inline constexpr unsigned kLoadGameMaxEntries =
     kLoadGameManualSlots + kAutosaveSlots;
 
@@ -28,6 +28,7 @@ struct LoadGameMenuPlan {
 struct LoadGameMenuWindow {
   std::size_t first;
   std::size_t selected;
+  std::size_t rows;
 };
 
 /* Manual saves retain numeric slot order. The autosaves follow, newest first
@@ -36,11 +37,12 @@ struct LoadGameMenuWindow {
 void load_game_menu_plan(std::uint16_t manual_present_mask, unsigned autosaves,
                          LoadGameMenuPlan *out);
 
-/* The retail dialog list owns exactly ten resident command rows. This window
-   projects up to kLoadGameMaxEntries logical entries onto those rows without
-   ever assigning the retail save manager a synthetic numeric slot. */
+/* The retail dialog list owns ten resident command rows and shows `rows` of
+   them, the page's visible count (fewer on touch). This window projects up to
+   kLoadGameMaxEntries logical entries onto the shown rows without ever
+   assigning the retail save manager a synthetic numeric slot. */
 void load_game_menu_window_init(const LoadGameMenuPlan *plan,
-                                LoadGameMenuWindow *window);
+                                LoadGameMenuWindow *window, std::size_t rows);
 int load_game_menu_window_move(const LoadGameMenuPlan *plan,
                                LoadGameMenuWindow *window, int delta);
 int load_game_menu_window_select(const LoadGameMenuPlan *plan,
