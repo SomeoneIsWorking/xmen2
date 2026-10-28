@@ -409,10 +409,41 @@ void test_popup() {
   const std::uint8_t shown = 1u;
   guest.put(kPopup + 0x18u + 0x155du, &hidden, 1u);
   guest.put(kPopup + 0x18u + 0x1560u + 0x155du, &shown, 1u);
+  /* Page 1: two entries, the second selected and the first alone enabled. */
+  constexpr std::uint32_t kPage = kPopup + 0x18u + 0x1560u;
+  const std::int8_t counts[4] = {2, 2, 0, 1};
+  guest.put(kPage + 0x1558u, counts, sizeof counts);
+  guest.put(kPage + 8u * 0x80u, "Easy", 5u);
+  guest.put(kPage + 9u * 0x80u, "Hard", 5u);
+  guest.u32(kPage + 0x130cu, 1u);
+  /* Its text box: a title line and a footer line, rects {top, bottom, left,
+     right}. */
+  constexpr std::uint32_t kTextBox = 0x26000000u;
+  guest.u32(kPopup + 0x4050u, kTextBox);
+  guest.u32(kTextBox + 0x21844u, 2u);
+  const std::int32_t title[4] = {300, 290, 10, 200};
+  guest.put(kTextBox + 0x43cu + 4u, title, sizeof title);
+  guest.put(kTextBox + 0x43cu + 0x14u, "Choose", 7u);
+  const std::int32_t back[4] = {40, 30, 20, 80};
+  guest.put(kTextBox + 0x43cu + 0x214u + 4u, back, sizeof back);
+  guest.put(kTextBox + 0x43cu + 0x214u + 0x14u, "$MENU_BACK Back", 16u);
   x2::menu::RetailMenuModel model(guest, kImage);
   x2::menu::MenuSnapshot menu;
   check(model.read(&menu) == x2::menu::ReadStatus::ok && menu.popup_up,
         "the current popup's shown flag");
+  check(menu.popup && menu.popup->entries.size() == 2u &&
+            menu.popup->entries[1] == "Hard" && menu.popup->selected == 1,
+        "the shown page's entries and selection");
+  check(menu.popup && menu.popup->enabled.size() == 2u &&
+            menu.popup->enabled[0] && !menu.popup->enabled[1],
+        "an entry's enabled bit");
+  check(menu.popup && menu.popup->footers.size() == 1u &&
+            menu.popup->footers[0].label == "$MENU_BACK Back" &&
+            menu.popup->footers[0].rect.left == 20 &&
+            menu.popup->footers[0].rect.top == 40 &&
+            menu.popup->footers[0].rect.right == 80 &&
+            menu.popup->footers[0].rect.bottom == 30,
+        "only the text box's token lines, with the rect onMouse tests");
   guest.u32(kPopup + 0x403cu, 0xffffffffu);
   check(model.read(&menu) == x2::menu::ReadStatus::ok && !menu.popup_up,
         "an index outside 0..2 reads popup 0, as isUp does");

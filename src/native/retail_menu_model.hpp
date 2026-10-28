@@ -143,6 +143,25 @@ struct MenuItem {
 /* CMenu::onMouse: focuses the hit item and never steps one. */
 inline constexpr std::uint32_t kMenuOnMouse = 0x005ae0a0u;
 
+/* A footer of the CPopupDialog's text box: its label, `$MENU_` token
+   included, and the box its onMouse hit-tests, in the scene plane. */
+struct PopupFooter {
+  std::string label;
+  SceneRect rect;
+};
+
+/* The shown CPopupDialog page (docs/RE/menus.md, "The popup"). */
+struct PopupSnapshot {
+  std::vector<std::string> entries;
+  /* Per entry: its bit at page+0x130c, clear for one the game greys and
+     refuses (Hard before the game is beaten). */
+  std::vector<bool> enabled;
+  int first_shown = 0;
+  int visible = 0;
+  int selected = -1;
+  std::vector<PopupFooter> footers;
+};
+
 struct MenuSnapshot {
   std::uint32_t address = 0;
   std::string name;
@@ -158,6 +177,8 @@ struct MenuSnapshot {
   int focused = -1;
   /* A CPopupDialog is shown; it takes the pointer before any menu does. */
   bool popup_up = false;
+  /* Its page, while popup_up. */
+  std::optional<PopupSnapshot> popup;
   /* The class's own screen state, for the classes that keep one. CMenuTeam:
      0 the party, 1 the roster, 2..6 a hero's detail tabs. CMenuShop: bit 0
      set for the stash. CMenuCodex: 1 while the description is shown. */
@@ -191,7 +212,7 @@ public:
   std::uint32_t failed_address() const { return reader_.failed_address(); }
 
 private:
-  bool read_popup(bool *up);
+  bool read_popup(bool *up, std::optional<PopupSnapshot> *page);
   bool registry_getter(const std::string &name, std::uint32_t *getter);
   bool read_item(std::uint32_t address, unsigned slot, MenuItem *out,
                  std::array<std::uint32_t, 4> *links, std::uint32_t *getter);

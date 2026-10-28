@@ -86,7 +86,7 @@ is. Prove a screen with `tools/live_case.py touch-menu`, which taps the boxes
 `GET /menu` reports as each item's `tap`.
 
 **Every other screen that is not gameplay and has no touch menu draws the menu
-pad** -- popups, dialogue. The retail menus are
+pad** -- dialogue, and the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -412,7 +412,8 @@ measured 11–19 against the 27 a working tap produced.
 
 ### The menu pad, 2026-09-26
 
-`tools/live_case.py menu-pad` reaches the main menu, reads `/controls` for the
+The case below was retired on 2026-10-28, when popups became native and its
+screen stopped drawing the pad; `touch-popup` replaced it. It reached the main menu, reads `/controls` for the
 buttons the run is drawing and the surface they are in, taps d-pad Down five
 times and A, and requires the game's own first open of the Options package. B
 must then return to the main menu, judged on the menu column's static art

@@ -107,8 +107,6 @@ const char *menu_touch_gap_kind_name(MenuTouchGapKind kind) {
     return "footer-token";
   case MenuTouchGapKind::small_target:
     return "small-target";
-  case MenuTouchGapKind::popup:
-    return "popup";
   }
   return "unknown";
 }
@@ -122,8 +120,8 @@ std::vector<MenuTouchGap>
 find_menu_touch_gaps(const menu::MenuSnapshot &menu,
                      const presentation::RetailScenePlane &plane) {
   std::vector<MenuTouchGap> gaps;
+  /* A popup takes the pointer first (popup+0x7c) and is native on touch. */
   if (menu.popup_up) {
-    gaps.push_back({MenuTouchGapKind::popup, "popup"});
     return gaps;
   }
   for (const int index : menu.rows) {

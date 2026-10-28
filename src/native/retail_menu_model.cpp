@@ -75,6 +75,22 @@ inline constexpr std::uint32_t kPopupCurrent = 0x403cu;
 inline constexpr std::uint32_t kPopupShown = 0x18u + 0x155du;
 inline constexpr std::uint32_t kPopupStride = 0x1560u;
 inline constexpr std::int32_t kPopupCount = 3;
+/* The page: entry i's text at +(i+8)*0x80, then its counts (all char). */
+inline constexpr std::uint32_t kPopupPage = 0x18u;
+inline constexpr std::uint32_t kPopupEntryBytes = 0x80u;
+inline constexpr std::uint32_t kPopupEntries = 8u * kPopupEntryBytes;
+inline constexpr std::uint32_t kPopupCounts = 0x1558u;
+inline constexpr std::uint32_t kPopupMarks = 0x130cu;
+/* The text box; its lines from +0x43c, 0x214 apart, counted at +0x21844: a
+   RECT {top, bottom, left, right} at +4, the text at +0x14. */
+inline constexpr std::uint32_t kPopupTextBox = 0x4050u;
+inline constexpr std::uint32_t kPopupFooters = 0x43cu;
+inline constexpr std::uint32_t kPopupFooterStride = 0x214u;
+inline constexpr std::uint32_t kPopupFooterCount = 0x21844u;
+inline constexpr std::uint32_t kPopupFooterRect = 0x4u;
+inline constexpr std::uint32_t kPopupFooterLabel = 0x14u;
+inline constexpr std::uint32_t kPopupFooterLabelBytes = 0x1eeu;
+inline constexpr std::uint32_t kPopupLineMax = 256u;
 
 /* CMenuItemListBox (vtable 0x006a062c); see docs/RE/menus.md. */
 inline constexpr std::size_t kListBoxBytes = 0xe4u;
@@ -632,8 +648,9 @@ bool RetailMenuModel::attach_heroes(MenuSnapshot *menu) {
   return true;
 }
 
-bool RetailMenuModel::read_popup(bool *up) {
+bool RetailMenuModel::read_popup(bool *up, std::optional<PopupSnapshot> *page) {
   *up = false;
+  page->reset();
   std::uint32_t popup = 0;
   if (!reader_.u32(reader_.image(kPopupRva), &popup)) {
     return false;
@@ -654,13 +671,69 @@ bool RetailMenuModel::read_popup(bool *up) {
     return false;
   }
   *up = (shown & 1u) != 0u;
+  if (!*up) {
+    return true;
+  }
+  const std::uint32_t base = popup + kPopupPage + slot * kPopupStride;
+  std::array<std::int8_t, 4> counts{};
+  if (!reader_.bytes(base + kPopupCounts, counts.data(), counts.size())) {
+    return false;
+  }
+  PopupSnapshot out;
+  out.first_shown = counts[2];
+  out.visible = counts[1];
+  out.selected = counts[3];
+  for (int i = 0; i < counts[0]; ++i) {
+    std::string bytes;
+    if (!reader_.c_string(base + kPopupEntries +
+                              static_cast<std::uint32_t>(i) * kPopupEntryBytes,
+                          kPopupEntryBytes, &bytes)) {
+      return false;
+    }
+    out.entries.push_back(native::latin1_to_utf8(bytes));
+    std::uint32_t marks = 0;
+    if (!reader_.u32(base + kPopupMarks +
+                         static_cast<std::uint32_t>(i / 32) * 4u,
+                     &marks)) {
+      return false;
+    }
+    out.enabled.push_back(((marks >> (i % 32)) & 1u) != 0u);
+  }
+  std::uint32_t text_box = 0;
+  std::uint32_t footers = 0;
+  if (!reader_.u32(popup + kPopupTextBox, &text_box) ||
+      (text_box != 0u &&
+       !reader_.u32(text_box + kPopupFooterCount, &footers))) {
+    return false;
+  }
+  for (std::uint32_t i = 0; text_box != 0u && i < footers && i < kPopupLineMax;
+       ++i) {
+    const std::uint32_t entry =
+        text_box + kPopupFooters + i * kPopupFooterStride;
+    std::array<std::int32_t, 4> rect{};
+    std::string bytes;
+    if (!reader_.bytes(entry + kPopupFooterRect, rect.data(), sizeof rect) ||
+        !reader_.c_string(entry + kPopupFooterLabel, kPopupFooterLabelBytes,
+                          &bytes)) {
+      return false;
+    }
+    /* onMouse acts on a line only through its `$MENU` token. */
+    if (bytes.find("$MENU") == std::string::npos) {
+      continue;
+    }
+    PopupFooter footer;
+    footer.label = native::latin1_to_utf8(bytes);
+    footer.rect = {rect[2], rect[0], rect[3], rect[1]};
+    out.footers.push_back(std::move(footer));
+  }
+  *page = std::move(out);
   return true;
 }
 
 ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   *out = MenuSnapshot{};
   reader_.reset_failure();
-  if (!read_popup(&out->popup_up)) {
+  if (!read_popup(&out->popup_up, &out->popup)) {
     return ReadStatus::unreadable;
   }
   std::uint32_t manager = 0;

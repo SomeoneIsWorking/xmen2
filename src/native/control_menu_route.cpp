@@ -6,6 +6,7 @@
 #include "control_command_bridge.h"
 #include "control_query.h"
 #include "json_string.h"
+#include "popup_rows.hpp"
 #include "touch_menu_source.hpp"
 #include "win32_pointer.h"
 #include "x86rt_native.h"
@@ -257,6 +258,48 @@ void put_button(std::string *out, const input::TouchMenuState &state,
   close_object(out);
 }
 
+/* The shown popup page: each shown entry where the popup last drew it, and
+   its footers. */
+void put_popup(std::string *out, const menu::PopupSnapshot &popup,
+               const presentation::RetailScenePlane *plane) {
+  put_key(out, "popup_page");
+  out->push_back('{');
+  put_int(out, "selected", popup.selected);
+  put_key(out, "rows");
+  out->push_back('[');
+  const std::vector<menu::SceneRect> &drawn = native::popup_rows_drawn().rows();
+  for (std::size_t i = 0; i < drawn.size(); ++i) {
+    const auto entry = static_cast<std::size_t>(popup.first_shown) + i;
+    if (entry >= popup.entries.size()) {
+      break;
+    }
+    out->push_back('{');
+    put_tap(out, drawn[i], plane);
+    put_int(out, "entry", static_cast<long>(entry));
+    put_text(out, "text", popup.entries[entry]);
+    put_bool(out, "enabled", popup.enabled[entry]);
+    close_object(out);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("],");
+  put_key(out, "footers");
+  out->push_back('[');
+  for (const menu::PopupFooter &footer : popup.footers) {
+    out->push_back('{');
+    put_tap(out, footer.rect, plane);
+    put_text(out, "text", footer.label);
+    close_object(out);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("]},");
+}
+
 /* GET /menu's guest read, run at the guest input poll. */
 struct MenuRead {
   bool all_items = false;
@@ -373,6 +416,9 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   std::snprintf(address, sizeof address, "0x%08x", menu.address);
   put_text(&out, "address", address);
   put_bool(&out, "popup", menu.popup_up);
+  if (menu.popup) {
+    put_popup(&out, *menu.popup, plane);
+  }
   if (menu.mode) {
     put_int(&out, "mode", static_cast<long>(*menu.mode));
   }

@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import shutil
 import signal
 import time
 
-from live_game import (
-    live_controls,
-    live_viewport,
-    tap_control,
-)
+from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     MAIN_MENU_LABELS,
@@ -235,47 +232,79 @@ def case_menu_touch(case: Case) -> None:
                "%d at most" % max(dropped, default=-1))
 
 
-def case_menu_pad(case: Case) -> None:
-    """The menu pad over the main menu's popup.
+def popup_row(menu: dict, text: str) -> dict:
+    page = menu.get("popup_page") or {}
+    for row in page.get("rows", []):
+        if row.get("text", "").strip().lower() == text:
+            return row
+    return {}
 
-    New Game raises the difficulty popup over the main menu; touch play draws
-    the d-pad and face buttons there, and the pad's B must close the popup.
+
+def popup_footer(menu: dict, token: str) -> dict:
+    page = menu.get("popup_page") or {}
+    for footer in page.get("footers", []):
+        if footer.get("text", "").startswith(token):
+            return footer
+    return {}
+
+
+def case_touch_popup(case: Case) -> None:
+    """New Game's difficulty popup, touched natively.
+
+    Nothing is drawn over it, its options are a finger apart, its Back footer
+    closes it, and a tap on Easy selects it and a second tap starts the game.
     """
-    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.prepare_profile(["boot.mode=menu", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
-    case.check("the run reached the main menu",
-               keyboard_past_the_intro(case, 300))
-    main = wait_menu(case, "main", 30)
+    main = wait_menu(case, "main", 300)
     new_game = menu_row(main, "new game")
     case.check("the main menu has NEW GAME", bool(new_game))
     if not new_game:
         return
-    timeline = MenuTimeline(case, "timeline.txt")
     tap_menu_item(case, new_game)
+    timeline = MenuTimeline(case, "timeline.txt")
     menu = timeline.until(lambda m: m.get("popup") is True, 20)
     case.check("NEW GAME opened the game's difficulty popup",
-               menu.get("menu") == "main" and menu.get("popup") is True,
-               "menu %r popup %r" % (menu.get("menu"), menu.get("popup")))
+               menu.get("popup") is True)
+    time.sleep(1.0)
+    menu = read_menu(case)
     controls = live_controls(case)
-    viewport = live_viewport(case)
-    case.check("the menu pad is drawn",
-               viewport is not None and "menu-b" in controls,
+    case.check("nothing is drawn over the popup", not controls,
                "drawn: %s" % sorted(controls))
-    case.check("and none of the gameplay controls", "jump" not in controls)
-    case.shot("new-game")
-    if viewport is None or "menu-b" not in controls:
+    rows = [popup_row(menu, label) for label in ("easy", "normal", "hard")]
+    case.check("the popup reports its three options where it drew them",
+               all(row.get("tap") for row in rows), str(menu.get("popup_page")))
+    if not all(row.get("tap") for row in rows):
         return
-    case.check("B was tapped", tap_control(case, controls["menu-b"], viewport))
-    deadline = time.monotonic() + 20
-    back = read_menu(case)
-    while time.monotonic() < deadline and back.get("popup") is not False:
-        time.sleep(0.5)
-        back = read_menu(case)
-    case.check("the pad's B closed the popup on the game's main menu",
-               back.get("menu") == "main" and back.get("popup") is False,
-               "menu %r popup %r" % (back.get("menu"), back.get("popup")))
-    case.shot("after-back")
+    pitch = min(b["tap"]["y"] - a["tap"]["y"]
+                for a, b in itertools.pairwise(rows))
+    case.check("the options are a finger apart", pitch >= 0.095,
+               "pitch %.4f of the height" % pitch)
+    case.shot("popup")
+    back = popup_footer(menu, "$MENU_BACK")
+    case.check("Back was tapped", tap_menu_item(case, back))
+    closed = timeline.until(lambda m: m.get("popup") is False, 10)
+    case.check("the Back footer closed the popup",
+               closed.get("menu") == "main" and closed.get("popup") is False,
+               "menu %r popup %r" % (closed.get("menu"), closed.get("popup")))
+    tap_menu_item(case, new_game)
+    menu = timeline.until(lambda m: m.get("popup") is True, 20)
+    time.sleep(1.0)
+    easy = popup_row(read_menu(case), "easy")
+    case.check("Easy was tapped", tap_menu_item(case, easy))
+    chosen = timeline.until(
+        lambda m: (m.get("popup_page") or {}).get("selected") == 0, 10)
+    case.check("the tap selected Easy",
+               (chosen.get("popup_page") or {}).get("selected") == 0,
+               str(chosen.get("popup_page", {}).get("selected")))
+    case.shot("easy")
+    case.check("Easy was tapped again", tap_menu_item(case, easy))
+    started = timeline.until(
+        lambda m: m.get("popup") is not True and m.get("menu") != "main", 20)
+    case.check("the second tap started the new game",
+               started.get("popup") is not True and started.get("menu") != "main",
+               "menu %r popup %r" % (started.get("menu"), started.get("popup")))
 
 
 def case_menu_model(case: Case) -> None:

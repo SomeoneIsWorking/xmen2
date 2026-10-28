@@ -75,7 +75,7 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
   std::uint32_t failed = 0u;
   if (image != 0u &&
       menu::read_live_menu(&snapshot, &failed) == menu::ReadStatus::ok) {
-    native = !snapshot.popup_up &&
+    native = snapshot.popup_up ||
              input::menu_is_native_on_touch(snapshot.menu_class);
     const LiveGuestMemory memory;
     if (const auto plane = read_scene_plane(memory, image)) {
