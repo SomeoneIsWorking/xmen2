@@ -221,6 +221,7 @@ FakeGuest build_options() {
   guest.text(kMenu + 0x0cu, "options");
   guest.u32(kMenu + 0x2f4u, pool.add("$MENU_BACK Back"));
   guest.u32(kMenu + 0x324u, item_address(3));
+  guest.u32(kMenu + 0x18d8u, 1u);    /* the controls page */
   const std::uint32_t live = 0x1fbu; /* slots 0,1,3..8 */
   guest.u32(kMenu + 0x15f0u, live);
   guest.u32(kMenu + 0x1608u, 8u);
@@ -673,9 +674,9 @@ void test_team_menu() {
 
   const FakeGuest options = build_options();
   x2::menu::RetailMenuModel options_model(options, kImage);
-  check(options_model.read(&menu) == x2::menu::ReadStatus::ok && !menu.mode &&
-            !menu.assigning_skill,
-        "a class without a mode reads none");
+  check(options_model.read(&menu) == x2::menu::ReadStatus::ok && menu.mode &&
+            *menu.mode == 1u && !menu.assigning_skill,
+        "Options' page, menu+0x18d8, and no skill being assigned");
 }
 
 /* A shop-shaped menu: one list box of three entries drawn from the shared

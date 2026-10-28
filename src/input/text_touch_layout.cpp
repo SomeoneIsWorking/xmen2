@@ -10,4 +10,11 @@ SceneBox text_button(const SceneBox &text, float finger) {
   return {x - half_width, z - half_height, x + half_width, z + half_height};
 }
 
+SceneBox row_button(const SceneBox &text, float left, float right,
+                    float finger) {
+  const float half_height = 0.5F * kCardHeight * finger;
+  const float z = 0.5F * (text.bottom + text.top);
+  return {left, z - half_height, right, z + half_height};
+}
+
 } // namespace x2::input

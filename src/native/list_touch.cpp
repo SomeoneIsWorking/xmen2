@@ -49,23 +49,18 @@ constexpr std::uint32_t kListOnMouse = 0x005c0e10u;
 /* The base destructor every list box class runs. */
 constexpr std::uint32_t kListDestroy = 0x005c2800u;
 
-/* The draw's first steps: the item's gamevar refresh (vt+0x24), and the
-   scroll arrows (up, down). */
-constexpr std::uint32_t kRefresh = 0x005bbd10u;
+/* The scroll arrows (up, down). */
 constexpr std::uint32_t kSetArrows = 0x005bf690u;
 constexpr std::uint32_t kEntryCount = 0x005bf750u;
 /* An entry's record text, its columns tab-separated. */
 constexpr std::uint32_t kEntryText = 0x005bfcd0u;
-/* Item slots: hidden, fade, an entry's enabled, own colour (out, entry),
-   icons A and B. */
-constexpr std::uint32_t kSlotHidden = 0x04u;
+/* Item slots: fade, an entry's enabled, own colour (out, entry), icons A and
+   B. */
 constexpr std::uint32_t kSlotFade = 0x0cu;
 constexpr std::uint32_t kSlotEnabled = 0x88u;
 constexpr std::uint32_t kSlotColor = 0x94u;
 constexpr std::uint32_t kSlotIconA = 0xa0u;
 constexpr std::uint32_t kSlotIconB = 0xa8u;
-/* CMenu+0x324, the focused item. */
-constexpr std::uint32_t kMenuFocus = 0x324u;
 /* The icon batch's sprite (pos, rgba, size, tile, turn); icon B sits this
    much deeper. */
 constexpr std::uint32_t kIcon = 0x005ed120u;
@@ -140,12 +135,13 @@ public:
     }
     x2::guest::GuestCall call(cpu);
     Cards &cards = cards_for(call, vectors, self);
-    call.thiscall(exe_linked(kRefresh), self);
+    call.thiscall(exe_linked(item::kRefresh), self);
     hide_cursor(call, self);
     detach_all(call, cards);
     cards.touched = true;
     cards.drawn = false;
-    const bool hidden = (call.virtual_call(self, kSlotHidden) & 0xffu) != 0u;
+    const bool hidden =
+        (call.virtual_call(self, item::kSlotHidden) & 0xffu) != 0u;
     if (hidden || RD32(self + item::kModel) == 0u) {
       call.thiscall(exe_linked(kSetArrows), self, {0u, 0u});
       return true;
@@ -159,8 +155,7 @@ public:
     x2::input::ListTouchInput input;
     input.box = list_box(self);
     input.line = menu_text::line_height(call, box);
-    input.finger = x2::input::menu_finger_target(*plane) * plane->height() /
-                   static_cast<float>(plane->client_height());
+    input.finger = x2::input::menu_finger_units(*plane);
     input.entries = entries;
     input.top = s16(self + list::kTop);
     input.icons = (RD8(self + list::kBits) & list::kIcons) != 0u &&
@@ -189,7 +184,7 @@ public:
     WR16(self + list::kTop, static_cast<std::uint16_t>(stack.first));
 
     const std::uint32_t menu = RD32(self + item::kMenu);
-    const bool focused = RD32(menu + kMenuFocus) == self;
+    const bool focused = RD32(menu + x2::menu::kMenuFocus) == self;
     const bool arrows = focused && fade >= kFadeIn;
     call.thiscall(exe_linked(kSetArrows), self,
                   {arrows && stack.more_above ? 1u : 0u,

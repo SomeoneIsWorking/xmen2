@@ -16,7 +16,6 @@ from live_menu import (
     item_button,
     keyboard_into_gameplay,
     keyboard_into_the_pda,
-    keyboard_past_the_intro,
     list_cards,
     list_entry,
     menu_footer,
@@ -32,9 +31,9 @@ from live_menu import (
     reveal_list_entry,
     reveal_touch_row,
     select_list_entry,
+    tap_button_edge,
     tap_footer_button,
     tap_list_entry,
-    tap_button_edge,
     tap_menu_item,
     tap_tab,
     tap_touch_button,
@@ -42,97 +41,10 @@ from live_menu import (
     touch_menu,
     wait_game_menu,
     wait_list,
-    wait_menu,
-    wait_menu_row_change,
     wait_settled_menu,
     wait_settled_touch_menu,
     wait_touch_menu,
 )
-
-# The game's own first open of Options: the menu animates, so a pixel delta
-# cannot tell whether a row was activated.
-OPTIONS_PACKAGE = "menus/options.pkgb"
-
-
-def case_touch_menu(case: Case) -> None:
-    """A finger on the retail main and Options menus, which draw no touch menu.
-
-    Each tap lands on the box the game itself hit-tests and is judged by the
-    game's own state as GET /menu reads it: the menu it has open, a volume
-    bar's level, a toggle's value text. The negative comes first, so a run
-    where every tap "works" cannot pass.
-    """
-    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
-    case.launch({"X2_FILES": "1"})
-    case.wait_control(60)
-    case.check("the run reached the main menu",
-               keyboard_past_the_intro(case, 300))
-    main = wait_menu(case, "main", 30)
-    (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
-    case.check("nothing is drawn over the main menu",
-               main.get("touch_menu", {}).get("visible") is False)
-    controls = live_controls(case)
-    case.check("not even the menu pad",
-               "menu-a" not in controls, "drawn: %s" % sorted(controls))
-    time.sleep(1.0)
-    case.shot("main")
-
-    opened_before = case.log_text().count(OPTIONS_PACKAGE)
-    case.http("/touch?x=0.5&y=0.02")
-    time.sleep(3.0)
-    case.check("a tap on no item activates nothing",
-               case.log_text().count(OPTIONS_PACKAGE) == opened_before
-               and read_menu(case).get("menu") == "main")
-
-    options_row = menu_row(main, "options")
-    case.check("OPTIONS was tapped", tap_menu_item(case, options_row))
-    options = wait_menu(case, "options", 20)
-    (case.dir / "options.json").write_text(json.dumps(options, indent=1)
-                                           + "\n")
-    case.check("the tap opened the game's Options menu",
-               options.get("menu") == "options",
-               "the game's menu is %r" % options.get("menu"))
-    if options.get("menu") != "options":
-        return
-    time.sleep(1.0)
-    case.shot("options")
-
-    before = menu_row(options, "effects volume").get("fill")
-    bar = menu_item(case, "fx_vol")
-    case.check("the effects volume bar was tapped", tap_menu_item(case, bar))
-    after = wait_menu_row_change(case, "effects volume", "fill", before, 10)
-    case.check("a tap left of the bar's level lowered the game's volume",
-               after.get("fill") is not None and before is not None
-               and after["fill"] < before,
-               "%s -> %s" % (before, after.get("fill")))
-
-    toggle = menu_row(read_menu(case), "combat music")
-    before = toggle.get("value")
-    case.check("the combat music row shows its value",
-               before in ("On", "Off"), repr(before))
-    tap_menu_item(case, toggle)
-    after = wait_menu_row_change(case, "combat music", "value", before, 10)
-    case.check("tapping it changed the game's value text",
-               after.get("value") in ("On", "Off")
-               and after.get("value") != before,
-               "%r -> %r" % (before, after.get("value")))
-    time.sleep(1.0)
-    case.shot("options-changed")
-
-    case.check("Back is a finger button and was tapped",
-               tap_footer_button(case, "$MENU_BACK"),
-               str(read_menu(case).get("touch_buttons")))
-    deadline = time.monotonic() + 20
-    left = read_menu(case).get("menu")
-    while time.monotonic() < deadline and left in (None, "options"):
-        time.sleep(0.5)
-        left = read_menu(case).get("menu")
-    case.check("Back left Options", left not in (None, "options"),
-               "the game's menu is now %r" % left)
-    time.sleep(2.0)
-    case.shot("after-back")
-    case.check("and the game is still running",
-               case.alive() and case.http("/status")[0] == 200)
 
 
 def case_touch_team(case: Case) -> None:

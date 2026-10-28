@@ -29,7 +29,6 @@ inline constexpr std::uint32_t kMenuName = 0x0cu;
 inline constexpr std::size_t kMenuNameBytes = 64u;
 /* `FUN_005bc6d0` called from CMenu::parse (FUN_005ad830). */
 inline constexpr std::uint32_t kMenuDesctext = 0x2f4u;
-inline constexpr std::uint32_t kMenuFocus = 0x324u;
 inline constexpr std::uint32_t kMenuLiveBits = 0x15f0u;
 inline constexpr std::uint32_t kMenuItemCount = 0x1608u;
 inline constexpr std::uint32_t kMenuItemArray = 0x160cu;
@@ -150,12 +149,13 @@ struct MenuModeEntry {
   std::uint32_t offset;
 };
 
-/* CMenuTeam::onMouse (0x005e25c0) and CMenuCodex::onMouse (0x005b0c80) switch
-   on menu+0x18d8; CMenuShop::onMouse (0x005d3400) picks its stash tabs on
-   menu+0x18e8 bit 0. */
+/* CMenuTeam::onMouse (0x005e25c0), CMenuCodex::onMouse (0x005b0c80),
+   CMenuPDA::onMouse (0x005cc1f0) and CMenuOptions::onMouse (0x005cb5f0)
+   switch on menu+0x18d8; CMenuShop::onMouse (0x005d3400) picks its stash
+   tabs on menu+0x18e8 bit 0. */
 inline constexpr MenuModeEntry kMenuModes[] = {
-    {"CMenuTeam", 0x18d8u},
-    {"CMenuCodex", 0x18d8u},
+    {"CMenuTeam", kMenuPage}, {"CMenuCodex", kMenuPage},
+    {"CMenuPDA", kMenuPage},  {"CMenuOptions", kMenuPage},
     {"CMenuShop", 0x18e8u},
 };
 

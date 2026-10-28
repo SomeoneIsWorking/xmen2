@@ -82,8 +82,46 @@ steps a volume bar toward the click. What it lacks is
 (`0x005bc1b0`) at its own entry: a text row in the up/down chain with no
 usecmd (the PDA's Objectives, the main menu's command-less rows) is focused on
 a press and chosen with `MENU_ACCEPT` on the release, as a row with a usecmd
-is. Prove a screen with `tools/live_case.py touch-menu`, which taps the boxes
-`GET /menu` reports as each item's `tap`.
+is.
+
+Their rows are finger targets. Retail's main and PDA rows are 14 scene units
+tall at a 36-unit pitch, under the 38.4 units of a finger at 720p; each row
+label that sits on a bar model of its own name without `label_`
+(`label_option04` on `option04`, Options' `label_accept` on `accept`) keeps its
+retail draw and puts a finger area as wide as the bar and a finger tall about
+the label (`x2::input::row_button`, `kBarRows` in `text_item_touch.cpp`),
+delivered at the box the menu's own `onMouse` tests: the label's raw box for
+the main menu (`0x005c9320`) and the PDA (`0x005cc1f0`), the item box for
+Accept. The main menu's Quit (`debug_text`) is a finger area as well. Areas a
+pitch apart overlap by a few units; a press in both goes to the one whose middle
+is nearer (`x2::input::TouchTargets::press`).
+
+Options' settings page is laid out the way a mobile game lays out a settings
+screen (`src/native/options_touch.cpp`, geometry in
+`x2::input::layout_options_touch`): the retail panel `options_screen` and the
+nine focus models are hidden, and the nine settings are finger-tall cards of
+the PDA option art (the focused one lit) in a column between the title and
+Accept, a card per 1.15 fingers, five shown at once, scrolled by a drag. Each
+card shows its label at the left and the game's own value text right-aligned,
+both by the items' own draws moved into the card at one fitted scale. A volume
+card has the label in its upper half and the retail bar, moved into the card,
+over a track of the card art in its lower half. A tap on a toggle card is a
+retail click on its row (`CMenuOptions::onMouse` `0x005cb5f0`: focus, then
+`0x201` changes it); a tap or a slide along a volume card sets a target level
+and the port clicks retail's bar toward it, a tenth per click as retail steps,
+until it is within a twentieth. The controls page (`menu+0x18d8` non-zero)
+keeps the retail layout. With touch off the panel and focus models show again
+and every draw and `onMouse` is retail's. `GET /menu?items=all` reports each
+card where the last draw put it (`touch_card`: `tap`, `edge`, `fingers`, and a
+volume's `bar_low` and `bar_high`) and each finger button's height in fingers
+(`fingers`).
+
+Prove them with `tools/live_case.py touch-menu` (every main row a finger,
+each tapped at its edge outside the game's box, Options' cards, a toggle, a
+volume tapped and slid, a drag scroll, Back, Quit) and `touch-pda` (every PDA
+row a finger and each tapped at its edge: Objectives' and Players' pages,
+Team Management, Blink Portal, Small Map, Automap, Options, Load Game and Quit
+Game).
 
 **Every popup has a touch layout** (CPopupDialog: the difficulty choice, Load
 Game, confirmations and messages; issue #199), laid out the way a mobile game
@@ -155,7 +193,8 @@ map's point rows, which their menu's `onMouse` finds by name
 enabled, get the same finger-sized area: a locked act or point has none. Each such draw puts its area and the middle of the box the
 item's own handler hit-tests into `x2::input::TouchTargets`
 (`src/input/touch_targets.{hpp,cpp}`), and a press that starts in an area
-shown on the last frame is delivered at that point until it lifts
+shown on the last frame (of two that hold it, the one whose middle is nearer)
+is delivered at that point until it lifts
 (`src/native/touch_pointer_dispatch.cpp`), so the menu acts on it exactly as
 on a click on the item: the codex's Details through its own `onMouse`, a tab
 through its menu's raw-box test. `GET /menu` reports them

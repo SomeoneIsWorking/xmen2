@@ -322,6 +322,22 @@ hit-tests its own named items before the base handler, and the volume bars
 `fx_vol` and `music_vol` with their boxes widened by 10 on each side: a click
 steps that bar 0.1 toward the click, through the row's `setdecrement` /
 `setincrement`. So the volume rows have no `usecmd` and still answer the mouse.
+In detail: on the settings page (`menu+0x18d8` 0) any message on an unfocused
+row only focuses it; a toggle row's label box is widened right by `0x4a` and
+acts on `0x201` (`MENU_ACCEPT`, action 4); a volume label is its plain box; a
+bar takes `0x201` as one step and steps again while held past 0.2 s
+(`FUN_005cb5d0`); `0x20a` is the wheel. A non-zero page is the controls page.
+The bar's draw (`CMenuItemBar`, vtable `0x006a042c`, draw `0x005bdac0`) reads
+its scene box from the item fields `+0x70..0x74` at draw time.
+
+`CMenuPDA::onMouse` is `0x005cc1f0`. On the rows page (`menu+0x18d8` 0) it tests
+the raw boxes of `label_option01..09` that are shown and enabled: `0x200` or
+`0x202` on an unfocused row focuses it, `0x202` on the focused row posts
+`MENU_ACCEPT`. Pages 1 (Objectives) and 2 (Players) test seven `icon01..07` boxes
+`0x2b` tall at a `0x2d` pitch and `desctext4`. Small Map's accept switches the
+map overlay and relabels its row `Large Map`. `CMenuMain::onMouse` is
+`0x005c9320`: the raw boxes of `label_option04..09` and Quit's `debug_text`, any
+message on an unfocused row focusing it and `0x202` on the focused one acting.
 
 The port extends `0x005bc1b0` (`src/native/menu_item_mouse_override.cpp`):
 after the retail body, an item it did not take is handed to

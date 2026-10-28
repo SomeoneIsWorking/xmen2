@@ -33,7 +33,7 @@ refuses the finger:
 | list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
 | footer token | `CMenuItemText::onMouse` `0x005c6490`, unless the menu's own `onMouse` acts on it (`x2::native::menu_handles_token`: the codex's and the team's `$MENU_DETAILS`) | none |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
-| small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; native ones: their rows (step 4) |
+| small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; not on a native item with a finger area (`x2::native::text_has_finger_area`) |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
 hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), and `options`/`options_controller`
@@ -68,12 +68,21 @@ shown working in the product through its route.
 
 ## State
 
-Main, Options and the PDA are native on touch (`menu_is_native_on_touch`):
-`tools/live_case.py touch-menu` taps Options open from the main menu, lowers
-the effects volume, toggles Combat Music and leaves by the Back footer, all on
-the game's own screens; a PDA tap on Team Management opens the team menu
-through `openmenu pda` at the boot map. Their rows are under a finger
-(step 4).
+Main, Options and the PDA are native on touch (`menu_is_native_on_touch`)
+and their rows are finger targets, step 4, done. Retail's main and PDA rows
+are 14 scene units tall at a 36-unit pitch (0.94 of the 38.4-unit finger at
+720p); each row label gets a finger area as wide as its bar and a finger tall,
+delivered at the box its menu tests, the main menu's Quit included. Options'
+settings page is redesigned for touch: the retail panel (rows 18 to 23 units
+apart) is hidden and the nine settings are finger cards of the PDA option art
+in a column a drag scrolls, five shown at a 1.15-finger pitch, with the game's
+own label, value and bar drawn in each; a tap toggles, a tap or slide on a
+volume card steps retail's bar to the finger (`src/native/options_touch.cpp`,
+[touch play](../touch-play.md)). Shown by `tools/live_case.py touch-menu`
+(28 of 28: every main row tapped at its edge outside the game's box, Options'
+cards, a toggle, both volumes, a scroll, Back, Quit) and `touch-pda` (13 of 13:
+every PDA row tapped at its edge, each judged by the page, menu or popup it
+opened). Options' controls page keeps its retail layout.
 Every popup is step 5's first screen, done: CPopupDialog has its mobile
 layout on touch (cards of the game's bar art, a frame sized to its page, bar
 buttons for the prompts, one tap to act, a drag to scroll), shown working by

@@ -1,5 +1,6 @@
 #include "text_touch_layout.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -37,10 +38,23 @@ void neighbouring_buttons_do_not_overlap() {
   check(buy.right <= accept.left, "Buy ends before Accept starts");
 }
 
+/* The main menu's New Game: its text over its bar from 18 to 187. */
+void a_row_button_spans_its_bar_a_finger_tall() {
+  constexpr SceneBox kNewGame{29.0F, 243.0F, 158.0F, 257.0F};
+  const SceneBox button =
+      x2::input::row_button(kNewGame, 18.0F, 187.0F, kFinger);
+  check(button.left == 18.0F && button.right == 187.0F,
+        "a row button spans its bar");
+  check(std::fabs(button.height() - kFinger) < 0.001F &&
+            button.bottom + button.top == kNewGame.bottom + kNewGame.top,
+        "a finger tall about the row's text");
+}
+
 } // namespace
 
 int main() {
   a_button_is_a_finger_tall_over_its_prompt();
   neighbouring_buttons_do_not_overlap();
+  a_row_button_spans_its_bar_a_finger_tall();
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

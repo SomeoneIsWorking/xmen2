@@ -8,6 +8,7 @@ import json
 import re
 import time
 
+from live_game import live_controls, live_viewport, tap_control
 from live_harness import Case
 
 
@@ -157,6 +158,62 @@ def item_button(menu: dict, item: dict) -> dict:
                 and rect["top"] <= button["aim_z"] <= rect["bottom"]):
             return button
     return {}
+
+
+def finger_tall(button: dict) -> bool:
+    """Whether a finger button is at least a finger tall."""
+    return bool(button) and button.get("fingers", 0.0) >= 1.0 - 1e-4
+
+
+def row_buttons(menu: dict) -> dict[str, dict]:
+    """Each of the menu's rows by its lower-case label, with the finger
+    button touch put over it, or {} for a row with none."""
+    return {row["label"].lower(): item_button(menu, row)
+            for row in menu.get("rows", [])}
+
+
+def tap_row_button(case: Case, label: str) -> bool:
+    """Tap the finger button over the row `label` at its edge, outside the
+    game's own box."""
+    return tap_button_edge(case, row_buttons(read_menu(case)).get(label, {}))
+
+
+def tap_point(case: Case, point: dict | None) -> bool:
+    """Tap a window-fraction point such as a `tap` or an `edge`."""
+    return point is not None and case.http(
+        "/touch?x=%g&y=%g" % (point["x"], point["y"]))[0] == 200
+
+
+def setting_cards(menu: dict) -> dict[str, dict]:
+    """Options' settings touch drew as cards, by lower-case label, each its
+    `touch_card` (tap, edge, fingers and a volume's bar_low and bar_high)."""
+    return {item["label"].lower(): item["touch_card"]
+            for item in menu.get("items", []) if "touch_card" in item}
+
+
+def leave_to(case: Case, name: str, timeout: float = 20) -> dict:
+    """Back to the game's menu `name` the way a finger leaves: a popup's
+    Back, No, Cancel or only button, the menu's Back footer button, or on a
+    menu not native on touch the menu pad's B."""
+    deadline = time.monotonic() + timeout
+    menu = read_menu_items(case)
+    while time.monotonic() < deadline and not (
+            menu.get("menu") == name and menu.get("popup") is False):
+        controls = live_controls(case)
+        viewport = live_viewport(case)
+        if menu.get("popup"):
+            footers = (menu.get("popup_page") or {}).get("footers", [])
+            out = next((f for f in footers if f.get("text", "").strip().lower()
+                        in ("back", "no", "cancel")),
+                       footers[0] if len(footers) == 1 else None)
+            tap_point(case, out and out.get("tap"))
+        elif footer_button(menu, "$MENU_BACK"):
+            tap_button_edge(case, footer_button(menu, "$MENU_BACK"))
+        elif "menu-b" in controls and viewport:
+            tap_control(case, controls["menu-b"], viewport)
+        time.sleep(2.0)
+        menu = read_menu_items(case)
+    return menu
 
 
 def footer_button(menu: dict, token: str) -> dict:
