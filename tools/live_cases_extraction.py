@@ -100,6 +100,13 @@ def hop(case: Case, at: tuple[float, float, float]) -> None:
     time.sleep(0.5)
 
 
+def invulnerable(case: Case) -> None:
+    """Heroes 1, 3 and 4 invulnerable before they are moved, as the pad's
+    enemies can kill one in the moment after it lands."""
+    for hero in (1, 3, 4):
+        script(case, "setInvulnerable('_HERO%d_','TRUE')" % hero)
+
+
 def put_party_on_pad(case: Case) -> dict:
     """Heroes 1, 3 and 4 onto the pad, invulnerable because the pad's
     enemies would kill them mid-case; hero 2 stays behind, because a living
@@ -107,12 +114,11 @@ def put_party_on_pad(case: Case) -> dict:
     pads = party(case).get("pads", [])
     case.check("the map has one extraction pad", len(pads) == 1, str(pads))
     pad = pads[0]
+    invulnerable(case)
     place(case, (pad["x"], pad["y"], pad["z"] + 4), (1, 3, 4))
     for _ in range(2):
         script(case, "setPosX('_ACTIVE_HERO_',%d)" % pad["x"])
         script(case, "setPosY('_ACTIVE_HERO_',%d)" % pad["y"])
-    for hero in (1, 3, 4):
-        script(case, "setInvulnerable('_HERO%d_','TRUE')" % hero)
     time.sleep(2)
     return pad
 
@@ -186,10 +192,8 @@ def stand_beside_pad(case: Case) -> None:
     """Heroes 1, 3 and 4 250 units off the pad: inside the retail nearby-revive
     radius the bridge once used, outside the pad's 120-unit touch box."""
     pad = party(case)["pads"][0]
+    invulnerable(case)
     place(case, (pad["x"], pad["y"] + 250, pad["z"] + 4), (1, 3, 4))
-    for hero in (1, 3, 4):
-        script(case, "setInvulnerable('_HERO%d_','TRUE')" % hero)
-    time.sleep(2)
 
 
 def case_extraction_free(case: Case) -> None:
