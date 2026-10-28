@@ -1,5 +1,6 @@
 #include "retail_menu_model.hpp"
 
+#include "menu_item_memory.hpp"
 #include "popup_dialog.hpp"
 
 #include <algorithm>
@@ -10,6 +11,9 @@
 
 namespace x2::menu {
 namespace {
+
+namespace item = native::menu_item;
+namespace list = native::list_box;
 
 /* XMen2.exe is linked at 0x00400000; every static below is an RVA. */
 inline constexpr std::uint32_t kLinkedBase = 0x00400000u;
@@ -43,11 +47,6 @@ inline constexpr std::uint32_t kItemFill = 0x40u;
 inline constexpr std::uint32_t kItemFlags = 0x54u;
 /* left, right, up, down: FUN_005bbc30 and FUN_005aec00. */
 inline constexpr std::uint32_t kItemLinks = 0x5cu;
-inline constexpr std::uint32_t kItemBoxLeft = 0x70u;
-inline constexpr std::uint32_t kItemBoxY = 0x72u;
-inline constexpr std::uint32_t kItemBoxWidth = 0x74u;
-inline constexpr std::uint32_t kItemBoxHeight = 0x76u;
-inline constexpr std::uint32_t kItemBoxHalfZ = 0x7au;
 /* CMenuItemText::getText (0x005c67f0). */
 inline constexpr std::uint32_t kTextHandle = 0x9cu;
 inline constexpr std::uint32_t kTextDynamicSlot = 0xa0u;
@@ -73,23 +72,8 @@ inline constexpr std::uint32_t kRegistryNodes = 0x46u;
 /* Text box lines read at most. */
 inline constexpr std::uint32_t kPopupLineMax = 256u;
 
-/* CMenuItemListBox (vtable 0x006a062c); see docs/RE/menus.md. */
+/* The bytes of a CMenuItemListBox read at once. */
 inline constexpr std::size_t kListBoxBytes = 0xe4u;
-inline constexpr std::uint32_t kListSelected = 0xacu;
-inline constexpr std::uint32_t kListStore = 0xbcu;
-inline constexpr std::uint32_t kListTop = 0xd8u;
-inline constexpr std::uint32_t kListVisibleRows = 0xdbu;
-inline constexpr std::uint32_t kListRowHeight = 0xe0u;
-/* The store: one byte record id per entry, the count at +0x84. */
-inline constexpr std::uint32_t kListStoreCount = 0x84u;
-inline constexpr std::uint32_t kListStoreIds = 0x84u;
-/* Every list box draws its entries from one table of 0x70-byte records. */
-inline constexpr std::uint32_t kListRecordsRva = 0x004a83f4u;
-inline constexpr std::uint32_t kListRecordStride = 0x70u;
-/* The entry getter copies at most 0x3f bytes. */
-inline constexpr std::size_t kListEntryBytes = 0x3fu;
-/* The record's text ends where its entry handle starts, at +0x58. */
-inline constexpr std::size_t kListRecordTextBytes = 0x58u;
 
 /* CMenuItemCharSummary's draw (FUN_005bdf50) masks a locked name when bit 0
    is set. */
@@ -369,34 +353,34 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
   if (!reader_.bytes(address, box, sizeof box)) {
     return false;
   }
-  out->selected = field_i16(box, kListSelected);
-  out->top = field_i16(box, kListTop);
-  out->visible_rows = box[kListVisibleRows];
-  out->row_height = static_cast<int>(field_u32(box, kListRowHeight));
-  out->hit.left = field_i16(header, kItemBoxLeft);
-  out->hit.right = out->hit.left + field_i16(header, kItemBoxWidth) - 1;
-  out->hit.bottom = field_i16(header, kItemBoxY);
-  out->hit.top = out->hit.bottom - field_i16(header, kItemBoxHeight) - 1;
-  const std::uint32_t store = field_u32(box, kListStore);
+  out->selected = field_i16(box, list::kSelected);
+  out->top = field_i16(box, list::kTop);
+  out->visible_rows = box[list::kVisibleRows];
+  out->row_height = static_cast<int>(field_u32(box, list::kRowHeight));
+  out->hit.left = field_i16(header, item::kBoxLeft);
+  out->hit.right = out->hit.left + field_i16(header, item::kBoxWidth) - 1;
+  out->hit.bottom = field_i16(header, item::kBoxTop);
+  out->hit.top = out->hit.bottom - field_i16(header, item::kBoxHeight) - 1;
+  const std::uint32_t store = field_u32(box, list::kStore);
   if (store == 0u) {
     return true;
   }
   std::uint32_t count = 0;
-  if (!reader_.u32(store + kListStoreCount, &count)) {
+  if (!reader_.u32(store + list::kStoreCount, &count)) {
     return false;
   }
-  if (count > kListStoreIds) {
-    return reader_.fail(store + kListStoreCount);
+  if (count > list::kStoreIds) {
+    return reader_.fail(store + list::kStoreCount);
   }
-  std::uint8_t ids[kListStoreIds];
+  std::uint8_t ids[list::kStoreIds];
   if (count > 0u && !reader_.bytes(store, ids, count)) {
     return false;
   }
   for (std::uint32_t i = 0; i < count; ++i) {
-    char text[kListRecordTextBytes];
+    char text[list::kRecordTextBytes];
     if (!reader_.bytes(
-            reader_.image(kListRecordsRva + ids[i] * kListRecordStride), text,
-            sizeof text)) {
+            reader_.image(list::kRecordsRva + ids[i] * list::kRecordStride),
+            text, sizeof text)) {
       return false;
     }
     std::string entry;
@@ -407,7 +391,7 @@ bool RetailMenuModel::read_list_box(std::uint32_t address,
         columns.emplace_back();
       } else if (!columns.empty()) {
         columns.back().push_back(c);
-      } else if (at < kListEntryBytes) {
+      } else if (at < list::kEntryBytes) {
         entry.push_back(c);
       }
     }
@@ -441,13 +425,13 @@ bool RetailMenuModel::read_item(std::uint32_t address, unsigned slot,
       !read_label(header, out->item_class, &out->label)) {
     return false;
   }
-  const int left = field_i16(header, kItemBoxLeft);
-  const int y = field_i16(header, kItemBoxY);
-  const int half = field_i16(header, kItemBoxHalfZ) / 2;
+  const int left = field_i16(header, item::kBoxLeft);
+  const int y = field_i16(header, item::kBoxTop);
+  const int half = field_i16(header, item::kLocalTop) / 2;
   out->rect.left = left;
-  out->rect.right = left + field_i16(header, kItemBoxWidth) - 1;
+  out->rect.right = left + field_i16(header, item::kBoxWidth) - 1;
   out->rect.bottom = y + half;
-  out->rect.top = y - field_i16(header, kItemBoxHeight) + half - 1;
+  out->rect.top = y - field_i16(header, item::kBoxHeight) + half - 1;
   out->navigable = (out->flags & (kItemHidden | kItemNavigationSkip)) == 0u &&
                    (out->flags & kItemEnabled) != 0u;
   if (out->item_class == ItemClass::bar) {

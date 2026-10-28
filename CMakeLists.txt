@@ -412,6 +412,7 @@ add_test(NAME retail_menu_model COMMAND test_retail_menu_model)
 
 add_executable(test_popup_touch_layout tests/test_popup_touch_layout.cpp
                src/input/popup_touch_layout.cpp
+               src/input/touch_cards.cpp
                src/presentation/retail_scene_plane.cpp
                src/presentation/hud_layout.cpp
                src/presentation/touch_layout.cpp
@@ -2179,6 +2180,7 @@ set(X2_NATIVE_SOURCES
     src/native/menu_start_override.cpp
     src/native/pad_list_warning_override.cpp
     src/native/popup_touch.cpp
+    src/native/menu_scene.cpp
     src/native/popup_touch_drawn.cpp
     src/native/menu_item_tap.cpp
     src/native/menu_item_mouse_override.cpp
@@ -2209,6 +2211,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_menu_parts.cpp
     src/input/menu_touch_gaps.cpp
     src/input/popup_touch_layout.cpp
+    src/input/touch_cards.cpp
     src/input/native_touch_menus.cpp
     src/input/touch_menu_team.cpp
     src/input/touch_menu_team_details.cpp

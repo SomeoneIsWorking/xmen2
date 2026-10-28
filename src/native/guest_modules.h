@@ -30,4 +30,9 @@ inline uint32_t guest_exe_base(void) {
   return 0;
 }
 
+/* A disassembly address where the mapped XMen2.exe has it. */
+inline uint32_t exe_linked(uint32_t preferred) {
+  return guest_exe_base() + (preferred - kExePreferred);
+}
+
 } // namespace x2::native

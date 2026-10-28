@@ -25,10 +25,6 @@ constexpr std::array<std::pair<std::string_view, MenuAction>, 7> kTokens{{
     {"$MENU_SUBTRACT", MenuAction::subtract},
 }};
 
-std::uint32_t linked(std::uint32_t preferred) {
-  return x86_module_base("XMen2.exe") + (preferred - kExePreferred);
-}
-
 } // namespace
 
 std::optional<MenuAction> menu_token_action(std::string_view text) {
@@ -46,9 +42,10 @@ std::optional<MenuAction> menu_token_action(std::string_view text) {
 }
 
 void post_menu_action(MenuAction action) {
-  const std::uint32_t player = RD32(linked(kMenuPlayer));
-  WR8(linked(kMenuActionPending) + player, 1u);
-  WR32(linked(kMenuActions) + player * 4u, static_cast<std::uint32_t>(action));
+  const std::uint32_t player = RD32(exe_linked(kMenuPlayer));
+  WR8(exe_linked(kMenuActionPending) + player, 1u);
+  WR32(exe_linked(kMenuActions) + player * 4u,
+       static_cast<std::uint32_t>(action));
 }
 
 } // namespace x2::native
