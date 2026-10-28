@@ -6,6 +6,7 @@
 #include "control_command_bridge.h"
 #include "control_query.h"
 #include "json_string.h"
+#include "list_touch.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
 #include "win32_pointer.h"
@@ -182,6 +183,48 @@ void put_hero(std::string *out, const native::HeroRecord &hero) {
   close_object(out);
 }
 
+/* A touch popup box's centre as a tap. */
+void put_box_tap(std::string *out, const input::SceneBox &box,
+                 const presentation::RetailScenePlane *plane) {
+  float x = 0.0F;
+  float y = 0.0F;
+  if (plane == nullptr) {
+    return;
+  }
+  const presentation::ClientPoint client = plane->to_client(
+      {0.5F * (box.left + box.right), 0.5F * (box.bottom + box.top)});
+  if (native::win32_pointer_client_to_window(client.x, client.y, &x, &y) == 0) {
+    return;
+  }
+  char text[64];
+  std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x, y);
+  out->append(text);
+}
+
+/* A list box's cards where its last touch draw put them, each with the
+   entry it shows. */
+void put_list_touch(std::string *out, std::uint32_t list,
+                    const presentation::RetailScenePlane *plane) {
+  const auto drawn = native::list_touch_drawn(list);
+  if (!drawn) {
+    return;
+  }
+  put_key(out, "touch_cards");
+  out->push_back('[');
+  for (std::size_t i = 0; i < drawn->cards.size(); ++i) {
+    out->push_back('{');
+    put_box_tap(out, drawn->cards[i], plane);
+    put_int(out, "entry",
+            static_cast<long>(drawn->first) + static_cast<long>(i));
+    close_object(out);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("],");
+}
+
 void put_item(std::string *out, const menu::MenuItem &item,
               const presentation::RetailScenePlane *plane) {
   out->push_back('{');
@@ -204,6 +247,7 @@ void put_item(std::string *out, const menu::MenuItem &item,
   put_int(out, "link_right", item.link_right);
   if (item.list_box) {
     put_list_box(out, *item.list_box);
+    put_list_touch(out, item.address, plane);
   }
   if (item.item_class == menu::ItemClass::char_summary) {
     put_bool(out, "masks_locked", item.masks_locked);
@@ -256,24 +300,6 @@ void put_button(std::string *out, const input::TouchMenuState &state,
   put_float(out, "width", button.rect.right - button.rect.left);
   put_float(out, "height", button.rect.bottom - button.rect.top);
   close_object(out);
-}
-
-/* A touch popup box's centre as a tap. */
-void put_box_tap(std::string *out, const input::SceneBox &box,
-                 const presentation::RetailScenePlane *plane) {
-  float x = 0.0F;
-  float y = 0.0F;
-  if (plane == nullptr) {
-    return;
-  }
-  const presentation::ClientPoint client = plane->to_client(
-      {0.5F * (box.left + box.right), 0.5F * (box.bottom + box.top)});
-  if (native::win32_pointer_client_to_window(client.x, client.y, &x, &y) == 0) {
-    return;
-  }
-  char text[64];
-  std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x, y);
-  out->append(text);
 }
 
 /* The shown popup page: on touch each card and button where the last draw
@@ -413,7 +439,6 @@ std::string touch_menu_json(const input::TouchMenuState &state) {
     out.push_back('{');
     put_text(&out, "label", fact.label);
     put_text(&out, "value", fact.value);
-    put_bool(&out, "warn", fact.warn);
     close_object(&out);
     out.push_back(',');
   }

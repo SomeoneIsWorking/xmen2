@@ -144,15 +144,6 @@ inline constexpr MenuClassEntry kMenuClasses[] = {
     {0x006a2c94u, "CMenuTeam"},
 };
 
-ItemClass classify_item(std::uint32_t vtable, std::uint32_t image_base) {
-  for (const ClassEntry &entry : kItemClasses) {
-    if (entry.vtable - kLinkedBase + image_base == vtable) {
-      return entry.item_class;
-    }
-  }
-  return ItemClass::unknown;
-}
-
 /* A class's own screen state, read beside the items. */
 struct MenuModeEntry {
   std::string_view menu_class;
@@ -171,15 +162,6 @@ inline constexpr MenuModeEntry kMenuModes[] = {
 /* FUN_005dc940 sets it to the assigned entry and back to -1. */
 inline constexpr std::uint32_t kTeamAssigningSkill = 0x18e8u;
 inline constexpr std::string_view kTeamClass = "CMenuTeam";
-
-const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
-  for (const MenuClassEntry &entry : kMenuClasses) {
-    if (entry.vtable - kLinkedBase + image_base == vtable) {
-      return entry.name;
-    }
-  }
-  return "unknown";
-}
 
 /* Every class whose vtable slot 31 is CMenuItemText::getText. */
 bool uses_text_get_text(ItemClass item_class) {
@@ -226,6 +208,24 @@ std::string command_target(const std::string &command) {
 }
 
 } // namespace
+
+const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base) {
+  for (const MenuClassEntry &entry : kMenuClasses) {
+    if (entry.vtable - kLinkedBase + image_base == vtable) {
+      return entry.name;
+    }
+  }
+  return "unknown";
+}
+
+ItemClass classify_item(std::uint32_t vtable, std::uint32_t image_base) {
+  for (const ClassEntry &entry : kItemClasses) {
+    if (entry.vtable - kLinkedBase + image_base == vtable) {
+      return entry.item_class;
+    }
+  }
+  return ItemClass::unknown;
+}
 
 const char *item_class_name(ItemClass item_class) {
   switch (item_class) {

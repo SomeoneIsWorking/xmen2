@@ -63,8 +63,6 @@ struct TouchMenuTab {
 struct TouchMenuFact {
   std::string label;
   std::string value;
-  /* The game draws the value in its warning style. */
-  bool warn = false;
 };
 
 struct TouchMenuView {

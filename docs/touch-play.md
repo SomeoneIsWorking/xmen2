@@ -109,6 +109,38 @@ each card and button where the last draw put it (`popup_page.rows`,
 (difficulty: Hard refused, Back, one tap on Easy starts) and `touch-load`
 (eleven saves: drag to the last, tap to load, Continue).
 
+**Every list box in a menu native on touch has a touch layout**
+(CMenuItemListBox and the codex's CMenuItemListCodex: the shop and stash, the
+codex, review, danger room and trivia; issue #199; the rule is
+`x2::input::list_has_touch_layout`), drawn by the game in its own art
+(`src/native/list_touch.cpp`, geometry in `x2::input::layout_list_touch`).
+The entries fill the list's own box as finger-tall cards a finger apart
+(`x2::input::stack_cards`, shared with the popup): each a stretched copy of the
+PDA's option screen `ui/models/m_pda_option_screen`, the selected one the lit
+`m_pda_option_focus`, both shown at the end of their play-in animation, with
+the entry's icons a card tall and its columns in the list's font at up to 0.42
+of a finger, shrunk together until every entry fits on one line. The
+controller's selection cursor is not drawn. A tap on a card queues the walk
+a retail click on that entry starts (`+0x88` steps, `+0x8c` timer, `+0x90`
+walking), every step of it, so the list's own tick publishes each as the
+pad's and the menu refreshes what it shows
+beside the list (the shop's price and description); a tap on the selected
+card accepts it, as a retail click does (the shop buys, trivia answers); the
+codex, which loads an entry only on accept, accepts a tapped entry once the
+walk reaches it. The accept is posted from the list's next draw, not from
+the tap: a posted action is a press for one controller round, and the tap's
+own frame runs several rounds before the menu reads one
+([menus](RE/menus.md)). A drag scrolls the cards a card per pitch without moving the
+selection, and the menu's own arrows mark entries above and below. While touch
+draws a list its window rows (`+0xdb`) are the cards that fit and its
+navigation margin (`+0xdd`) is 0, so the game's own stepping and arrows agree
+with the cards; with touch off both go back and draw and onMouse are
+retail's. The tabs and footers beside a list are the game's own items, tapped
+where they are. `GET /menu?items=all` reports each list's cards where the
+last draw put them (`touch_cards`, with the entry each shows). Prove it with
+`tools/live_case.py touch-shop`, `touch-stash`, `touch-codex`, `touch-review`
+and `touch-danger-room`.
+
 **Every other screen that is not gameplay and has no touch menu draws the menu
 pad** -- dialogue, and the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
@@ -131,8 +163,7 @@ each prompt with the draw that placed it by glyph count. The World Map's level
 names draw as many glyphs as its footer, so Back and Go were published over
 `Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
 
-**The team menu's party screen, the shop, the stash, the codex, the world
-map, the review, the region list and the danger room are still replaced by the
+**The team menu, the world map and the region list are still replaced by the
 touch menu**, until each is native (issue #199). While touch play is the input and one of those
 screens is the active menu with no popup up, the retail menu is covered by an opaque, finger-sized RmlUi list
 built from the live retail menu model (`GET /menu`): the title (no header band
@@ -185,24 +216,7 @@ tap on the current row presses A (add a point or a rank, open a slot's
 pieces, equip, change a setting): the game's own click on another stat or
 setting would also act on it. The Drop footer, which the game's footer click
 does not publish, presses RB. Assigning a skill to a power slot, the skill
-details view and switching hero keep only the menu pad. The
-shop (`touch_menu_shop`) pins the game's buy/sell/training tabs as a tab bar
-with the open one lit, lists its list box's entries, and pins below them the
-game's own cost, money, gear count and limit and the selected entry's
-description. The game prices only the selected entry, so only that row shows
-a cost, in red when the money does not cover it. A tab is a click on the
-game's tab. A tap on an entry walks the list's selection to it with the menu
-pad's Up/Down, the game's own list stepping, and only selects it; a tap on the
-selected entry presses A, which buys, sells or trains. Entries are not
-clicked: while a gear entry is selected the game loses clicks on its list. The
-stash is the same class with its stash and inventory tabs: a tap on the
-selected entry stores it or takes it back, and an empty list keeps its tabs. The codex (`touch_menu_codex`) lists its heroes; a tap walks
-the game's selection to an entry with the menu pad and presses A, because the
-codex loads an entry only on `MENU_ACCEPT`. Its Details footer switches the
-game to the description, which the touch menu shows in the list's place, the
-loaded entry's name as the title and the game's own lines, scrolled by drag;
-that scroll is the touch menu's own, and the game's description scroll is not
-read or driven. The hero model the retail codex turns is not shown. The world
+details view and switching hero keep only the menu pad. The world
 map (`touch_menu_worldmap`) pins the unlocked acts as tabs with the open one
 lit, lists the open act's unlocked extraction points, and pins below them the
 act's region and the focused point's description. A tab is a click on the
@@ -211,27 +225,11 @@ and a tap on the focused point presses A, which travels there (the game
 refuses the map the party is on). Locked acts and points, the region map and
 its marker are not shown, and a world map with no unlocked point keeps the
 retail screen. Footers with the same prompt are offered once (the world map
-has two Back footers). The review (`touch_menu_review`) pins
-the game's screens, cinematics, comics, concepts and stats tabs with the open
-one lit and lists its entries, a stats entry with its count (`0 of 3`) from
-the record's second column. A tab is a click on the game's tab; a tap on an
-entry walks the game's selection to it with the menu pad, and a tap on the
-selected entry presses A, which shows it (Credits plays the credits) or is
-refused when it is locked. What an entry opens (credits, a movie, an image)
-keeps the retail screen. The region list (`touch_menu_region`) is titled by the game's
+has two Back footers). The region list (`touch_menu_region`) is titled by the game's
 `text_title`, lists the regions with their counts and offers Back, Refresh and
 Select; a tap walks the selection to a region and a tap on the selected one
 presses A. Select opens the campaign lobby, which keeps the retail screen.
-With no online service the list is empty. The danger room
-(`touch_menu_danger_room`) lists the step's entries (the grades, then a
-grade's courses) and pins below them the game's description of the selected
-entry; once a grade is chosen its Overview and Status tabs are a tab bar. A
-tap walks the selection and a tap on the selected entry presses A: a grade
-opens its courses, a course opens the team menu. Back steps back as the game
-does. Detail text longer than its band beside a list (a course's objectives
-and awards) scrolls by a drag on the band, on its own; the list keeps its
-scroll, and another entry's text starts at its top. Tabs without text are not
-offered.
+With no online service the list is empty.
 
 Mouse, keyboard and controller play never see it. The settings overlay hides
 it, and the touch menu hides the menu pad while it is up. Other menu classes

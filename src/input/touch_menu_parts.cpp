@@ -149,8 +149,7 @@ void append_menu_tabs(const menu::MenuSnapshot &menu,
   }
 }
 
-void append_list_entries(const menu::MenuItem &list, ListTap tap,
-                         TouchMenuView *view) {
+void append_list_entries(const menu::MenuItem &list, TouchMenuView *view) {
   const menu::ListBoxState &box = *list.list_box;
   view->focus_wraps = false;
   for (std::size_t i = 0; i < box.entries.size(); ++i) {
@@ -159,7 +158,7 @@ void append_list_entries(const menu::MenuItem &list, ListTap tap,
     row.label = touch_menu_text(box.entries[i]);
     row.value = touch_menu_text(box.value(i));
     row.focused = entry == box.selected;
-    row.press_on_arrival = tap == ListTap::accept || row.focused;
+    row.press_on_arrival = row.focused;
     row.slot = list.slot;
     row.entry = entry;
     if (row.focused) {

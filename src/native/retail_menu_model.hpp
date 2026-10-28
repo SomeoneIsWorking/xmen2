@@ -41,6 +41,11 @@ enum class ItemClass : std::uint8_t {
 };
 
 const char *item_class_name(ItemClass item_class);
+/* The class of the item whose vtable is `vtable` in the image at
+   `image_base`. */
+ItemClass classify_item(std::uint32_t vtable, std::uint32_t image_base);
+/* The name of the menu class whose vtable is `vtable`, or "unknown". */
+const char *classify_menu(std::uint32_t vtable, std::uint32_t image_base);
 
 /* The RECT CMenuItem::onMouse (FUN_005bc1b0) tests, in scene units. */
 struct SceneRect {

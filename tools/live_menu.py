@@ -1,5 +1,6 @@
 """Helpers for live cases on the retail menus and the touch menu: reading
-GET /menu, reaching a menu, and tapping touch menu buttons."""
+GET /menu, reaching a menu, tapping the game's items and list cards, and
+tapping touch menu buttons."""
 
 from __future__ import annotations
 
@@ -145,6 +146,11 @@ def menu_footer(menu: dict, token: str) -> dict:
     return {}
 
 
+def tap_footer(case: Case, token: str) -> bool:
+    """Tap the game's desctext item carrying `token`."""
+    return tap_menu_item(case, menu_footer(read_menu(case), token))
+
+
 def tap_menu_item(case: Case, item: dict) -> bool:
     """Tap the centre of the box the game hit-tests for `item`."""
     tap = item.get("tap")
@@ -209,13 +215,6 @@ def tap_touch_button(case: Case, shown: dict, button: dict) -> bool:
         (button["left"] + button["width"] * 0.5) / shown["viewport_width"],
         (button["top"] + button["height"] * 0.5) / shown["viewport_height"])
     )[0] == 200
-
-
-def touch_row(shown: dict, label: str) -> dict:
-    for row in shown.get("rows", []):
-        if row["label"].lower() == label:
-            return row
-    return {}
 
 
 def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
@@ -338,19 +337,21 @@ def dismiss_level_up(case: Case) -> None:
                closed.get("popup") is not True)
 
 
-def menu_item(case: Case, name: str) -> dict:
-    """The menu's item named `name` as GET /menu?items=all reads it."""
+def menu_items(case: Case) -> list[dict]:
+    """Every item of the menu as GET /menu?items=all reads it."""
     code, body = case.http("/menu?items=all")
     if code != 200:
-        return {}
+        return []
     try:
-        menu = json.loads(body)
+        return json.loads(body).get("items", [])
     except ValueError:
-        return {}
-    for item in menu.get("items", []):
-        if item.get("name") == name:
-            return item
-    return {}
+        return []
+
+
+def menu_item(case: Case, name: str) -> dict:
+    """The menu's item named `name` as GET /menu?items=all reads it."""
+    return next((item for item in menu_items(case)
+                 if item.get("name") == name), {})
 
 
 def menu_list(case: Case, name: str = "list") -> dict:
@@ -361,11 +362,119 @@ def menu_list(case: Case, name: str = "list") -> dict:
 
 def menu_labels(case: Case) -> dict[str, str]:
     """Every item's displayed text by name, as GET /menu?items=all reads it."""
-    code, body = case.http("/menu?items=all")
-    if code != 200:
-        return {}
-    try:
-        menu = json.loads(body)
-    except ValueError:
-        return {}
-    return {item["name"]: item["label"] for item in menu.get("items", [])}
+    return {item["name"]: item["label"] for item in menu_items(case)}
+
+
+def menu_text(raw: str) -> str:
+    """Retail text as a player reads it: style escapes and prompt tokens
+    removed, whitespace collapsed."""
+    text = re.sub(r"~\d\d|~~|\$MENU_\S*", "", raw).replace("$", "")
+    return " ".join(text.split())
+
+
+def option_tabs(case: Case, pattern: str) -> dict[str, bool]:
+    """The game's tabs whose names match `pattern`, each with whether it is
+    lit (item flags bit 0); tabs without text are left out."""
+    return {item["label"]: bool(item["flags"] & 0x01)
+            for item in menu_items(case)
+            if re.fullmatch(pattern, item["name"]) and item["label"]}
+
+
+def tap_tab(case: Case, pattern: str, label: str) -> bool:
+    """Tap the game's tab named by `pattern` whose text is `label`."""
+    return tap_menu_item(case, next(
+        (item for item in menu_items(case)
+         if re.fullmatch(pattern, item["name"]) and item["label"] == label),
+        {}))
+
+
+def list_entry(box: dict, label: str) -> int:
+    """The index of the list box entry that reads `label`, lower case, or
+    -1."""
+    for index, entry in enumerate(box.get("entries", [])):
+        if menu_text(entry).lower() == label:
+            return index
+    return -1
+
+
+def list_cards(case: Case, name: str = "list") -> list[dict]:
+    """The list box's touch cards where its last draw put them, each with
+    its `tap` and the `entry` it shows."""
+    return menu_item(case, name).get("touch_cards", [])
+
+
+def drag_between(case: Case, start: dict, end: dict) -> None:
+    """One finger from tap point `start` to `end`'s height through the
+    contact phases, in window fractions."""
+    x = start["x"]
+    steps = 4
+    case.http("/touch?x=%g&y=%g&phase=down" % (x, start["y"]))
+    for i in range(1, steps + 1):
+        time.sleep(0.1)
+        case.http("/touch?x=%g&y=%g&phase=motion"
+                  % (x, start["y"] + (end["y"] - start["y"]) * i / steps))
+    case.http("/touch?x=%g&y=%g&phase=up" % (x, end["y"]))
+
+
+def reveal_list_entry(case: Case, entry: int,
+                      name: str = "list") -> dict | None:
+    """Drag the list's cards until one shows `entry`; that card, or None."""
+    for _ in range(12):
+        cards = list_cards(case, name)
+        card = next((c for c in cards if c["entry"] == entry), None)
+        if card is not None or len(cards) < 2:
+            return card
+        if entry > cards[-1]["entry"]:
+            drag_between(case, cards[-1]["tap"], cards[0]["tap"])
+        else:
+            drag_between(case, cards[0]["tap"], cards[-1]["tap"])
+        time.sleep(0.8)
+    return None
+
+
+def tap_list_entry(case: Case, entry: int, name: str = "list") -> bool:
+    """Tap the card showing `entry`, dragging it into view first."""
+    card = reveal_list_entry(case, entry, name)
+    return card is not None and tap_menu_item(case, card)
+
+
+def wait_list(case: Case, done, name: str = "list",
+              timeout: float = 10) -> dict:
+    """The list box once `done` holds of it, or the last read."""
+    deadline = time.monotonic() + timeout
+    box = menu_list(case, name)
+    while time.monotonic() < deadline and not done(box):
+        time.sleep(0.3)
+        box = menu_list(case, name)
+    return box
+
+
+def select_list_entry(case: Case, entry: int, name: str = "list") -> dict:
+    """Walk the game's selection to `entry` with one tap on its card unless
+    it is already there; the list box after."""
+    box = menu_list(case, name)
+    if box.get("selected") == entry:
+        return box
+    tap_list_entry(case, entry, name)
+    return wait_list(case, lambda b: b.get("selected") == entry, name)
+
+
+def wait_settled_menu(case: Case, name: str, timeout: float) -> list[dict]:
+    """The items of the game's menu `name` once its lit tabs and list
+    entries have held still for a second: a shop or stash opens on its first
+    tab and the game may step it on a later frame."""
+    def state(items: list[dict]):
+        return [(i["name"], i["flags"] & 0x01,
+                 i.get("list_box", {}).get("entries")) for i in items]
+
+    wait_game_menu(case, lambda m: m.get("menu") == name, timeout)
+    items = menu_items(case)
+    deadline = time.monotonic() + timeout
+    still_since = time.monotonic()
+    while time.monotonic() < deadline and time.monotonic() - still_since < 1.0:
+        time.sleep(0.2)
+        now = menu_items(case)
+        if state(now) != state(items):
+            still_since = time.monotonic()
+        items = now
+    return items

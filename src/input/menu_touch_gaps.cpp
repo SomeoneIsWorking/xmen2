@@ -2,6 +2,7 @@
 
 #include "../native/menu_item_tap.hpp"
 #include "../native/x2_log.h"
+#include "list_touch_layout.hpp"
 #include "touch_menu_view.hpp"
 
 #include <algorithm>
@@ -127,6 +128,9 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
   for (const int index : menu.rows) {
     const menu::MenuItem &item = menu.items[static_cast<std::size_t>(index)];
     if (!shown(item)) {
+      continue;
+    }
+    if (list_has_touch_layout(item.item_class, menu.menu_class)) {
       continue;
     }
     if (is_list(item.item_class)) {

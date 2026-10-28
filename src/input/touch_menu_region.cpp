@@ -24,7 +24,7 @@ build_region_view(const menu::MenuSnapshot &menu,
   if (title != nullptr && menu_item_shown(*title)) {
     view.title = touch_menu_text(title->label);
   }
-  append_list_entries(*list, ListTap::select, &view);
+  append_list_entries(*list, &view);
   append_menu_footers(menu, plane, &view);
   return view;
 }

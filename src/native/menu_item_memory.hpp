@@ -28,7 +28,12 @@ inline constexpr std::uint32_t kTextBox = 0xa4u;
 /* CMenuItemListBox, vtable 0x006a062c. */
 namespace x2::native::list_box {
 
-inline constexpr std::uint32_t kVtable = 0x006a062cu;
+/* A click's walk to its entry: steps left (positive is down), frames to the
+   next step, and set while it walks; the list's tick 0x005c0c60 publishes
+   each step as the pad's. */
+inline constexpr std::uint32_t kWalkSteps = 0x88u;
+inline constexpr std::uint32_t kWalkTimer = 0x8cu;
+inline constexpr std::uint32_t kWalking = 0x90u;
 inline constexpr std::uint32_t kSelected = 0xacu;
 inline constexpr std::uint32_t kStore = 0xbcu;
 /* Up to four columns of 6 bytes: i16 width, i16 alignment, i16 widest
