@@ -18,16 +18,34 @@ once queued; `src/native/control_console.cpp` and
 ## runscript
 
 The `runscript` handler `0x005f2350` (registered with name string `0x006a38e0`
-around `0x005f4ac4`) takes ONE whitespace-delimited token and runs it as a
-script file through the script manager `FUN_004a1670`: `runscript
-act1/genosha/genosha1/temp_addmoney` opens
-`scripts/act1/genosha/genosha1/temp_addmoney.py`. Inline code
-(`runscript spawn(...)`) is read as a file name and never executes.
+around `0x005f4ac4`) takes ONE whitespace-delimited token and hands it to the
+script manager's `+0xc` slot, `FUN_004a11c0`:
+
+- A token without `(` is a file name: `runscript
+  act1/genosha/genosha1/temp_addmoney` reads
+  `scripts/act1/genosha/genosha1/temp_addmoney.py` whole through the file
+  system and splits it on `"\r\n"` (`0x0068d350`) only.
+- A token with `(` is code, split on the literal four characters `\n\r`
+  (`0x0068d348`): `runscript setPosX('_HERO1_',701)` runs. Code with a space
+  is cut there by the one-token rule.
+
+`FUN_004da450` passes each piece to the statement parser `FUN_004d9740`,
+which appends every argument to one pooled 0x38-byte node: seven inline slots
+at `node+8`, count at `node+0x24`, no bound check. An eighth argument lands on
+the count, and freeing the node (`FUN_004d78a0`) then walks that pointer-sized
+count off the heap. Every shipped script is CRLF with at most a few arguments
+per line; a file with bare LF breaks is one statement holding every line's
+arguments, which is how four two-argument `setPosX` lines crashed.
 
 The port's `GET /script?text=CODE` writes CODE to
-`<run dir>/overlay/scripts/x2/control/<n>.py` and queues
-`runscript x2/control/<n>`. The guest opens that file through the run's
-generated-asset overlay (`k32_set_generated_assets`, after `X2_ASSETS`).
+`<run dir>/overlay/scripts/x2/control/<n>.py` with every line break as CRLF
+and queues `runscript x2/control/<n>`. The guest opens that file through the
+run's generated-asset overlay (`k32_set_generated_assets`, after `X2_ASSETS`).
+The route drops the `host_dir_cache` listings for the directories and file it
+creates; without that, every script after the first resolved against the
+listing taken at the first open and was not found.
+`tools/live_case.py script-lines` runs a 4- and a 12-statement script in one
+run and checks both took effect.
 
 ## spawn
 

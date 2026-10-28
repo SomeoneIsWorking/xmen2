@@ -19,6 +19,7 @@ scratch/run/live.json.
                                               # (-4x3, -16x9, -20x9: other shapes)
     tools/live_case.py touch-game-tip         # a Game Tip on touch, closed by a tap
     tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
+    tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
 Artifacts (log, screenshots, profile) stay under
@@ -88,6 +89,7 @@ from live_cases_extraction import (
     case_extraction_paid,
 )
 from live_cases_game_tip import case_touch_game_tip
+from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
@@ -131,6 +133,7 @@ CASES = {
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,
     "combat-bench": case_combat_bench,
+    "script-lines": case_script_lines,
     "deadzone-render": case_deadzone_render,
     "ranger-render": case_ranger_render,
     "deadzone-water": case_deadzone_water,
