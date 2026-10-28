@@ -1,6 +1,7 @@
 #include "retail_front_end.hpp"
 
 #include "guest_call.hpp"
+#include "menu_item_memory.hpp"
 #include "popup_dialog.hpp"
 
 namespace x2::retail {
@@ -18,8 +19,6 @@ inline constexpr uint32_t kConsoleQueueSlot = 0x1cu;
 inline constexpr uint32_t kMenuManagerRva = 0x001d8920u;
 inline constexpr uint32_t kActiveMenuSlot = 0x210u;
 inline constexpr uint32_t kMenuName = 0x0cu;
-/* FUN_005adc10(menu, name): the menu's item of that name, or 0. */
-inline constexpr uint32_t kMenuItemByNameRva = 0x001adc10u;
 /* Menu slot 4 moves the focus to an item (CMenu::SetFocus). */
 inline constexpr uint32_t kMenuFocusSlot = 0x4u;
 
@@ -61,7 +60,7 @@ bool FrontEnd::focus(const CPU &cpu, std::string_view item) {
     return false;
   }
   const uint32_t target = guest::GuestCall(cpu).thiscall(
-      exe + kMenuItemByNameRva, menu, {name.address()});
+      exe + native::menu_item::kItemByNameRva, menu, {name.address()});
   if (!target) {
     return false;
   }

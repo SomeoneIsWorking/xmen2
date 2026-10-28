@@ -57,6 +57,7 @@ constexpr std::uint32_t kStyleFade = 0x04u;
 constexpr std::uint32_t kStyleFadeThreshold = 0x00680030u;
 
 constexpr std::string_view kToken = "$MENU_";
+constexpr std::string_view kPadHint = "$DPAD_";
 /* The tabs a menu's onMouse finds by name and tests with their raw box:
    CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
    0x005b5a90. */
@@ -155,6 +156,9 @@ public:
         put_tab(self);
       }
       return false;
+    }
+    if (x2::native::text_is_pad_hint(menu_class, text)) {
+      return true;
     }
     if (!x2::native::text_has_touch_button(menu_class, text)) {
       return false;
@@ -308,6 +312,12 @@ private:
 TextItemTouch g_text_item_touch;
 
 } // namespace
+
+bool x2::native::text_is_pad_hint(std::string_view menu_class,
+                                  std::string_view text) {
+  return x2::input::menu_is_native_on_touch(menu_class) &&
+         text.find(kPadHint) != std::string_view::npos;
+}
 
 bool x2::native::text_has_touch_button(std::string_view menu_class,
                                        std::string_view text) {
