@@ -38,6 +38,7 @@ from live_cases_boot import (
 )
 from live_cases_menu import (
     case_menu_model,
+    case_touch_load,
     case_touch_popup,
     case_menu_touch,
     case_options_back,
@@ -91,6 +92,7 @@ CASES = {
     "touch-pad": case_touch_pad,
     "menu-touch": case_menu_touch,
     "touch-popup": case_touch_popup,
+    "touch-load": case_touch_load,
     "touch-menu": case_touch_menu,
     "menu-model": case_menu_model,
     "options-back": case_options_back,

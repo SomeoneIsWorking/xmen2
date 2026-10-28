@@ -75,10 +75,10 @@ the effects volume, toggles Combat Music and leaves by the Back footer, all on
 the game's own screens; a PDA tap on Team Management opens the team menu
 through `openmenu pda` at the boot map. Their footers still draw keyboard
 keycaps (step 3), and their rows are under a finger (step 4).
-The difficulty popup is step 5's first screen. Its first pass only widened the
-retail rows to a finger's pitch (a tap on Easy selects it and a second tap,
-short or held 0.6 s, starts the new game); the mobile layout replaces it. Touch reaches the game through its
-own event callback at the frame boundary (`touch_pointer_dispatch.cpp`), not
-the Win32 queue. Every popup is native on touch, with nothing drawn over it
-(`tools/live_case.py touch-popup`, 11 of 11). The popup's mobile layout is next,
-then Load Game (its window follows the page's visible count) and the shop.
+Every popup is step 5's first screen, done: CPopupDialog has its mobile
+layout on touch (cards of the game's bar art, a frame sized to its page, bar
+buttons for the prompts, one tap to act, a drag to scroll), shown working by
+`tools/live_case.py touch-popup` (13 of 13) and `touch-load` (8 of 8). Load
+Game's port-owned list beyond its ten resident rows (the fifth autosave) is
+still reached only through the controller's window. The shop and the other
+list boxes are next.

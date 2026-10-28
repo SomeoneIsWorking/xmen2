@@ -4,6 +4,7 @@
  */
 #include "guest_body.h"
 #include "guest_modules.h"
+#include "menu_action.hpp"
 #include "menu_item_tap.hpp"
 #include "retail_menu_model.hpp"
 #include "x86rt.h"
@@ -14,10 +15,6 @@
 namespace {
 
 constexpr std::uint32_t kItemOnMouse = 0x005bc1b0u;
-constexpr std::uint32_t kMenuPlayer = 0x006f3920u;
-constexpr std::uint32_t kMenuActions = 0x00a09f54u;
-constexpr std::uint32_t kMenuActionPending = 0x00a09fa0u;
-constexpr std::uint32_t kAcceptAction = 4u;
 
 constexpr std::uint32_t kItemFlags = 0x54u;
 constexpr std::uint8_t kItemHidden = 0x04u;
@@ -26,10 +23,6 @@ constexpr std::uint32_t kItemBoxY = 0x72u;
 constexpr std::uint32_t kItemBoxWidth = 0x74u;
 constexpr std::uint32_t kItemBoxHeight = 0x76u;
 constexpr std::uint32_t kItemBoxHalfZ = 0x7au;
-
-std::uint32_t linked(std::uint32_t preferred) {
-  return x86_module_base("XMen2.exe") + (preferred - x2::native::kExePreferred);
-}
 
 int field_s16(std::uint32_t item, std::uint32_t offset) {
   return static_cast<std::int16_t>(RD16(item + offset));
@@ -43,12 +36,6 @@ bool in_box(std::uint32_t item, int x, int z) {
   const int top = bottom - field_s16(item, kItemBoxHeight) - 1;
   const int right = left + field_s16(item, kItemBoxWidth) - 1;
   return x >= left && x < right && z >= top && z < bottom;
-}
-
-void publish_accept() {
-  const std::uint32_t player = RD32(linked(kMenuPlayer));
-  WR8(linked(kMenuActionPending) + player, 1u);
-  WR32(linked(kMenuActions) + player * 4u, kAcceptAction);
 }
 
 } // namespace
@@ -78,7 +65,7 @@ extern "C" void x2_override_005bc1b0(CPU *cpu) {
   const x2::native::MenuItemTap tap =
       x2::native::menu_item_tap(menu, index, x, z, message);
   if (tap.accept) {
-    publish_accept();
+    x2::native::post_menu_action(x2::native::MenuAction::accept);
   }
   cpu->reg[kX86pEax] = tap.hit ? 1u : 0u;
 }

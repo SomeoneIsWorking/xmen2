@@ -235,24 +235,39 @@ def case_menu_touch(case: Case) -> None:
 def popup_row(menu: dict, text: str) -> dict:
     page = menu.get("popup_page") or {}
     for row in page.get("rows", []):
-        if row.get("text", "").strip().lower() == text:
+        if row.get("text", "").strip().lower().startswith(text):
             return row
     return {}
 
 
-def popup_footer(menu: dict, token: str) -> dict:
+def popup_button(menu: dict, words: str) -> dict:
     page = menu.get("popup_page") or {}
-    for footer in page.get("footers", []):
-        if footer.get("text", "").startswith(token):
-            return footer
+    for button in page.get("footers", []):
+        if button.get("text", "").strip().lower() == words:
+            return button
     return {}
 
 
-def case_touch_popup(case: Case) -> None:
-    """New Game's difficulty popup, touched natively.
+def drag_popup(case: Case, start: dict, end: dict) -> None:
+    """One finger from card `start` to card `end` through the contact phases."""
+    x = start["tap"]["x"]
+    y_from = start["tap"]["y"]
+    y_to = end["tap"]["y"]
+    steps = 4
+    case.http("/touch?x=%g&y=%g&phase=down" % (x, y_from))
+    for i in range(1, steps + 1):
+        time.sleep(0.1)
+        case.http("/touch?x=%g&y=%g&phase=motion"
+                  % (x, y_from + (y_to - y_from) * i / steps))
+    case.http("/touch?x=%g&y=%g&phase=up" % (x, y_to))
 
-    Nothing is drawn over it, its options are a finger apart, its Back footer
-    closes it, and a tap on Easy selects it and a second tap starts the game.
+
+def case_touch_popup(case: Case) -> None:
+    """New Game's difficulty popup in its touch layout.
+
+    Nothing is drawn over it, its options are finger-tall cards, the locked
+    Hard card does nothing, its Back button closes it and one tap on Easy
+    starts the game.
     """
     case.prepare_profile(["boot.mode=menu", "input.touch_controls=2"])
     case.launch({"X2_FILES": "1"})
@@ -272,39 +287,94 @@ def case_touch_popup(case: Case) -> None:
     controls = live_controls(case)
     case.check("nothing is drawn over the popup", not controls,
                "drawn: %s" % sorted(controls))
+    case.check("the popup is in its touch layout",
+               (menu.get("popup_page") or {}).get("touch") is True)
     rows = [popup_row(menu, label) for label in ("easy", "normal", "hard")]
-    case.check("the popup reports its three options where it drew them",
+    case.check("the popup reports its three cards where it drew them",
                all(row.get("tap") for row in rows), str(menu.get("popup_page")))
     if not all(row.get("tap") for row in rows):
         return
     pitch = min(b["tap"]["y"] - a["tap"]["y"]
                 for a, b in itertools.pairwise(rows))
-    case.check("the options are a finger apart", pitch >= 0.095,
+    case.check("the cards are a finger apart", pitch >= 0.095,
                "pitch %.4f of the height" % pitch)
     case.shot("popup")
-    back = popup_footer(menu, "$MENU_BACK")
-    case.check("Back was tapped", tap_menu_item(case, back))
+    hard = rows[2]
+    case.check("Hard is locked", hard.get("enabled") is False)
+    case.check("Hard was tapped", tap_menu_item(case, hard))
+    time.sleep(1.0)
+    menu = read_menu(case)
+    case.check("the locked card left the popup up", menu.get("popup") is True)
+    back = popup_button(menu, "back")
+    case.check("Back was tapped", tap_menu_item(case, back), str(menu.get("popup_page")))
     closed = timeline.until(lambda m: m.get("popup") is False, 10)
-    case.check("the Back footer closed the popup",
+    case.check("the Back button closed the popup",
                closed.get("menu") == "main" and closed.get("popup") is False,
                "menu %r popup %r" % (closed.get("menu"), closed.get("popup")))
     tap_menu_item(case, new_game)
-    menu = timeline.until(lambda m: m.get("popup") is True, 20)
+    timeline.until(lambda m: m.get("popup") is True, 20)
     time.sleep(1.0)
     easy = popup_row(read_menu(case), "easy")
     case.check("Easy was tapped", tap_menu_item(case, easy))
-    chosen = timeline.until(
-        lambda m: (m.get("popup_page") or {}).get("selected") == 0, 10)
-    case.check("the tap selected Easy",
-               (chosen.get("popup_page") or {}).get("selected") == 0,
-               str(chosen.get("popup_page", {}).get("selected")))
-    case.shot("easy")
-    case.check("Easy was tapped again", tap_menu_item(case, easy))
     started = timeline.until(
         lambda m: m.get("popup") is not True and m.get("menu") != "main", 20)
-    case.check("the second tap started the new game",
+    case.check("one tap on Easy started the new game",
                started.get("popup") is not True and started.get("menu") != "main",
                "menu %r popup %r" % (started.get("menu"), started.get("popup")))
+
+
+def case_touch_load(case: Case) -> None:
+    """Load Game with more saves than cards fit, in its touch layout.
+
+    A drag scrolls the cards with the finger, one tap on a card loads that
+    save, and the game's Load Successful popup's Continue button goes on.
+    """
+    case.prepare_profile(["boot.mode=menu", "input.touch_controls=2"])
+    case.seed_save("autosave0.save")
+    save = case.profile / "Activision" / "X-Men Legends 2" / "Save"
+    for leaf in (["autosave%d.save" % i for i in range(1, 5)]
+                 + ["saveslot%d.save" % i for i in range(6)]):
+        shutil.copy2(save / "autosave0.save", save / leaf)
+    case.launch({})
+    case.wait_control(60)
+    main = wait_menu(case, "main", 300)
+    load = menu_row(main, "load game")
+    case.check("the main menu has LOAD GAME", bool(load))
+    if not load:
+        return
+    tap_menu_item(case, load)
+    timeline = MenuTimeline(case, "timeline.txt")
+    timeline.until(lambda m: m.get("popup") is True, 20)
+    time.sleep(1.0)
+    page = read_menu(case).get("popup_page") or {}
+    cards = page.get("rows", [])
+    case.check("Load Game shows its saves as cards",
+               page.get("touch") is True and len(cards) >= 3,
+               "%d card(s)" % len(cards))
+    if len(cards) < 3:
+        return
+    case.check("the cards stay above the buttons",
+               all(c["tap"]["y"] < b["tap"]["y"] for c in cards
+                   for b in page.get("footers", [])))
+    case.shot("load")
+    drag_popup(case, cards[-1], cards[0])
+    time.sleep(1.0)
+    dragged = read_menu(case).get("popup_page") or {}
+    first = dragged.get("rows", [{}])[0].get("entry")
+    case.check("a drag up scrolled the cards with the finger",
+               first == len(cards) - 1, "first shown entry %r" % first)
+    case.shot("dragged")
+    target = dragged["rows"][-1]
+    case.check("the last shown card was tapped", tap_menu_item(case, target))
+    done = timeline.until(
+        lambda m: bool(popup_button(m, "continue")), 30)
+    case.check("the tap loaded the save", bool(popup_button(done, "continue")),
+               str(done.get("popup_page")))
+    case.shot("loaded")
+    case.check("Continue was tapped",
+               tap_menu_item(case, popup_button(done, "continue")))
+    gone = timeline.until(lambda m: m.get("popup") is not True, 20)
+    case.check("Continue closed the popup", gone.get("popup") is not True)
 
 
 def case_menu_model(case: Case) -> None:

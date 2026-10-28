@@ -482,18 +482,36 @@ one, and the game refuses it (Hard on New Game before the game is beaten).
 The text box at `p+0x4050` keeps every line it drew from `+0x43c`, `0x214`
 apart, counted at `+0x21844`: a RECT `{top, bottom, left, right}` at `+4` in
 the scene plane and the text at `+0x14`. Only a line with a `$MENU` token is a
-footer to onMouse. `x2::menu::PopupSnapshot` is this page; `GET /menu`
-reports it as `popup_page` with each footer's tap point and each option's,
-taken from where the draw last put it.
+footer to onMouse. The page's footer prompts (`$MENU_BACK Back`, ...) are three
+`0x40`-byte strings at `+0x1310`, drawn while the page's timeout `+0x1554` is at
+most `[0x00680030]`. `x2::native::popup` (`src/native/popup_dialog.hpp`) owns
+these offsets; `x2::menu::PopupSnapshot` is this page.
 
-- **Draw** `FUN_005ea9e0` (`+0x6c` path): each shown entry is laid out by the
-  text layout `FUN_00597c20` `+0x38(width = s16 p+0x4054, text, scale 1.0, 0, 1)`
-  into the text box at `p+0x4050` (`+0x408` left, `+0x40c` pen top, `+0x410`
-  width), which advances the pen by the line's height. The selected entry gets
-  the bar model at `p+0x404c` behind it (`+0x14`, x `left+1`, at the pen, scaled
-  by the backbuffer height `DAT_00a0a000`); `p+0x4044`/`p+0x4048` are the
-  frame's other models.
-- **Pointer** `CPopupDialog::onMouse` `0x005ea2c0` (`+0x7c`, reached first by
+- **Models** `FUN_005e95a0` (init, `+0x00`) loads one entity each through
+  `FUN_005e9510(name, &entity)`: the frame `ui/hud/dialog` at `p+0x4040`, the
+  arrows `ui/models/m_review_list_arrow` at `+0x4044`/`+0x4048` and the bar
+  `ui/hud/dialog_select` at `+0x404c`. Each is one scene node: `entity+8`
+  returns its transform, whose `+0x18(pos, rot, s)` and `+0x14(pos, rot, sx,
+  sdepth, sz)` set its matrix (x across, y depth, z up), so a second placement
+  in a frame moves it. The frame is placed once at init (`{0, -175, 0}`, scale
+  1); its art spans about x 77..437, z 91..321. `FUN_005e91c0`/`FUN_005e93b0`
+  attach and detach them to the menu scene (`CMenuMgr +0x108`/`+0x10c`),
+  `FUN_005e90d0`/`FUN_005e92d0` to the world scene (`0x0059ee20` `+0x24`/
+  `+0x28`); `p+0x4056` bit 0 says they are attached. There is no tint per
+  entity.
+
+- **Draw** `FUN_005ea9e0`: the title and each shown entry go through the text
+  box's line call `FUN_004552f0`, which adds a line with `FUN_005ef270(lines,
+  x, z, +0x410, +0x414, scale 1.0, flags, colour, "%s", text)` (z is the
+  text's middle) and advances the pen `+0x404` by the font manager's
+  `FUN_00597c20` `+0x38(width = s16 p+0x4054, text, scale, 0, 1)`. The colour
+  is STYLE_MENU's `FUN_005d8ae0(selected, out, enabled, 0, 0)` on the handle
+  the draw looks up once into `DAT_008b1400`. The selected entry gets the bar
+  behind it (x `left+1`, at the pen, scaled by the backbuffer height
+  `DAT_00a0a000`), the arrows mark entries above and below, and the prompts
+  are drawn last.
+- **Pointer** `CPopupDialog::onMouse` `0x005ea2c0(x, z, _, message, _)`
+  (`ret 0x14`, `+0x7c`, reached first by
   `FUN_005f9eb0` while `+0x78` isUp): the same layout call measures each shown
   entry, so a row's hit box is exactly its drawn text line. On an entry, `0x201`
   records the selected entry at `p+0xc`; it, and any other message while the
@@ -515,13 +533,13 @@ or a `0x210` in the frame the release is pumped, re-arms `p+4` and the release
 is refused. Hard on New Game refuses `MENU_ACCEPT` from the keyboard as well,
 with touch off: its enabled bit is clear.
 
-On touch each option's row is at least a finger target tall
-(`x2::native::popup_row_slot`, `src/native/popup_rows.cpp`), on both halves of
-the one layout pitch (`src/native/popup_row_override.cpp`): the text box draw
-`FUN_004552f0` called from `0x005eae70` advances its pen `+0x404` by the slot,
-so the bar follows, and the measure `FUN_00597c90` called from `0x005ea3c3`
-answers the slot, so the hit box is the drawn row. Both are scoped to those
-return addresses and to touch being active.
+On touch the port draws the popup itself (`src/native/popup_touch.cpp`, see
+[touch play](../touch-play.md)): it grows the frame, stretches its own
+`ui/hud/dialog_select` entities over the cards and buttons, draws the text
+through `FUN_005ef270`, and takes onMouse; accept and the prompts' actions
+are posted for the menu's player as onMouse posts them
+(`x2::native::post_menu_action`: pending `DAT_00a09fa0[player]`, action
+`DAT_00a09f54[player]`).
 
 The "gamepads have been added/removed" popup is not a menu either. The menu
 manager's update calls `FUN_00618e80` at `0x005db0cb`: true when the registry's
