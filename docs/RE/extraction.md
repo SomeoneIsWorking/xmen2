@@ -108,7 +108,8 @@ maps, `xtraction_point_sidemission` on 4).
   `0x005252e0` vslot `+0x1c8` asks is not decoded.
 - `paid` offers while a party hero is fallen and any hero touches a pad.
 - In every mode, stepping onto a pad schedules an autosave checkpoint
-  (`autosave_runtime_extraction_pad`); see [Boot](boot.md) for the slots.
+  (`autosave_runtime_extraction_pad`), at most once per 10-second cooldown; it
+  is the only autosave. See [Boot](boot.md) for the slots.
 - `extractionPoint` (`0x004a6b50`), `extractionPointLite` (`0x004a6d80`) and
   `extractionUnlock` (`0x0049f1e0`) are not touched. `0x004a6b50` keeps the save
   trace's own override.

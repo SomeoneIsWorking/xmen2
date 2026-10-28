@@ -186,10 +186,13 @@ the dialog owner and then consumes a transaction-local one-shot only at mode
 one-shot, so its confirmation behavior is unchanged. Failed reads, unexpected
 states and a return to the main menu clear the pending acknowledgement.
 
-The same successful retained map-return boundary schedules the host autosave,
-and so does a hero stepping onto an extraction pad (`extraction_revive.cpp`,
-in every `gameplay.extraction_revive` mode). The retained main-menu Show
-cancels its pending request, so booting Menu cannot save the menu map. A
+The host autosave has one checkpoint: a hero stepping onto an extraction pad
+(`extraction_revive.cpp`, in every `gameplay.extraction_revive` mode). A map
+load does not autosave; its return (`0x00484ce0`, `map_load_runtime.cpp`) only
+feeds the save trace, the LAN session and the boot blackout. A pad touch within
+10 guest seconds of the last one taken is ignored and logged "within the
+autosave cooldown" (`kAutosaveCooldownSeconds`), so stepping off and back on
+writes one save. The retained main-menu Show cancels a pending request. A
 checkpoint reaches the retail serializer only after 64 consecutive guest input
 polls with save-manager mode zero and the player in control; the publisher
 derives the retail 128-byte description header from the serializer's own

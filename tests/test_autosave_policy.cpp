@@ -22,20 +22,30 @@ poll_until_fire(x2::save::AutosavePolicy *policy) {
   return checkpoint;
 }
 
-static void test_map_checkpoint_and_menu_cancellation(void) {
+static void test_pad_checkpoint_and_menu_cancellation(void) {
   x2::save::AutosavePolicy policy;
 
   x2::save::autosave_policy_init(&policy);
-  x2::save::autosave_policy_map_return(&policy, 0);
-  CHECK(policy.map_returns == 1u && !policy.has_pending);
-  x2::save::autosave_policy_map_return(&policy, 1);
-  CHECK(policy.map_returns == 2u && policy.successful_map_returns == 1u);
+  x2::save::autosave_policy_extraction_pad(&policy, 5.0);
   CHECK(policy.has_pending &&
-        policy.pending.kind == x2::save::AutosaveCheckpointKind::MapLoad);
+        policy.pending.kind == x2::save::AutosaveCheckpointKind::ExtractionPad);
   x2::save::autosave_policy_menu_show(&policy);
   CHECK(!policy.has_pending && policy.cancelled_menu == 1u);
   CHECK(x2::save::autosave_policy_poll(&policy, 0u, 1, NULL) ==
         x2::save::AutosavePollResult::Idle);
+}
+
+/* Stepping off and back on within the cooldown takes no second save. */
+static void test_pad_cooldown(void) {
+  x2::save::AutosavePolicy policy;
+
+  x2::save::autosave_policy_init(&policy);
+  CHECK(x2::save::autosave_policy_extraction_pad(&policy, 100.0));
+  CHECK(!x2::save::autosave_policy_extraction_pad(&policy, 103.0));
+  CHECK(!x2::save::autosave_policy_extraction_pad(&policy, 109.9));
+  CHECK(policy.scheduled == 1u && policy.cooled == 2u);
+  CHECK(x2::save::autosave_policy_extraction_pad(&policy, 110.0));
+  CHECK(policy.scheduled == 2u && policy.pending.id == 2u);
 }
 
 static void test_64_consecutive_idle_polls(void) {
@@ -44,7 +54,7 @@ static void test_64_consecutive_idle_polls(void) {
   unsigned poll;
 
   x2::save::autosave_policy_init(&policy);
-  x2::save::autosave_policy_map_return(&policy, 1);
+  x2::save::autosave_policy_extraction_pad(&policy, 0.0);
   for (poll = 0; poll < 32u; poll++)
     CHECK(x2::save::autosave_policy_poll(&policy, 0u, 1, NULL) ==
           x2::save::AutosavePollResult::Deferred);
@@ -70,7 +80,7 @@ static void test_waits_for_player_control(void) {
   unsigned poll;
 
   x2::save::autosave_policy_init(&policy);
-  x2::save::autosave_policy_map_return(&policy, 1);
+  x2::save::autosave_policy_extraction_pad(&policy, 0.0);
   for (poll = 0; poll < 4u * x2::save::kAutosaveIdlePolls; poll++)
     CHECK(x2::save::autosave_policy_poll(&policy, 0u, 0, NULL) ==
           x2::save::AutosavePollResult::Deferred);
@@ -87,13 +97,13 @@ static void test_waits_for_player_control(void) {
   CHECK(checkpoint.id == 1u && policy.attempts == 1u);
 }
 
-static void test_failure_no_retry_and_newer_map_replaces_pending(void) {
+static void test_failure_no_retry_and_newer_pad_replaces_pending(void) {
   x2::save::AutosavePolicy policy;
   x2::save::AutosaveCheckpoint checkpoint;
 
   x2::save::autosave_policy_init(&policy);
-  x2::save::autosave_policy_map_return(&policy, 1);
-  x2::save::autosave_policy_map_return(&policy, 1);
+  x2::save::autosave_policy_extraction_pad(&policy, 0.0);
+  x2::save::autosave_policy_extraction_pad(&policy, 20.0);
   CHECK(policy.scheduled == 2u && policy.pending.id == 2u);
   checkpoint = poll_until_fire(&policy);
   CHECK(checkpoint.id == 2u);
@@ -101,13 +111,13 @@ static void test_failure_no_retry_and_newer_map_replaces_pending(void) {
   CHECK(policy.failures == 1u && !policy.has_pending);
   CHECK(x2::save::autosave_policy_poll(&policy, 0u, 1, NULL) ==
         x2::save::AutosavePollResult::Idle);
-  x2::save::autosave_policy_map_return(&policy, 1);
+  x2::save::autosave_policy_extraction_pad(&policy, 40.0);
   checkpoint = poll_until_fire(&policy);
   CHECK(checkpoint.id == 3u);
 }
 
 static void test_invalid_inputs(void) {
-  x2::save::autosave_policy_map_return(NULL, 1);
+  x2::save::autosave_policy_extraction_pad(NULL, 0.0);
   x2::save::autosave_policy_menu_show(NULL);
   CHECK(x2::save::autosave_policy_poll(NULL, 0u, 1, NULL) ==
         x2::save::AutosavePollResult::Idle);
@@ -115,10 +125,11 @@ static void test_invalid_inputs(void) {
 }
 
 int main(void) {
-  test_map_checkpoint_and_menu_cancellation();
+  test_pad_checkpoint_and_menu_cancellation();
+  test_pad_cooldown();
   test_64_consecutive_idle_polls();
   test_waits_for_player_control();
-  test_failure_no_retry_and_newer_map_replaces_pending();
+  test_failure_no_retry_and_newer_pad_replaces_pending();
   test_invalid_inputs();
   printf("autosave_policy: %d checks passed\n", checks);
   return 0;
