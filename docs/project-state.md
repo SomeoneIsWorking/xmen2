@@ -169,7 +169,11 @@ taps (Options opened from its row's edge, Combat Music toggled by its card),
 and the game fills the screen behind the hidden system bars: before
 `android-port` a8e8e2f the hidden status bar's 72-pixel strip showed the
 light theme's background, because a decor that fits the system bars keeps
-their inset below API 35. An API 35 x86-64 emulator installed the debug APK, and
+their inset below API 35. The same pass loaded an autosave through Load Game,
+walked by the stick, opened a Game Tip through the use-prompt button, and
+stepped the team menu's cards, Details, Next Hero and its Stats, Gear and
+Skills tabs and the PDA by finger, at 16.9 ms a frame; a tap ends the intro
+movie playing at the time, one movie per tap. An API 35 x86-64 emulator installed the debug APK, and
 its ZIP control opened Android's DocumentsUI picker.
 
 A loader-image-only DocumentsUI fixture exposed an install-validation defect:
