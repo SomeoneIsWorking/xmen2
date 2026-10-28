@@ -35,5 +35,9 @@ void hud_transform_point(HudTransform transform, float xyz[3]);
 void hud_transform_matrix(HudTransform transform, float matrix[16]);
 Rect hud_output_rect(HudSpace space, float output_width, float output_height,
                      float x, float z, float radius);
+/* A HUD-space box (left, top, width, height; top the greatest Z) in output
+   pixels. */
+Rect hud_output_box(HudSpace space, float output_width, float output_height,
+                    HudSpace box);
 
 } // namespace x2::presentation

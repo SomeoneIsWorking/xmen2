@@ -139,6 +139,18 @@ def live_controls(case: Case) -> dict[str, tuple[float, float, float, float]]:
     return out
 
 
+def live_use_prompt(case: Case) -> tuple[float, float, float, float] | None:
+    """The game's use prompt button while touch routes a finger to it:
+    left, top, width, height."""
+    for line in case.get_text("/controls").splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0] == "use-prompt":
+            left, top = (float(v) for v in parts[1].split(","))
+            width, height = (float(v) for v in parts[2].split("x"))
+            return (left, top, width, height)
+    return None
+
+
 def tap_control(case: Case, rect, window: tuple[float, float]) -> bool:
     """Tap the centre of a drawn control, in fractions of ITS surface."""
     left, top, width, height = rect

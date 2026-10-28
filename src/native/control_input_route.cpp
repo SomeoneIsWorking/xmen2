@@ -317,6 +317,17 @@ void control_route_controls(x2::native::Socket fd) {
       at += snprintf(body + at, sizeof body - (size_t)at, "\n");
     }
   }
+  /* The game draws the use prompt button itself, so it is no visual. */
+  x2::presentation::Rect prompt;
+  int prompt_held = 0;
+  if (at < (int)sizeof body &&
+      x2::input::touch_runtime_use_prompt(&prompt, &prompt_held)) {
+    at += snprintf(body + at, sizeof body - (size_t)at,
+                   "use-prompt %g,%g %gx%g%s\n", (double)prompt.left,
+                   (double)prompt.top, (double)(prompt.right - prompt.left),
+                   (double)(prompt.bottom - prompt.top),
+                   prompt_held ? " held" : "");
+  }
   control_reply_text(fd, 200, "OK", "%s", body);
 }
 

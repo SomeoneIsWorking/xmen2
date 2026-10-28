@@ -101,6 +101,11 @@ const char *touch_runtime_action_name(int action);
    deliberately hidden while a cinematic holds the controls. */
 int touch_runtime_skip_button(x2::presentation::Rect *rect, int *held);
 
+/* The game's use prompt as a button, in output pixels, while the gameplay
+   overlay routes a finger to it; `held` says a finger is on it. Returns 0
+   when there is none. */
+int touch_runtime_use_prompt(x2::presentation::Rect *rect, int *held);
+
 /* IS TOUCH THE INPUT THE PLAYER IS USING RIGHT NOW?
  *
  * One answer, two consumers: the on-screen pad and the mobile HUD placement.

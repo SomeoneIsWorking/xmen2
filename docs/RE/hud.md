@@ -77,6 +77,37 @@ methods already have correct thiscall prototypes and stack purges; those imports
 were not the cause. Treat arguments inferred from those untyped decompilations
 as provisional until checked against their raw call sites.
 
+## Use prompt
+
+The hero's per-frame update `0042ef30` keeps the use target's handle at
+`hero+774` (found through hero vfunc `+1ec`) and calls `0042eaf0` (thiscall,
+ECX hero) to post the prompt. Its text comes from `Data/strings.engb`: 100
+`$GUARD Talk to %s` (NPC, `00402b60`), 101 `$GUARD Open door` (`004240f0`), 139
+`$GUARD Pick up %s` (`0042be20`), else 102 `$GUARD Use %s` with the target's
+description (`target+170`), and `"$GUARD "` plus the name as a fallback. The
+action is always `$GUARD`, the Guard action (keyboard E, pad X), which touch
+names `Use`; with several players it becomes `$GUARD1`..`$GUARD4` by
+`hero+3d4`. It posts through GUI (`0081d7e0`, vtable `0069dca4`) vfunc `+34`,
+`0059c760` (handle `[0070b7f0+p*8]`, text, 0.5 s, colour), renewed every frame
+in range, and stores the returned handle at `0070b7f0+p*8` and the target at
+`0070b7f4+p*8`.
+
+GUI messages live in a pool of ten records at `GUI+21ae6*4`, stride `0x15c`,
+listed from the index at `GUI+21e5d*4` (`-1` ends): `+0` next, `+4` prev, `+8`
+an embedded object (vfunc `+8` update, false once expired; `+c` draw), `+10`
+position, `+20` visible byte, `+24` text, `+124` handle, `+128` expiry, `+158`
+type byte. `0059dc00` (ECX GUI, called at `0059f964`) lays them out per type
+from anchors at `0081d798` (type 0 at the viewport midpoint, Z 90: bottom
+centre; types 1-3 Z 250; type 4 Z 150), draws each line through its object,
+not `005f11b0`, and then one dark band behind all type-0 lines through `+4c`:
+position (mid - w/2, 0, top), size (w, h), colour (0, 0, 0, alpha), icon
+`0x1b`, layer 1. The prompt is a type-0 message.
+
+On touch, `hud_draw_runtime.cpp` wraps `0059dc00`; while the record holding
+player one's prompt handle is the only visible type-0 line, it grows that
+band to `text_button` around its line (one finger tall) and publishes the
+grown band as `HudRegions::use_prompt`, the touch zone pressing Use.
+
 ## Portrait position and pointer selection
 
 `005a1650` is CHudCharacter's position getter, called through virtual `+18`.

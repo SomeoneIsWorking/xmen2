@@ -41,7 +41,9 @@ inline constexpr int kHudPotions = 2;
  * pixels; each mask bit says that entry was drawn. The potions are health,
  * then energy. The menu icons are the pause menu and team menu icons, in
  * that order, that the game's mouse overlay draws at the top centre and its
- * click handler acts on. */
+ * click handler acts on. The use prompt is the game's own "$GUARD Use ..."
+ * line and its backdrop at the bottom centre while the hero is in range of
+ * something to use. */
 inline constexpr int kHudMenuIcons = 2;
 struct HudRegions {
   Rect portraits[4];
@@ -50,6 +52,8 @@ struct HudRegions {
   unsigned potion_mask;
   Rect menu_icons[kHudMenuIcons];
   unsigned menu_icon_mask;
+  Rect use_prompt;
+  unsigned use_prompt_mask;
 };
 
 /* The output, and the region of it a player can actually reach: a phone's
