@@ -489,8 +489,8 @@ popup covered the PDA, clear after dismissing it. Load Game is this popup, not
 a `CMenu`.
 
 Its vtable is `0x006a332c`; the list it shows (New Game's difficulty, Load
-Game's saves, a yes/no) lives in the current page `p+0x18+idx*0x1560`: entry
-`i`'s text at `+(i+8)*0x80`, then the count `+0x1558`, the visible rows
+Game's saves, a yes/no) lives in the current page `p+0x18+idx*0x1560`: the title from `+0`,
+entry `i`'s text at `+(i+8)*0x80`, then the count `+0x1558`, the visible rows
 `+0x1559`, the first shown `+0x155a` and the selected `+0x155b` (all `char`).
 Bit `i` of the dwords at `+0x130c` is set for an entry the player may choose;
 the draw passes it to the text style (`FUN_005d8ae0`), which greys a clear
@@ -524,7 +524,13 @@ these offsets; `x2::menu::PopupSnapshot` is this page.
   text's middle) and advances the pen `+0x404` by the font manager's
   `FUN_00597c20` `+0x38(width = s16 p+0x4054, text, scale, 0, 1)`. The colour
   is STYLE_MENU's `FUN_005d8ae0(selected, out, enabled, 0, 0)` on the handle
-  the draw looks up once into `DAT_008b1400`. The selected entry gets the bar
+  the draw looks up once into `DAT_008b1400`. The line call does not wrap:
+  the draw copies the title (up to `0x400` bytes, everything before the
+  entries; a message popup's whole message) and each entry and breaks the
+  copy in place with that same `+0x38` before adding it, so a string drawn
+  at another scale or width must be broken again for it. The `+0x38` height
+  counts a prompt glyph's taller cell on each line that has one, while the
+  line call steps every line by the font's line height. The selected entry gets the bar
   behind it (x `left+1`, at the pen, scaled by the backbuffer height
   `DAT_00a0a000`), the arrows mark entries above and below, and the prompts
   are drawn last.
@@ -553,8 +559,10 @@ with touch off: its enabled bit is clear.
 
 On touch the port draws the popup itself (`src/native/popup_touch.cpp`, see
 [touch play](../touch-play.md)): it grows the frame, stretches its own
-`ui/hud/dialog_select` entities over the cards and buttons, draws the text
-through `FUN_005ef270`, and takes onMouse; accept and the prompts' actions
+`ui/hud/dialog_select` entities over the cards and buttons, breaks the title
+across the grown frame at its own scale (`x2::native::menu_text::wrap_in_place`)
+and draws it and the cards' text through `FUN_005ef270`, and takes onMouse;
+accept and the prompts' actions
 are posted for the menu's player as onMouse posts them
 (`x2::native::post_menu_action`: pending `DAT_00a09fa0[player]`, action
 `DAT_00a09f54[player]`).

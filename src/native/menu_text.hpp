@@ -25,6 +25,10 @@ float line_height(guest::GuestCall &call, std::uint32_t box);
    font. */
 float width(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
             std::string_view text, float scale);
+/* The guest string at `text` broken in place by the font's wrap at `width`
+   and `scale`; its height in the scene. */
+float wrap_in_place(guest::GuestCall &call, std::uint32_t box,
+                    std::uint32_t text, float width, float scale);
 
 /* `text` copied to `out` (kLineBytes) and broken by the font's wrap at
    `width`; true when it stayed on one line no wider than `width`. The wrap

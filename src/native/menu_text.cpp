@@ -37,15 +37,6 @@ std::uint32_t word(float value) {
   return static_cast<std::uint32_t>(static_cast<std::int32_t>(value));
 }
 
-float wrapped_height(guest::GuestCall &call, std::uint32_t box,
-                     std::uint32_t text, float width, float scale) {
-  const std::uint32_t font = call.thiscall(exe_linked(kTextFont), box);
-  const std::uint32_t fonts = call.cdecl_call(exe_linked(kFonts));
-  call.virtual_call(fonts, kWrap,
-                    {word(width), text, guest::float_bits(scale), font, 1u});
-  return static_cast<float>(call.x87_result());
-}
-
 void copy_line(std::uint32_t out, std::string_view text) {
   const std::size_t length =
       std::min<std::size_t>(text.size(), kLineBytes - 4u);
@@ -63,6 +54,15 @@ float widest_line(guest::GuestCall &call, std::uint32_t box, std::uint32_t text,
 
 } // namespace
 
+float wrap_in_place(guest::GuestCall &call, std::uint32_t box,
+                    std::uint32_t text, float width, float scale) {
+  const std::uint32_t font = call.thiscall(exe_linked(kTextFont), box);
+  const std::uint32_t fonts = call.cdecl_call(exe_linked(kFonts));
+  call.virtual_call(fonts, kWrap,
+                    {word(width), text, guest::float_bits(scale), font, 1u});
+  return static_cast<float>(call.x87_result());
+}
+
 float width(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
             std::string_view text, float scale) {
   copy_line(out, text);
@@ -70,13 +70,13 @@ float width(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
 }
 
 float line_height(guest::GuestCall &call, std::uint32_t box) {
-  return wrapped_height(call, box, exe_linked(kLineProbe), kWideLine, 1.0F);
+  return wrap_in_place(call, box, exe_linked(kLineProbe), kWideLine, 1.0F);
 }
 
 bool wrap(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
           std::string_view text, float width, float scale) {
   copy_line(out, text);
-  wrapped_height(call, box, out, std::ceil(width), scale);
+  wrap_in_place(call, box, out, std::ceil(width), scale);
   return guest::guest_string(out, kLineBytes).find('\n') ==
              std::string_view::npos &&
          widest_line(call, box, out, scale) <= width;

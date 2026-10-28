@@ -414,6 +414,7 @@ void test_popup() {
   constexpr std::uint32_t kPage = kPopup + 0x18u + 0x1560u;
   const std::int8_t counts[4] = {2, 2, 0, 1};
   guest.put(kPage + 0x1558u, counts, sizeof counts);
+  guest.put(kPage, "Choose", 7u);
   guest.put(kPage + 8u * 0x80u, "Easy", 5u);
   guest.put(kPage + 9u * 0x80u, "Hard", 5u);
   guest.u32(kPage + 0x130cu, 1u);
@@ -432,6 +433,7 @@ void test_popup() {
   x2::menu::MenuSnapshot menu;
   check(model.read(&menu) == x2::menu::ReadStatus::ok && menu.popup_up,
         "the current popup's shown flag");
+  check(menu.popup && menu.popup->title == "Choose", "the page's title");
   check(menu.popup && menu.popup->entries.size() == 2u &&
             menu.popup->entries[1] == "Hard" && menu.popup->selected == 1,
         "the shown page's entries and selection");

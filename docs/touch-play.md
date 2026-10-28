@@ -129,7 +129,11 @@ lays out a dialog and drawn by the game in its own art
 (`src/native/popup_touch.cpp`, geometry in `x2::input::layout_popup_touch`).
 The popup's frame `ui/hud/dialog` spans 94% of the screen's width and is as
 tall as its page needs, up to 90% of the height, in front of the menu it
-covers. Each entry is a finger-tall card: a stretched copy of the selection
+covers. The page's text, a selector's title or a message popup's whole
+message (a tutorial Game Tip), is broken across the grown frame by the font's
+own wrap at 1.4 times the frame's growth, or smaller down to 0.6 of that until
+it fits beside the cards and buttons, and the frame is as tall as its lines
+(`x2::input::popup_touch_title`). Each entry is a finger-tall card: a stretched copy of the selection
 bar `ui/hud/dialog_select` with the entry in the game's font at 0.42 of a
 finger; a locked entry (Hard before the game is beaten) has no bar and the
 game's greyed text. The page's prompts are bar buttons along the bottom with
@@ -145,9 +149,16 @@ vtable slot 2, `FUN_005e9070`, when a map's art goes, and loaded again at the
 next attach); with touch off both are
 retail's and the frame goes back to its retail placement. `GET /menu` reports
 each card and button where the last draw put it (`popup_page.rows`,
-`popup_page.footers`, `touch`). Prove it with `tools/live_case.py touch-popup`
-(difficulty: Hard refused, Back, one tap on Easy starts) and `touch-load`
-(eleven saves: drag to the last, tap to load, Continue).
+`popup_page.footers`, `touch`, and `frame_low`/`frame_high` and
+`text_low`/`text_high`, the frame and the span its text was wrapped into),
+also when the popup is up in gameplay with no menu under it. A popup counts
+as a native menu wherever it is up, so the menu pad is never drawn over one.
+Prove it with `tools/live_case.py touch-popup`
+(difficulty: Hard refused, Back, one tap on Easy starts), `touch-load`
+(eleven saves: drag to the last, tap to load, Continue) and `touch-game-tip`
+(the tutorial's switching hint from its "?" trigger near the start, at
+1096x720, the tablet's 1.52 aspect; `touch-game-tip-720` at 16:9: the message
+inside the frame above a finger-tall Continue, no pad, a tap closing it).
 
 **Every list box in a menu native on touch has a touch layout**
 (CMenuItemListBox and the codex's CMenuItemListCodex: the shop and stash, the
@@ -207,8 +218,8 @@ Accept), `touch-codex` (Details twice, Back), `touch-stash`, `touch-review`,
 `touch-danger-room`, `touch-worldmap` (an act, go, a point that travels,
 Back) and `touch-menu` (Options' Back).
 
-**Every other screen that is not gameplay and is not a native menu draws the
-menu pad** -- dialogue, and the menu classes not yet native. The retail menus are
+**Every other screen that is not gameplay and is not a native menu or a
+popup draws the menu pad** -- conversations, and the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y

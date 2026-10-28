@@ -348,8 +348,15 @@ void put_popup(std::string *out, const menu::PopupSnapshot &popup,
   const native::PopupTouchDrawn &drawn = native::popup_touch_drawn();
   put_key(out, "popup_page");
   out->push_back('{');
+  put_text(out, "text", popup.title);
   put_int(out, "selected", popup.selected);
   put_bool(out, "touch", drawn.shown);
+  if (drawn.shown) {
+    put_box_point(out, "frame_low", drawn.frame, 0.0F, 0.0F, plane);
+    put_box_point(out, "frame_high", drawn.frame, 1.0F, 1.0F, plane);
+    put_box_point(out, "text_low", drawn.text, 0.0F, 0.0F, plane);
+    put_box_point(out, "text_high", drawn.text, 1.0F, 1.0F, plane);
+  }
   put_key(out, "rows");
   out->push_back('[');
   for (std::size_t i = 0; drawn.shown && i < drawn.cards.size(); ++i) {
@@ -376,6 +383,8 @@ void put_popup(std::string *out, const menu::PopupSnapshot &popup,
     for (const native::PopupTouchButton &button : drawn.buttons) {
       out->push_back('{');
       put_box_tap(out, button.box, plane);
+      put_box_point(out, "edge", button.box, 0.05F, 0.9F, plane);
+      put_fingers(out, button.box, plane);
       put_text(out, "text", button.label);
       close_object(out);
       out->push_back(',');
@@ -411,9 +420,15 @@ void read_menu_body(void *context) {
     const auto plane = native::live_scene_plane();
     read->body = menu_json(menu, read->all_items, plane ? &*plane : nullptr);
   } else if (read->status != menu::ReadStatus::unreadable) {
-    read->body = menu.popup_up
-                     ? "{\"active\":false,\"popup\":true,\"reason\":"
-                     : "{\"active\":false,\"popup\":false,\"reason\":";
+    /* A popup up in gameplay has no menu under it. */
+    read->body = "{";
+    put_bool(&read->body, "active", false);
+    put_bool(&read->body, "popup", menu.popup_up);
+    if (menu.popup) {
+      const auto plane = native::live_scene_plane();
+      put_popup(&read->body, *menu.popup, plane ? &*plane : nullptr);
+    }
+    put_key(&read->body, "reason");
     put_string(&read->body, menu::read_status_name(read->status));
     read->body.append("}\n");
   }

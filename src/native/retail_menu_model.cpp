@@ -653,6 +653,11 @@ bool RetailMenuModel::read_popup(bool *up, std::optional<PopupSnapshot> *page) {
     return false;
   }
   PopupSnapshot out;
+  std::string title;
+  if (!reader_.c_string(base, native::popup::kTitleBytes, &title)) {
+    return false;
+  }
+  out.title = native::latin1_to_utf8(title);
   out.first_shown = counts[2];
   out.visible = counts[1];
   out.selected = counts[3];

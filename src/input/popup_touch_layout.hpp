@@ -25,7 +25,22 @@ struct PopupTouchInput {
   int footers = 0;
   /* The most cards the caller can draw. */
   int max_rows = 1;
+  /* The page's text wrapped at popup_touch_title's width and `title_scale`:
+     its height, 0 for one line at the nominal scale. A message popup's whole
+     message is this text. */
+  float title_scale = 0.0F;
+  float title_height = 0.0F;
 };
+
+/* Where the page's text is wrapped: its width, its nominal scale, and the
+   tallest it may be beside the cards and buttons in the largest frame. */
+struct PopupTouchTitle {
+  float width = 0.0F;
+  float scale = 1.0F;
+  float room = 0.0F;
+};
+
+PopupTouchTitle popup_touch_title(const PopupTouchInput &input);
 
 struct PopupTouchLayout {
   /* The frame model's transform: scale across and up, then this
@@ -35,6 +50,9 @@ struct PopupTouchLayout {
   SceneBox frame;
   /* Text is placed by its left end's middle. */
   presentation::ScenePoint title;
+  /* The span the page's text is wrapped into: across the frame, its lines
+     down. */
+  SceneBox text;
   float title_scale = 1.0F;
   float text_scale = 1.0F;
   CardStack cards;

@@ -17,6 +17,7 @@ scratch/run/live.json.
     tools/live_case.py menu-model             # GET /menu matches the drawn menus
     tools/live_case.py touch-use-prompt       # a tap on the use prompt uses
                                               # (-4x3, -16x9, -20x9: other shapes)
+    tools/live_case.py touch-game-tip         # a Game Tip on touch, closed by a tap
     tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -86,6 +87,7 @@ from live_cases_extraction import (
     case_extraction_off,
     case_extraction_paid,
 )
+from live_cases_game_tip import case_touch_game_tip
 from live_cases_use_prompt import case_touch_use_prompt
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
@@ -99,6 +101,8 @@ CASES = {
     "touch-use-prompt-4x3": case_touch_use_prompt,
     "touch-use-prompt-16x9": case_touch_use_prompt,
     "touch-use-prompt-20x9": case_touch_use_prompt,
+    "touch-game-tip": case_touch_game_tip,
+    "touch-game-tip-720": case_touch_game_tip,
     "menu-touch": case_menu_touch,
     "touch-popup": case_touch_popup,
     "touch-load": case_touch_load,
