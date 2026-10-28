@@ -7,7 +7,7 @@ through Wine, with its original Direct3D 8 renderer, PC control defaults, prompt
 and save flow. The port's intended differences are Wine-free native execution and a modern native-PC
 presentation, controller, settings, packaging, and diagnostics experience without changing the game.
 One deliberate gameplay delta is on by default: `gameplay.extraction_revive` (S024), `free` unless set to `off`.
-Saving adds five rotating autosaves (after map loads and on stepping onto an extraction pad), listed in
+Saving adds five rotating autosaves (only on stepping onto an extraction pad), listed in
 Load Game and announced on screen (S015); retail has no autosave.
 
 This is the authoritative inventory of what the port demonstrably does now and
@@ -896,8 +896,8 @@ engine while preserving its gameplay source.
 
 ### S015 — transactional autosave and Continue: verified
 
-Observed capability: successful map loads and a hero stepping onto an
-extraction pad publish an exact retail autosave, once the player controls a
+Observed capability: a hero stepping onto an
+extraction pad (at most once per 10 s) publishes an exact retail autosave, once the player controls a
 character, into five rotating slots (`autosave0..4.save`, the lowest empty
 else the oldest) without modifying a manual slot, and show "Autosaved" on
 screen for three seconds; persisted Boot Continue

@@ -2035,6 +2035,7 @@ set(X2_NATIVE_SOURCES
     src/save/save_trace.cpp
     src/save/load_game_menu_policy.cpp
     src/native/autosave_runtime.cpp
+    src/native/map_load_runtime.cpp
     src/native/extraction_revive.cpp
     src/native/extraction_revive_policy.cpp
     src/native/boot_player_selection.cpp

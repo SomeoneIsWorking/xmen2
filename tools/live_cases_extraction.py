@@ -83,6 +83,21 @@ def place(case: Case, at: tuple[float, float, float],
     time.sleep(2)
 
 
+def hop(case: Case, at: tuple[float, float, float]) -> None:
+    """Every hero around `at`, twice, with short gaps, so a step off and back
+    on fits inside the autosave cooldown."""
+    lines = []
+    for hero in range(1, HEROES + 1):
+        x, y = OFFSETS[hero - 1]
+        lines += ["setPosY('_HERO%d_',%d)" % (hero, at[1] + y),
+                  "setPosX('_HERO%d_',%d)" % (hero, at[0] + x),
+                  "setPosZ('_HERO%d_',%d)" % (hero, at[2])]
+    for line in lines * 2:
+        case.http("/console?command=runscript%20" + urllib.parse.quote(line))
+        time.sleep(0.1)
+    time.sleep(1.0)
+
+
 def put_party_on_pad(case: Case) -> dict:
     """Heroes 1, 3 and 4 onto the pad, invulnerable because the pad's
     enemies would kill them mid-case; hero 2 stays behind, because a living
@@ -177,7 +192,8 @@ def stand_beside_pad(case: Case) -> None:
 
 def case_extraction_free(case: Case) -> None:
     """free: stepping onto the pad restores the party once, and again only
-    after every hero has left and come back; standing beside it does not."""
+    after every hero has left and come back; standing beside it does not.
+    Only a pad autosaves, at most once per cooldown."""
     reach_pad_map(case, "free")
     fell_hero_two(case)
     case.check("nothing is restored while the party is far from the pad",
@@ -188,6 +204,9 @@ def case_extraction_free(case: Case) -> None:
     case.check("standing beside the pad restores nothing",
                restores(case) == 0 and len(fallen(beside)) == 1,
                "%s restores %d" % (fallen(beside), restores(case)))
+    case.check("loading the map took no autosave",
+               not re.search(r"\[autosave\] succeeded", case.log_text()),
+               autosave_lines(case))
     put_party_on_pad(case)
     clear_cinematic(case)
     entered = wait_full(case)
@@ -222,6 +241,22 @@ def case_extraction_free(case: Case) -> None:
     case.check("stepping back onto the pad restores the party again",
                full(again) and restores(case) == 2,
                "restores %d %s" % (restores(case), again.get("heroes")))
+    pad = party(case)["pads"][0]
+    off = (pad["x"], pad["y"] + 900, pad["z"] + 4)
+    on = (pad["x"], pad["y"], pad["z"] + 4)
+    hop(case, off)
+    hop(case, on)
+    case.check("a touch after the cooldown autosaves",
+               wait_pad_autosaves(case, 3), autosave_lines(case))
+    started = time.monotonic()
+    hop(case, off)
+    hop(case, on)
+    hopped = time.monotonic() - started
+    time.sleep(4)
+    case.check("stepping off and back on within the cooldown takes no save",
+               hopped < 8.0 and pad_autosaves(case) == 3
+               and "within the autosave cooldown" in case.log_text(),
+               "%.1fs %s" % (hopped, autosave_lines(case)))
     case.shot("free-after")
 
 

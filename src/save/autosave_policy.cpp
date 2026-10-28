@@ -3,9 +3,9 @@
 namespace x2::save {
 
 /* The title policy owns an asynchronous request -> write -> completion state
-   machine. Its checkpoints are a successful retail map load and a hero
-   stepping onto an extraction pad, cancelled by main-menu Show, taken once the
-   player controls a character. */
+   machine. Its one checkpoint is a hero stepping onto an extraction pad, at
+   most once per cooldown, cancelled by main-menu Show, taken once the player
+   controls a character. */
 
 void autosave_policy_init(AutosavePolicy *policy) {
   if (policy)
@@ -20,19 +20,18 @@ static void schedule(AutosavePolicy *policy, AutosaveCheckpointKind kind) {
   policy->idle_polls = 0;
 }
 
-void autosave_policy_map_return(AutosavePolicy *policy, int succeeded) {
+bool autosave_policy_extraction_pad(AutosavePolicy *policy, double now_s) {
   if (!policy)
-    return;
-  policy->map_returns++;
-  if (!succeeded)
-    return;
-  policy->successful_map_returns++;
-  schedule(policy, AutosaveCheckpointKind::MapLoad);
-}
-
-void autosave_policy_extraction_pad(AutosavePolicy *policy) {
-  if (policy)
-    schedule(policy, AutosaveCheckpointKind::ExtractionPad);
+    return false;
+  if (policy->has_last_pad &&
+      now_s - policy->last_pad_s < kAutosaveCooldownSeconds) {
+    policy->cooled++;
+    return false;
+  }
+  policy->has_last_pad = 1;
+  policy->last_pad_s = now_s;
+  schedule(policy, AutosaveCheckpointKind::ExtractionPad);
+  return true;
 }
 
 void autosave_policy_menu_show(AutosavePolicy *policy) {
