@@ -122,11 +122,14 @@ clear of the pieces' list inside their box. Shown by `touch-team` (12/12),
 (21/21), `touch-team-ai` (15/15), `touch-team-assign` (21/21),
 `touch-team-skill-details` (14/14) and `touch-roster` (15/15).
 
-The menu pad is not deleted: conversation choices and cinematic lines are
-answered with it (a conversation draws its own panel and has one pointer
-rule, a release anywhere accepting the highlighted response, see
-[cutscene player](../RE/cutscene_player.md); its responses have no finger
-targets yet), and the classes not native on touch (CMenuAutoMap,
+Conversations are native on touch: the speaker and line readable in the
+game's panel and each response a finger-tall card of `ui/hud/dialog_select`
+that a tap picks (`src/native/conversation_touch.cpp`, see
+[touch play](../touch-play.md)); no pad is drawn over them. Shown by
+`touch-conversation`, `-4x3`, `-16x9` and `-20x9`.
+
+The menu pad is not deleted: cinematic lines are answered with it, and the
+classes not native on touch (CMenuAutoMap,
 CMenuTextEntry, the online lobby menus, CMenuHeroList, CMenuPersonal,
 CMenuSebas, CMenuImageViewer, CMenuCredits, CMenuOptionsController) have no
 other touch path yet.

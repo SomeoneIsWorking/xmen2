@@ -2125,6 +2125,8 @@ set(X2_NATIVE_SOURCES
     src/native/menu_start_override.cpp
     src/native/pad_list_warning_override.cpp
     src/native/popup_touch.cpp
+    src/native/conversation_panel.cpp
+    src/native/conversation_touch.cpp
     src/native/list_touch.cpp
     src/native/menu_scene.cpp
     src/native/menu_text.cpp
@@ -2158,6 +2160,7 @@ set(X2_NATIVE_SOURCES
     src/input/menu_touch_gaps.cpp
     src/input/retail_text.cpp
     src/input/popup_touch_layout.cpp
+    src/input/conversation_touch_layout.cpp
     src/input/list_touch_layout.cpp
     src/input/touch_cards.cpp
     src/input/touch_targets.cpp

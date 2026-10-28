@@ -3,6 +3,7 @@
 #include "../input/native_touch_menus.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_runtime_menu.hpp"
+#include "conversation_touch.hpp"
 #include "guest_modules.h"
 #include "x86rt_native.h"
 
@@ -81,8 +82,8 @@ void TouchMenuSource::refresh(std::uint64_t now_ms) {
                                       ? menu::read_live_menu(&snapshot, &failed)
                                       : menu::ReadStatus::unreadable;
   /* A popup is read before the menu, so one up in gameplay, with no menu
-     under it, still counts. */
-  bool native = snapshot.popup_up;
+     under it, still counts; so does a conversation drawn for touch. */
+  bool native = snapshot.popup_up || conversation_touch_drawn().shown;
   if (status == menu::ReadStatus::ok) {
     native = native || input::menu_is_native_on_touch(snapshot.menu_class);
     const LiveGuestMemory memory;

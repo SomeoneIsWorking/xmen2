@@ -144,7 +144,11 @@ std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
   call.thiscall(
       exe_linked(kStyleColor), style,
       {x2::guest::float_bits(lit), out, enabled ? 1u : 0u, item, custom});
-  return call.cdecl_call(exe_linked(kPackColor), {out});
+  return pack_color(call, out);
+}
+
+std::uint32_t pack_color(guest::GuestCall &call, std::uint32_t rgba) {
+  return call.cdecl_call(exe_linked(kPackColor), {rgba});
 }
 
 } // namespace x2::native::menu_scene
