@@ -1,6 +1,7 @@
 #include "retail_front_end.hpp"
 
 #include "guest_call.hpp"
+#include "popup_dialog.hpp"
 
 namespace x2::retail {
 namespace {
@@ -21,24 +22,6 @@ inline constexpr uint32_t kMenuName = 0x0cu;
 inline constexpr uint32_t kMenuItemByNameRva = 0x001adc10u;
 /* Menu slot 4 moves the focus to an item (CMenu::SetFocus). */
 inline constexpr uint32_t kMenuFocusSlot = 0x4u;
-
-/* FUN_005eb300: the popup manager (vtable 0x006a332c). It stacks up to
-   three popups; +0x403c is the current one, each record is 0x1560 bytes from
-   +0x18. A record's +0x155d bit 0 says it is open, +0x1558 counts its
-   options, and option i's script is a 0x80-byte string at +0x901 + i * 0x80,
-   which the popup's input handler (FUN_005eb320) runs on accept before it
-   closes the popup. Slot 0x34 (FUN_005e99e0) focuses an option. */
-inline constexpr uint32_t kPopupManagerRva = 0x001eb300u;
-inline constexpr uint32_t kPopupCurrent = 0x403cu;
-inline constexpr uint32_t kPopupRecords = 0x18u;
-inline constexpr uint32_t kPopupRecordBytes = 0x1560u;
-inline constexpr uint32_t kPopupRecordCount = 3u;
-inline constexpr uint32_t kPopupFlags = 0x155du;
-inline constexpr uint8_t kPopupOpen = 0x01u;
-inline constexpr uint32_t kPopupOptionCount = 0x1558u;
-inline constexpr uint32_t kPopupOptionScripts = 0x901u;
-inline constexpr uint32_t kPopupScriptBytes = 0x80u;
-inline constexpr uint32_t kPopupFocusSlot = 0x34u;
 
 uint32_t exe_base() { return x86_module_base("XMen2.exe"); }
 
@@ -89,26 +72,29 @@ bool FrontEnd::focus(const CPU &cpu, std::string_view item) {
 bool FrontEnd::focus_popup_option(const CPU &cpu, std::string_view script) {
   const uint32_t exe = exe_base();
   const uint32_t manager =
-      exe ? guest::GuestCall(cpu).cdecl_call(exe + kPopupManagerRva) : 0u;
+      exe ? guest::GuestCall(cpu).cdecl_call(exe + native::popup::kManagerRva)
+          : 0u;
   if (!manager) {
     return false;
   }
-  const auto current = static_cast<int32_t>(RD32(manager + kPopupCurrent));
+  /* The popup's input handler (FUN_005eb320) runs the accepted option's
+     script before it closes the popup. */
   const uint32_t record =
-      manager + kPopupRecords +
-      (current >= 0 && static_cast<uint32_t>(current) < kPopupRecordCount
-           ? static_cast<uint32_t>(current) * kPopupRecordBytes
-           : 0u);
-  if ((RD8(record + kPopupFlags) & kPopupOpen) == 0u) {
+      manager + native::popup::page_offset(static_cast<int32_t>(
+                    RD32(manager + native::popup::kCurrentPage)));
+  if ((RD8(record + native::popup::kFlags) & native::popup::kOpen) == 0u) {
     return false;
   }
-  const auto options = static_cast<int8_t>(RD8(record + kPopupOptionCount));
+  const auto options =
+      static_cast<int8_t>(RD8(record + native::popup::kEntryCount));
   for (int8_t option = 0; option < options; ++option) {
-    const uint32_t at = record + kPopupOptionScripts +
-                        static_cast<uint32_t>(option) * kPopupScriptBytes;
-    if (guest::guest_string(at, kPopupScriptBytes) == script) {
+    const uint32_t at =
+        record + native::popup::kScripts +
+        static_cast<uint32_t>(option) * native::popup::kEntryBytes;
+    if (guest::guest_string(at, native::popup::kEntryBytes) == script) {
       return (guest::GuestCall(cpu).virtual_call(
-                  manager, kPopupFocusSlot, {static_cast<uint32_t>(option)}) &
+                  manager, native::popup::kFocusSlot,
+                  {static_cast<uint32_t>(option)}) &
               0xffu) != 0u;
     }
   }

@@ -6,6 +6,7 @@
 #include "guest_memory.h"
 #include "guest_modules.h"
 #include "load_game_menu_policy.h"
+#include "popup_dialog.hpp"
 #include "save_catalog.h"
 #include "save_directory.h"
 #include "x86rt.h"
@@ -25,7 +26,6 @@ enum {
   FN_INPUT_MANAGER = 0x001d8920u,
   FN_UPDATE_DIALOG_ORIGIN = 0x001e9c90u,
   FN_SCRIPT_ARGUMENT = 0x000d5830u,
-  UI_SINGLETON = 0x004b13ecu,
   SAVE_MODE_LOAD = 3u,
   MANAGER_SAVE_COUNT = 0xccu,
   MANAGER_MODE = 0xd4u,
@@ -33,27 +33,13 @@ enum {
   MANAGER_METADATA = 0xe4u,
   METADATA_STRIDE = 0xa8u,
   METADATA_EMPTY = 0xa4u,
-  UI_ACTIVE_PAGE = 0x403cu,
-  PAGE_FIRST = 0x18u,
-  PAGE_STRIDE = 0x1560u,
-  PAGE_TEXT = 0x400u,
-  PAGE_PRIMARY = 0x901u,
-  PAGE_SECONDARY = 0xe02u,
-  PAGE_PRIMARY_BITS = 0x1304u,
-  PAGE_SECONDARY_BITS = 0x1308u,
-  PAGE_SELECTABLE_BITS = 0x130cu,
-  PAGE_COUNT = 0x1558u,
-  PAGE_CAPACITY = 0x1559u,
-  PAGE_ORIGIN = 0x155au,
-  PAGE_FOCUS = 0x155bu,
-  ROW_BYTES = 0x80u,
   FIRST_AUTOSAVE_SCRIPT_SLOT = 10u
 };
 
 typedef struct {
-  char text[ROW_BYTES];
-  char primary[ROW_BYTES];
-  char secondary[ROW_BYTES];
+  char text[popup::kEntryBytes];
+  char primary[popup::kEntryBytes];
+  char secondary[popup::kEntryBytes];
   unsigned primary_bit;
   unsigned secondary_bit;
   unsigned selectable_bit;
@@ -77,14 +63,9 @@ static int g_last_manager_selection = -1;
 static char g_selected_leaf[32];
 
 static uint32_t dialog_page(uint32_t ui) {
-  uint32_t index;
-
   if (!ui)
     return 0u;
-  index = RD32(ui + UI_ACTIVE_PAGE);
-  if (index >= 3u)
-    index = 0u;
-  return ui + PAGE_FIRST + index * PAGE_STRIDE;
+  return ui + popup::page_offset((int32_t)RD32(ui + popup::kCurrentPage));
 }
 
 static int row_bit(uint32_t page, uint32_t offset, unsigned row) {
@@ -93,36 +74,45 @@ static int row_bit(uint32_t page, uint32_t offset, unsigned row) {
 
 static void capture_row(uint32_t page, unsigned resident, ResidentRow *row) {
   memcpy(row->text,
-         guest_memory_pointer(page + PAGE_TEXT + resident * ROW_BYTES),
-         ROW_BYTES);
+         guest_memory_pointer(page + popup::kEntries +
+                              resident * popup::kEntryBytes),
+         popup::kEntryBytes);
   memcpy(row->primary,
-         guest_memory_pointer(page + PAGE_PRIMARY + resident * ROW_BYTES),
-         ROW_BYTES);
+         guest_memory_pointer(page + popup::kScripts +
+                              resident * popup::kEntryBytes),
+         popup::kEntryBytes);
   memcpy(row->secondary,
-         guest_memory_pointer(page + PAGE_SECONDARY + resident * ROW_BYTES),
-         ROW_BYTES);
-  row->primary_bit = row_bit(page, PAGE_PRIMARY_BITS, resident);
-  row->secondary_bit = row_bit(page, PAGE_SECONDARY_BITS, resident);
-  row->selectable_bit = row_bit(page, PAGE_SELECTABLE_BITS, resident);
+         guest_memory_pointer(page + popup::kSecondScripts +
+                              resident * popup::kEntryBytes),
+         popup::kEntryBytes);
+  row->primary_bit = row_bit(page, popup::kScriptBits, resident);
+  row->secondary_bit = row_bit(page, popup::kSecondScriptBits, resident);
+  row->selectable_bit = row_bit(page, popup::kEnabledBits, resident);
 }
 
 static void copy_row_to_guest(uint32_t page, unsigned resident,
                               const ResidentRow *row) {
-  memcpy(guest_memory_pointer(page + PAGE_TEXT + resident * ROW_BYTES),
-         row->text, ROW_BYTES);
-  memcpy(guest_memory_pointer(page + PAGE_PRIMARY + resident * ROW_BYTES),
-         row->primary, ROW_BYTES);
-  memcpy(guest_memory_pointer(page + PAGE_SECONDARY + resident * ROW_BYTES),
-         row->secondary, ROW_BYTES);
+  memcpy(guest_memory_pointer(page + popup::kEntries +
+                              resident * popup::kEntryBytes),
+         row->text, popup::kEntryBytes);
+  memcpy(guest_memory_pointer(page + popup::kScripts +
+                              resident * popup::kEntryBytes),
+         row->primary, popup::kEntryBytes);
+  memcpy(guest_memory_pointer(page + popup::kSecondScripts +
+                              resident * popup::kEntryBytes),
+         row->secondary, popup::kEntryBytes);
 }
 
 static void clear_row(uint32_t page, unsigned resident) {
-  memset(guest_memory_pointer(page + PAGE_TEXT + resident * ROW_BYTES), 0,
-         ROW_BYTES);
-  memset(guest_memory_pointer(page + PAGE_PRIMARY + resident * ROW_BYTES), 0,
-         ROW_BYTES);
-  memset(guest_memory_pointer(page + PAGE_SECONDARY + resident * ROW_BYTES), 0,
-         ROW_BYTES);
+  memset(guest_memory_pointer(page + popup::kEntries +
+                              resident * popup::kEntryBytes),
+         0, popup::kEntryBytes);
+  memset(guest_memory_pointer(page + popup::kScripts +
+                              resident * popup::kEntryBytes),
+         0, popup::kEntryBytes);
+  memset(guest_memory_pointer(page + popup::kSecondScripts +
+                              resident * popup::kEntryBytes),
+         0, popup::kEntryBytes);
 }
 
 static void update_selected_leaf(void) {
@@ -178,13 +168,13 @@ static void refresh_projection(void) {
     if (row->selectable_bit)
       selectable_bits |= 1u << resident;
   }
-  WR32(g_page + PAGE_PRIMARY_BITS, primary_bits);
-  WR32(g_page + PAGE_SECONDARY_BITS, secondary_bits);
-  WR32(g_page + PAGE_SELECTABLE_BITS, selectable_bits);
-  WR8(g_page + PAGE_COUNT, (uint8_t)count);
-  WR8(g_page + PAGE_CAPACITY, (uint8_t)g_window.rows);
-  WR8(g_page + PAGE_ORIGIN, 0u);
-  WR8(g_page + PAGE_FOCUS, (uint8_t)focus);
+  WR32(g_page + popup::kScriptBits, primary_bits);
+  WR32(g_page + popup::kSecondScriptBits, secondary_bits);
+  WR32(g_page + popup::kEnabledBits, selectable_bits);
+  WR8(g_page + popup::kEntryCount, (uint8_t)count);
+  WR8(g_page + popup::kVisible, (uint8_t)g_window.rows);
+  WR8(g_page + popup::kFirstShown, 0u);
+  WR8(g_page + popup::kSelected, (uint8_t)focus);
   g_refreshes++;
   update_selected_leaf();
 }
@@ -257,7 +247,7 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   g_exe = x2::native::guest_exe_base();
   if (!g_exe || RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD)
     return;
-  g_ui = RD32(g_exe + UI_SINGLETON);
+  g_ui = RD32(g_exe + popup::kSingletonRva);
   g_page = dialog_page(g_ui);
   if (!g_ui || !g_page)
     return;
@@ -268,7 +258,7 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   mask = manual_present_mask(manager);
   x2::save::load_game_menu_plan(mask, g_autosave_count, &g_plan);
   manual_count = g_plan.count - g_autosave_count;
-  retail_count = RD8(g_page + PAGE_COUNT);
+  retail_count = RD8(g_page + popup::kEntryCount);
   if (manual_count && retail_count != manual_count)
     return;
   memset(g_rows, 0, sizeof g_rows);
@@ -277,7 +267,7 @@ static void activate_projection(const CPU *source, uint32_t manager) {
   for (logical = 0u; logical < g_autosave_count; logical++)
     make_autosave_row(&g_rows[manual_count + logical], (unsigned)logical);
   x2::save::load_game_menu_window_init(&g_plan, &g_window,
-                                       RD8(g_page + PAGE_CAPACITY));
+                                       RD8(g_page + popup::kVisible));
   g_manager = manager;
   g_active = 1;
   refresh_projection();
@@ -389,7 +379,7 @@ static void x2_override_005e9d30(CPU *C) {
     x86_guest_body(C, "XMen2.exe", 0x005e9d30u);
     return;
   }
-  resident_focus = RD8(g_page + PAGE_FOCUS);
+  resident_focus = RD8(g_page + popup::kSelected);
   if (x2::save::load_game_menu_window_select(&g_plan, &g_window,
                                              resident_focus))
     update_selected_leaf();

@@ -1,5 +1,7 @@
 #include "retail_menu_model.hpp"
 
+#include "popup_dialog.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -68,28 +70,7 @@ inline constexpr std::uint32_t kRegistryNodeStride = 0x10u;
 inline constexpr std::uint32_t kRegistryGetters = 0x5acu;
 inline constexpr std::uint32_t kRegistryNodes = 0x46u;
 
-/* CPopupDialog singleton (FUN_005eb300) and its isUp (0x005e9e30): the shown
-   flag of popup [+0x403c], or of popup 0 when that index is out of 0..2. */
-inline constexpr std::uint32_t kPopupRva = 0x004b13ecu;
-inline constexpr std::uint32_t kPopupCurrent = 0x403cu;
-inline constexpr std::uint32_t kPopupShown = 0x18u + 0x155du;
-inline constexpr std::uint32_t kPopupStride = 0x1560u;
-inline constexpr std::int32_t kPopupCount = 3;
-/* The page: entry i's text at +(i+8)*0x80, then its counts (all char). */
-inline constexpr std::uint32_t kPopupPage = 0x18u;
-inline constexpr std::uint32_t kPopupEntryBytes = 0x80u;
-inline constexpr std::uint32_t kPopupEntries = 8u * kPopupEntryBytes;
-inline constexpr std::uint32_t kPopupCounts = 0x1558u;
-inline constexpr std::uint32_t kPopupMarks = 0x130cu;
-/* The text box; its lines from +0x43c, 0x214 apart, counted at +0x21844: a
-   RECT {top, bottom, left, right} at +4, the text at +0x14. */
-inline constexpr std::uint32_t kPopupTextBox = 0x4050u;
-inline constexpr std::uint32_t kPopupFooters = 0x43cu;
-inline constexpr std::uint32_t kPopupFooterStride = 0x214u;
-inline constexpr std::uint32_t kPopupFooterCount = 0x21844u;
-inline constexpr std::uint32_t kPopupFooterRect = 0x4u;
-inline constexpr std::uint32_t kPopupFooterLabel = 0x14u;
-inline constexpr std::uint32_t kPopupFooterLabelBytes = 0x1eeu;
+/* Text box lines read at most. */
 inline constexpr std::uint32_t kPopupLineMax = 256u;
 
 /* CMenuItemListBox (vtable 0x006a062c); see docs/RE/menus.md. */
@@ -652,31 +633,30 @@ bool RetailMenuModel::read_popup(bool *up, std::optional<PopupSnapshot> *page) {
   *up = false;
   page->reset();
   std::uint32_t popup = 0;
-  if (!reader_.u32(reader_.image(kPopupRva), &popup)) {
+  if (!reader_.u32(reader_.image(native::popup::kSingletonRva), &popup)) {
     return false;
   }
   if (popup == 0u) {
     return true;
   }
   std::uint32_t current = 0;
-  if (!reader_.u32(popup + kPopupCurrent, &current)) {
+  if (!reader_.u32(popup + native::popup::kCurrentPage, &current)) {
     return false;
   }
-  const auto index = static_cast<std::int32_t>(current);
-  const std::uint32_t slot = index >= 0 && index < kPopupCount
-                                 ? static_cast<std::uint32_t>(index)
-                                 : 0u;
+  /* isUp (0x005e9e30): the shown flag of the page CPopupDialog works on. */
+  const std::uint32_t base =
+      popup + native::popup::page_offset(static_cast<std::int32_t>(current));
   std::uint8_t shown = 0;
-  if (!reader_.bytes(popup + slot * kPopupStride + kPopupShown, &shown, 1u)) {
+  if (!reader_.bytes(base + native::popup::kFlags, &shown, 1u)) {
     return false;
   }
-  *up = (shown & 1u) != 0u;
+  *up = (shown & native::popup::kOpen) != 0u;
   if (!*up) {
     return true;
   }
-  const std::uint32_t base = popup + kPopupPage + slot * kPopupStride;
   std::array<std::int8_t, 4> counts{};
-  if (!reader_.bytes(base + kPopupCounts, counts.data(), counts.size())) {
+  if (!reader_.bytes(base + native::popup::kEntryCount, counts.data(),
+                     counts.size())) {
     return false;
   }
   PopupSnapshot out;
@@ -685,14 +665,15 @@ bool RetailMenuModel::read_popup(bool *up, std::optional<PopupSnapshot> *page) {
   out.selected = counts[3];
   for (int i = 0; i < counts[0]; ++i) {
     std::string bytes;
-    if (!reader_.c_string(base + kPopupEntries +
-                              static_cast<std::uint32_t>(i) * kPopupEntryBytes,
-                          kPopupEntryBytes, &bytes)) {
+    if (!reader_.c_string(base + native::popup::kEntries +
+                              static_cast<std::uint32_t>(i) *
+                                  native::popup::kEntryBytes,
+                          native::popup::kEntryBytes, &bytes)) {
       return false;
     }
     out.entries.push_back(native::latin1_to_utf8(bytes));
     std::uint32_t marks = 0;
-    if (!reader_.u32(base + kPopupMarks +
+    if (!reader_.u32(base + native::popup::kEnabledBits +
                          static_cast<std::uint32_t>(i / 32) * 4u,
                      &marks)) {
       return false;
@@ -701,20 +682,21 @@ bool RetailMenuModel::read_popup(bool *up, std::optional<PopupSnapshot> *page) {
   }
   std::uint32_t text_box = 0;
   std::uint32_t footers = 0;
-  if (!reader_.u32(popup + kPopupTextBox, &text_box) ||
+  if (!reader_.u32(popup + native::popup::kTextBox, &text_box) ||
       (text_box != 0u &&
-       !reader_.u32(text_box + kPopupFooterCount, &footers))) {
+       !reader_.u32(text_box + native::popup::kLineCount, &footers))) {
     return false;
   }
   for (std::uint32_t i = 0; text_box != 0u && i < footers && i < kPopupLineMax;
        ++i) {
     const std::uint32_t entry =
-        text_box + kPopupFooters + i * kPopupFooterStride;
+        text_box + native::popup::kBoxLines + i * native::popup::kLineBytes;
     std::array<std::int32_t, 4> rect{};
     std::string bytes;
-    if (!reader_.bytes(entry + kPopupFooterRect, rect.data(), sizeof rect) ||
-        !reader_.c_string(entry + kPopupFooterLabel, kPopupFooterLabelBytes,
-                          &bytes)) {
+    if (!reader_.bytes(entry + native::popup::kLineRect, rect.data(),
+                       sizeof rect) ||
+        !reader_.c_string(entry + native::popup::kLineText,
+                          native::popup::kLineTextBytes, &bytes)) {
       return false;
     }
     /* onMouse acts on a line only through its `$MENU` token. */
