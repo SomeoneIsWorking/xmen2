@@ -57,6 +57,9 @@ std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
                           std::uint32_t style, float lit, bool enabled,
                           std::uint32_t item = 0u, std::uint32_t custom = 0u);
 
+/* The igVec4f colour at `rgba` packed as the text calls take it. */
+std::uint32_t pack_color(guest::GuestCall &call, std::uint32_t rgba);
+
 inline constexpr float kHidden = -9999.0F;
 
 } // namespace x2::native::menu_scene

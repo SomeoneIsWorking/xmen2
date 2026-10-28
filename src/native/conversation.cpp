@@ -39,6 +39,8 @@
  *
  * Each override preserves the original return register and stack effect.
  */
+#include "conversation_panel.hpp"
+#include "conversation_touch.hpp"
 #include "guest_body.h"
 #include "guest_call.hpp"
 #include "guest_modules.h"
@@ -631,7 +633,6 @@ void x2_override_00458020(CPU *C) {
 #define FN_SLOT_PAIR EXE(0x000572d0u)        /* FUN_004572d0 */
 #define FN_SPEAKER_POKE EXE(0x0001d8e0u)     /* FUN_0041d8e0 */
 #define FN_INPUT EXE(0x001d8920u)            /* FUN_005d8920, getter       */
-#define FN_CLOCK EXE(0x0006dce0u)            /* FUN_0046dce0, getter       */
 #define FN_PADS EXE(0x00151ed0u)             /* FUN_00551ed0, getter       */
 #define FN_SET_VISIBLE EXE(0x000556b0u)      /* FUN_004556b0 */
 #define FN_CONV_SINGLETON EXE(0x000583f0u)   /* FUN_004583f0, non-lazy     */
@@ -643,7 +644,6 @@ void x2_override_00458020(CPU *C) {
 #define G_LAYOUT_INDEX EXE(0x0027f9c4u)      /* fn ptr: layout[i] -> float* */
 #define G_MAKE_RGBA EXE(0x0027f9acu)         /* fn ptr: build an RGBA quad  */
 
-#define CV_APPLY_TIMER 0x21b5cu /* float: no advance before this time   */
 #define CV_TAG_WRAP 0x21b2au
 #define CV_SOUND_HANDLE 0x21b80u
 #define CV_DRAW_A 0x21b38u
@@ -816,10 +816,8 @@ void x2_override_0045d1a0(CPU *C) {
         vslot(input, 0x138u), input, {action});
     int advance = 0;
     if (accept_down) {
-      uint32_t clock = call0(C, FN_CLOCK, 0);
-      long double now = call_float(C, vslot(clock, 0x160u), clock, 0, NULL);
       c_upd_gate_pressed++;
-      if (now > (long double)RDF32(self + CV_APPLY_TIMER)) {
+      if (x2::native::conversation::takes_accept(*C, self)) {
         advance = 1;
         c_upd_advanced++;
       } else {
@@ -894,10 +892,10 @@ void x2_override_0045d1a0(CPU *C) {
     }
   }
 
-  /* 0x0045d4b5: the "$MENU_ACCEPT" prompt -- a 32x32 icon, drawn only while
-     the conversation is visible (flag 0x2). Decoded from the capture, not
-     the listing. */
-  if (RD8(self + CV_FLAGS) & 0x2u) {
+  /* 0x0045d4b5: the "$MENU_ACCEPT" prompt, a 32x32 icon, drawn while the
+     conversation is visible (flag 0x2) unless touch lays it out. */
+  if ((RD8(self + CV_FLAGS) & 0x2u) &&
+      !x2::native::conversation_touch_drawn().shown) {
     uint32_t sing = call0(C, FN_CONV_SINGLETON, 0);
     uint32_t target = RD32(sing + CV_DRAW_A);
     uint32_t py, px, quad, colour, args[9];

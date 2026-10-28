@@ -112,6 +112,23 @@ the menu's player, accepting the highlighted response (`+0x21b26` of
 highlight steps it with the d-pad step `DAT_00a09fb0`, ten calls apart
 (`+0x239d8`). No response has a hit box of its own.
 
+`FUN_00458410` places the panel at (255, 0, 110) scale 1 and the portraits
+at (the int at `0x006d6fe0`, -30, 180) scale 1.6, both through the
+transform's vtable `+0x18`. The line record's vtable (`0x00685d74`) slot 0,
+`FUN_0045beb0`, draws a line: `FUN_0045a340` (record in ECX, out string,
+scratch; `RET 8`) composes the record's text, turning `%NAME%: ` into the
+speaker's name and a newline; the line is wrapped into the line box, then
+`FUN_0045b0a0` walks the eligible responses and calls the response vtable
+(`0x00685d6c`) slot 0, `FUN_0045b7b0`, which composes each and appends it to
+the response box (`FUN_004552f0`), the highlighted one prefixed `~8`. A record
+holds its id at `+0x88`, the ids it leads to at `+0x8c` (up to 8) and their
+count at `+0xac`; the current line's id is at `+0x4bc`. `FUN_004556b0(bool)`
+shows or hides the panel. Accept advances the line only once the game time
+(the game owner `FUN_0046dce0`, slot `+0x160`) passes the float at
+`+0x21b5c`; earlier presses are dropped. On touch
+`src/native/conversation_touch.cpp` keeps the composed strings, draws them
+itself and takes `FUN_00459e70` while its layout is up (docs/touch-play.md).
+
 The conversation adapter calls the same vtable `+0x18` transition as retail
 input, but only when exactly one response exists. Choices refuse the skip.
 Selecting the final `0020b` response synchronously launches

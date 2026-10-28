@@ -218,8 +218,30 @@ Accept), `touch-codex` (Details twice, Back), `touch-stash`, `touch-review`,
 `touch-danger-room`, `touch-worldmap` (an act, go, a point that travels,
 Back) and `touch-menu` (Options' Back).
 
-**Every other screen that is not gameplay and is not a native menu or a
-popup draws the menu pad** -- conversations, and the menu classes not yet native. The retail menus are
+**A conversation is laid out for touch inside its own panel** (issue #199,
+`src/native/conversation_touch.cpp`, layout `x2::input::layout_conversation_touch`).
+The panel stays the game's `ui/hud/convo_background` at its retail placement
+with the speaker's portrait; the speaker's name and the line are drawn in the
+panel's own text boxes at a readable size (0.45 and 0.4 of a finger a line),
+wrapped to the panel, and each response is a finger-tall card of the game's
+`ui/hud/dialog_select` bar, its text one line or two, the highlighted one in
+retail's highlight colour. The cards sit at the panel's bottom, in thumb
+reach, in one column up to three responses and two above; rows that do not
+fit scroll with a drag. A tap on a card makes it the highlighted response and
+posts the game's accept, which goes through the conversation update's own
+accept gate, so a tap before the line takes input is dropped exactly like a
+pad press. The retail pointer handler, which accepts on a release anywhere,
+does not see touch while the layout is up. No pad is drawn over it; a single
+`continue...` is one wide card. `GET /menu` reports it as `conversation`:
+the line id, the highlighted response, whether a tap picks now (`accepts`),
+the speaker and line, the panel and text boxes, and each card's `tap`,
+`fingers`, text and the line ids it leads to. Prove it with
+`touch-conversation` (and `-4x3`, `-16x9`, `-20x9`): the opening's
+continue-only lines tapped through, then Cyclops' Sanctuary question list,
+whose second question must lead to its own line.
+
+**Every other screen that is not gameplay and is not a native menu, a popup
+or a conversation draws the menu pad** -- the menu classes not yet native. The retail menus are
 navigated with a controller exactly as on the Xbox, so the port draws that
 controller: a d-pad bottom left where the stick sits in gameplay, the face
 buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
@@ -230,10 +252,8 @@ buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
 drawn from. A finger that begins on a pad button holds it until it lifts; one
 that begins anywhere else is the retail pointer for its whole life, so a drag
 across the pad never presses it. A held button is let go when gameplay takes
-the screen, even if the finger never moves. Conversations and cinematics
-draw the pad too, beside their Skip button: in the tutorial's opening
-conversation ten idle seconds advanced nothing and three taps on A ended it
-and started the next.
+the screen, even if the finger never moves. Cinematics draw the pad too,
+beside their Skip button.
 
 The port once made the footer's words themselves tappable instead, pairing
 each prompt with the draw that placed it by glyph count. The World Map's level

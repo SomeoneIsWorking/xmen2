@@ -18,6 +18,8 @@ scratch/run/live.json.
     tools/live_case.py touch-use-prompt       # a tap on the use prompt uses
                                               # (-4x3, -16x9, -20x9: other shapes)
     tools/live_case.py touch-game-tip         # a Game Tip on touch, closed by a tap
+    tools/live_case.py touch-conversation     # a conversation's responses tapped
+                                              # (-4x3, -16x9, -20x9: other shapes)
     tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
@@ -88,6 +90,7 @@ from live_cases_extraction import (
     case_extraction_off,
     case_extraction_paid,
 )
+from live_cases_conversation import case_touch_conversation
 from live_cases_game_tip import case_touch_game_tip
 from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
@@ -105,6 +108,10 @@ CASES = {
     "touch-use-prompt-20x9": case_touch_use_prompt,
     "touch-game-tip": case_touch_game_tip,
     "touch-game-tip-720": case_touch_game_tip,
+    "touch-conversation": case_touch_conversation,
+    "touch-conversation-4x3": case_touch_conversation,
+    "touch-conversation-16x9": case_touch_conversation,
+    "touch-conversation-20x9": case_touch_conversation,
     "menu-touch": case_menu_touch,
     "touch-popup": case_touch_popup,
     "touch-load": case_touch_load,

@@ -6,6 +6,9 @@
 #include "control.h"
 #include "control_command_bridge.h"
 #include "control_query.h"
+#include "conversation_panel.hpp"
+#include "conversation_touch.hpp"
+#include "guest_modules.h"
 #include "json_string.h"
 #include "list_touch.hpp"
 #include "options_touch.hpp"
@@ -404,6 +407,67 @@ void put_popup(std::string *out, const menu::PopupSnapshot &popup,
   out->append("]},");
 }
 
+/* The conversation while it is shown: its current line and highlighted
+   response from the game, and on touch the panel, the span its line was
+   wrapped into and each response's card where the last draw put them, with
+   the record ids of the lines each leads to. */
+void put_conversation(std::string *out,
+                      const presentation::RetailScenePlane *plane) {
+  namespace cv = native::conversation;
+  const std::uint32_t self = RD32(native::exe_linked(cv::kSingleton));
+  put_key(out, "conversation");
+  if (self == 0u || (RD8(self + cv::kFlags) & cv::kVisible) == 0u) {
+    out->append("null,");
+    return;
+  }
+  const native::ConversationTouchDrawn &drawn =
+      native::conversation_touch_drawn();
+  out->push_back('{');
+  put_int(out, "line_id", static_cast<long>(RD32(self + cv::kCurrentLine)));
+  put_int(out, "highlighted",
+          static_cast<std::int16_t>(RD16(self + cv::kTagIndex)));
+  put_int(out, "response_count",
+          static_cast<std::int16_t>(RD16(self + cv::kTagCount)));
+  put_bool(out, "touch", drawn.shown);
+  if (drawn.shown) {
+    put_text(out, "speaker", drawn.speaker);
+    put_text(out, "line", drawn.line);
+    put_bool(out, "accepts", drawn.accepts);
+    put_box_point(out, "panel_low", drawn.panel, 0.0F, 0.0F, plane);
+    put_box_point(out, "panel_high", drawn.panel, 1.0F, 1.0F, plane);
+    put_box_point(out, "text_low", drawn.text, 0.0F, 0.0F, plane);
+    put_box_point(out, "text_high", drawn.text, 1.0F, 1.0F, plane);
+  }
+  put_key(out, "responses");
+  out->push_back('[');
+  for (std::size_t i = 0; drawn.shown && i < drawn.cards.size(); ++i) {
+    const native::ConversationTouchCard &card = drawn.cards[i];
+    out->push_back('{');
+    put_box_tap(out, card.box, plane);
+    put_box_point(out, "edge", card.box, 0.05F, 0.9F, plane);
+    put_box_point(out, "low", card.box, 0.0F, 0.0F, plane);
+    put_box_point(out, "high", card.box, 1.0F, 1.0F, plane);
+    put_fingers(out, card.box, plane);
+    put_text(out, "text", card.text);
+    put_int(out, "tag", card.tag);
+    put_int(out, "id", static_cast<long>(card.id));
+    put_key(out, "next");
+    out->push_back('[');
+    for (const std::uint32_t id : card.next) {
+      out->append(std::to_string(id));
+      out->push_back(',');
+    }
+    if (out->back() == ',') {
+      out->pop_back();
+    }
+    out->append("]},");
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("]},");
+}
+
 /* GET /menu's guest read, run at the guest input poll. */
 struct MenuRead {
   bool all_items = false;
@@ -424,10 +488,11 @@ void read_menu_body(void *context) {
     read->body = "{";
     put_bool(&read->body, "active", false);
     put_bool(&read->body, "popup", menu.popup_up);
+    const auto plane = native::live_scene_plane();
     if (menu.popup) {
-      const auto plane = native::live_scene_plane();
       put_popup(&read->body, *menu.popup, plane ? &*plane : nullptr);
     }
+    put_conversation(&read->body, plane ? &*plane : nullptr);
     put_key(&read->body, "reason");
     put_string(&read->body, menu::read_status_name(read->status));
     read->body.append("}\n");
@@ -494,6 +559,7 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   if (menu.popup) {
     put_popup(&out, *menu.popup, plane);
   }
+  put_conversation(&out, plane);
   if (menu.mode) {
     put_int(&out, "mode", static_cast<long>(*menu.mode));
   }
