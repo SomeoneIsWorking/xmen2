@@ -5,6 +5,7 @@
 #include "guest_body.h"
 #include "guest_modules.h"
 #include "menu_action.hpp"
+#include "menu_item_memory.hpp"
 #include "menu_item_tap.hpp"
 #include "retail_menu_model.hpp"
 #include "x86rt.h"
@@ -16,13 +17,7 @@ namespace {
 
 constexpr std::uint32_t kItemOnMouse = 0x005bc1b0u;
 
-constexpr std::uint32_t kItemFlags = 0x54u;
-constexpr std::uint8_t kItemHidden = 0x04u;
-constexpr std::uint32_t kItemBoxLeft = 0x70u;
-constexpr std::uint32_t kItemBoxY = 0x72u;
-constexpr std::uint32_t kItemBoxWidth = 0x74u;
-constexpr std::uint32_t kItemBoxHeight = 0x76u;
-constexpr std::uint32_t kItemBoxHalfZ = 0x7au;
+namespace menu_item = x2::native::menu_item;
 
 int field_s16(std::uint32_t item, std::uint32_t offset) {
   return static_cast<std::int16_t>(RD16(item + offset));
@@ -30,11 +25,11 @@ int field_s16(std::uint32_t item, std::uint32_t offset) {
 
 /* The RECT the retail body tests. */
 bool in_box(std::uint32_t item, int x, int z) {
-  const int left = field_s16(item, kItemBoxLeft);
-  const int half = field_s16(item, kItemBoxHalfZ) / 2;
-  const int bottom = field_s16(item, kItemBoxY) + half;
-  const int top = bottom - field_s16(item, kItemBoxHeight) - 1;
-  const int right = left + field_s16(item, kItemBoxWidth) - 1;
+  const int left = field_s16(item, menu_item::kBoxLeft);
+  const int half = field_s16(item, menu_item::kLocalTop) / 2;
+  const int bottom = field_s16(item, menu_item::kBoxTop) + half;
+  const int top = bottom - field_s16(item, menu_item::kBoxHeight) - 1;
+  const int right = left + field_s16(item, menu_item::kBoxWidth) - 1;
   return x >= left && x < right && z >= top && z < bottom;
 }
 
@@ -48,7 +43,8 @@ extern "C" void x2_override_005bc1b0(CPU *cpu) {
   const std::uint32_t message = RD32(esp + 16u);
   x86_guest_body(cpu, "XMen2.exe", kItemOnMouse);
   if (cpu->reg[kX86pEax] != 0u ||
-      (RD8(item + kItemFlags) & kItemHidden) != 0u || !in_box(item, x, z)) {
+      (RD8(item + menu_item::kFlags) & x2::menu::kItemHidden) != 0u ||
+      !in_box(item, x, z)) {
     return;
   }
   x2::menu::MenuSnapshot menu;

@@ -15,6 +15,7 @@
 #include "guest_modules.h"
 #include "load_game_menu_runtime.h"
 #include "menu_action.hpp"
+#include "menu_scene.hpp"
 #include "popup_dialog.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
@@ -33,7 +34,9 @@ namespace {
 
 namespace popup = x2::native::popup;
 using x2::input::SceneBox;
+using x2::native::menu_scene::Vectors;
 using x2::presentation::ScenePoint;
+namespace menu_scene = x2::native::menu_scene;
 
 constexpr std::uint32_t kPopupDraw = 0x005ea9e0u;
 /* CPopupDialog::onMouse(x, z, _, message, _), ret 0x14. */
@@ -45,21 +48,14 @@ constexpr std::uint32_t kAttachWorld = 0x005e90d0u;
 constexpr std::uint32_t kDetachMenu = 0x005e93b0u;
 constexpr std::uint32_t kDetachWorld = 0x005e92d0u;
 constexpr std::uint32_t kAttached = 0x4056u;
-/* CMenuMgr and the world scene, and their attach and detach slots. */
+/* CMenuMgr, and the world scene with its attach and detach slots. */
 constexpr std::uint32_t kMenuManager = 0x005d8920u;
-constexpr std::uint32_t kMenuAttach = 0x108u;
-constexpr std::uint32_t kMenuDetach = 0x10cu;
 constexpr std::uint32_t kWorldScene = 0x0059ee20u;
 constexpr std::uint32_t kWorldAttach = 0x24u;
 constexpr std::uint32_t kWorldDetach = 0x28u;
 /* FUN_005e9510(name, &entity): one entity of a model's art. */
 constexpr std::uint32_t kLoadModel = 0x005e9510u;
 constexpr std::uint32_t kBarArtName = 0x006a32d4u;
-/* An entity's transform (vt+8) and the transform's placements: vt+0x14
-   (pos, rot, sx, sdepth, sz) and vt+0x18 (pos, rot, s). */
-constexpr std::uint32_t kEntityTransform = 0x8u;
-constexpr std::uint32_t kPlaceScaled = 0x14u;
-constexpr std::uint32_t kPlace = 0x18u;
 /* The text line call (lines, x, z, width, style, scale, flags, colour,
    format, ...) and its "%s". */
 constexpr std::uint32_t kTextLine = 0x005ef270u;
@@ -68,18 +64,14 @@ constexpr std::uint32_t kLineFormat = 0x00685ca4u;
 constexpr std::uint32_t kFonts = 0x00597c20u;
 constexpr std::uint32_t kTextHeight = 0x38u;
 constexpr std::uint32_t kLineProbe = 0x0069a444u;
-/* STYLE_MENU's colour (selected, out, enabled, 0, 0), the draw's lazily
-   looked-up handle, its ready bit, and the lookup: a name hash
-   (FUN_00425df0) passed to CMenuMgr vt+0x228. */
-constexpr std::uint32_t kStyleColor = 0x005d8ae0u;
+/* STYLE_MENU: the draw's lazily looked-up handle, its ready bit, and the
+   lookup, a name hash (FUN_00425df0) passed to CMenuMgr vt+0x228. */
 constexpr std::uint32_t kMenuStyle = 0x008b1400u;
 constexpr std::uint32_t kStyleReady = 0x008b1408u;
 constexpr std::uint32_t kMenuStyleReady = 0x2u;
 constexpr std::uint32_t kStyleName = 0x0069e83cu;
 constexpr std::uint32_t kNameHash = 0x00425df0u;
 constexpr std::uint32_t kStyleLookup = 0x228u;
-/* igVec4f::packColor, imported. */
-constexpr std::uint32_t kPackColor = 0x0067f8ecu;
 /* The page's footer prompts, three of 0x40 bytes, shown while the page's
    timeout (+0x1554) is at most [0x00680030]. */
 constexpr std::uint32_t kPrompts = 0x1310u;
@@ -92,7 +84,7 @@ constexpr std::uint32_t kButtonDown = 0x201u;
 constexpr std::uint32_t kButtonUp = 0x202u;
 constexpr std::uint32_t kPointerMove = 0x200u;
 
-constexpr float kHidden = -9999.0F;
+constexpr float kHidden = menu_scene::kHidden;
 constexpr float kModelDepth = -720.0F;
 constexpr float kFrameDepth = -175.0F;
 /* The grown frame comes in front of the menu it covers. */
@@ -111,10 +103,6 @@ constexpr int kCards = 8;
 constexpr int kButtons = static_cast<int>(kPromptCount);
 
 enum class Scene { menu, world };
-
-std::uint32_t linked(std::uint32_t preferred) {
-  return x86_module_base("XMen2.exe") + (preferred - x2::native::kExePreferred);
-}
 
 std::uint32_t bits(float value) {
   std::uint32_t out = 0;
@@ -149,25 +137,6 @@ std::string prompt_words(std::string_view prompt) {
              ? std::string()
              : std::string(prompt.substr(space + 1));
 }
-
-/* Guest scratch for one call's vectors. */
-class Vectors {
-public:
-  Vectors() : block_(32u) {}
-  std::uint32_t put(int slot, float a, float b, float c, float d = 0.0F) {
-    const std::uint32_t at =
-        block_.address() + static_cast<std::uint32_t>(slot) * 16u;
-    WRF32(at, a);
-    WRF32(at + 4u, b);
-    WRF32(at + 8u, c);
-    WRF32(at + 12u, d);
-    return at;
-  }
-  explicit operator bool() const { return static_cast<bool>(block_); }
-
-private:
-  x2::guest::GuestBlock block_;
-};
 
 class PopupTouch {
 public:
@@ -207,7 +176,8 @@ public:
     const auto count = static_cast<std::int8_t>(RD8(page + popup::kEntryCount));
     std::array<std::string, kPromptCount> prompts{};
     int footers = 0;
-    if (RDF32(page + kTimeout) <= RDF32(linked(kPromptTimeout))) {
+    if (RDF32(page + kTimeout) <=
+        RDF32(x2::native::exe_linked(kPromptTimeout))) {
       for (std::uint32_t i = 0; i < kPromptCount; ++i) {
         const std::string_view prompt = x2::guest::guest_string(
             page + kPrompts + i * kPromptBytes, kPromptBytes);
@@ -236,29 +206,33 @@ public:
     input.footers = footers;
     input.max_rows = kCards;
     layout_ = x2::input::layout_popup_touch(input);
-    if (layout_.rows == 0) {
+    if (layout_.cards.rows == 0) {
       return false;
     }
-    show_from(page, layout_.first_shown);
+    show_from(page, layout_.cards.first);
 
-    place(call, vectors, RD32(popup + popup::kFrameModel),
-          {layout_.frame_offset.x, layout_.frame_offset.z}, kTouchFrameDepth,
-          layout_.frame_scale.x, layout_.frame_scale.z, 0.0F);
+    menu_scene::place(call, vectors, RD32(popup + popup::kFrameModel),
+                      {layout_.frame_offset.x, layout_.frame_offset.z},
+                      kTouchFrameDepth, layout_.frame_scale.x,
+                      layout_.frame_scale.z, 0.0F);
     frame_moved_ = true;
-    place(call, vectors, RD32(popup + popup::kBarModel), {kHidden, kHidden},
-          0.0F, 1.0F, 1.0F, 0.0F);
-    place(call, vectors, RD32(popup + popup::kArrowUpModel),
-          layout_.more_above ? layout_.arrow_up : ScenePoint{kHidden, kHidden},
-          kModelDepth, layout_.frame_scale.x, layout_.frame_scale.x, 0.0F);
-    place(call, vectors, RD32(popup + popup::kArrowDownModel),
-          layout_.more_below ? layout_.arrow_down
-                             : ScenePoint{kHidden, kHidden},
-          kModelDepth, layout_.frame_scale.x, layout_.frame_scale.x, kPi);
+    menu_scene::place(call, vectors, RD32(popup + popup::kBarModel),
+                      {kHidden, kHidden}, 0.0F, 1.0F, 1.0F, 0.0F);
+    menu_scene::place(call, vectors, RD32(popup + popup::kArrowUpModel),
+                      layout_.cards.more_above ? layout_.arrow_up
+                                               : ScenePoint{kHidden, kHidden},
+                      kModelDepth, layout_.frame_scale.x, layout_.frame_scale.x,
+                      0.0F);
+    menu_scene::place(call, vectors, RD32(popup + popup::kArrowDownModel),
+                      layout_.cards.more_below ? layout_.arrow_down
+                                               : ScenePoint{kHidden, kHidden},
+                      kModelDepth, layout_.frame_scale.x, layout_.frame_scale.x,
+                      kPi);
 
     x2::native::PopupTouchDrawn &drawn = x2::native::popup_touch_drawn();
     drawn.shown = true;
     drawn.first_shown = page_first();
-    drawn.first_entry = layout_.first_shown;
+    drawn.first_entry = layout_.cards.first;
     const std::string_view title =
         x2::guest::guest_string(page, popup::kEntryBytes);
     if (!title.empty()) {
@@ -268,9 +242,9 @@ public:
     const auto selected =
         static_cast<std::int8_t>(RD8(page + popup::kSelected));
     std::size_t bar = 0;
-    for (std::size_t i = 0; i < layout_.cards.size(); ++i) {
+    for (std::size_t i = 0; i < layout_.cards.cards.size(); ++i) {
       const int entry = page_first() + static_cast<int>(i);
-      const SceneBox &card = layout_.cards[i];
+      const SceneBox &card = layout_.cards.cards[i];
       const bool enabled = entry_enabled(page, entry);
       place_bar(call, vectors, enabled ? bars_[bar++] : 0u, card);
       text(call, vectors, box, card_text_point(card), layout_.text_scale,
@@ -310,8 +284,8 @@ public:
       return;
     }
     x2::guest::GuestCall call(cpu);
-    place(call, vectors, RD32(popup + popup::kFrameModel), {0.0F, 0.0F},
-          kFrameDepth, 1.0F, 1.0F, 0.0F);
+    menu_scene::place(call, vectors, RD32(popup + popup::kFrameModel),
+                      {0.0F, 0.0F}, kFrameDepth, 1.0F, 1.0F, 0.0F);
     for (const std::uint32_t bar : bars_) {
       place_bar(call, vectors, bar, {});
     }
@@ -325,13 +299,12 @@ public:
     }
     const std::uint32_t page = page_of(popup);
     const auto count = static_cast<std::int8_t>(RD8(page + popup::kEntryCount));
-    const int entries = projected_ ? layout_.entries : count;
     if (message == kButtonDown) {
       press_ = {true,
                 false,
                 point,
-                layout_.first_shown,
-                x2::input::popup_touch_hit(layout_.cards, point),
+                layout_.cards.first,
+                x2::input::box_hit(layout_.cards.cards, point),
                 button_at(point)};
       return true;
     }
@@ -339,12 +312,12 @@ public:
       return message == kPointerMove;
     }
     const float dz = point.z - press_.start.z;
-    if (!press_.dragging && std::fabs(dz) > kDragStart * layout_.pitch) {
+    if (!press_.dragging && std::fabs(dz) > kDragStart * layout_.cards.pitch) {
       press_.dragging = true;
     }
     if (press_.dragging) {
-      show_from(page, x2::input::popup_touch_scrolled(layout_, entries,
-                                                      press_.start_first, dz));
+      show_from(page, x2::input::cards_scrolled(layout_.cards,
+                                                press_.start_first, dz));
     }
     if (message != kButtonUp) {
       return true;
@@ -353,7 +326,7 @@ public:
     if (press_.dragging) {
       return true;
     }
-    const int card = x2::input::popup_touch_hit(layout_.cards, point);
+    const int card = x2::input::box_hit(layout_.cards.cards, point);
     if (card >= 0 && card == press_.card) {
       const int entry = page_first() + card;
       if (entry < count && entry_enabled(page, entry)) {
@@ -384,28 +357,24 @@ private:
 
   /* The page entry the first card shows: Load Game keeps its window on the
      page from entry 0. */
-  int page_first() const { return projected_ ? 0 : layout_.first_shown; }
+  int page_first() const { return projected_ ? 0 : layout_.cards.first; }
 
   /* Shows `rows` entries of the list from `first`, through Load Game's
      window while it projects one. */
   void show_from(std::uint32_t page, int first) {
-    layout_.first_shown = first;
+    layout_.cards.first = first;
     if (projected_) {
-      x2::native::load_game_menu_show(static_cast<std::size_t>(first),
-                                      static_cast<std::size_t>(layout_.rows));
+      x2::native::load_game_menu_show(
+          static_cast<std::size_t>(first),
+          static_cast<std::size_t>(layout_.cards.rows));
       return;
     }
     WR8(page + popup::kFirstShown, static_cast<std::uint8_t>(first));
-    WR8(page + popup::kVisible, static_cast<std::uint8_t>(layout_.rows));
+    WR8(page + popup::kVisible, static_cast<std::uint8_t>(layout_.cards.rows));
   }
 
   int button_at(ScenePoint point) const {
-    for (std::size_t i = 0; i < layout_.buttons.size(); ++i) {
-      if (layout_.buttons[i].contains(point)) {
-        return static_cast<int>(i);
-      }
-    }
-    return -1;
+    return x2::input::box_hit(layout_.buttons, point);
   }
 
   /* The text line call's z is the text's middle. */
@@ -425,8 +394,8 @@ private:
     }
     for (std::uint32_t &bar : bars_) {
       WR32(slot.address(), 0u);
-      call.thiscall(linked(kLoadModel), 0u,
-                    {linked(kBarArtName), slot.address()});
+      call.thiscall(x2::native::exe_linked(kLoadModel), 0u,
+                    {x2::native::exe_linked(kBarArtName), slot.address()});
       bar = RD32(slot.address());
       place_bar(call, vectors, bar, {});
     }
@@ -435,81 +404,63 @@ private:
   static void scene_call(x2::guest::GuestCall &call, Scene scene, bool attach,
                          std::uint32_t entity) {
     if (scene == Scene::menu) {
-      const std::uint32_t manager = call.cdecl_call(linked(kMenuManager));
-      call.virtual_call(manager, attach ? kMenuAttach : kMenuDetach,
-                        {entity, 0u});
+      if (attach) {
+        menu_scene::attach(call, entity);
+      } else {
+        menu_scene::detach(call, entity);
+      }
     } else {
-      const std::uint32_t world = call.cdecl_call(linked(kWorldScene));
+      const std::uint32_t world =
+          call.cdecl_call(x2::native::exe_linked(kWorldScene));
       call.virtual_call(world, attach ? kWorldAttach : kWorldDetach,
                         {entity, 0u});
     }
   }
 
-  static void place(x2::guest::GuestCall &call, Vectors &vectors,
-                    std::uint32_t entity, ScenePoint at, float depth, float sx,
-                    float sz, float turn) {
-    if (entity == 0u) {
-      return;
-    }
-    const std::uint32_t node = call.virtual_call(entity, kEntityTransform);
-    call.virtual_call(node, kPlaceScaled,
-                      {vectors.put(0, at.x, depth, at.z),
-                       vectors.put(1, 0.0F, turn, 0.0F), bits(sx), bits(1.0F),
-                       bits(sz)});
-  }
-
   /* The bar art stretched over `box`; an empty box parks it. */
   static void place_bar(x2::guest::GuestCall &call, Vectors &vectors,
                         std::uint32_t bar, const SceneBox &box) {
-    if (!(box.width() > 0.0F)) {
-      place(call, vectors, bar, {kHidden, kHidden}, kModelDepth, 1.0F, 1.0F,
-            0.0F);
-      return;
-    }
-    const float sx = box.width() / kBarArt.width();
-    const float sz = box.height() / kBarArt.height();
-    place(call, vectors, bar,
-          {box.left - kBarArt.left * sx, box.top - kBarArt.top * sz},
-          kModelDepth, sx, sz, 0.0F);
+    menu_scene::stretch(call, vectors, bar, kBarArt, box, kModelDepth);
   }
 
   static float line_height(x2::guest::GuestCall &call, std::uint32_t popup) {
-    const std::uint32_t fonts = call.cdecl_call(linked(kFonts));
+    const std::uint32_t fonts = call.cdecl_call(x2::native::exe_linked(kFonts));
     const auto width =
         static_cast<std::int16_t>(RD16(popup + popup::kTextWidth));
     call.virtual_call(fonts, kTextHeight,
-                      {static_cast<std::uint32_t>(width), linked(kLineProbe),
-                       bits(1.0F), 0u, 1u});
+                      {static_cast<std::uint32_t>(width),
+                       x2::native::exe_linked(kLineProbe), bits(1.0F), 0u, 1u});
     return static_cast<float>(call.x87_result());
   }
 
   static std::uint32_t color(x2::guest::GuestCall &call, Vectors &vectors,
                              bool selected, bool enabled) {
-    if ((RD32(linked(kStyleReady)) & kMenuStyleReady) == 0u) {
-      WR32(linked(kStyleReady), RD32(linked(kStyleReady)) | kMenuStyleReady);
+    if ((RD32(x2::native::exe_linked(kStyleReady)) & kMenuStyleReady) == 0u) {
+      WR32(x2::native::exe_linked(kStyleReady),
+           RD32(x2::native::exe_linked(kStyleReady)) | kMenuStyleReady);
       const std::uint32_t name = vectors.put(1, 0.0F, 0.0F, 0.0F);
-      call.thiscall(linked(kNameHash), name, {linked(kStyleName)});
-      const std::uint32_t manager = call.cdecl_call(linked(kMenuManager));
-      WR32(linked(kMenuStyle),
+      call.thiscall(x2::native::exe_linked(kNameHash), name,
+                    {x2::native::exe_linked(kStyleName)});
+      const std::uint32_t manager =
+          call.cdecl_call(x2::native::exe_linked(kMenuManager));
+      WR32(x2::native::exe_linked(kMenuStyle),
            call.virtual_call(manager, kStyleLookup, {name}));
     }
-    const std::uint32_t out = vectors.put(1, 0.0F, 0.0F, 0.0F);
-    call.thiscall(
-        linked(kStyleColor), RD32(linked(kMenuStyle)),
-        {bits(selected ? 1.0F : 0.0F), out, enabled ? 1u : 0u, 0u, 0u});
-    return call.thiscall(RD32(linked(kPackColor)), out, {1u});
+    return menu_scene::style_color(call, vectors,
+                                   RD32(x2::native::exe_linked(kMenuStyle)),
+                                   selected, enabled);
   }
 
   static void text(x2::guest::GuestCall &call, Vectors &, std::uint32_t box,
                    ScenePoint at, float scale, std::uint32_t colour,
                    std::uint32_t string) {
     call.cdecl_call(
-        linked(kTextLine),
+        x2::native::exe_linked(kTextLine),
         {box + popup::kBoxLines,
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.x)),
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.z)),
          RD32(box + popup::kBoxWidth), RD32(box + popup::kBoxStyle),
-         bits(scale), 0u, colour, linked(kLineFormat), string});
+         bits(scale), 0u, colour, x2::native::exe_linked(kLineFormat), string});
   }
 
   std::array<std::uint32_t, kCards + kButtons> bars_{};

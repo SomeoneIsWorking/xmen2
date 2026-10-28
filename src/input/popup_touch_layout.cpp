@@ -1,7 +1,6 @@
 #include "popup_touch_layout.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 namespace x2::input {
 namespace {
@@ -9,13 +8,10 @@ namespace {
 /* The share of the screen the grown frame may take. */
 constexpr float kFrameFillWidth = 0.94F;
 constexpr float kFrameFillHeight = 0.90F;
-/* Card and button heights, and the gap between them, in fingers. */
-constexpr float kCardHeight = 1.0F;
-constexpr float kCardGap = 0.15F;
+/* Button height and the gap between buttons, in fingers; the arrow
+   column's width. */
 constexpr float kButtonHeight = 1.0F;
 constexpr float kButtonGap = 0.3F;
-/* Card text height in fingers; the arrow column's width. */
-constexpr float kCardText = 0.42F;
 constexpr float kArrowColumn = 0.7F;
 /* The title against retail's, grown with the frame. */
 constexpr float kTitleScale = 1.4F;
@@ -48,11 +44,10 @@ PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
   out.text_scale = kCardText * finger / input.line;
   const float card = kCardHeight * finger;
   const float gap = kCardGap * finger;
-  out.pitch = card + gap;
+  const float pitch = card + gap;
   const int wanted = std::clamp(input.entries, 0, std::max(1, input.max_rows));
   const float content =
-      0.5F * input.line * out.title_scale +
-      static_cast<float>(wanted) * out.pitch +
+      0.5F * input.line * out.title_scale + static_cast<float>(wanted) * pitch +
       (input.footers > 0 ? kButtonHeight * finger + gap : 0.0F) +
       kFitSlack * finger;
   const float art = native.height() - header - margin;
@@ -91,49 +86,19 @@ PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
   }
 
   const float list_bottom = input.footers > 0 ? button_top + gap : body_bottom;
-  out.rows = std::clamp(
-      static_cast<int>(std::floor((body_top - list_bottom + gap) / out.pitch)),
-      1, std::max(1, input.max_rows));
-  out.entries = input.entries;
-  const int last_first = std::max(0, input.entries - out.rows);
-  out.first_shown = std::clamp(input.first_shown, 0, last_first);
-  const float card_right = input.entries > out.rows
-                               ? body_right - kArrowColumn * finger
-                               : body_right;
-  const int shown = std::min(out.rows, input.entries - out.first_shown);
-  for (int i = 0; i < shown; ++i) {
-    const float top = body_top - static_cast<float>(i) * out.pitch;
-    out.cards.push_back({body_left, top - card, card_right, top});
-  }
-  out.more_above = out.first_shown > 0;
-  out.more_below = out.first_shown + shown < input.entries;
+  const int rows = card_rows(body_top - list_bottom, finger, input.max_rows);
+  const float card_right =
+      input.entries > rows ? body_right - kArrowColumn * finger : body_right;
+  out.cards =
+      stack_cards({body_left, list_bottom, card_right, body_top}, finger,
+                  input.entries, input.first_shown, input.max_rows);
   const float arrow_x = 0.5F * (card_right + body_right);
+  const int shown = std::max(1, static_cast<int>(out.cards.cards.size()));
   out.arrow_up = {arrow_x, body_top - 0.5F * card};
   out.arrow_down = {arrow_x,
-                    body_top -
-                        static_cast<float>(std::max(shown, 1) - 1) * out.pitch -
+                    body_top - static_cast<float>(shown - 1) * out.cards.pitch -
                         0.5F * card};
   return out;
-}
-
-int popup_touch_scrolled(const PopupTouchLayout &layout, int entries,
-                         int start_first, float dz) {
-  if (!(layout.pitch > 0.0F)) {
-    return start_first;
-  }
-  /* Content follows the finger: dragging up shows later entries. */
-  const auto rows = static_cast<int>(std::lround(dz / layout.pitch));
-  return std::clamp(start_first + rows, 0, std::max(0, entries - layout.rows));
-}
-
-int popup_touch_hit(const std::vector<SceneBox> &boxes,
-                    presentation::ScenePoint point) {
-  for (std::size_t i = 0; i < boxes.size(); ++i) {
-    if (boxes[i].contains(point)) {
-      return static_cast<int>(i);
-    }
-  }
-  return -1;
 }
 
 } // namespace x2::input
