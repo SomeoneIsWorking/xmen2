@@ -134,7 +134,7 @@ void main_options_and_the_pda_are_native() {
           std::string(native) + " is drawn and touched natively");
   }
   for (const char *native : {"CMenuShop", "CMenuCodex", "CMenuReviewPaths",
-                             "CMenuDangerRoom", "CMenuTrivia"}) {
+                             "CMenuDangerRoom", "CMenuTrivia", "CMenuRegion"}) {
     MenuSnapshot menu = region_menu({"Americas", "Europe"}, 0);
     menu.menu_class = native;
     check(!x2::input::build_touch_menu_view(menu, plane_1280x720()),
@@ -148,41 +148,6 @@ void main_options_and_the_pda_are_native() {
   popup.popup_up = true;
   check(!x2::input::build_touch_menu_view(popup, plane_1280x720()),
         "a popup over the menu keeps the retail screen");
-}
-
-void the_region_is_its_list_and_footers() {
-  const RetailScenePlane plane = plane_1280x720();
-  const auto empty =
-      x2::input::build_touch_menu_view(region_menu({}, 0), plane);
-  check(empty.has_value() && empty->title == "Region Menu" &&
-            empty->rows.empty(),
-        "an empty region list is replaced, titled by its text_title");
-  if (!empty) {
-    return;
-  }
-  check(empty->footers.size() == 3u && empty->footers[0].label == "Back" &&
-            empty->footers[1].token == "$MENU_SUBTRACT" &&
-            empty->footers[2].token == "$MENU_ACCEPT",
-        "the region's Back, Refresh and Select footers");
-  const auto view = x2::input::build_touch_menu_view(
-      region_menu({"Americas", "Europe"}, 0), plane);
-  check(view.has_value() && view->rows.size() == 2u &&
-            view->rows[1].label == "Europe" && view->rows[1].value == "6",
-        "a region row carries its count");
-  if (!view) {
-    return;
-  }
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  touch.set_view(view, 0u);
-  auto out = tap(touch, find(touch.layout(), TouchMenuPart::row, 1)->rect, 10u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuDown,
-        "a tap on another region walks the selection to it");
-  out = tap(touch, find(touch.layout(), TouchMenuPart::row, 0)->rect, 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuA,
-        "a tap on the selected region presses A");
 }
 
 void the_games_line_breaks_are_kept() {
@@ -487,41 +452,6 @@ void a_drag_scrolls_and_does_not_press() {
         "a second finger never acts");
 }
 
-/* Entry 28 is below the window: the selection is walked down to it, then
-   stops. */
-void an_entry_outside_the_window_is_walked_to() {
-  const RetailScenePlane plane = plane_1280x720();
-  std::vector<std::string> regions;
-  for (int i = 0; i < 30; ++i) {
-    regions.push_back("Region " + std::to_string(i));
-  }
-  MenuSnapshot live = region_menu(regions, 6);
-  TouchMenu touch;
-  touch.set_viewport(viewport_1280x720());
-  touch.set_view(x2::input::build_touch_menu_view(live, plane), 0u);
-  const x2::presentation::Rect entry_row =
-      find(touch.layout(), TouchMenuPart::row, 6)->rect;
-  const float x = 0.5F * (entry_row.left + entry_row.right);
-  touch.contact(3, {x, entry_row.top}, lucent::touch::Phase::began, 10u);
-  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::moved,
-                10u);
-  touch.contact(3, {x, entry_row.top - 5000.0F}, lucent::touch::Phase::ended,
-                10u);
-  const auto *far = find(touch.layout(), TouchMenuPart::row, 28);
-  check(far != nullptr, "the far entry has a button");
-  if (far == nullptr) {
-    return;
-  }
-  auto out = tap(touch, far->rect, 20u);
-  check(out.size() == 1u && out[0].kind == TouchMenuDelivery::Kind::pad &&
-            out[0].button == TouchAction::MenuDown,
-        "an entry outside the window is walked to with Down, not the wrap");
-  live.items.back().list_box->selected = 28;
-  live.items.back().list_box->top = 6;
-  out = touch.set_view(x2::input::build_touch_menu_view(live, plane), 30u);
-  check(out.empty(), "and only selected on arrival, as a click would");
-}
-
 /* The world map's acts over enough points to scroll. */
 TouchMenuView long_worldmap_view() {
   auto view = *x2::input::build_touch_menu_view(worldmap_menu(true, 0),
@@ -623,8 +553,6 @@ int main() {
   a_menu_without_footers_gives_their_band_to_the_list();
   a_menu_without_a_title_has_no_header_band();
   a_tap_delivers_the_games_own_input();
-  the_region_is_its_list_and_footers();
-  an_entry_outside_the_window_is_walked_to();
   the_tab_bar_is_pinned_above_the_list();
   a_long_detail_scrolls_on_its_own();
   a_view_without_rows_reads_its_text();
