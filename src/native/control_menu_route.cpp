@@ -329,6 +329,18 @@ void put_float(std::string *out, const char *key, float value) {
   out->append(text);
 }
 
+void put_scene_box(std::string *out, const char *key,
+                   const input::SceneBox &box) {
+  put_key(out, key);
+  out->push_back('{');
+  put_float(out, "left", box.left);
+  put_float(out, "bottom", box.bottom);
+  put_float(out, "right", box.right);
+  put_float(out, "top", box.top);
+  close_object(out);
+  out->push_back(',');
+}
+
 /* The shown popup page: on touch each card and button where the last draw
    put it; the retail footers otherwise. */
 void put_popup(std::string *out, const menu::PopupSnapshot &popup,
@@ -432,14 +444,13 @@ void put_touch_targets(std::string *out,
     put_box_tap(out, target.area, plane);
     put_box_point(out, "edge", target.area, 0.1F, 0.9F, plane);
     put_fingers(out, target.area, plane);
-    put_key(out, "area");
-    out->push_back('{');
-    put_float(out, "left", target.area.left);
-    put_float(out, "bottom", target.area.bottom);
-    put_float(out, "right", target.area.right);
-    put_float(out, "top", target.area.top);
-    close_object(out);
-    out->push_back(',');
+    put_scene_box(out, "area", target.area);
+    if (target.name_text) {
+      put_scene_box(out, "name_text", *target.name_text);
+    }
+    if (target.value_text) {
+      put_scene_box(out, "value_text", *target.value_text);
+    }
     put_float(out, "aim_x", target.aim.x);
     put_float(out, "aim_z", target.aim.z);
     put_text(out, "press", touch_press_name(target.press));

@@ -21,8 +21,14 @@ inline constexpr std::uint32_t kAlignMiddle = 0x8u;
 /* The height of a line of `box`'s font at scale 1. */
 float line_height(guest::GuestCall &call, std::uint32_t box);
 
+/* `text` copied to `out` (kLineBytes), and its widest line in `box`'s
+   font. */
+float width(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
+            std::string_view text, float scale);
+
 /* `text` copied to `out` (kLineBytes) and broken by the font's wrap at
-   `width`; true when it stayed on one line. */
+   `width`; true when it stayed on one line no wider than `width`. The wrap
+   breaks only at a space, so a long word stays on one line too wide. */
 bool wrap(guest::GuestCall &call, std::uint32_t box, std::uint32_t out,
           std::string_view text, float width, float scale);
 /* The first break in `out` replaced with "...". */

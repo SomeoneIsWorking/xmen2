@@ -261,6 +261,19 @@ drawn by the game's own item in the option art and the item's font
 - ai: a card per setting with its value; a tap selects it, a tap on the
   selected one posts A, which changes it.
 
+A card's value is drawn at its right as wide as the font draws it, short of
+the art's slanted end by the text pad, and its name from the left up to a pad
+short of the value; one text scale per column is the largest at which every
+card's name fits that space. Widths are the font manager's widest line
+(vtable `+0x34`, [text](RE/text.md)): its wrap (`+0x38`) breaks only at a
+space, so a one-word name it leaves on one line can still be too wide;
+`menu_text::wrap` reports a fit only when the line is no wider than asked. `GET /menu` reports each
+column button's drawn letters (`name_text`, `value_text`); the team cases
+check they are inside the art's panel with a gap between name and value, and
+that the footer buttons are disjoint, in a 16:9 window and, for
+`touch-team-stats` and `touch-roster`, `-4x3`, `-tablet` (1216x800) and
+`-20x9` windows.
+
 A card's select is the pointer passing over the row's label: CMenuTeam's
 `onMouse` (`0x005e25c0`) steps its focus one row toward the label under the
 pointer per mouse message, so after the tap the column asks the pointer
