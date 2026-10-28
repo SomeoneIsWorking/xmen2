@@ -53,6 +53,7 @@ struct PopupTouchLayout {
   float text_scale = 1.0F;
   /* Cards that fit; `cards` holds the shown ones from `first_shown`. */
   int rows = 0;
+  int entries = 0;
   int first_shown = 0;
   float pitch = 0.0F;
   std::vector<SceneBox> cards;

@@ -13,6 +13,7 @@
 #include "guest_call.hpp"
 #include "guest_memory_view.hpp"
 #include "guest_modules.h"
+#include "load_game_menu_runtime.h"
 #include "menu_action.hpp"
 #include "popup_dialog.hpp"
 #include "popup_touch_drawn.hpp"
@@ -226,18 +227,19 @@ public:
     input.line = line_height(call, popup);
     input.finger = x2::input::menu_finger_target(*plane) * plane->height() /
                    static_cast<float>(plane->client_height());
-    input.entries = count;
+    const auto projected = x2::native::load_game_menu_list(popup);
+    projected_ = projected.has_value();
+    input.entries = projected ? static_cast<int>(projected->entries) : count;
     input.first_shown =
-        static_cast<std::int8_t>(RD8(page + popup::kFirstShown));
+        projected ? static_cast<int>(projected->first)
+                  : static_cast<std::int8_t>(RD8(page + popup::kFirstShown));
     input.footers = footers;
     input.max_rows = kCards;
     layout_ = x2::input::layout_popup_touch(input);
     if (layout_.rows == 0) {
       return false;
     }
-    WR8(page + popup::kFirstShown,
-        static_cast<std::uint8_t>(layout_.first_shown));
-    WR8(page + popup::kVisible, static_cast<std::uint8_t>(layout_.rows));
+    show_from(page, layout_.first_shown);
 
     place(call, vectors, RD32(popup + popup::kFrameModel),
           {layout_.frame_offset.x, layout_.frame_offset.z}, kTouchFrameDepth,
@@ -255,7 +257,8 @@ public:
 
     x2::native::PopupTouchDrawn &drawn = x2::native::popup_touch_drawn();
     drawn.shown = true;
-    drawn.first_shown = layout_.first_shown;
+    drawn.first_shown = page_first();
+    drawn.first_entry = layout_.first_shown;
     const std::string_view title =
         x2::guest::guest_string(page, popup::kEntryBytes);
     if (!title.empty()) {
@@ -266,7 +269,7 @@ public:
         static_cast<std::int8_t>(RD8(page + popup::kSelected));
     std::size_t bar = 0;
     for (std::size_t i = 0; i < layout_.cards.size(); ++i) {
-      const int entry = layout_.first_shown + static_cast<int>(i);
+      const int entry = page_first() + static_cast<int>(i);
       const SceneBox &card = layout_.cards[i];
       const bool enabled = entry_enabled(page, entry);
       place_bar(call, vectors, enabled ? bars_[bar++] : 0u, card);
@@ -322,6 +325,7 @@ public:
     }
     const std::uint32_t page = page_of(popup);
     const auto count = static_cast<std::int8_t>(RD8(page + popup::kEntryCount));
+    const int entries = projected_ ? layout_.entries : count;
     if (message == kButtonDown) {
       press_ = {true,
                 false,
@@ -339,9 +343,8 @@ public:
       press_.dragging = true;
     }
     if (press_.dragging) {
-      WR8(page + popup::kFirstShown,
-          static_cast<std::uint8_t>(x2::input::popup_touch_scrolled(
-              layout_, count, press_.start_first, dz)));
+      show_from(page, x2::input::popup_touch_scrolled(layout_, entries,
+                                                      press_.start_first, dz));
     }
     if (message != kButtonUp) {
       return true;
@@ -352,7 +355,7 @@ public:
     }
     const int card = x2::input::popup_touch_hit(layout_.cards, point);
     if (card >= 0 && card == press_.card) {
-      const int entry = layout_.first_shown + card;
+      const int entry = page_first() + card;
       if (entry < count && entry_enabled(page, entry)) {
         WR8(page + popup::kSelected, static_cast<std::uint8_t>(entry));
         x2::native::post_menu_action(x2::native::MenuAction::accept);
@@ -378,6 +381,23 @@ private:
     int card = -1;
     int button = -1;
   };
+
+  /* The page entry the first card shows: Load Game keeps its window on the
+     page from entry 0. */
+  int page_first() const { return projected_ ? 0 : layout_.first_shown; }
+
+  /* Shows `rows` entries of the list from `first`, through Load Game's
+     window while it projects one. */
+  void show_from(std::uint32_t page, int first) {
+    layout_.first_shown = first;
+    if (projected_) {
+      x2::native::load_game_menu_show(static_cast<std::size_t>(first),
+                                      static_cast<std::size_t>(layout_.rows));
+      return;
+    }
+    WR8(page + popup::kFirstShown, static_cast<std::uint8_t>(first));
+    WR8(page + popup::kVisible, static_cast<std::uint8_t>(layout_.rows));
+  }
 
   int button_at(ScenePoint point) const {
     for (std::size_t i = 0; i < layout_.buttons.size(); ++i) {
@@ -497,6 +517,7 @@ private:
   x2::input::PopupTouchLayout layout_;
   Press press_;
   bool frame_moved_ = false;
+  bool projected_ = false;
 };
 
 PopupTouch g_popup_touch;

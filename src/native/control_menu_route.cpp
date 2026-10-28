@@ -294,7 +294,8 @@ void put_popup(std::string *out, const menu::PopupSnapshot &popup,
     }
     out->push_back('{');
     put_box_tap(out, drawn.cards[i], plane);
-    put_int(out, "entry", static_cast<long>(entry));
+    put_int(out, "entry",
+            static_cast<long>(drawn.first_entry) + static_cast<long>(i));
     put_text(out, "text", popup.entries[entry]);
     put_bool(out, "enabled", popup.enabled[entry]);
     close_object(out);

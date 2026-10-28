@@ -117,6 +117,15 @@ static void test_touch_rows(void) {
   CHECK(x2::save::load_game_menu_window_focus(&plan, &window) == 3u);
   CHECK(x2::save::load_game_menu_window_entry(&plan, &window, 3u, &entry));
   CHECK(entry.manual_slot == 4u);
+  CHECK(x2::save::load_game_menu_window_show(&plan, &window, 99u, 5u));
+  CHECK(window.first == 6u);
+  CHECK(window.rows == 5u);
+  CHECK(window.selected == 6u);
+  CHECK(x2::save::load_game_menu_window_entry(&plan, &window, 4u, &entry));
+  CHECK(entry.kind == x2::save::LoadGameEntryKind::Autosave);
+  CHECK(!x2::save::load_game_menu_window_show(&plan, &window, 6u, 5u));
+  CHECK(x2::save::load_game_menu_window_show(&plan, &window, 0u, 5u));
+  CHECK(window.selected == 4u);
   x2::save::load_game_menu_window_init(&plan, &window, 0u);
   CHECK(window.rows == 1u);
   x2::save::load_game_menu_window_init(&plan, &window, 99u);

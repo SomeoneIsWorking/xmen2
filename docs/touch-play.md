@@ -98,13 +98,16 @@ game's greyed text. The page's prompts are bar buttons along the bottom with
 their words alone. One tap on a card selects that entry and accepts it; a tap
 on a button posts its prompt's action; a drag scrolls the cards with the
 finger, a card per pitch, and the game's arrows mark entries above and below.
+Load Game holds more saves than a page's ten rows; while it projects them
+(`x2::native::load_game_menu_list`) the cards scroll its window
+(`load_game_menu_show`) instead of the page.
 The draw and onMouse are the port's on touch, and the extra bar entities
 attach and detach with the popup's own models; with touch off both are
 retail's and the frame goes back to its retail placement. `GET /menu` reports
 each card and button where the last draw put it (`popup_page.rows`,
 `popup_page.footers`, `touch`). Prove it with `tools/live_case.py touch-popup`
 (difficulty: Hard refused, Back, one tap on Easy starts) and `touch-load`
-(eleven saves: drag, tap to load, Continue).
+(eleven saves: drag to the last, tap to load, Continue).
 
 **Every other screen that is not gameplay and has no touch menu draws the menu
 pad** -- dialogue, and the menu classes not yet native. The retail menus are

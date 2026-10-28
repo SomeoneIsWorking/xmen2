@@ -78,7 +78,6 @@ keycaps (step 3), and their rows are under a finger (step 4).
 Every popup is step 5's first screen, done: CPopupDialog has its mobile
 layout on touch (cards of the game's bar art, a frame sized to its page, bar
 buttons for the prompts, one tap to act, a drag to scroll), shown working by
-`tools/live_case.py touch-popup` (13 of 13) and `touch-load` (8 of 8). Load
-Game's port-owned list beyond its ten resident rows (the fifth autosave) is
-still reached only through the controller's window. The shop and the other
-list boxes are next.
+`tools/live_case.py touch-popup` (13 of 13) and `touch-load` (9 of 9, eleven
+saves, the last past the page's ten reached by drag through Load Game's own
+window). The shop and the other list boxes are next.

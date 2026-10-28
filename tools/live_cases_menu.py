@@ -326,8 +326,10 @@ def case_touch_popup(case: Case) -> None:
 def case_touch_load(case: Case) -> None:
     """Load Game with more saves than cards fit, in its touch layout.
 
-    A drag scrolls the cards with the finger, one tap on a card loads that
-    save, and the game's Load Successful popup's Continue button goes on.
+    Eleven saves: one more than the page holds, so the last is reached through
+    Load Game's own window. A drag scrolls the cards with the finger, one tap
+    on a card loads that save, and the game's Load Successful popup's Continue
+    button goes on.
     """
     case.prepare_profile(["boot.mode=menu", "input.touch_controls=2"])
     case.seed_save("autosave0.save")
@@ -363,9 +365,16 @@ def case_touch_load(case: Case) -> None:
     first = dragged.get("rows", [{}])[0].get("entry")
     case.check("a drag up scrolled the cards with the finger",
                first == len(cards) - 1, "first shown entry %r" % first)
+    drag_popup(case, dragged["rows"][-1], dragged["rows"][0])
+    time.sleep(1.0)
+    end = read_menu(case).get("popup_page") or {}
+    target = end.get("rows", [{}])[-1]
+    case.check("a second drag reached the last save past the page's ten",
+               target.get("entry") == 10
+               and target.get("text", "").upper().startswith("AUTOSAVE 5"),
+               "last card %r" % target)
     case.shot("dragged")
-    target = dragged["rows"][-1]
-    case.check("the last shown card was tapped", tap_menu_item(case, target))
+    case.check("the last save's card was tapped", tap_menu_item(case, target))
     done = timeline.until(
         lambda m: bool(popup_button(m, "continue")), 30)
     case.check("the tap loaded the save", bool(popup_button(done, "continue")),

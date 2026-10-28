@@ -47,6 +47,11 @@ int load_game_menu_window_move(const LoadGameMenuPlan *plan,
                                LoadGameMenuWindow *window, int delta);
 int load_game_menu_window_select(const LoadGameMenuPlan *plan,
                                  LoadGameMenuWindow *window, std::size_t row);
+/* Shows `rows` entries from `first`, both clamped, keeping the selection on a
+   shown entry; nonzero when anything moved. */
+int load_game_menu_window_show(const LoadGameMenuPlan *plan,
+                               LoadGameMenuWindow *window, std::size_t first,
+                               std::size_t rows);
 std::size_t load_game_menu_window_count(const LoadGameMenuPlan *plan,
                                         const LoadGameMenuWindow *window);
 std::size_t load_game_menu_window_focus(const LoadGameMenuPlan *plan,

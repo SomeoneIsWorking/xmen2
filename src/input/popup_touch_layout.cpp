@@ -94,6 +94,7 @@ PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
   out.rows = std::clamp(
       static_cast<int>(std::floor((body_top - list_bottom + gap) / out.pitch)),
       1, std::max(1, input.max_rows));
+  out.entries = input.entries;
   const int last_first = std::max(0, input.entries - out.rows);
   out.first_shown = std::clamp(input.first_shown, 0, last_first);
   const float card_right = input.entries > out.rows
