@@ -47,6 +47,12 @@ std::vector<SceneBox> team_rows(int rows, float finger) {
   return out;
 }
 
+TeamSlotButtons team_slot_buttons(float finger) {
+  const std::vector<SceneBox> rows = team_rows(3, finger);
+  const std::array<SceneBox, 2> sides = team_row_halves(rows[0], finger);
+  return {sides[0], sides[1], rows[1], rows[2]};
+}
+
 TeamStatRow team_stat_row(const SceneBox &row, float finger) {
   const float gap = kTeamButtonGap * finger;
   const float side = std::min(finger, row.height());

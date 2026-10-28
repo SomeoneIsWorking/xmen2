@@ -94,8 +94,9 @@ constexpr float kFrameDepth = -175.0F;
 /* The grown frame comes in front of the menu it covers. */
 constexpr float kTouchFrameDepth = -450.0F;
 constexpr float kPi = 3.14159265F;
-/* ui/hud/dialog's extents at its retail placement, and ui/hud/dialog_select's
-   about its origin; measured from a 1280x720 frame. */
+/* ui/hud/dialog's frame at its retail placement, and ui/hud/dialog_select's
+   extents about its origin; measured from a 1280x720 frame. The dialog's art
+   runs on below the frame to z 56 (its bounds), a strip for the prompts. */
 constexpr SceneBox kFrameArt{77.0F, 91.0F, 437.0F, 321.0F};
 constexpr SceneBox kBarArt{-3.7F, -16.6F, 339.7F, 1.8F};
 /* A drag starts after this share of a card pitch. */

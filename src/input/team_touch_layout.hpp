@@ -33,6 +33,17 @@ struct TeamStatRow {
 };
 TeamStatRow team_stat_row(const SceneBox &row, float finger);
 
+/* While a skill is being assigned: the buttons for the power diamond's left,
+   right and bottom slots, laid out as the diamond holds them (left and right
+   side by side, bottom below), then Cancel. */
+struct TeamSlotButtons {
+  SceneBox left;
+  SceneBox right;
+  SceneBox bottom;
+  SceneBox cancel;
+};
+TeamSlotButtons team_slot_buttons(float finger);
+
 /* A row split into two buttons side by side. */
 std::array<SceneBox, 2> team_row_halves(const SceneBox &row, float finger);
 

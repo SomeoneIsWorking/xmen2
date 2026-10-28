@@ -31,16 +31,34 @@ ListTouchLayout layout_list_touch(const ListTouchInput &input) {
   return out;
 }
 
-SceneBox list_box_clear_of(const SceneBox &box, const SceneBox &other) {
-  if (other.left >= box.right || box.left >= other.right ||
-      other.bottom >= box.top || box.bottom >= other.top) {
-    return box;
+std::optional<SceneBox> nested_list_area(const ListPlace &self,
+                                         const std::vector<ListPlace> &others) {
+  const auto inside = [](const SceneBox &inner, const SceneBox &outer) {
+    return outer.left <= inner.left && inner.right <= outer.right &&
+           outer.bottom <= inner.bottom && inner.top <= outer.top;
+  };
+  const auto size = [](const SceneBox &box) {
+    return box.width() * box.height();
+  };
+  SceneBox outer = self.box;
+  bool other_focused = false;
+  bool nested = false;
+  for (const ListPlace &other : others) {
+    if (!inside(other.box, self.box) && !inside(self.box, other.box)) {
+      continue;
+    }
+    nested = true;
+    other_focused = other_focused || other.focused;
+    if (size(other.box) > size(outer)) {
+      outer = other.box;
+    }
   }
-  SceneBox above = box;
-  above.bottom = std::max(box.bottom, other.top);
-  SceneBox below = box;
-  below.top = std::min(box.top, other.bottom);
-  return above.height() >= below.height() ? above : below;
+  if (!nested) {
+    return self.box;
+  }
+  const bool shows =
+      self.focused || (!other_focused && size(outer) == size(self.box));
+  return shows ? std::optional<SceneBox>(outer) : std::nullopt;
 }
 
 bool list_has_touch_layout(menu::ItemClass item_class,

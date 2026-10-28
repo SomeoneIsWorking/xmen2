@@ -22,7 +22,7 @@ from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     dismiss_level_up,
-    drag_between,
+    finger_tall,
     footer_button,
     item_button,
     keyboard_into_gameplay,
@@ -53,11 +53,16 @@ DETAIL_TABS = ["stats", "skills", "gear", "ai"]
 STATS = ["body", "focus", "strike", "speed"]
 AI = ["ai_heal_pickup", "ai_heal", "ai_level", "ai_power", "ai_auto_traits",
       "ai_auto_skills", "ai_auto_equip"]
+# The assigning column's buttons and the slot each fills (assign_icon01..03:
+# the diamond's bottom, right and left).
+SLOT_BUTTONS = {"Right slot": 1, "Left slot": 2, "Bottom slot": 0}
 PARTY = ["char_summary0%d" % n for n in range(1, 5)]
 # FUN_005f01e0's rank glyphs: owned, added this visit, open, locked.
 RANK_GLYPHS = "\xd9\xda\xd8\xd7"
 # A scene unit in window heights at 16:9 (the plane is 384 units tall).
 SCENE_HEIGHT = 384.0
+# A finger in scene units in a landscape window: a tenth of the height.
+FINGER = 0.1 * SCENE_HEIGHT
 # CMenuItemSkills draws its first row this far below its box's top (measured:
 # a tap there selects the row).
 SKILL_ROWS_DOWN = 67.0
@@ -74,7 +79,7 @@ WINDOWS = {
     "-20x9": (1600, 720),
 }
 # The cases run at every aspect.
-ASPECT_CASES = ("touch-team-stats", "touch-roster")
+ASPECT_CASES = ("touch-team-stats", "touch-team-skills", "touch-roster")
 
 
 def console(case: Case, command: str) -> None:
@@ -439,6 +444,9 @@ def case_touch_team_skills(case: Case) -> None:
                bool(buttons_named(menu, "Prev hero"))
                and bool(buttons_named(menu, "Next hero")))
     check_column(case, menu, "skills")
+    case.check("the game's skill rows are a finger tall",
+               box.get("row_height", 0) >= FINGER,
+               "%s units, a finger %.1f" % (box.get("row_height"), FINGER))
     points = menu_labels(case).get("points_skills")
     case.check("and skill points to spend", points not in (None, "0"),
                str(points))
@@ -474,6 +482,7 @@ def case_touch_team_skills(case: Case) -> None:
                                    skill_rank(added, target),
                                    now.get("points_skills")))
     case.shot("skills-added")
+    check_footers(case, read_menu(case), "skills with a rank added")
     tap_named(case, "remove")
     removed = wait_list(case, lambda b: skill_rank(b, target)[0] == rank[0],
                         "skill_list")
@@ -518,20 +527,14 @@ def case_touch_team_gear(case: Case) -> None:
     (case.dir / "gear.json").write_text(json.dumps(menu, indent=1) + "\n")
     slots = menu_list(case, "equipment")
     cards = list_cards(case, "equipment")
-    case.check("the gear slots are finger cards in their own panel",
-               len(slots.get("entries", [])) == 3 and len(cards) >= 1,
+    case.check("the gear slots are finger cards filling the panel, every "
+               "slot shown", len(slots.get("entries", [])) == 3
+               and len(cards) == 3 and all(finger_tall(c) for c in cards),
                "%d cards, %s" % (len(cards), slots.get("entries")))
-    pieces_box = list_cards(case, "equipment_inv")
-    case.check("clear of the pieces' cards",
-               not any(c["tap"]["y"] > p["tap"]["y"] for c in cards
-                       for p in pieces_box), str(cards))
+    case.check("and the pieces' list is not drawn over them",
+               not list_cards(case, "equipment_inv"),
+               str(list_cards(case, "equipment_inv")))
     case.shot("gear")
-    case.check("a drag up on the slot's card shows the next slot",
-               drag_one_card(case, "equipment", up=True) == 1,
-               str([c["entry"] for c in list_cards(case, "equipment")]))
-    case.check("and down the first again",
-               drag_one_card(case, "equipment", up=False) == 0,
-               str([c["entry"] for c in list_cards(case, "equipment")]))
     if len(slots.get("entries", [])) != 3 or len(bought) != 2:
         return
     tap_list_entry(case, slots.get("selected", 0), "equipment")
@@ -540,8 +543,14 @@ def case_touch_team_gear(case: Case) -> None:
     names = sorted(menu_text(e) for e in pieces.get("entries", []))
     case.check("a tap on the selected slot's card opened the pieces that fit",
                names == sorted(bought), str(names))
-    case.check("as finger cards", len(list_cards(case, "equipment_inv")) >= 1,
-               str(list_cards(case, "equipment_inv")))
+    piece_cards = wait_cards(case, "equipment_inv")
+    case.check("as finger cards in the same panel, both shown",
+               len(piece_cards) == 2 and all(finger_tall(c)
+                                             for c in piece_cards),
+               str(piece_cards))
+    case.check("in place of the slots' cards",
+               not list_cards(case, "equipment"),
+               str(list_cards(case, "equipment")))
     case.shot("gear-pieces")
     check_footers(case, read_menu(case), "gear pieces")
     target =[menu_text(e) for e in pieces["entries"]].index(bought[1])
@@ -579,18 +588,15 @@ def case_touch_team_gear(case: Case) -> None:
     leave_details(case)
 
 
-def drag_one_card(case: Case, name: str, up: bool) -> int | None:
-    """Drag the list's first shown card a card's height (a finger, a tenth
-    of the window) up or down; the first entry shown after."""
+def wait_cards(case: Case, name: str, timeout: float = 5) -> list[dict]:
+    """The list's touch cards once its draw shows some: the focus moves to
+    a list a few frames after the tap that opens it."""
+    deadline = time.monotonic() + timeout
     cards = list_cards(case, name)
-    if not cards:
-        return None
-    start = cards[0]["tap"]
-    end = {"x": start["x"], "y": start["y"] + (-0.12 if up else 0.12)}
-    drag_between(case, start, end)
-    time.sleep(1.0)
-    cards = list_cards(case, name)
-    return cards[0]["entry"] if cards else None
+    while time.monotonic() < deadline and not cards:
+        time.sleep(0.3)
+        cards = list_cards(case, name)
+    return cards
 
 
 def case_touch_team_ai(case: Case) -> None:
@@ -636,10 +642,22 @@ def hero_power_slots(case: Case) -> list[str]:
     return []
 
 
+def slots_like_diamond(menu: dict) -> bool:
+    """The slot buttons sit as their slots do in the diamond."""
+    area = {b["name"]: b["area"] for b in menu.get("touch_buttons", [])
+            if b.get("name") in SLOT_BUTTONS and "area" in b}
+    if len(area) != len(SLOT_BUTTONS):
+        return False
+    left, right, bottom = (area["Left slot"], area["Right slot"],
+                           area["Bottom slot"])
+    return (left["right"] <= right["left"]
+            and bottom["top"] <= min(left["bottom"], right["bottom"]))
+
+
 def case_touch_team_assign(case: Case) -> None:
     """The skills tab: Assign (RB) takes the selected skill, the column
-    becomes three slot buttons and Cancel; Power 2 puts it in slot 1; Next
-    hero turns to the next hero."""
+    becomes the diamond's three slots and Cancel, each slot button putting
+    the skill in its slot; Next hero turns to the next hero."""
     if not start_levelled(case):
         return
     open_details(case, "skills")
@@ -663,14 +681,15 @@ def case_touch_team_assign(case: Case) -> None:
     assigning = wait_game_menu(case, lambda m: "assigning_skill" in m, 10)
     menu = read_menu_items(case)
     slots = [b.get("name") for b in menu.get("touch_buttons", [])
-             if b.get("name", "").startswith("Power") or b.get("name") ==
-             "Cancel"]
+             if b.get("name") in (*SLOT_BUTTONS, "Cancel")]
     case.check("a tap on Assign set the game assigning the skill",
                "assigning_skill" in assigning,
                str(assigning.get("assigning_skill")))
     case.check("and the column became the three slots and Cancel",
-               sorted(slots) == ["Cancel", "Power 1", "Power 2", "Power 3"],
+               sorted(slots) == sorted((*SLOT_BUTTONS, "Cancel")),
                str(slots))
+    case.check("laid out as the diamond's slots: left and right side by "
+               "side, bottom below them", slots_like_diamond(menu))
     case.check("with the hero buttons gone while it lasts",
                not buttons_named(menu, "Next hero"))
     check_column(case, menu, "assigning")
@@ -681,15 +700,19 @@ def case_touch_team_assign(case: Case) -> None:
                "assigning_skill" not in cancelled
                and hero_power_slots(case) == before,
                str(hero_power_slots(case)))
-    tap_named(case, "assign")
-    wait_game_menu(case, lambda m: "assigning_skill" in m, 10)
-    tap_named(case, "Power 2")
-    done = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
-    after = hero_power_slots(case)
-    case.check("a tap on Power 2 put the skill in slot 1",
-               "assigning_skill" not in done and len(after) == 4
-               and after != before and after[1] != "",
-               "%s -> %s" % (before, after))
+    power = ""
+    for name, slot in SLOT_BUTTONS.items():
+        tap_named(case, "assign")
+        wait_game_menu(case, lambda m: "assigning_skill" in m, 10)
+        tap_named(case, name)
+        done = wait_game_menu(case, lambda m: "assigning_skill" not in m, 10)
+        after = hero_power_slots(case)
+        power = power or (after[slot] if len(after) == 4 else "")
+        case.check("a tap on %s put the skill in the diamond's slot %d"
+                   % (name, slot),
+                   "assigning_skill" not in done and len(after) == 4
+                   and after[slot] == power != "",
+                   "%s -> %s" % (before, after))
     case.shot("skills-assigned")
     hero = menu_labels(case).get("name")
     tap_named(case, "Next hero")

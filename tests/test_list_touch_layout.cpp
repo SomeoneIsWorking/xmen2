@@ -64,17 +64,27 @@ void a_short_list_shows_all() {
   check(out.icon == 0.0F, "no icon column without icons");
 }
 
-void a_list_keeps_clear_of_a_list_inside_it() {
-  using x2::input::list_box_clear_of;
+void nested_lists_take_turns_in_the_outer_box() {
+  using x2::input::ListPlace;
+  using x2::input::nested_list_area;
   using x2::input::SceneBox;
   const SceneBox slots{215.0F, 112.0F, 482.0F, 287.0F};
   const SceneBox pieces{215.0F, 131.0F, 482.0F, 204.0F};
-  const SceneBox clear = list_box_clear_of(slots, pieces);
-  check(clear.bottom == 204.0F && clear.top == 287.0F,
-        "the taller part, above the inner list");
+  const auto shown = nested_list_area({slots, true}, {{pieces, false}});
+  check(shown && shown->bottom == slots.bottom && shown->top == slots.top,
+        "the focused slots fill their whole box");
+  check(!nested_list_area({pieces, false}, {{slots, true}}),
+        "and the pieces are not drawn");
+  const auto pieces_shown = nested_list_area({pieces, true}, {{slots, false}});
+  check(pieces_shown && pieces_shown->bottom == slots.bottom &&
+            pieces_shown->top == slots.top,
+        "the focused pieces fill the slots' box");
+  check(nested_list_area({slots, false}, {{pieces, false}}).has_value() &&
+            !nested_list_area({pieces, false}, {{slots, false}}),
+        "with neither focused the outer list shows");
   const SceneBox beside{500.0F, 131.0F, 600.0F, 204.0F};
-  const SceneBox kept = list_box_clear_of(slots, beside);
-  check(kept.bottom == slots.bottom && kept.top == slots.top,
+  const auto kept = nested_list_area({slots, false}, {{beside, true}});
+  check(kept && kept->bottom == slots.bottom && kept->top == slots.top,
         "a list beside it changes nothing");
 }
 
@@ -100,7 +110,7 @@ int main() {
   a_late_top_is_clamped();
   a_short_list_shows_all();
   only_native_menus_lay_out_lists();
-  a_list_keeps_clear_of_a_list_inside_it();
+  nested_lists_take_turns_in_the_outer_box();
   if (failures != 0) {
     std::fprintf(stderr, "%d failure(s)\n", failures);
     return EXIT_FAILURE;

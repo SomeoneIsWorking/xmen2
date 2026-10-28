@@ -12,7 +12,8 @@ namespace x2::input {
 
 struct PopupTouchInput {
   presentation::RetailScenePlane plane;
-  /* The frame model's authored extents, at its retail placement. */
+  /* The frame model's authored extents, at its retail placement, short of
+     the strip its art has below them, where retail draws the prompts. */
   SceneBox frame;
   /* Where retail puts the text box's left and top inside that frame. */
   float text_left = 0.0F;
