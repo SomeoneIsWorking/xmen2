@@ -772,42 +772,31 @@ def case_touch_review(case: Case) -> None:
 
 
 def case_touch_region(case: Case) -> None:
-    """The touch menu over CMenuRegion, opened by the console.
+    """CMenuRegion drawn natively, opened by the console.
 
-    With no online service the game's region list is empty; the touch menu
-    shows the title and footers over it. A tap on Select opens the campaign
-    lobby as the game's own A does, and Back on a reopened region leaves it.
+    With no online service the game's region list is empty. Its Back,
+    Refresh and Select footers are finger buttons; a tap on Select opens the
+    campaign lobby as the game's own A does, and Back on a reopened region
+    leaves it.
     """
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
-    case.seed_save("autosave0.save")
-    case.launch({"X2_FILES": "1"})
-    case.wait_control(60)
-    menu = keyboard_into_gameplay(case, 300)
-    case.check("the run reached gameplay through the PDA",
-               menu.get("active") is False, str(menu.get("menu")))
-    case.http("/console?command=openmenu%20region")
-    region = wait_settled_touch_menu(case, "region", 20)
-    (case.dir / "region.json").write_text(json.dumps(region, indent=1) + "\n")
-    case.check("the touch menu is shown over the game's region list",
-               region.get("visible") is True
-               and read_menu(case).get("class") == "CMenuRegion",
-               str(read_menu(case).get("class")))
-    case.check("titled by the game's text_title",
-               region.get("title") == "Region Menu", str(region.get("title")))
-    rows = [r["label"] for r in region.get("rows", [])]
-    game = menu_list(case, "text_list")
-    case.check("its rows are the game's regions",
-               "entries" in game and len(rows) == len(game["entries"]),
-               "rows %s, game %s" % (rows, game.get("entries")))
-    footers = [b["label"] for b in region.get("buttons", [])
-               if b["part"] == "footer"]
-    case.check("with the game's Back, Refresh and Select footers",
-               footers == ["Back", "Refresh", "Select"], str(footers))
-    if region.get("visible") is not True:
+    if not into_gameplay(case):
         return
+    case.http("/console?command=openmenu%20region")
+    wait_settled_menu(case, "region", 20)
+    (case.dir / "region.json").write_text(
+        json.dumps(menu_items(case), indent=1) + "\n")
+    menu = read_menu(case)
+    case.check("the game's CMenuRegion is up with no touch menu over it",
+               menu.get("class") == "CMenuRegion"
+               and menu.get("touch_menu", {}).get("visible") is False,
+               "%s %s" % (menu.get("class"), menu.get("touch_menu")))
+    case.check("its Back, Refresh and Select are finger buttons",
+               all(footer_button(menu, token) for token in
+                   ("$MENU_BACK", "$MENU_SUBTRACT", "$MENU_ACCEPT")),
+               str(menu.get("touch_buttons")))
     case.shot("region")
 
-    tap_touch_button(case, region, touch_button(region, "footer", "select"))
+    tap_footer_button(case, "$MENU_ACCEPT")
     lobby = wait_game_menu(case, lambda m: m.get("menu") == "campaign_lobby",
                            10)
     case.check("a tap on Select opened the campaign lobby",
@@ -816,12 +805,8 @@ def case_touch_region(case: Case) -> None:
     case.shot("lobby")
 
     case.http("/console?command=openmenu%20region")
-    region = wait_touch_menu(case, "region", 20)
-    back = touch_button(region, "footer", "back")
-    if back is None:
-        case.check("the region offers Back", False)
-        return
-    tap_touch_button(case, region, back)
+    wait_settled_menu(case, "region", 20)
+    case.check("the region offers Back", tap_footer_button(case, "$MENU_BACK"))
     left = wait_game_menu(case, lambda m: m.get("menu") != "region", 10)
     case.check("Back left the region",
                left.get("menu") != "region", str(left.get("menu")))

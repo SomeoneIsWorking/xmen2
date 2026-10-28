@@ -62,8 +62,6 @@ OWNERS = (
     "src/input/touch_menu_team.hpp",
     "src/input/touch_menu_worldmap.cpp",
     "src/input/touch_menu_worldmap.hpp",
-    "src/input/touch_menu_region.cpp",
-    "src/input/touch_menu_region.hpp",
     "src/input/touch_runtime_menu.hpp",
     # input.touch_controls decides touch play on every platform.
     "src/config/settings.cpp",
