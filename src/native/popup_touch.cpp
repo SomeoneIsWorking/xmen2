@@ -104,12 +104,6 @@ constexpr int kButtons = static_cast<int>(kPromptCount);
 
 enum class Scene { menu, world };
 
-std::uint32_t bits(float value) {
-  std::uint32_t out = 0;
-  std::memcpy(&out, &value, sizeof out);
-  return out;
-}
-
 std::optional<x2::presentation::RetailScenePlane> scene_plane() {
   const x2::native::LiveGuestMemory memory;
   return x2::native::read_scene_plane(memory, x86_module_base("XMen2.exe"));
@@ -429,7 +423,8 @@ private:
         static_cast<std::int16_t>(RD16(popup + popup::kTextWidth));
     call.virtual_call(fonts, kTextHeight,
                       {static_cast<std::uint32_t>(width),
-                       x2::native::exe_linked(kLineProbe), bits(1.0F), 0u, 1u});
+                       x2::native::exe_linked(kLineProbe),
+                       x2::guest::float_bits(1.0F), 0u, 1u});
     return static_cast<float>(call.x87_result());
   }
 
@@ -460,7 +455,8 @@ private:
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.x)),
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.z)),
          RD32(box + popup::kBoxWidth), RD32(box + popup::kBoxStyle),
-         bits(scale), 0u, colour, x2::native::exe_linked(kLineFormat), string});
+         x2::guest::float_bits(scale), 0u, colour,
+         x2::native::exe_linked(kLineFormat), string});
   }
 
   std::array<std::uint32_t, kCards + kButtons> bars_{};

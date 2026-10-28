@@ -2178,6 +2178,7 @@ set(X2_NATIVE_SOURCES
     src/native/popup_touch.cpp
     src/native/list_touch.cpp
     src/native/menu_scene.cpp
+    src/native/menu_text.cpp
     src/native/popup_touch_drawn.cpp
     src/native/menu_item_tap.cpp
     src/native/menu_item_mouse_override.cpp

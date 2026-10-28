@@ -17,6 +17,7 @@
 #include "menu_action.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
+#include "menu_text.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
@@ -38,6 +39,7 @@ namespace {
 namespace item = x2::native::menu_item;
 namespace list = x2::native::list_box;
 namespace menu_scene = x2::native::menu_scene;
+namespace menu_text = x2::native::menu_text;
 using x2::input::SceneBox;
 using x2::native::exe_linked;
 using x2::presentation::ScenePoint;
@@ -65,21 +67,6 @@ constexpr std::uint32_t kSlotIconA = 0xa0u;
 constexpr std::uint32_t kSlotIconB = 0xa8u;
 /* CMenu+0x324, the focused item. */
 constexpr std::uint32_t kMenuFocus = 0x324u;
-/* The text box's line (x, z, w, h, scale, flags, colour, text, -1), local
-   to the item, z the bottom of h; and its font. */
-constexpr std::uint32_t kTextLine = 0x005eecf0u;
-constexpr std::uint32_t kTextFont = 0x005ee590u;
-constexpr std::uint32_t kAlignMiddle = 0x8u;
-constexpr int kAlignRight = 2;
-/* The font manager's wrap (width, text, scale, font, 1), the text's height
-   on x87, and "A". */
-constexpr std::uint32_t kFonts = 0x00597c20u;
-constexpr std::uint32_t kWrap = 0x38u;
-constexpr std::uint32_t kLineProbe = 0x0069a444u;
-/* The language object; vt+0x18 its code, "e..." for English, which cuts a
-   long line with "...". */
-constexpr std::uint32_t kLanguage = 0x0058a3a0u;
-constexpr std::uint32_t kLanguageCode = 0x18u;
 /* The icon batch's sprite (pos, rgba, size, tile, turn); icon B sits this
    much deeper. */
 constexpr std::uint32_t kIcon = 0x005ed120u;
@@ -106,18 +93,10 @@ constexpr float kFadeShown = 0.75F;
 constexpr float kFadeIn = 1.0F;
 /* A drag starts after this share of a card pitch. */
 constexpr float kDragStart = 0.25F;
-constexpr std::uint32_t kTextBytes = 0x200u;
 /* Text shrinks to fit down to this share of its size, found in this many
    halvings. */
 constexpr float kSmallestText = 0.6F;
 constexpr int kFitSteps = 6;
-constexpr float kWideLine = 10000.0F;
-
-std::uint32_t bits(float value) {
-  std::uint32_t out = 0;
-  std::memcpy(&out, &value, sizeof out);
-  return out;
-}
 
 int s16(std::uint32_t address) {
   return static_cast<std::int16_t>(RD16(address));
@@ -184,7 +163,7 @@ public:
 
     x2::input::ListTouchInput input;
     input.box = list_box(self);
-    input.line = line_height(call, box);
+    input.line = menu_text::line_height(call, box);
     input.finger = x2::input::menu_finger_target(*plane) * plane->height() /
                    static_cast<float>(plane->client_height());
     input.entries = entries;
@@ -225,7 +204,7 @@ public:
     const int selected = s16(self + list::kSelected);
     const bool lit = (flags & x2::menu::kItemFocusLit) != 0u;
     const float depth = static_cast<float>(s16(self + item::kDepth));
-    const bool english = is_english(call);
+    const bool english = menu_text::is_english(call);
     for (std::size_t i = 0; i < stack.cards.size(); ++i) {
       const int entry = stack.first + static_cast<int>(i);
       const SceneBox &card = stack.cards[i];
@@ -453,21 +432,6 @@ private:
     WR8(self + list::kBits, state & ~list::kCursorAttached);
   }
 
-  static float line_height(x2::guest::GuestCall &call, std::uint32_t box) {
-    const std::uint32_t font = call.thiscall(exe_linked(kTextFont), box);
-    const std::uint32_t fonts = call.cdecl_call(exe_linked(kFonts));
-    call.virtual_call(fonts, kWrap,
-                      {static_cast<std::uint32_t>(kWideLine),
-                       exe_linked(kLineProbe), bits(1.0F), font, 1u});
-    return static_cast<float>(call.x87_result());
-  }
-
-  static bool is_english(x2::guest::GuestCall &call) {
-    const std::uint32_t language = call.cdecl_call(exe_linked(kLanguage));
-    const std::uint32_t code = call.virtual_call(language, kLanguageCode);
-    return code != 0u && RD8(code) == static_cast<std::uint8_t>('e');
-  }
-
   /* Every entry's text, to tell when the fit must be found again. */
   static std::string entries_key(x2::guest::GuestCall &call, std::uint32_t self,
                                  int entries) {
@@ -521,19 +485,16 @@ private:
         const std::uint32_t pos =
             vectors.put(0, x, depth + static_cast<float>(t) * kIconBDepth, mid);
         call.thiscall(exe_linked(kIcon), self + list::kIconBatch,
-                      {pos, rgba, bits(layout.icon), tiles[t] & 0xffu, 0u});
+                      {pos, rgba, x2::guest::float_bits(layout.icon),
+                       tiles[t] & 0xffu, 0u});
       }
     }
 
     const std::vector<std::string> columns = entry_columns(call, self, entry);
-    const x2::guest::GuestBlock text(kTextBytes);
+    const x2::guest::GuestBlock text(menu_text::kLineBytes);
     if (!text) {
       return;
     }
-    const float origin_x = static_cast<float>(s16(self + item::kBoxLeft) -
-                                              s16(self + item::kLocalLeft));
-    const float origin_z = static_cast<float>(s16(self + item::kBoxTop) -
-                                              s16(self + item::kLocalTop));
     const std::vector<Span> spans = column_spans(
         self, columns.size(), card.left + layout.text_inset, card.right - pad);
     for (std::size_t c = 0; c < columns.size(); ++c) {
@@ -541,20 +502,16 @@ private:
       if (columns[c].empty() || !(span.width > 0.0F)) {
         continue;
       }
-      if (!wrap(call, box, text.address(), columns[c], span.width, scale) &&
+      if (!menu_text::wrap(call, box, text.address(), columns[c], span.width,
+                           scale) &&
           english) {
-        cut_with_ellipsis(text.address());
+        menu_text::cut_with_ellipsis(text.address());
       }
-      call.thiscall(
-          exe_linked(kTextLine), box,
-          {static_cast<std::uint32_t>(
-               static_cast<std::int32_t>(span.from - origin_x)),
-           static_cast<std::uint32_t>(
-               static_cast<std::int32_t>(card.bottom - origin_z)),
-           static_cast<std::uint32_t>(static_cast<std::int32_t>(span.width)),
-           static_cast<std::uint32_t>(static_cast<std::int32_t>(card.height())),
-           bits(scale), static_cast<std::uint32_t>(span.align) | kAlignMiddle,
-           colour, text.address(), 0xffffffffu});
+      menu_text::line(
+          call, self, box,
+          {span.from, card.bottom, span.from + span.width, card.top}, scale,
+          static_cast<std::uint32_t>(span.align) | menu_text::kAlignMiddle,
+          colour, text.address());
     }
   }
 
@@ -591,7 +548,10 @@ private:
           self + list::kColumns +
           static_cast<std::uint32_t>(c) * list::kColumnBytes;
       const int align = s16(column + list::kColumnAlign);
-      const float from = c + 1u == columns && align == kAlignRight ? left : x;
+      const float from =
+          c + 1u == columns && align == static_cast<int>(menu_text::kAlignRight)
+              ? left
+              : x;
       out.push_back({from, right - from, align});
       x += static_cast<float>(s16(column)) * spread;
     }
@@ -600,33 +560,8 @@ private:
 
   /* `source` in `out`, wrapped to `width` at `scale`; true when it is one
      line. */
-  static bool wrap(x2::guest::GuestCall &call, std::uint32_t box,
-                   std::uint32_t out, std::string_view source, float width,
-                   float scale) {
-    const std::size_t length =
-        std::min<std::size_t>(source.size(), kTextBytes - 4u);
-    std::memcpy(guest_memory_as<char>(out), source.data(), length);
-    WR8(out + static_cast<std::uint32_t>(length), 0u);
-    const std::uint32_t font = call.thiscall(exe_linked(kTextFont), box);
-    const std::uint32_t fonts = call.cdecl_call(exe_linked(kFonts));
-    call.virtual_call(
-        fonts, kWrap,
-        {static_cast<std::uint32_t>(static_cast<std::int32_t>(width)), out,
-         bits(scale), font, 1u});
-    call.x87_result();
-    return x2::guest::guest_string(out, kTextBytes).find('\n') ==
-           std::string_view::npos;
-  }
 
   /* A wrapped line cut at its first break, as retail cuts a row. */
-  static void cut_with_ellipsis(std::uint32_t text) {
-    const std::size_t cut =
-        x2::guest::guest_string(text, kTextBytes).find('\n');
-    if (cut != std::string_view::npos && cut + 4u < kTextBytes) {
-      std::memcpy(guest_memory_as<char>(text + static_cast<std::uint32_t>(cut)),
-                  "...", 4u);
-    }
-  }
 
   /* The largest text scale up to the layout's at which every entry's columns
      stay on one line; retail's cut is left for what will not fit even at
@@ -635,7 +570,7 @@ private:
                             std::uint32_t box, int entries,
                             const x2::input::ListTouchLayout &layout,
                             const SceneBox &card) {
-    const x2::guest::GuestBlock text(kTextBytes);
+    const x2::guest::GuestBlock text(menu_text::kLineBytes);
     if (!text || entries <= 0) {
       return layout.text_scale;
     }
@@ -650,8 +585,9 @@ private:
             column_spans(self, columns.size(), card.left + layout.text_inset,
                          card.right - pad);
         for (std::size_t c = 0; c < columns.size(); ++c) {
-          if (!columns[c].empty() && !wrap(call, box, text.address(),
-                                           columns[c], spans[c].width, scale)) {
+          if (!columns[c].empty() &&
+              !menu_text::wrap(call, box, text.address(), columns[c],
+                               spans[c].width, scale)) {
             return false;
           }
         }
