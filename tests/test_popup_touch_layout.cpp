@@ -1,5 +1,6 @@
 #include "popup_touch_layout.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -108,6 +109,25 @@ void a_tap_finds_its_card() {
         "outside every card hits none");
 }
 
+/* The tutorial's switching hint: eleven lines of message and Continue. */
+void a_message_wraps_above_its_button() {
+  PopupTouchInput in = input(0, 1);
+  const x2::input::PopupTouchTitle title = x2::input::popup_touch_title(in);
+  in.title_scale = title.scale;
+  in.title_height = 11.0F * in.line * title.scale;
+  check(in.title_height <= title.room, "eleven lines fit at the nominal scale");
+  const PopupTouchLayout out = x2::input::layout_popup_touch(in);
+  check(std::fabs(out.text.width() - title.width) < 0.01F,
+        "the text spans the wrap width");
+  check(inside(out.text, out.frame), "the text stays in the frame");
+  check(out.buttons.size() == 1u && out.buttons[0].top < out.text.bottom,
+        "the button sits below the text");
+  check(client_height(in, out.buttons[0]) >= 71.0F, "the button is a finger");
+  const PopupTouchLayout one = x2::input::layout_popup_touch(input(0, 1));
+  check(one.frame.height() < out.frame.height(),
+        "a longer message gets a taller frame");
+}
+
 } // namespace
 
 int main() {
@@ -115,6 +135,7 @@ int main() {
   the_frame_holds_what_it_shows();
   a_long_list_scrolls();
   a_tap_finds_its_card();
+  a_message_wraps_above_its_button();
   if (failures != 0) {
     return EXIT_FAILURE;
   }

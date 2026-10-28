@@ -102,6 +102,16 @@ a `killEntity` on a party hero does nothing and an XP grant's level-up popup
 waits; during 0x18 both work. `GET /party` reports the pending-or-shown state
 as `conversation`.
 
+The conversation draws its own panel (`FUN_00455af0` loads
+`ui/hud/convo_background` and two text boxes: the line at `+0x21b38`, the
+responses at `+0x21b3c`), not a CMenu or a CPopupDialog, so `GET /menu` reads
+no menu while it is up. Its pointer handler is `FUN_00459e70` (conversation
+vtable slot at `0x00685e68`): a `0x202` anywhere posts `MENU_ACCEPT` (4) for
+the menu's player, accepting the highlighted response (`+0x21b26` of
+`+0x21b28`), and a pointer inside the response box above or below the
+highlight steps it with the d-pad step `DAT_00a09fb0`, ten calls apart
+(`+0x239d8`). No response has a hit box of its own.
+
 The conversation adapter calls the same vtable `+0x18` transition as retail
 input, but only when exactly one response exists. Choices refuse the skip.
 Selecting the final `0020b` response synchronously launches

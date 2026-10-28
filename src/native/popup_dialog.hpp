@@ -28,6 +28,8 @@ constexpr std::uint32_t page_offset(std::int32_t current) {
    the entry is enabled; then its counts (all char) and flags. */
 inline constexpr std::uint32_t kEntryBytes = 0x80u;
 inline constexpr std::uint32_t kEntries = 8u * kEntryBytes;
+/* The title runs up to the entries; a message popup's message is its title. */
+inline constexpr std::uint32_t kTitleBytes = kEntries;
 inline constexpr std::uint32_t kScripts = 0x901u;
 inline constexpr std::uint32_t kSecondScripts = 0xe02u;
 inline constexpr std::uint32_t kScriptBits = 0x1304u;

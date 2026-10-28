@@ -88,7 +88,10 @@ layout on touch (cards of the game's bar art, a frame sized to its page, bar
 buttons for the prompts, one tap to act, a drag to scroll), shown working by
 `tools/live_case.py touch-popup` (13 of 13) and `touch-load` (9 of 9, eleven
 saves, the last past the page's ten reached by drag through Load Game's own
-window). The list boxes are step 5's second screen, done: CMenuItemListBox and
+window). A message popup's text, a tutorial Game Tip's whole message, is
+wrapped across the grown frame and sizes it, and a popup up in gameplay, with
+no menu under it, has no pad over it: `touch-game-tip` (17/17 at 1096x720,
+the tablet's aspect) and `touch-game-tip-720` (17/17). The list boxes are step 5's second screen, done: CMenuItemListBox and
 CMenuItemListCodex draw finger cards of the PDA's option art in their own box,
 with the entry's icons and fitted text, a tap selecting through retail's own
 press walk, a tap on the selected card accepting, a drag scrolling
@@ -120,7 +123,10 @@ clear of the pieces' list inside their box. Shown by `touch-team` (12/12),
 `touch-team-skill-details` (14/14) and `touch-roster` (15/15).
 
 The menu pad is not deleted: conversation choices and cinematic lines are
-answered with it, and the classes not native on touch (CMenuAutoMap,
+answered with it (a conversation draws its own panel and has one pointer
+rule, a release anywhere accepting the highlighted response, see
+[cutscene player](../RE/cutscene_player.md); its responses have no finger
+targets yet), and the classes not native on touch (CMenuAutoMap,
 CMenuTextEntry, the online lobby menus, CMenuHeroList, CMenuPersonal,
 CMenuSebas, CMenuImageViewer, CMenuCredits, CMenuOptionsController) have no
 other touch path yet.

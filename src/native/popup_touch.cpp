@@ -15,12 +15,14 @@
 #include "load_game_menu_runtime.h"
 #include "menu_action.hpp"
 #include "menu_scene.hpp"
+#include "menu_text.hpp"
 #include "popup_dialog.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -193,6 +195,15 @@ public:
                   : static_cast<std::int8_t>(RD8(page + popup::kFirstShown));
     input.footers = footers;
     input.max_rows = kCards;
+    const std::string_view title =
+        x2::guest::guest_string(page, popup::kTitleBytes);
+    x2::guest::GuestBlock wrapped(popup::kTitleBytes + 1u);
+    if (!wrapped) {
+      return false;
+    }
+    if (!title.empty()) {
+      fit_title(call, box, title, wrapped.address(), input);
+    }
     layout_ = x2::input::layout_popup_touch(input);
     if (layout_.cards.rows == 0) {
       return false;
@@ -221,11 +232,11 @@ public:
     drawn.shown = true;
     drawn.first_shown = page_first();
     drawn.first_entry = layout_.cards.first;
-    const std::string_view title =
-        x2::guest::guest_string(page, popup::kEntryBytes);
+    drawn.frame = layout_.frame;
+    drawn.text = layout_.text;
     if (!title.empty()) {
       text(call, vectors, box, layout_.title, layout_.title_scale,
-           color(call, vectors, true, true), page);
+           color(call, vectors, true, true), wrapped.address());
     }
     const auto selected =
         static_cast<std::int8_t>(RD8(page + popup::kSelected));
@@ -342,6 +353,30 @@ private:
     int card = -1;
     int button = -1;
   };
+
+  /* The page's text wrapped across the frame at the largest scale up to the
+     nominal one at which it fits beside the cards and buttons, as retail
+     wraps it across its own box (FUN_005ea9e0). Its height is its lines at
+     the line call's pitch: the wrap's own height counts a prompt glyph's
+     taller cell on every line that has one. */
+  static void fit_title(x2::guest::GuestCall &call, std::uint32_t box,
+                        std::string_view title, std::uint32_t out,
+                        x2::input::PopupTouchInput &input) {
+    const x2::input::PopupTouchTitle fit = x2::input::popup_touch_title(input);
+    const auto height_at = [&](float scale) {
+      std::memcpy(guest_memory_as<char>(out), title.data(), title.size());
+      WR8(out + static_cast<std::uint32_t>(title.size()), 0u);
+      x2::native::menu_text::wrap_in_place(call, box + popup::kBoxLines, out,
+                                           fit.width, scale);
+      const std::string_view wrapped =
+          x2::guest::guest_string(out, popup::kTitleBytes + 1u);
+      const auto lines = 1 + std::count(wrapped.begin(), wrapped.end(), '\n');
+      return static_cast<float>(lines) * input.line * scale;
+    };
+    input.title_scale = x2::native::menu_text::fitted_scale(
+        fit.scale, [&](float scale) { return height_at(scale) <= fit.room; });
+    input.title_height = height_at(input.title_scale);
+  }
 
   /* The page entry the first card shows: Load Game keeps its window on the
      page from entry 0. */

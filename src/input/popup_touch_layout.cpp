@@ -20,39 +20,76 @@ constexpr float kFitSlack = 0.05F;
 /* The shortest frame against its width scale, so the art keeps its shape. */
 constexpr float kMinHeight = 0.35F;
 
-} // namespace
+/* The frame's fixed geometry: its width scale, the tallest it may grow,
+   and retail's insets inside the art. */
+struct FrameFit {
+  float scale_x = 0.0F;
+  float max_z = 0.0F;
+  float margin = 0.0F;
+  float header = 0.0F;
+  /* The art below the title's first line, unscaled. */
+  float art = 0.0F;
+};
 
-PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
-  PopupTouchLayout out;
-  const presentation::RetailScenePlane &plane = input.plane;
+bool fit_frame(const PopupTouchInput &input, FrameFit &out) {
   const SceneBox &native = input.frame;
   if (!(native.width() > 0.0F) || !(native.height() > 0.0F) ||
       !(input.line > 0.0F) || !(input.finger > 0.0F)) {
+    return false;
+  }
+  const presentation::RetailScenePlane &plane = input.plane;
+  out.margin = input.text_left - native.left;
+  out.header = native.top - input.text_top;
+  out.scale_x = std::min(kFrameFillWidth * plane.width() / native.width(),
+                         kFrameFillHeight * plane.height() / native.height());
+  out.max_z = kFrameFillHeight * plane.height() / native.height();
+  out.art = native.height() - out.header - out.margin;
+  return true;
+}
+
+/* What the frame holds below the title's first line besides the title. */
+float below_title(const PopupTouchInput &input) {
+  const float finger = input.finger;
+  const float pitch = (kCardHeight + kCardGap) * finger;
+  const int wanted = std::clamp(input.entries, 0, std::max(1, input.max_rows));
+  return kCardGap * finger + static_cast<float>(wanted) * pitch +
+         (input.footers > 0 ? (kButtonHeight + kCardGap) * finger : 0.0F) +
+         kFitSlack * finger;
+}
+
+} // namespace
+
+PopupTouchTitle popup_touch_title(const PopupTouchInput &input) {
+  PopupTouchTitle out;
+  FrameFit fit;
+  if (!fit_frame(input, fit)) {
     return out;
   }
+  out.width = fit.scale_x * (input.frame.width() - 2.0F * fit.margin);
+  out.scale = kTitleScale * fit.scale_x;
+  out.room = std::max(0.0F, fit.max_z * fit.art - below_title(input));
+  return out;
+}
+
+PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
+  PopupTouchLayout out;
+  FrameFit fit;
+  if (!fit_frame(input, fit)) {
+    return out;
+  }
+  const presentation::RetailScenePlane &plane = input.plane;
+  const SceneBox &native = input.frame;
   const float finger = input.finger;
-  /* Retail's own insets inside the art: the left margin, also kept at the
-     right and bottom, and the header down to the title's middle. */
-  const float margin = input.text_left - native.left;
-  const float header = native.top - input.text_top;
-  /* The frame spans the screen's width; it is as tall as what it holds. */
-  const float scale_x =
-      std::min(kFrameFillWidth * plane.width() / native.width(),
-               kFrameFillHeight * plane.height() / native.height());
-  const float max_z = kFrameFillHeight * plane.height() / native.height();
-  out.title_scale = kTitleScale * scale_x;
+  const float scale_x = fit.scale_x;
+  out.title_scale =
+      input.title_scale > 0.0F ? input.title_scale : kTitleScale * scale_x;
   out.text_scale = kCardText * finger / input.line;
-  const float card = kCardHeight * finger;
-  const float gap = kCardGap * finger;
-  const float pitch = card + gap;
-  const int wanted = std::clamp(input.entries, 0, std::max(1, input.max_rows));
-  const float content =
-      0.5F * input.line * out.title_scale + static_cast<float>(wanted) * pitch +
-      (input.footers > 0 ? kButtonHeight * finger + gap : 0.0F) +
-      kFitSlack * finger;
-  const float art = native.height() - header - margin;
-  const float scale_z =
-      std::clamp(content / std::max(art, 1.0F), kMinHeight * scale_x, max_z);
+  const float line = input.line * out.title_scale;
+  /* From the first line's middle down to the text's bottom. */
+  const float title_below = std::max(input.title_height, line) - 0.5F * line;
+  const float content = title_below + below_title(input);
+  const float scale_z = std::clamp(content / std::max(fit.art, 1.0F),
+                                   kMinHeight * scale_x, fit.max_z);
   out.frame_scale = {scale_x, scale_z};
 
   const float centre_x = plane.left() + 0.5F * plane.width();
@@ -63,14 +100,17 @@ PopupTouchLayout layout_popup_touch(const PopupTouchInput &input) {
                out.frame_offset.z + scale_z * native.bottom,
                out.frame_offset.x + scale_x * native.right,
                out.frame_offset.z + scale_z * native.top};
-  const float inset = scale_x * margin;
-  out.title = {out.frame.left + inset, out.frame.top - scale_z * header};
+  const float inset = scale_x * fit.margin;
+  out.title = {out.frame.left + inset, out.frame.top - scale_z * fit.header};
 
   const float body_left = out.frame.left + inset;
   const float body_right = out.frame.right - inset;
-  const float body_bottom = out.frame.bottom + scale_z * margin;
-  const float body_top =
-      out.title.z - 0.5F * input.line * out.title_scale - kCardGap * finger;
+  const float body_bottom = out.frame.bottom + scale_z * fit.margin;
+  out.text = {body_left, out.title.z - title_below, body_right,
+              out.title.z + 0.5F * line};
+  const float body_top = out.text.bottom - kCardGap * finger;
+  const float card = kCardHeight * finger;
+  const float gap = kCardGap * finger;
 
   const float button_top =
       input.footers > 0 ? body_bottom + kButtonHeight * finger : body_bottom;

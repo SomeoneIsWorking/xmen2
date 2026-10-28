@@ -168,6 +168,8 @@ struct PopupFooter {
 
 /* The shown CPopupDialog page (docs/RE/menus.md, "The popup"). */
 struct PopupSnapshot {
+  /* The page's title; a message popup's whole message. */
+  std::string title;
   std::vector<std::string> entries;
   /* Per entry: its bit at page+0x130c, clear for one the game greys and
      refuses (Hard before the game is beaten). */
