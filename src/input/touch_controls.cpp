@@ -444,6 +444,29 @@ std::optional<TouchControls::ZoneVisual> TouchControls::use_prompt() const {
   return *found;
 }
 
+x2::presentation::Rect
+TouchControls::clear_of_controls(x2::presentation::Rect natural) const {
+  std::vector<x2::presentation::Rect> drawn;
+  drawn.reserve(zones_.size() + 1);
+  for (const auto &zone : zones_) {
+    if (!zone.visible)
+      continue;
+    drawn.push_back(
+        zone.stick ? stick_ring_
+                   : x2::presentation::Rect{zone.zone.left, zone.zone.top,
+                                            zone.zone.right, zone.zone.bottom});
+  }
+  if (hud_placed_)
+    drawn.push_back(hud_placement_.vitals);
+  const x2::presentation::LayoutViewport layout_viewport{
+      viewport_.width,           viewport_.height,
+      viewport_.safe_area.left,  viewport_.safe_area.top,
+      viewport_.safe_area.right, viewport_.safe_area.bottom};
+  return x2::presentation::layout_clear_of(layout_viewport, natural,
+                                           drawn.data(),
+                                           static_cast<unsigned>(drawn.size()));
+}
+
 std::vector<ActionEvent>
 TouchControls::route(std::span<const lucent::touch::Contact> contacts) {
   std::vector<lucent::touch::Event> events;

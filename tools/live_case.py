@@ -16,6 +16,7 @@ scratch/run/live.json.
     tools/live_case.py extraction-paid        # near a pad, a request pays the total
     tools/live_case.py menu-model             # GET /menu matches the drawn menus
     tools/live_case.py touch-use-prompt       # a tap on the use prompt uses
+                                              # (-4x3, -16x9, -20x9: other shapes)
     tools/live_case.py combat-bench           # boss fight frame times, no JIT flush
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -93,6 +94,9 @@ CASES = {
     "pad-late": case_pad_late,
     "touch-pad": case_touch_pad,
     "touch-use-prompt": case_touch_use_prompt,
+    "touch-use-prompt-4x3": case_touch_use_prompt,
+    "touch-use-prompt-16x9": case_touch_use_prompt,
+    "touch-use-prompt-20x9": case_touch_use_prompt,
     "menu-touch": case_menu_touch,
     "touch-popup": case_touch_popup,
     "touch-load": case_touch_load,

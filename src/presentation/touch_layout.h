@@ -175,6 +175,14 @@ const char *menu_slot_name(int slot);
    no usable area, exactly as layout_build does. */
 int layout_build_menu(LayoutViewport viewport, Rect *out);
 
+/* Where a box the size of `natural` goes so that it overlaps none of the
+   `count` rectangles in `drawn`: `natural` itself when it is clear, else the
+   clear place inside the safe area nearest it, a button gap from what it
+   avoids. `natural` when there is no clear place. The game's use prompt is
+   placed this way, clear of the controls drawn over the game. */
+Rect layout_clear_of(LayoutViewport viewport, Rect natural, const Rect *drawn,
+                     unsigned count);
+
 /* Whether two placed rectangles overlap. Exposed because the invariant that
    the HUD and the controls do not sit on top of each other is worth asserting
    in a test at every aspect ratio, not just believing at one. */

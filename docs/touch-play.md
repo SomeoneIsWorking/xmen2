@@ -326,7 +326,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
-| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. It is a button only while it is the band's only line |
+| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. It is a button only while it is the band's only line |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
@@ -455,8 +455,14 @@ already chose keeps player one.
 `tools/live_case.py touch-use-prompt` checks the use prompt in the running
 game: Sanctuary through `loadmap`, the hero teleported into the trivia
 console's use trigger, no prompt button away from it, a finger-sized prompt
-button inside it, and a press near the button's corner (outside the text and
-every overlay control) opening the game's trivia menu (`GET /menu`).
+button inside it that no drawn control overlaps (`GET /controls`), and a
+press near the button's corner opening the game's trivia menu (`GET /menu`).
+It runs in a 1096x720 window (a 2800x1840 tablet's presentation, where the
+low inboard power covered the prompt before it moved); `touch-use-prompt-4x3`,
+`-16x9` and `-20x9` run the same at 960x720, 1280x720 and 1600x720. Observed
+2026-10-28 with one power drawn: at 1096x720 and 960x720 the button moved up
+clear of that power (left 461 and 351, top 464); at 16:9 and 20:9 it stayed
+where the game puts it.
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.

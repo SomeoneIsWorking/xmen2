@@ -90,6 +90,8 @@ public:
   // drawn: touch play, a window, and a skip offered.
   bool skip_button(x2::presentation::Rect &rect, bool &held) const;
   bool use_prompt(x2::presentation::Rect &rect, bool &held) const;
+  bool clear_of_controls(x2::presentation::Rect natural,
+                         x2::presentation::Rect &placed) const;
 
   bool has_window() const { return window_ != nullptr; }
   // Is there anything for the overlay document to draw -- the gameplay
@@ -539,6 +541,15 @@ bool TouchRuntime::use_prompt(x2::presentation::Rect &rect, bool &held) const {
   return true;
 }
 
+bool TouchRuntime::clear_of_controls(x2::presentation::Rect natural,
+                                     x2::presentation::Rect &placed) const {
+  if (!overlay_visible()) {
+    return false;
+  }
+  placed = controls_.clear_of_controls(natural);
+  return true;
+}
+
 bool TouchRuntime::has_visuals() const {
   return overlay_visible() || menu_visible();
 }
@@ -648,6 +659,11 @@ int touch_runtime_use_prompt(x2::presentation::Rect *rect, int *held) {
     *held = pressed ? 1 : 0;
   }
   return 1;
+}
+
+int touch_runtime_clear_of_controls(x2::presentation::Rect natural,
+                                    x2::presentation::Rect *placed) {
+  return placed && runtime.clear_of_controls(natural, *placed) ? 1 : 0;
 }
 
 int touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }

@@ -3,7 +3,8 @@
 The run loads the Sanctuary hub, teleports the active hero with setPos* into
 the trivia console's use trigger, taps the game's own "Use Trivia Game"
 prompt near its edge and judges the result by GET /menu: the game's trivia
-menu opens. See docs/RE/hud.md for the prompt.
+menu opens. Each variant runs in one window shape, and in each no drawn
+control overlaps the prompt. See docs/RE/hud.md for the prompt.
 """
 
 from __future__ import annotations
@@ -20,6 +21,14 @@ HUB_MAP = "act1/sanctuary/sanctuary1"
 # Inside trigger_use01 (2251.3, 2241.7, -356.6; 40 units each way in x and y).
 TRIVIA = (2235.0, 2215.0, -356.0)
 AWAY = (2235.0, 2015.0, -356.0)
+# The window each variant runs in: a tablet (a 2800x1840 panel's
+# presentation), 4:3, 16:9 and a 20:9 phone.
+SHAPES = {
+    "touch-use-prompt": (1096, 720),
+    "touch-use-prompt-4x3": (960, 720),
+    "touch-use-prompt-16x9": (1280, 720),
+    "touch-use-prompt-20x9": (1600, 720),
+}
 
 
 def teleport(case: Case, at: tuple[float, float, float]) -> None:
@@ -61,8 +70,19 @@ def wait_menu(case: Case, name: str, timeout: float) -> str:
     return shown
 
 
+def overlapping(rect, controls) -> list[str]:
+    left, top, width, height = rect
+    return [action for action, (cl, ct, cw, ch) in controls.items()
+            if cl < left + width and left < cl + cw
+            and ct < top + height and top < ct + ch]
+
+
 def case_touch_use_prompt(case: Case) -> None:
-    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
+    width, height = SHAPES[case.name]
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2",
+                          "video.width=%d" % width,
+                          "video.height=%d" % height,
+                          "video.mode=windowed"])
     case.seed_save("autosave0.save")
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
@@ -96,15 +116,22 @@ def case_touch_use_prompt(case: Case) -> None:
     case.check("the button is finger-sized (%gx%g, finger %g)"
                % (width, height, finger),
                width >= finger and height >= finger)
-    case.check("the button sits in the bottom half, centred",
+    case.check("the button sits in the bottom half, near the centre",
                top > window[1] * 0.5
                and abs(left + width * 0.5 - window[0] * 0.5) < window[0] * 0.1)
+    controls = live_controls(case)
+    (case.dir / "controls.txt").write_text(case.get_text("/controls"))
+    case.check("the gameplay controls are drawn, Jump among them",
+               "jump" in controls, str(sorted(controls)))
+    covered = overlapping(rect, controls)
+    case.check("in %gx%g no drawn control overlaps the button %s"
+               % (window[0], window[1], rect), not covered,
+               "; ".join("%s %s" % (name, controls[name]) for name in covered))
     case.shot("prompt")
 
     # Near the button's corner, outside the text the game draws.
     px, py = left + 4.0, top + 4.0
-    under = [action for action, (cl, ct, cw, ch) in live_controls(case).items()
-             if cl <= px < cl + cw and ct <= py < ct + ch]
+    under = overlapping((px, py, 1.0, 1.0), controls)
     case.check("no overlay control lies under that point", not under,
                str(under))
     x, y = px / window[0], py / window[1]
