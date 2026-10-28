@@ -1063,12 +1063,12 @@ touch-codex`, 12 of 12 on 2026-10-06: `openmenu codex` from gameplay showed
 its 15 heroes with Back and Details, a tap on Wolverine selected it in the game,
 Details switched the game to the description with Wolverine loaded and the
 touch menu showed its name and lines, a drag scrolled them, Details returned
-to the list on Wolverine, and Back closed the codex. The world map follows:
-measured by `tools/live_case.py touch-worldmap`, 19 of 19 on 2026-10-28: the
+to the list on Wolverine, and Back closed the codex. The world map follows, native on touch:
+measured by `tools/live_case.py touch-worldmap`, 18 of 18 on 2026-10-28: the
 console's `loadmap` of savage1 and sanctuary1 unlocked one extraction point
 in each of acts 1 and 2 through their own load scripts, `openmenu worldmap`
-showed the act 1 and act 2 tabs with act 1 lit, Sanctuary focused, the region
-and description, and one Back with go; go on Sanctuary, where the party
+showed the game's own screen on act 1 with finger buttons on only the act 1
+and act 2 tabs, Sanctuary focused, and Back and go buttons; go on Sanctuary, where the party
 stood, kept the world map; a tap on act 2 opened it in the game with Avalon
 focused; a tap on Avalon travelled (the game loaded a map and the world map
 reopened on act 2); and Back closed it. The stash follows: measured by

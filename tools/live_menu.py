@@ -362,15 +362,20 @@ def dismiss_level_up(case: Case) -> None:
                closed.get("popup") is not True)
 
 
-def menu_items(case: Case) -> list[dict]:
-    """Every item of the menu as GET /menu?items=all reads it."""
+def read_menu_items(case: Case) -> dict:
+    """The menu with every item, as GET /menu?items=all reads it."""
     code, body = case.http("/menu?items=all")
     if code != 200:
-        return []
+        return {}
     try:
-        return json.loads(body).get("items", [])
+        return json.loads(body)
     except ValueError:
-        return []
+        return {}
+
+
+def menu_items(case: Case) -> list[dict]:
+    """Every item of the menu as GET /menu?items=all reads it."""
+    return read_menu_items(case).get("items", [])
 
 
 def menu_item(case: Case, name: str) -> dict:
@@ -408,8 +413,7 @@ def option_tabs(case: Case, pattern: str) -> dict[str, bool]:
 def tap_tab(case: Case, pattern: str, label: str) -> bool:
     """Tap the finger button over the game's tab named by `pattern` whose
     text is `label`."""
-    code, body = case.http("/menu?items=all")
-    menu = json.loads(body) if code == 200 else {}
+    menu = read_menu_items(case)
     tab = next((item for item in menu.get("items", [])
                 if re.fullmatch(pattern, item["name"])
                 and item["label"] == label), {})

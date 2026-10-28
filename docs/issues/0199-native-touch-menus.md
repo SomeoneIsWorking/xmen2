@@ -36,8 +36,7 @@ refuses the finger:
 | small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; native ones: their rows (step 4) |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
-hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), the world
-map's points (no unlocked point at the boot map), and `options`/`options_controller`
+hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), and `options`/`options_controller`
 from the title menu (the scan opens them from a level).
 
 ## Steps
@@ -92,4 +91,9 @@ a finger button of the option art with its words and no keycap, and the tabs
 of the shop, stash, review and danger room get finger areas; a press on either
 is delivered at the item, so the menu's own handlers act (the codex's Details
 included). Shown by the same cases tapping each button outside the game's own
-box, and by `touch-menu` leaving Options by its Back button.
+box, and by `touch-menu` leaving Options by its Back button. The online region
+list and the world map are native on touch and their RmlUi views are deleted:
+the world map is the game's own screen with finger areas on its enabled act
+tabs and point rows, shown by `touch-worldmap` (an act tap opening act 2, a tap
+on the focused Avalon travelling, Back) and `touch-region`. The team menu is
+the last screen the RmlUi touch menu replaces.

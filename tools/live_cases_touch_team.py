@@ -243,7 +243,7 @@ def case_touch_team_gear(case: Case) -> None:
         before = menu_labels(case)
         tap_list_entry(case, gear)
         # The shop blanks its count for one frame before writing the new one.
-        wait_labels(case, lambda now: shows_new_count(now, before))
+        wait_labels(case, lambda now, before=before: shows_new_count(now, before))
         bought.append(entries[gear])
     count = menu_labels(case).get("inventory_count")
     case.check("two pieces of gear bought through the touch shop",

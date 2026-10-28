@@ -13,6 +13,7 @@ from live_menu import (
     dismiss_level_up,
     drag_between,
     footer_button,
+    item_button,
     keyboard_into_gameplay,
     keyboard_into_the_pda,
     keyboard_past_the_intro,
@@ -27,11 +28,13 @@ from live_menu import (
     menu_text,
     option_tabs,
     read_menu,
+    read_menu_items,
     reveal_list_entry,
     reveal_touch_row,
     select_list_entry,
     tap_footer_button,
     tap_list_entry,
+    tap_button_edge,
     tap_menu_item,
     tap_tab,
     tap_touch_button,
@@ -475,14 +478,32 @@ def world_map_acts(case: Case) -> dict[str, bool]:
     return acts
 
 
+def world_map_points(case: Case) -> dict[str, bool]:
+    """The game's unlocked point rows, each with whether it is focused."""
+    return {item["label"]: bool(item.get("focused"))
+            for item in menu_items(case)
+            if re.fullmatch(r"list01_0\d", item["name"]) and item["flags"] & 0x08}
+
+
+def tap_world_map_point(case: Case, label: str) -> bool:
+    """Tap the finger button over the point row that reads `label`."""
+    menu = read_menu_items(case)
+    point = next((item for item in menu.get("items", [])
+                  if re.fullmatch(r"list01_0\d", item["name"])
+                  and item["label"] == label), {})
+    return tap_button_edge(case, item_button(menu, point))
+
+
 def case_touch_worldmap(case: Case) -> None:
-    """The touch menu over CMenuWorldMap, opened by the console from gameplay.
+    """CMenuWorldMap on touch: the game's own screen, its unlocked acts and
+    points given finger buttons, opened by the console from gameplay.
 
     Visiting a map with an extraction point unlocks it through its own load
     script (extractionUnlock), so the console's loadmap of savage1 and then
-    sanctuary1 leaves one point open in each of acts 1 and 2. Each tap is
-    judged by the game's own state: the lit act, the focused point, the menu
-    it has open and the act the world map reopens on after travelling.
+    sanctuary1 leaves one point open in each of acts 1 and 2. Each tap lands
+    at the edge of its finger button, outside the game's own box, and is
+    judged by the game's state: the lit act, the focused point, the menu it
+    has open and the act the world map reopens on after travelling.
     """
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2"])
     case.seed_save("autosave0.save")
@@ -498,58 +519,47 @@ def case_touch_worldmap(case: Case) -> None:
         case.check("loadmap %s reached gameplay" % map_name,
                    menu.get("active") is False, str(menu.get("menu")))
     case.http("/console?command=openmenu%20worldmap")
-    shown = wait_touch_menu(case, "worldmap", 20)
-    (case.dir / "worldmap.json").write_text(json.dumps(shown, indent=1) + "\n")
-    case.check("the touch menu is shown over the game's world map",
-               shown.get("visible") is True
-               and read_menu(case).get("class") == "CMenuWorldMap",
-               str(read_menu(case).get("class")))
+    shown = wait_game_menu(case, lambda m: m.get("menu") == "worldmap", 20)
+    case.check("the world map is the game's own screen",
+               shown.get("class") == "CMenuWorldMap"
+               and not shown.get("touch_menu", {}).get("visible"),
+               str(shown.get("class")))
+    menu = read_menu_items(case)
+    (case.dir / "worldmap.json").write_text(json.dumps(menu, indent=1) + "\n")
     acts = world_map_acts(case)
     case.check("the game opened on act 1 with acts 1 and 2 unlocked",
                acts == {"act 1": True, "act 2": False}, str(acts))
-    tabs = [(t["label"], t["lit"]) for t in shown.get("tabs", [])]
-    case.check("its tabs are the unlocked acts with act 1 lit",
-               tabs == [("act 1", True), ("act 2", False)], str(tabs))
-    rows = [(r["label"], r["focused"]) for r in shown.get("rows", [])]
-    case.check("its rows are act 1's unlocked point, focused",
-               rows == [("Sanctuary", True)], str(rows))
-    footers = [b["label"] for b in shown.get("buttons", [])
-               if b["part"] == "footer"]
-    case.check("its footers are one Back and go", footers == ["Back", "go"],
-               str(footers))
-    case.check("and the point's region and description",
-               bool(shown.get("facts")) and bool(shown.get("detail")),
-               "facts %s, detail %s" % (shown.get("facts"), shown.get("detail")))
-    if shown.get("visible") is not True or len(tabs) != 2:
-        return
+    tabs = [item for item in menu.get("items", [])
+            if re.fullmatch(r"option0\d_text", item["name"])]
+    buttons = [item["label"] for item in tabs if item_button(menu, item)]
+    case.check("only the unlocked acts have finger buttons",
+               buttons == ["act 1", "act 2"], str(buttons))
+    points = world_map_points(case)
+    case.check("act 1's unlocked point is focused",
+               points == {"Sanctuary": True}, str(points))
+    case.check("Back and go are finger buttons",
+               bool(footer_button(menu, "$MENU_BACK"))
+               and bool(footer_button(menu, "$MENU_ACCEPT")))
     case.shot("worldmap")
 
-    tap_touch_button(case, shown, touch_button(shown, "footer", "go"))
+    tap_footer_button(case, "$MENU_ACCEPT")
     time.sleep(3)
     case.check("go on the map the party is on stays in the world map",
                read_menu(case).get("menu") == "worldmap",
                str(read_menu(case).get("menu")))
 
-    shown = touch_menu(case)
-    tap_touch_button(case, shown, touch_button(shown, "tab", "act 2"))
-    wait_game_menu(case, lambda m: any(
-        t["lit"] and t["label"] == "act 2"
-        for t in m.get("touch_menu", {}).get("tabs", [])), 10)
-    acts = world_map_acts(case)
-    shown = touch_menu(case)
-    rows = [(r["label"], r["focused"]) for r in shown.get("rows", [])]
+    tap_tab(case, r"option0\d_text", "act 2")
+    acts = wait_world_map_acts(case, {"act 1": False, "act 2": True})
     case.check("a tap on act 2 opened it in the game",
                acts == {"act 1": False, "act 2": True}, str(acts))
-    case.check("and the rows became act 2's point, focused",
-               rows == [("Avalon", True)], str(rows))
+    points = world_map_points(case)
+    case.check("and act 2's point is focused",
+               points == {"Avalon": True}, str(points))
     case.shot("act2")
 
-    avalon = touch_button(shown, "row", "avalon")
-    if avalon is None:
-        return
     loading = 'front end menu "" -> "loading"'
     loads = case.log_text().count(loading)
-    tap_touch_button(case, shown, avalon)
+    tap_world_map_point(case, "Avalon")
     left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
     case.check("a tap on the focused Avalon left the world map",
                left.get("menu") != "worldmap", str(left.get("menu")))
@@ -562,18 +572,25 @@ def case_touch_worldmap(case: Case) -> None:
     time.sleep(10)
     case.shot("travelled")
     case.http("/console?command=openmenu%20worldmap")
-    shown = wait_touch_menu(case, "worldmap", 20)
-    acts = world_map_acts(case)
+    wait_game_menu(case, lambda m: m.get("menu") == "worldmap", 20)
+    acts = wait_world_map_acts(case, {"act 1": False, "act 2": True})
     case.check("the world map reopens on act 2, the party's new act",
                acts == {"act 1": False, "act 2": True}, str(acts))
-    back = touch_button(shown, "footer", "back")
-    if back is None:
-        case.check("the world map offers Back", False)
-        return
-    tap_touch_button(case, shown, back)
+    tap_footer_button(case, "$MENU_BACK")
     left = wait_game_menu(case, lambda m: m.get("menu") != "worldmap", 10)
     case.check("Back left the world map",
                left.get("menu") != "worldmap", str(left.get("menu")))
+
+
+def wait_world_map_acts(case: Case, want: dict[str, bool],
+                        timeout: float = 10) -> dict[str, bool]:
+    """The world map's unlocked acts once they read `want`, or the last read."""
+    deadline = time.monotonic() + timeout
+    acts = world_map_acts(case)
+    while time.monotonic() < deadline and acts != want:
+        time.sleep(0.3)
+        acts = world_map_acts(case)
+    return acts
 
 
 def wait_labels(case: Case, done, timeout: float = 10) -> dict[str, str]:
