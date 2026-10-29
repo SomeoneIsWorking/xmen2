@@ -2088,6 +2088,7 @@ set(X2_NATIVE_SOURCES
     src/native/cutscene_player_policy.cpp
     src/native/cutscene_control_clock.cpp
     src/native/cutscene_player.cpp
+    src/native/hud_cinematic_skip.cpp
     src/native/stick_axis_override.cpp
     src/native/menu_start_policy.cpp
     src/native/menu_start_override.cpp
@@ -2174,10 +2175,13 @@ set(X2_NATIVE_SOURCES
     src/native/control_save_route.cpp
     src/native/control_menu_route.cpp
     src/native/control_entities_route.cpp
+    src/native/control_pickups_route.cpp
     src/native/control_script_route.cpp
     src/native/control_party_route.cpp
     src/native/retail_entities.cpp
     src/native/retail_entities_live.cpp
+    src/native/retail_pickups.cpp
+    src/native/retail_pickups_live.cpp
     src/native/control_console.cpp
     src/native/retail_front_end.cpp
     src/native/campaign_snapshot.cpp
@@ -2235,6 +2239,7 @@ set(X2_NATIVE_SOURCES
     src/native/conversation.cpp
     src/native/script_trace.cpp
     src/native/entity_spawn_probe.cpp
+    src/native/model_attach_report.cpp
     src/native/heartbeat.cpp
     src/native/heartbeat_reports.cpp
     src/native/heartbeat_stall.cpp

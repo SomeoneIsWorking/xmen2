@@ -12,7 +12,6 @@
 #include <cctype>
 #include <cstdio>
 #include <string>
-#include <vector>
 
 namespace x2::control {
 namespace {
@@ -27,12 +26,6 @@ std::string lowered(std::string text) {
     return static_cast<char>(std::tolower(c));
   });
   return text;
-}
-
-std::string json_text(const std::string &value) {
-  std::vector<char> buffer(value.size() * 6u + 3u);
-  x2::native::json_string_format(buffer.data(), buffer.size(), value.c_str());
-  return buffer.data();
 }
 
 void read_entities(void *context) {
@@ -54,7 +47,7 @@ void read_entities(void *context) {
                   static_cast<double>(entity.at.z));
     body += first ? "{" : ",{";
     first = false;
-    body += "\"definition\":" + json_text(entity.definition) + "," +
+    body += "\"definition\":" + native::json_string(entity.definition) + "," +
             numbers.data() + "}";
   }
   body += "]}\n";

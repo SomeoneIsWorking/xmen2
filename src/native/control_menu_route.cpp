@@ -28,9 +28,7 @@ namespace x2::control {
 namespace {
 
 void put_string(std::string *out, const std::string &value) {
-  std::vector<char> buffer(value.size() * 6u + 3u);
-  x2::native::json_string_format(buffer.data(), buffer.size(), value.c_str());
-  out->append(buffer.data());
+  out->append(x2::native::json_string(value));
 }
 
 void put_key(std::string *out, const char *key) {

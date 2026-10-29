@@ -13,7 +13,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <vector>
 
 namespace x2::control {
 namespace {
@@ -34,12 +33,6 @@ struct Reading {
   float energy = 0.0F;
   float max_energy = 0.0F;
 };
-
-std::string json_text(const std::string &value) {
-  std::vector<char> buffer(value.size() * 6u + 3u);
-  x2::native::json_string_format(buffer.data(), buffer.size(), value.c_str());
-  return buffer.data();
-}
 
 /* GET /party's body, built at the guest input poll, where the guest is
    between updates and the revive offer is polled. */
@@ -88,7 +81,7 @@ void read_party(void *context) {
     body += first ? "{" : ",{";
     first = false;
     body +=
-        "\"definition\":" + json_text(entity->definition) + "," + numbers + "}";
+        "\"definition\":" + native::json_string(entity->definition) + "," + numbers + "}";
   }
   const input::RevivePromptView offer = input::revive_prompt().view();
   body += "],\"pads\":[";
@@ -103,8 +96,8 @@ void read_party(void *context) {
   }
   body += "],\"offered\":";
   body += offer.offered ? "true" : "false";
-  body += ",\"offer\":" + json_text(offer.text);
-  body += ",\"notice\":" + json_text(offer.notice);
+  body += ",\"offer\":" + native::json_string(offer.text);
+  body += ",\"notice\":" + native::json_string(offer.notice);
   std::uint32_t conversation = 0;
   std::uint8_t flags = 0;
   const bool held =

@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include <vector>
+
 namespace x2::native {
 
 static int append(char *out, size_t capacity, size_t *used, const char *text,
@@ -37,6 +39,12 @@ int json_string_format(char *out, size_t capacity, const char *value) {
     }
   }
   return append(out, capacity, &used, "\"", 1u);
+}
+
+std::string json_string(const std::string &value) {
+  std::vector<char> buffer(value.size() * 6u + 3u);
+  json_string_format(buffer.data(), buffer.size(), value.c_str());
+  return buffer.data();
 }
 
 } // namespace x2::native
