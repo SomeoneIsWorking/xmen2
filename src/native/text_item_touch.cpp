@@ -16,6 +16,8 @@
 #include "automap_touch.hpp"
 #include "guest_body.h"
 #include "guest_call.hpp"
+#include "guest_image_reader.hpp"
+#include "guest_memory_view.hpp"
 #include "guest_modules.h"
 #include "menu_action.hpp"
 #include "menu_item_memory.hpp"
@@ -94,6 +96,15 @@ constexpr std::array<FingerItems, 3> kBarRows{{
     {"CMenuOptions", "label_accept", Aim::item_box},
 }};
 constexpr std::string_view kRowPrefix = "label_";
+/* Items that show their menu's desctext1 prompt on touch, where the menu has
+   no footer item for it: CMenuOptionsController's empty description line on
+   the page's bottom strip (options_controller.XMLB names desctext1 and has no
+   desctext item). */
+constexpr std::array<FingerItems, 1> kPromptHosts{{
+    {"CMenuOptionsController", "description_text"},
+}};
+/* A prompt host's button, for GET /menu. */
+constexpr std::string_view kPromptName = "page prompt";
 /* A menu's footers are its items `desctext1` to `desctext9`. */
 constexpr std::string_view kFooterName = "desctext";
 constexpr int kFooterNames = 9;
@@ -179,7 +190,9 @@ public:
     }
     x2::guest::GuestCall call(cpu);
     const std::uint32_t text_at = call.virtual_call(self, item::kSlotText);
-    const std::string text = text_at == 0u
+    const bool prompt_host = listed(kPromptHosts, menu_class, name) != nullptr;
+    const std::string text = prompt_host ? menu_prompt(RD32(self + item::kMenu))
+                             : text_at == 0u
                                  ? std::string()
                                  : std::string(x2::guest::guest_string(
                                        text_at, menu_text::kLineBytes));
@@ -238,16 +251,20 @@ public:
       x2::native::automap_touch_turn(turn);
       return true;
     }
-    const SceneBox area = footer_area(call, self, menu_class, finger);
-    const auto own = x2::native::touch_token_action(text);
+    const std::string label = x2::native::menu_token_label(text);
+    const SceneBox area = prompt_host
+                              ? prompt_area(call, self, label, finger)
+                              : footer_area(call, self, menu_class, finger);
+    const auto own = prompt_host ? x2::native::menu_token_action(text)
+                                 : x2::native::touch_token_action(text);
     targets.put(
         {area, hit_centre(self),
-         own ? x2::input::TouchPress::own : x2::input::TouchPress::click});
+         own ? x2::input::TouchPress::own : x2::input::TouchPress::click,
+         prompt_host ? kPromptName : std::string_view()});
     if (own && targets.take_tap(area)) {
       x2::native::post_menu_action(*own);
     }
-    draw_button(call, vectors, self, 0u, area,
-                x2::native::menu_token_label(text), targets.pressed(area),
+    draw_button(call, vectors, self, 0u, area, label, targets.pressed(area),
                 finger);
     return true;
   }
@@ -323,6 +340,35 @@ private:
     menu_text::line(call, self, box, words, button.scale,
                     menu_text::kAlignCentre | menu_text::kAlignMiddle, colour,
                     line.address());
+  }
+
+  /* The menu's desctext1 prompt as the game's bytes. */
+  static std::string menu_prompt(std::uint32_t menu) {
+    const x2::native::LiveGuestMemory memory;
+    x2::native::GuestImageReader reader(memory, x2::native::guest_exe_base());
+    std::string prompt;
+    if (!reader.pool2_bytes(RD32(menu + x2::menu::kMenuDesctext), &prompt)) {
+      prompt.clear();
+    }
+    return prompt;
+  }
+
+  /* A prompt host's button: as wide as the prompt's words at a button's
+     text size and the text pad at each end, from the host's left. */
+  static SceneBox prompt_area(x2::guest::GuestCall &call, std::uint32_t self,
+                              const std::string &label, float finger) {
+    SceneBox text = text_box(self);
+    const std::uint32_t box = RD32(self + item::kTextBox);
+    const x2::guest::GuestBlock line(menu_text::kLineBytes);
+    if (box != 0u && line) {
+      const float scale =
+          x2::input::kCardText * finger / menu_text::line_height(call, box);
+      const float words =
+          menu_text::width(call, box, line.address(), label, scale);
+      text.right =
+          std::min(text.right, text.left + words + 2.0F * kTextPad * finger);
+    }
+    return x2::input::text_button(text, finger);
   }
 
   /* The button over `self` among the footers of its menu drawn as buttons:

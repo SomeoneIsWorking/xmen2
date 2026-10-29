@@ -23,12 +23,17 @@ inline constexpr std::uint32_t kMenuVtableOnMouse = 0x80u;
 inline constexpr std::uint32_t kManagerRva = 0x004aff18u;
 /* `FUN_005d83d0`: MOV EAX,[ECX+0x86090]. */
 inline constexpr std::uint32_t kActiveMenu = 0x86090u;
+/* The review mode CMenuImageViewer pages through, 0 measured on the screens
+   tab and -1 for none (vfunc +0x1c8, FUN_005d8450), and
+   its image's name (vfunc +0x1bc, FUN_005d86b0). */
+inline constexpr std::uint32_t kViewerReviewMode = 0x86040u;
+inline constexpr std::uint32_t kViewerImage = 0x85eb0u;
+inline constexpr std::size_t kViewerImageBytes = 0x100u;
+inline constexpr std::string_view kImageViewerClass = "CMenuImageViewer";
 
 /* CMenu. */
 inline constexpr std::uint32_t kMenuName = 0x0cu;
 inline constexpr std::size_t kMenuNameBytes = 64u;
-/* `FUN_005bc6d0` called from CMenu::parse (FUN_005ad830). */
-inline constexpr std::uint32_t kMenuDesctext = 0x2f4u;
 inline constexpr std::uint32_t kMenuLiveBits = 0x15f0u;
 inline constexpr std::uint32_t kMenuItemCount = 0x1608u;
 inline constexpr std::uint32_t kMenuItemArray = 0x160cu;
@@ -730,7 +735,19 @@ ReadStatus RetailMenuModel::read(MenuSnapshot *out) {
   if (menu == 0u) {
     return ReadStatus::no_menu;
   }
-  return read_menu(menu, out);
+  const ReadStatus status = read_menu(menu, out);
+  if (status != ReadStatus::ok || out->menu_class != kImageViewerClass) {
+    return status;
+  }
+  std::uint32_t mode = 0;
+  std::string image;
+  if (!reader_.u32(manager + kViewerReviewMode, &mode) ||
+      !reader_.c_string(manager + kViewerImage, kViewerImageBytes, &image)) {
+    return ReadStatus::unreadable;
+  }
+  out->viewer =
+      ViewerSnapshot{static_cast<int>(mode), native::latin1_to_utf8(image)};
+  return status;
 }
 
 ReadStatus RetailMenuModel::read_menu(std::uint32_t menu, MenuSnapshot *out) {

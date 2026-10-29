@@ -25,6 +25,8 @@ scratch/run/live.json.
     tools/live_case.py touch-text-entry       # a name typed, Backspace, Done and Back
     tools/live_case.py touch-hero-list        # the hero list scrolled, a hero chosen, Back
                                               # (-4x3, -tablet, -20x9: other shapes)
+    tools/live_case.py touch-controller-page  # the controller page left by its Back
+                                              # (-4x3, -tablet, -20x9: other shapes)
     tools/live_case.py combat-bench          # boss fight frame times, no JIT flush
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
@@ -77,6 +79,7 @@ from live_cases_touch_menu import (
 from live_cases_touch_map import SHAPES as AUTOMAP_SHAPES, case_touch_automap
 from live_cases_touch_text import SHAPES as TEXT_SHAPES, case_touch_text_entry
 from live_cases_touch_hero import SHAPES as HERO_SHAPES, case_touch_hero_list
+from live_cases_touch_pages import PAGE_CASES
 from live_cases_touch_rows import case_touch_menu, case_touch_pda
 from live_cases_touch_team import (
     ASPECT_CASES,
@@ -173,6 +176,7 @@ CASES.update({
 CASES.update({name: case_touch_automap for name in AUTOMAP_SHAPES})
 CASES.update({name: case_touch_text_entry for name in TEXT_SHAPES})
 CASES.update({name: case_touch_hero_list for name in HERO_SHAPES})
+CASES.update(PAGE_CASES)
 CASES.update({
     "live-resolution": case_live_resolution,
     "mouse-click": case_mouse_click,

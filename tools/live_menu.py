@@ -136,8 +136,9 @@ def menu_row(menu: dict, label: str) -> dict:
 
 
 def menu_footer(menu: dict, token: str) -> dict:
-    """The game's desctext item carrying `token`, such as $MENU_BACK."""
-    for text in menu.get("texts", []):
+    """The game's desctext item carrying `token`, such as $MENU_BACK; a
+    menu whose only item is a footer has it in its rows."""
+    for text in menu.get("texts", []) + menu.get("rows", []):
         if text["name"].startswith("desctext") and token in text["label"]:
             return text
     return {}

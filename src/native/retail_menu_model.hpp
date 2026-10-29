@@ -60,6 +60,9 @@ struct SceneRect {
 SceneRect item_hit_rect(int left, int top, int width, int height,
                         int local_top);
 
+/* menu+0x2f4: the menu's desctext1..5 prompts, handle_str<2> handles
+   (FUN_005bc6d0 called from CMenu::parse, FUN_005ad830). */
+inline constexpr std::uint32_t kMenuDesctext = 0x2f4u;
 /* menu+0x324: the focused item. */
 inline constexpr std::uint32_t kMenuFocus = 0x324u;
 /* menu+0x18d8: the page a paged menu shows (CMenuPDA's rows or icons,
@@ -180,6 +183,13 @@ struct PopupSnapshot {
   std::vector<PopupFooter> footers;
 };
 
+/* What CMenuImageViewer shows: the review mode it pages through (-1 for
+   none, which hides Previous and Next) and the image's name. */
+struct ViewerSnapshot {
+  int review_mode = -1;
+  std::string image;
+};
+
 struct MenuSnapshot {
   std::uint32_t address = 0;
   std::string name;
@@ -204,6 +214,8 @@ struct MenuSnapshot {
   /* CMenuTeam's skill list entry being assigned to a power slot
      (menu+0x18e8); nullopt when none. */
   std::optional<int> assigning_skill;
+  /* CMenuImageViewer's image, while it is the active menu. */
+  std::optional<ViewerSnapshot> viewer;
 };
 
 enum class ReadStatus : std::uint8_t {

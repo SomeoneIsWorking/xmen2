@@ -148,9 +148,24 @@ the platform's keyboard, a phone's screen keyboard: the port had delivered no
 through the list layout, shown by `touch-hero-list`, `-4x3`, `-tablet` and
 `-20x9` (HERO_COUNT).
 
-The menu pad is not deleted: the classes not native on touch (the online
-lobby menus, CMenuPersonal, CMenuSebas, CMenuImageViewer, CMenuCredits,
-CMenuOptionsController) have no other touch path yet.
+The review's image viewer, the credits, the controller page and a personal
+file are native on touch (`src/native/page_touch.cpp`, see
+[touch play](../touch-play.md)): the viewer's Back, Previous and Next are
+finger buttons and a swipe pages it, a tap ends the credits, the controller
+page's Back, which retail draws nowhere, is a finger button in its empty
+description line, and a personal file's Back is a finger button. Shown by
+`touch-image-viewer`, `touch-credits`, `touch-controller-page` and
+`touch-personal`, each also `-4x3`, `-tablet` and `-20x9`. Retail never
+opens the controller page or a personal file ([menus](../RE/menus.md)).
+
+The menu pad is not deleted. CMenuSebas (Advanced Options, Escape from the
+main menu's Options) still draws it under `input.touch_controls=2`; it needs
+a touch route in from Options and a touch layout for its resolution bar,
+player tabs, binding table, defaults, Accept and Revert. The online lobby
+menus still draw it: CMenuOnline, CMenuCampaignLobby, CMenuHost and
+CMenuJoin, each with its own onMouse ([menus](../RE/menus.md)), and the
+four lobby screens not reached yet (`players`, `players_list`,
+`games_list`, `player_game_options`).
 
 The team menu's open items are closed: footer buttons disjoint with five
 footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),
