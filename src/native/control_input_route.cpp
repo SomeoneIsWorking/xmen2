@@ -24,6 +24,7 @@
 #include "dinput_system.h"
 #include "gpu_device.h"
 #include "guest_clock.h"
+#include "hud_draw_runtime.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -327,6 +328,14 @@ void control_route_controls(x2::native::Socket fd) {
                    (double)prompt.top, (double)(prompt.right - prompt.left),
                    (double)(prompt.bottom - prompt.top),
                    prompt_held ? " held" : "");
+  }
+  /* The game's band of the lines kept out of that button: no control. */
+  x2::presentation::Rect band;
+  if (at < (int)sizeof body && x2::native::hud_message_band(&band)) {
+    at += snprintf(body + at, sizeof body - (size_t)at,
+                   "message-band %g,%g %gx%g\n", (double)band.left,
+                   (double)band.top, (double)(band.right - band.left),
+                   (double)(band.bottom - band.top));
   }
   control_reply_text(fd, 200, "OK", "%s", body);
 }
