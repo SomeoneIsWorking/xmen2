@@ -423,6 +423,8 @@ static void serve(x2::native::Socket fd) {
     x2::native::control_save_route(fd);
   else if (!strcmp(path, "/menu"))
     x2::control::menu_route(fd, query ? query : "");
+  else if (!strcmp(path, "/menu/action"))
+    x2::control::menu_action_route(fd, query ? query : "");
   else if (!strcmp(path, "/party"))
     x2::control::party_route(fd);
   else if (!strcmp(path, "/entities"))
@@ -456,6 +458,7 @@ static void serve(x2::native::Socket fd) {
         "game as a lobby, or join the LAN game this machine finds\n"
         "  GET /save         bounded retail save/load trace\n"
         "  GET /menu[?items=all]  the active retail menu's rows, as JSON\n"
+        "  GET /menu/action?name=ok  post a $MENU_ action to the menu up\n"
         "  GET /party        money and each hero's health and energy, as JSON\n"
         "  GET /entities[?match=TEXT]  every entity's definition and "
         "position, as JSON\n"

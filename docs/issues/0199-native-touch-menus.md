@@ -21,8 +21,8 @@ renderer from the player's install.
 ## Work list
 
 `tools/scan.py` opens every menu its console can open (`boot.mode=menu`, then
-`X2_BOOT_MAP=act2/jungle/jungle1` and `openmenu <name>`) with touch forced on, and
-prints the run-end `menu touch gap:` lines from `x2::input::MenuTouchGapReport`
+`X2_BOOT_MAP=act2/jungle/jungle1`, a tap answering the level's opening line,
+and `openmenu <name>`) with touch forced on, and prints the run-end `menu touch gap:` lines from `x2::input::MenuTouchGapReport`
 (`src/input/menu_touch_gaps.cpp`). Each kind names the guest function that
 refuses the finger:
 
@@ -158,14 +158,34 @@ description line, and a personal file's Back is a finger button. Shown by
 `touch-personal`, each also `-4x3`, `-tablet` and `-20x9`. Retail never
 opens the controller page or a personal file ([menus](../RE/menus.md)).
 
-The menu pad is not deleted. CMenuSebas (Advanced Options, Escape from the
-main menu's Options) still draws it under `input.touch_controls=2`; it needs
-a touch route in from Options and a touch layout for its resolution bar,
-player tabs, binding table, defaults, Accept and Revert. The online lobby
-menus still draw it: CMenuOnline, CMenuCampaignLobby, CMenuHost and
-CMenuJoin, each with its own onMouse ([menus](../RE/menus.md)), and the
-four lobby screens not reached yet (`players`, `players_list`,
-`games_list`, `player_game_options`).
+The online lobby menus are native on touch: CMenuOnline, CMenuCampaignLobby,
+CMenuGameOptions, CMenuPlayerGameOptions, CMenuHost, CMenuJoin,
+CMenuGamesList and CMenuPlayersList. Their own onMouse walks the focus to
+the row under the pointer and accepts on the focused one, so each row is a
+finger area at its raw box and the footers are finger buttons. Shown by
+`touch-lobby-host` (play online, Ready, Host Game, Post Game, Leave Room)
+and `touch-lobby-join` (Join Game, Search, the games list's Back, the
+players list, the join room under its popup), each also `-4x3`, `-tablet`
+and `-20x9`. The join room's own Ready and Leave Room are finger areas but
+were not tapped: with no session it closes with its "no longer available"
+popup, and a session needs a second running game. `players` is
+`PLAYERS_MENU`, which the PC factory does not build: `openmenu players`
+gives a plain `CMenu` that draws nothing, and no PC string opens it.
+
+The menu pad is not deleted, because CMenuSebas (Advanced Options) still
+draws it. The way in is touchable: Options' footer `Advanced...` is a finger
+button posting `MENU_OK`, the Start its update opens Advanced Options on
+(`touch-advanced-options`), and `GET /menu/action?name=ok` is the scan's
+route to it. But the screen is a second GUI, not CMenu items
+([menus](../RE/menus.md#advanced-options-cmenusebas)): `FUN_0061dc10` builds
+its widgets in client pixels and `FUN_00621ea0` hit-tests the pointer
+against them. A tap selects a tab and puts a binding cell into capture, but
+its rows (24 pixels apart at 720p) and tabs are under a finger, `Esc Back`
+is a label, and a capture waits for a key; Escape, the pad's B and a tap at
+Accept each left it up, so no way out of it is established. Its touch layout needs that GUI's widget classes read
+(rectangle, the table's row height and text size, the capture state) so a
+port layout can place them as finger cards and give Back and Cancel a
+button; until then the pad stays the touch path over it.
 
 The team menu's open items are closed: footer buttons disjoint with five
 footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),

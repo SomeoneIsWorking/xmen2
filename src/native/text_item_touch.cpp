@@ -76,8 +76,11 @@ struct FingerItems {
 /* The tabs and rows a menu's onMouse finds by name and tests with their raw
    box: CMenuShop 0x005d3400, CMenuReviewPaths 0x005d04d0, CMenuDangerRoom
    0x005b5a90, CMenuWorldMap 0x005e7f10, CMenuMain 0x005c9320 (Quit),
-   CMenuTeam 0x005e25c0. */
-constexpr std::array<FingerItems, 8> kFingerItems{{
+   CMenuTeam 0x005e25c0; and the lobby rows the online menus' onMouse walk
+   the focus to and accept on the focused one: CMenuOnline, CMenuGameOptions
+   and CMenuPlayerGameOptions 0x005caa80, CMenuCampaignLobby 0x005b03b0,
+   CMenuHost 0x005ba2b0, CMenuJoin 0x005c8da0. */
+constexpr std::array<FingerItems, 26> kFingerItems{{
     {"CMenuShop", "shop_option0"},
     {"CMenuShop", "stash_option0"},
     {"CMenuReviewPaths", "option0"},
@@ -86,6 +89,24 @@ constexpr std::array<FingerItems, 8> kFingerItems{{
     {"CMenuWorldMap", "list01_0"},
     {"CMenuMain", "debug_text"},
     {"CMenuTeam", "detail_option0"},
+    {"CMenuOnline", "text_playername"},
+    {"CMenuOnline", "text_networkset"},
+    {"CMenuOnline", "text_ready"},
+    {"CMenuGameOptions", "text_gamename"},
+    {"CMenuGameOptions", "text_difficulty"},
+    {"CMenuGameOptions", "text_gametype"},
+    {"CMenuGameOptions", "text_mapname"},
+    {"CMenuGameOptions", "text_inviteslots"},
+    {"CMenuPlayerGameOptions", "text_gamename"},
+    {"CMenuPlayerGameOptions", "text_difficulty"},
+    {"CMenuPlayerGameOptions", "text_mapname"},
+    {"CMenuCampaignLobby", "text_hostgame"},
+    {"CMenuCampaignLobby", "text_joingame"},
+    {"CMenuHost", "text_startgame"},
+    {"CMenuHost", "text_kickplayer"},
+    {"CMenuHost", "text_leaveroom"},
+    {"CMenuJoin", "text_readygame"},
+    {"CMenuJoin", "text_leaveroom"},
 }};
 /* Rows drawn on a bar, the item named as the row without this prefix: those
    CMenuMain 0x005c9320 and CMenuPDA 0x005cc1f0 test by raw box, and

@@ -12,6 +12,7 @@
 #include "guest_modules.h"
 #include "json_string.h"
 #include "list_touch.hpp"
+#include "menu_action.hpp"
 #include "options_touch.hpp"
 #include "popup_touch_drawn.hpp"
 #include "touch_menu_source.hpp"
@@ -19,6 +20,7 @@
 #include "win32_pointer.h"
 #include "x86rt_native.h"
 
+#include <cctype>
 #include <cstdio>
 #include <vector>
 
@@ -685,6 +687,64 @@ void menu_route(x2::native::Socket fd, const char *query) {
   }
   std::string &body = read.body;
   control_reply_json(fd, 200, "OK", body.c_str(), body.size());
+}
+
+namespace {
+
+struct MenuPost {
+  native::MenuAction action = native::MenuAction::ok;
+  menu::ReadStatus status = menu::ReadStatus::ok;
+  std::string menu_class;
+};
+
+void post_menu_body(void *context) {
+  auto *post = static_cast<MenuPost *>(context);
+  menu::MenuSnapshot menu;
+  std::uint32_t failed = 0u;
+  post->status = menu::read_live_menu(&menu, &failed);
+  if (post->status != menu::ReadStatus::ok) {
+    return;
+  }
+  post->menu_class = menu.menu_class;
+  native::post_menu_action(post->action);
+}
+
+} // namespace
+
+void menu_action_route(x2::native::Socket fd, const char *query) {
+  char name[32] = "";
+  if (control_query_arg(query, "name", name, sizeof name) == 0) {
+    control_reply_text(fd, 400, "Bad Request",
+                       "GET /menu/action?name=<ok|back|accept|...>\n");
+    return;
+  }
+  std::string token = "$MENU_";
+  for (const char *at = name; *at != '\0'; ++at) {
+    token.push_back(
+        static_cast<char>(std::toupper(static_cast<unsigned char>(*at))));
+  }
+  const auto action = native::menu_token_action(token);
+  if (!action) {
+    control_reply_text(fd, 400, "Bad Request", "%s names no menu action\n",
+                       token.c_str());
+    return;
+  }
+  MenuPost post;
+  post.action = *action;
+  if (control_command_guest_read(post_menu_body, &post) < 0) {
+    control_reply_text(fd, 504, "Gateway Timeout",
+                       "the guest did not reach an input poll within 10s, so "
+                       "nothing was posted\n");
+    return;
+  }
+  if (post.status != menu::ReadStatus::ok) {
+    control_reply_text(fd, 409, "Conflict",
+                       "no retail menu is up (%s), so nothing was posted\n",
+                       menu::read_status_name(post.status));
+    return;
+  }
+  control_reply_text(fd, 200, "OK", "%s posted to %s\n", token.c_str(),
+                     post.menu_class.c_str());
 }
 
 } // namespace x2::control

@@ -2262,9 +2262,10 @@ asks (it decides whether a revive keeps its fraction) is not decoded.
 ### S025 — touch menus in the game's own art: partial
 
 Touch menus drawn with the game's own panels, fonts, colours and focus art from the install,
-laid out for fingers (G008). The main menu, Options and the PDA are native: the game draws them,
-nothing covers them, and a tap is its own pointer (`tools/live_case.py touch-menu`). Their
-footers still show keyboard keycaps and their rows are smaller than a finger. The other menus
-are still a port-styled RmlUi panel over the retail menu. The route is the retail menus themselves, touched directly
-([#199](issues/0199-native-touch-menus.md)); `tools/scan.py` lists what a finger cannot yet do on
-each menu, and that list is the work.
+laid out for fingers (G008). The menus `tools/scan.py` opens are native on touch, the online
+lobby's included: the game draws them, nothing covers them, their rows and footers are finger
+targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host` and the other `touch-*`
+cases). The RmlUi touch menu is deleted. Advanced Options (CMenuSebas) still draws the menu
+pad: it is a second GUI in client pixels whose widgets are not read, so the pad is not
+deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` lists what a finger
+cannot yet do on each menu and every menu the pad is drawn over.
