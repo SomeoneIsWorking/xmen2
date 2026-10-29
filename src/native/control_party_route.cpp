@@ -80,8 +80,8 @@ void read_party(void *context) {
                   static_cast<double>(entity->at.y));
     body += first ? "{" : ",{";
     first = false;
-    body +=
-        "\"definition\":" + native::json_string(entity->definition) + "," + numbers + "}";
+    body += "\"definition\":" + native::json_string(entity->definition) + "," +
+            numbers + "}";
   }
   const input::RevivePromptView offer = input::revive_prompt().view();
   body += "],\"pads\":[";

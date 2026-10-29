@@ -33,11 +33,12 @@ std::string pickup_json(const native::PickupView &pickup) {
       static_cast<double>(pickup.entity.at.x),
       static_cast<double>(pickup.entity.at.y),
       static_cast<double>(pickup.entity.at.z), pickup.flags, pickup.quality,
-      pickup.count, pickup.model, pickup.transform, pickup.bounds,
-      pickup.scene, pickup.scene_vtable, pickup.loop_fx,
-      pickup.loop_fx_on ? "true" : "false", pickup.fx_level);
+      pickup.count, pickup.model, pickup.transform, pickup.bounds, pickup.scene,
+      pickup.scene_vtable, pickup.loop_fx, pickup.loop_fx_on ? "true" : "false",
+      pickup.fx_level);
   return "{\"definition\":" + native::json_string(pickup.entity.definition) +
-         ",\"label\":" + native::json_string(pickup.label) + "," + numbers.data() + "}";
+         ",\"label\":" + native::json_string(pickup.label) + "," +
+         numbers.data() + "}";
 }
 
 void read_pickups(void *context) {

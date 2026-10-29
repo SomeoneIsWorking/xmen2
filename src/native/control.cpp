@@ -2,11 +2,11 @@
 
 #include "control_command_bridge.h"
 #include "control_entities_route.hpp"
-#include "control_pickups_route.hpp"
 #include "control_http.h"
 #include "control_input_route.h"
 #include "control_menu_route.hpp"
 #include "control_party_route.hpp"
+#include "control_pickups_route.hpp"
 #include "x2_log.h"
 #include <lucent/cvar_c.h>
 
