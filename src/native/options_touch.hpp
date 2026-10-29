@@ -18,6 +18,9 @@ namespace x2::native {
    false to leave it to retail's draw. */
 bool options_touch_draw(const CPU &cpu, std::uint32_t self,
                         std::string_view menu_class, std::string_view name);
+/* Whether touch draws `name` as a setting's finger card: a CMenuOptions
+   setting label. */
+bool options_touch_has_card(std::string_view menu_class, std::string_view name);
 /* Retail draws `self` again: its card and the hidden panel come back. */
 void options_touch_restore(const CPU &cpu, std::uint32_t self);
 /* A text item's destructor: a label's card goes with it. */

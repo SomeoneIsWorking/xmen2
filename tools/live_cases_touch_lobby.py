@@ -60,7 +60,7 @@ def lobby_buttons(menu: dict) -> dict[str, dict]:
 
 def check_screen(case: Case, menu: dict, name: str, menu_class: str,
                  rows: list[str]) -> bool:
-    """`name` is up as `menu_class`, no pad over it, its `rows` and footers
+    """`name` is up as `menu_class`, its `rows` and footers
     finger buttons in the window."""
     (case.dir / ("%s.json" % name)).write_text(json.dumps(menu, indent=1))
     up = menu.get("menu") == name and menu.get("class") == menu_class

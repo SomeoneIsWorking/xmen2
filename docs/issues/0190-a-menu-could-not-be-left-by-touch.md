@@ -47,3 +47,6 @@ against 49.3 from Options). `test_touch_runtime` covers both classes of
 finger and the release of a held button when gameplay takes the screen;
 `test_touch_layout` sweeps the pad over nine viewports and fails 18 checks
 with B and X swapped.
+
+The menu pad was deleted when the retail menus became native on touch
+([#199](0199-native-touch-menus.md)).

@@ -987,7 +987,7 @@ is retail's one-button rule, shared by both rather than copied.
 Measured by `tools/live_case.py menu-touch`, 9 of 9 on 2026-10-06: a tap
 ended the first intro movie 6.5s in having been made at 6.0s, where the
 untouched movie runs 10.0s; the census counted the intro tap as the retail
-pointer, a main-menu tap as the touch menu's, and 0 dropped. A skipped movie
+pointer and 0 dropped. A skipped movie
 still reports its full 312 decoded frames, so the movie's end is timed from the
 log instead.
 
@@ -1038,103 +1038,6 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 
 Off gameplay, touch play draws nothing over the game: every menu, popup and
 conversation is laid out for a finger by its own owner (S025).
-
-The main menu, Options and the PDA are replaced in touch play by the port's
-touch menu: an opaque, finger-sized RmlUi list built from the live retail menu
-model, whose taps run only the game's own input -- a retail mouse click inside
-a row's or footer's own hit box, or the menu pad's Up/Down/Left/Right/A where
-the game has no click for the row. Measured by `tools/live_case.py
-touch-menu`, 15 of 15 on 2026-10-06: the main menu's seven rows are offered
-with no menu pad under them, a tap on no button activates nothing, OPTIONS
-opens the game's Options menu, Effects Volume's step-left lowers the game's
-level 1.0 -> 0.9, a tap on Combat Music turns the game's value On -> Off, and
-the Back footer returns the game to its main menu. The team menu's party
-screen follows: measured by `tools/live_case.py touch-team`, 13 of 13 on
-2026-10-06, the touch menu replaced the PDA, Team Management opened the
-party with its four heroes, a tap selected Cyclops in the game, a second tap
-opened Cyclops's details where the menu pad takes over, the pad's B returned
-to the party, and Accept closed the team menu. The shop follows: measured by
-`tools/live_case.py touch-shop`, 18 of 18 on 2026-10-06: the retail
-`temp_addmoney` script gave 2000 money, `openmenu shop` from gameplay showed
-the tab bar with training lit, the training list, the money and the
-description, a tap on the buy tab opened the game's buy tab, a tap on Health
-Pack selected it at the game's price of 100, a second tap bought one (money
-2000 -> 1900, health packs 3 -> 4) and the touch menu showed 1900, and Accept
-closed the shop. The codex follows: measured by `tools/live_case.py
-touch-codex`, 12 of 12 on 2026-10-06: `openmenu codex` from gameplay showed
-its 15 heroes with Back and Details, a tap on Wolverine selected it in the game,
-Details switched the game to the description with Wolverine loaded and the
-touch menu showed its name and lines, a drag scrolled them, Details returned
-to the list on Wolverine, and Back closed the codex. The world map follows, native on touch:
-measured by `tools/live_case.py touch-worldmap`, 18 of 18 on 2026-10-28: the
-console's `loadmap` of savage1 and sanctuary1 unlocked one extraction point
-in each of acts 1 and 2 through their own load scripts, `openmenu worldmap`
-showed the game's own screen on act 1 with finger buttons on only the act 1
-and act 2 tabs, Sanctuary focused, and Back and go buttons; go on Sanctuary, where the party
-stood, kept the world map; a tap on act 2 opened it in the game with Avalon
-focused; a tap on Avalon travelled (the game loaded a map and the world map
-reopened on act 2); and Back closed it. The stash follows: measured by
-`tools/live_case.py touch-stash`, 12 of 12 on 2026-10-07: after two
-`temp_addmoney` runs a tap on Fortified Waistband in the shop's buy tab and a
-second tap bought it (gear 0/20 -> 1/20, money 4000 -> 1850); `openmenu stash`
-showed the stash and inventory tabs with inventory lit, the waistband, the
-stash count and its description; a tap on it stored it (stash 1/60) with the
-tabs kept over the empty list; a tap on the stash tab opened it in the game;
-a tap took the waistband back (gear 1/20); and Accept closed the stash. Shop
-and stash entries are walked with the menu pad and accepted with A, because
-the game loses clicks on its list while a gear entry is selected. The review
-follows: measured by `tools/live_case.py touch-review`, 8 of 8 on 2026-10-07:
-`openmenu review` showed the five tabs with stats lit and the stats entries
-with their counts (Comic Books 0 of 3); a tap on cinematics opened it in the
-game; a tap on the selected Credits played the credits; Esc returned to the
-review under the touch menu; and Back closed it. The region list follows:
-measured by `tools/live_case.py touch-region`, 7 of 7 on 2026-10-07:
-`openmenu region` showed Region Menu over the game's empty list with Back,
-Refresh and Select; a tap on Select opened the campaign lobby; and Back left
-a reopened region. Tab labels too wide for their tab now shrink to fit. The danger room follows:
-measured by `tools/live_case.py touch-danger-room`, 8 of 8 on 2026-10-07:
-`openmenu danger_room` showed the six grades and the game's description with
-Back and Select; a tap on the selected Freshman opened its courses with
-Overview lit; a tap on Status opened it in the game; Back returned to the
-grades; and a tap on the selected course opened the team menu. The danger
-room's online steps (2..9) are unexercised. The team roster follows: measured
-by `tools/live_case.py touch-roster`, 13 of 13 on 2026-10-07, after
-`temp_addmoney` three times, `awardXPToPlayable(2000000)` (level 40), killing
-Wolverine and `loadmap act2/jungle/jungle1 0 1` the
-party read Magneto, Cyclops, Empty slot, Storm; Replace on the empty slot
-opened the roster as 14 named heroes (Jean Grey, Pyro, Sabretooth; no
-Deadpool, Ironman or Professor X) with Wolverine "Fallen, level 40, revive
-3200"; a tap on Wolverine revived him in the game for exactly that (money 6000
-to 2800), and a tap on Sabretooth put him in the empty slot. A hero's detail
-tabs follow, each measured on 2026-10-07 after `awardXPToPlayable(2000000)`
-and `openmenu team` (Magneto, level 40): `touch-team-stats` 14 of 14, a tap
-on strike moved the game's focus there without spending and a second tap
-took it 26 to 27 and the points 156 to 155; `touch-team-skills` 13 of 13,
-Magnetic Shell "Beam, rank 0/18" to "rank 1/18" and the points 39 to 38;
-`touch-team-gear` 21 of 21 (2026-10-28), two waistbands bought by touch in
-the game's shop, a level-up popup dismissed, a
-tap on the empty slot opened both, the second tap on Waistband Nature equipped
-it (gear 2/20 to 1/20), Unequip took it off, Drop (RB) dropped one and Accept
-returned to the slots; `touch-team-ai` 13 of 13, ai auto-equip No to Yes;
-`touch-team-assign` 13 of 13 (2026-10-07): a tap on Assign set
-`menu+0x18e8` and offered Power 1..3 and Cancel, Cancel left Magneto's slots
-`power5 power2 power1 power9` unchanged, Power 2 swapped them to `power2
-power5 power1 power9`, and Next hero turned the tabs from Magneto to Cyclops.
-Gap: the previous hero has no pad input, so touch offers only Next hero; the
-power slots are named, not the skills in them; `touch-team-skill-details` 13
-of 13 (2026-10-07): a tap on Details held LT and the game showed its Details
-view (mode 6) with Levitation's description, which the touch menu read, and
-a second tap returned to the list;
-the game prices only the selected shop entry, so other entries show no cost,
-and walking to an entry outside the game's list window is unit-tested only;
-the codex does not show the hero model the retail screen turns; the world
-map hides locked acts and points and its region map, and walking between two
-unlocked points of one act is unit-tested only; what a
-review entry opens keeps the retail screen and only Credits was driven
-(screens and movies are untested by touch); the region list was only seen
-empty (no online service), so a tap on a region row is unit-tested only
-and Refresh's effect is unobserved; the automap, the online lists, Advanced
-Options (`sebas`) and `options_controller` became native on touch under S025.
 
 The stick steers from the thumb, not from the ring. It measured its axes from
 the ring's geometric centre, so where the thumb happened to land was itself an
@@ -2256,6 +2159,4 @@ laid out for fingers (G008). The menus `tools/scan.py` opens are native on touch
 lobby's and Advanced Options' included: the game draws them, nothing covers them, their rows
 and footers are finger targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host`,
 `touch-advanced-options` and the other `touch-*` cases). The RmlUi touch menu and the menu pad
-are deleted ([#199](issues/0199-native-touch-menus.md)). Gap: `tools/scan.py` still reports
-Options' setting labels (`label_*`) as small targets, the retail rows its touch cards draw
-over; the join room's Ready and Leave Room were not tapped, a session needing a second game.
+are deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` reports no gap. Gap: the join room's Ready and Leave Room were not tapped, a session needing a second game.

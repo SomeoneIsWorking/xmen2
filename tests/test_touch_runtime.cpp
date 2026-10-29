@@ -695,7 +695,7 @@ int main() {
           "and centres once its hold has run out",
           "pov " + std::to_string(dinput_pad_pov(slot)));
 
-    /* The touch menu's pad tap: held until released, let go once read. */
+    /* A held press: kept until released, let go once read. */
     check(dinput_pad_virtual_set("up", 1.0, -1.0, reason, sizeof reason) == 1,
           "a d-pad press held until release", reason);
     check(dinput_pad_virtual_release("up") == 1, "is released", "up");
