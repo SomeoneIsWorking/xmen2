@@ -213,7 +213,7 @@ CREDITS_SHAPES = shapes("touch-credits")
 
 def case_touch_credits(case: Case) -> None:
     """CMenuCredits native on touch, reached from the review's cinematics:
-    the credits roll with no pad over them and a tap ends them, as A or B
+    the credits roll and a tap ends them, as A or B
     does, back to the review."""
     case.check("the run reached the level's gameplay",
                into_level(case, *CREDITS_SHAPES[case.name]))
@@ -256,7 +256,7 @@ PERSONAL_FILE = "wolverine01"
 
 def case_touch_personal(case: Case) -> None:
     """CMenuPersonal native on touch, opened by the game's personalItem
-    script function with the install's one file: no pad over it and Back a
+    script function with the install's one file, and Back a
     finger button that closes it."""
     case.check("the run reached the level's gameplay",
                into_level(case, *PERSONAL_SHAPES[case.name]))
@@ -346,7 +346,7 @@ def check_answers(case: Case, menu: dict, what: str) -> list[dict]:
 
 def case_touch_advanced_options(case: Case) -> None:
     """Advanced Options (CMenuSebas) on touch: Options' Advanced... opens
-    it, no pad is drawn, every control is a finger target in the window, a
+    it, every control is a finger target in the window, a
     tab, a drag and a tap on the key table, the slider's finger band, a
     dialog's rows and its Back, and the screen's own Back and Accept close
     it (issue #199)."""

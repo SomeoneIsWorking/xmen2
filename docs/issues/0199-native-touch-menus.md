@@ -33,7 +33,7 @@ refuses the finger:
 | list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
 | footer token | `CMenuItemText::onMouse` `0x005c6490`, unless the menu's own `onMouse` acts on it (`x2::native::menu_handles_token`: the codex's and the team's `$MENU_DETAILS`) | none |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
-| small target | the menu's own layout | Options' setting labels (`label_*`, one each, from the front end and the level): retail rows the touch cards draw over, under a tenth of the shorter client edge at 1280x720; not on a native item with a finger area (`x2::native::text_has_finger_area`) |
+| small target | the menu's own layout, unless touch gives the item a finger area (`x2::native::text_has_finger_area`) or draws it as an Options card (`x2::native::options_touch_has_card`) | none |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
 hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), and `options`/`options_controller`
@@ -184,9 +184,7 @@ Accept are finger buttons that close it through the game's own callbacks,
 and each confirmation dialog's Yes and No are a finger row with a Back. The
 key table is read-only on touch, dragged to scroll, because a binding is
 finished only by a key. Shown by `touch-advanced-options`, `-4x3`, `-tablet`
-and `-20x9` (19/19 each). `tools/scan.py` with touch forced on drew the pad
-over no menu before it was deleted, and reports only Options' `label_*`
-small targets.
+and `-20x9` (19/19 each). `tools/scan.py` with touch forced on reports no gap.
 
 The team menu's open items are closed: footer buttons disjoint with five
 footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),

@@ -138,6 +138,16 @@ std::string item_text(x2::guest::GuestCall &call, std::uint32_t self) {
              : std::string(x2::guest::guest_string(at, menu_text::kLineBytes));
 }
 
+/* The setting whose label is `name`. */
+std::optional<int> setting_of(std::string_view name) {
+  for (std::size_t i = 0; i < kSettings.size(); ++i) {
+    if (kSettings[i].label == name) {
+      return static_cast<int>(i);
+    }
+  }
+  return std::nullopt;
+}
+
 class OptionsTouch {
 public:
   bool draw(const CPU &cpu, std::uint32_t self, std::string_view name) {
@@ -424,15 +434,6 @@ private:
     int setting = 0;
   };
 
-  static std::optional<int> setting_of(std::string_view name) {
-    for (std::size_t i = 0; i < kSettings.size(); ++i) {
-      if (kSettings[i].label == name) {
-        return static_cast<int>(i);
-      }
-    }
-    return std::nullopt;
-  }
-
   static std::optional<int> value_of(std::string_view name) {
     for (std::size_t i = 0; i < kSettings.size(); ++i) {
       if (kSettings[i].value == name) {
@@ -705,6 +706,11 @@ bool x2::native::options_touch_draw(const CPU &cpu, std::uint32_t self,
                                     std::string_view menu_class,
                                     std::string_view name) {
   return menu_class == "CMenuOptions" && g_options_touch.draw(cpu, self, name);
+}
+
+bool x2::native::options_touch_has_card(std::string_view menu_class,
+                                        std::string_view name) {
+  return menu_class == "CMenuOptions" && setting_of(name).has_value();
 }
 
 void x2::native::options_touch_restore(const CPU &cpu, std::uint32_t self) {

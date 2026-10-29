@@ -1035,7 +1035,7 @@ publishes `MENU_ACCEPT`, which is what loads it.
 Measured (Continue into `act2/jungle/jungle1`, `openmenu codex`): 15 entries
 (Magneto .. Scarlet Witch) in an 11-row window; one click on Bishop selected
 it and Details showed Magneto, the entry loaded at open; a second click on the
-selected Bishop and then Details showed Bishop. The menu pad's Down walked the
+selected Bishop and then Details showed Bishop. The pad's Down walked the
 selection to Scarlet Witch (entry 14), moving the window's top to 4, and A then
 Details showed her description. Wolverine's description is 21 lines.
 
@@ -1254,7 +1254,7 @@ update's turn step is `turn -= axis * DAT_00682f98`.
 Measured (Continue into `act2/jungle/jungle1`, `openmenu automap` from
 gameplay, touch play, before the touch path): bounds 1920..7920 by 240..6720,
 turn -pi/2. A finger held on the map for 1.5 s was the retail pointer and
-panned the map (3827,2264 -> 7167,3462); the menu pad's d-pad held 1 s
+panned the map (3827,2264 -> 7167,3462); the pad's d-pad held 1 s
 scrolled to the bound on each side; LB and RB did not turn it; B closed it.
 With the touch path (`src/native/automap_touch.cpp`) a 0.1-window drag moved
 the player's marker 128 px with the finger.
@@ -1456,9 +1456,8 @@ builders store the retail targets, 150,267 and 150,282 in CANCEL_WARNING.
 Measured (`act2/jungle/jungle1`, `openmenu options`, a tap on `Advanced...`,
 before the touch layout): a tap on `Player 2` selected that tab and a tap on
 a Primary cell put it into capture (`?????`). At 1280x720 the table's rows
-are 24 pixels apart and the tabs 24 tall, under the 72-pixel finger. A tap
-at Accept never reached the dispatcher: the menu pad's right button
-(298.8..417.6 x 430..549) covered it. While it is up, every `openmenu`
+are 24 pixels apart and the tabs 24 tall, under the 72-pixel finger. While
+it is up, every `openmenu`
 builds a plain `CMenu` whatever its package's type (`tools/scan.py` opens
 it last).
 
@@ -1557,8 +1556,8 @@ objectives and three awards); Right lit Status (`Status: Incomplete`,
   either. The world map's `list01_*` rows are offered once the list's refresh
   enables them (`FUN_005c4620`).
 - **The world map's pad walk between points.** Only one point per act was
-  unlocked in the measured run, so the menu pad's Up/Down between two enabled
-  points is unit-tested only. `CMenuItemListItems`'s own stepping (vfunc
+  unlocked in the measured run, so Up/Down between two enabled points is not
+  observed. `CMenuItemListItems`'s own stepping (vfunc
   `+0x58`, `0x5c4090`) and its `+0x2a4` flags are not read, nor are
   `FUN_005e7d70`, `FUN_00468530`'s point object beyond `+0xc`, `+0x10`, `+0x1c`,
   and the region map's marker (`FUN_005e8590`).
