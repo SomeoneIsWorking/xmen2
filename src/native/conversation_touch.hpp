@@ -8,7 +8,7 @@
 #include <vector>
 
 /* A conversation on touch (docs/touch-play.md): what its last draw showed,
-   for GET /menu and the menu pad's gate. */
+   for GET /menu and the conversation's own touch path. */
 namespace x2::native {
 
 struct ConversationTouchCard {

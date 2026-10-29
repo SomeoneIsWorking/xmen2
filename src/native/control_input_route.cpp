@@ -283,9 +283,9 @@ void control_route_controls(x2::native::Socket fd) {
                        "  touch play: %s\n"
                        "  gameplay controls: %s\n"
                        "  overlay: %s\n"
-                       "Gameplay draws its controls and every other screen "
-                       "the menu pad, both only in touch play; a cinematic "
-                       "draws only its Skip button.\n",
+                       "Gameplay draws its controls, only in touch play; "
+                       "a menu is the game's own and a cinematic draws only "
+                       "its Skip button.\n",
                        x2::input::touch_runtime_active() ? "ACTIVE"
                                                          : "NOT active",
                        x2_gameplay_control_name(

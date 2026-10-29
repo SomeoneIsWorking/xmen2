@@ -7,7 +7,6 @@ import itertools
 import json
 import time
 
-from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     MAIN_MENU_LABELS,
@@ -65,9 +64,6 @@ def case_touch_menu(case: Case) -> None:
     time.sleep(1.0)
     main = read_menu_items(case)
     (case.dir / "main.json").write_text(json.dumps(main, indent=1) + "\n")
-    controls = live_controls(case)
-    case.check("the menu pad is not drawn over the main menu",
-               "menu-a" not in controls, "drawn: %s" % sorted(controls))
     rows = row_buttons(main)
     case.check("every main row is a finger tall across its bar",
                list(rows) == MAIN_MENU_LABELS

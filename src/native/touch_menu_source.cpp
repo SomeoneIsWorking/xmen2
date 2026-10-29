@@ -1,9 +1,6 @@
 #include "touch_menu_source.hpp"
 
-#include "../input/native_touch_menus.hpp"
 #include "../input/touch_runtime.h"
-#include "../input/touch_runtime_menu.hpp"
-#include "conversation_touch.hpp"
 #include "guest_modules.h"
 #include "x86rt_native.h"
 
@@ -20,8 +17,8 @@ inline constexpr std::uint32_t kViewportScaleX = 0x48u;
 inline constexpr std::uint32_t kViewportScaleZ = 0x4cu;
 inline constexpr std::uint32_t kClientWidthRva = 0x00609ffcu;
 inline constexpr std::uint32_t kClientHeightRva = 0x0060a000u;
-/* The menu model is a few hundred guest reads; a 30 Hz read keeps the menu
-   pad's gate current. */
+/* The menu model is a few hundred guest reads; a 30 Hz read sees every menu
+   a player can reach. */
 inline constexpr std::uint64_t kRefreshMs = 33u;
 
 bool read_f32(const GuestMemoryView &memory, std::uint32_t address,
@@ -63,37 +60,24 @@ read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base) {
 }
 
 void TouchMenuSource::refresh(std::uint64_t now_ms) {
-  if (!x2::input::touch_runtime_active()) {
-    if (offered_) {
-      offered_ = false;
-      input::touch_runtime_set_menu(false);
-    }
-    return;
-  }
-  if (offered_ && now_ms - last_ms_ < kRefreshMs) {
+  if (x2::input::touch_runtime_active() == 0 ||
+      now_ms - last_ms_ < kRefreshMs) {
     return;
   }
   last_ms_ = now_ms;
-  offered_ = true;
   const std::uint32_t image = x86_module_base("XMen2.exe");
+  if (image == 0u) {
+    return;
+  }
   menu::MenuSnapshot snapshot;
   std::uint32_t failed = 0u;
-  const menu::ReadStatus status = image != 0u
-                                      ? menu::read_live_menu(&snapshot, &failed)
-                                      : menu::ReadStatus::unreadable;
-  /* The pad goes only over a retail menu with no touch path: never over a
-     cinematic with no menu up, a popup (read before the menu, so one up in
-     gameplay counts) or a conversation drawn for touch. */
-  bool padded = false;
-  if (status == menu::ReadStatus::ok) {
-    padded = !snapshot.popup_up && !conversation_touch_drawn().shown &&
-             !input::menu_is_native_on_touch(snapshot.menu_class);
-    const LiveGuestMemory memory;
-    if (const auto plane = read_scene_plane(memory, image)) {
-      gaps_.observe(snapshot, *plane);
-    }
+  if (menu::read_live_menu(&snapshot, &failed) != menu::ReadStatus::ok) {
+    return;
   }
-  input::touch_runtime_set_menu(padded);
+  const LiveGuestMemory memory;
+  if (const auto plane = read_scene_plane(memory, image)) {
+    gaps_.observe(snapshot, *plane);
+  }
 }
 
 void refresh_touch_menu() { source.refresh(SDL_GetTicks()); }

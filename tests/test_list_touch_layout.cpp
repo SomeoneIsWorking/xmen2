@@ -97,7 +97,7 @@ void only_native_menus_lay_out_lists() {
         "the codex's list is laid out");
   check(list_has_touch_layout(ItemClass::list_box, "CMenuTeam"),
         "the team's gear lists are laid out");
-  check(!list_has_touch_layout(ItemClass::list_box, "CMenuHost"),
+  check(!list_has_touch_layout(ItemClass::list_box, "CMenu"),
         "a list in a menu not native on touch is left to retail");
   check(!list_has_touch_layout(ItemClass::text, "CMenuShop"),
         "a text item is not a list");

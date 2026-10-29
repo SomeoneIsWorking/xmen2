@@ -226,6 +226,7 @@ static uint32_t key_char(SDL_Keycode key) {
 static void pump_sdl(void) {
   SDL_Event event;
 
+  x2::input::touch_runtime_ready_pad();
   x2::native::refresh_touch_menu();
   while (SDL_PollEvent(&event)) {
     if (event.type == SDL_EVENT_QUIT ||

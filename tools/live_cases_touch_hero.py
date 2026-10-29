@@ -2,8 +2,7 @@
 
 The run boots into act2/jungle/jungle1, taps through the level's opening
 line, and opens CMenuHeroList (Select Hero) with the console's
-`openmenu hero_list`. It judges by GET /menu that no menu pad is drawn, that
-the list's heroes are cards at least a finger apart and Back and Select
+`openmenu hero_list`. It judges by GET /menu that the list's heroes are cards at least a finger apart and Back and Select
 finger buttons, that a drag brings the last hero into view, a tap selects
 it and a second tap accepts it, closing the list, and that Back on a
 reopened list closes it.
@@ -15,7 +14,6 @@ import itertools
 import time
 
 from live_cases_touch_map import inside_window, into_level
-from live_game import live_controls
 from live_harness import Case
 from live_menu import (finger_tall, footer_button, list_cards, list_entry,
                        menu_list, read_menu, reveal_list_entry,
@@ -75,10 +73,6 @@ def case_touch_hero_list(case: Case) -> None:
         case.shot("no-list")
         return
     case.shot("open")
-    controls = live_controls(case)
-    case.check("no menu pad is drawn over it",
-               not any(name.startswith("menu-") for name in controls),
-               "drawn: %s" % sorted(controls))
     back = footer_button(menu, "$MENU_BACK")
     select = footer_button(menu, "$MENU_ACCEPT")
     case.check("Back and Select are finger buttons in the window",

@@ -4,8 +4,8 @@ Each boots to the title menu with touch forced on and walks retail's own
 front-end path by finger: the main menu's play online, the player setup's
 Ready, the campaign lobby's Host Game or Join Game, and the screens they
 open (src/native/lan_session_director.cpp names the same path). It judges by
-GET /menu and GET /controls: no menu pad drawn, every row and footer a finger
-button in the window, and each tap opening the menu retail opens.
+GET /menu: every row and footer a finger button in the window, and each tap
+opening the menu retail opens.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import time
 import urllib.parse
 
 from live_cases_touch_map import inside_window
-from live_cases_touch_pages import check_finger_buttons, check_no_pad, shapes
+from live_cases_touch_pages import check_finger_buttons, shapes
 from live_harness import Case
 from live_menu import (finger_tall, footer_button, item_button, read_menu,
                        read_menu_items, tap_button_edge, wait_menu)
@@ -70,7 +70,6 @@ def check_screen(case: Case, menu: dict, name: str, menu_class: str,
         case.shot("no-" + name)
         return False
     case.shot(name)
-    check_no_pad(case, name)
     check_finger_buttons(case, menu, name)
     buttons = lobby_buttons(menu)
     for row in rows:

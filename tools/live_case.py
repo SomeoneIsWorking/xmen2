@@ -20,7 +20,7 @@ scratch/run/live.json.
     tools/live_case.py touch-game-tip         # a Game Tip on touch, closed by a tap
     tools/live_case.py touch-conversation     # a conversation's responses tapped
                                               # (-4x3, -16x9, -20x9: other shapes)
-    tools/live_case.py touch-cinematic        # no menu pad over a cinematic or its lines
+    tools/live_case.py touch-cinematic        # a cinematic's lines tapped, its Skip offered
     tools/live_case.py touch-automap          # the automap dragged, turned, closed
     tools/live_case.py touch-text-entry       # a name typed, Backspace, Done and Back
     tools/live_case.py touch-hero-list        # the hero list scrolled, a hero chosen, Back

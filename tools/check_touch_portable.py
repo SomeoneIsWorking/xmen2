@@ -32,8 +32,6 @@ OWNERS = (
     "src/input/touch_runtime.h",
     "src/input/touch_census.cpp",
     "src/input/touch_census.h",
-    "src/input/touch_menu_controls.cpp",
-    "src/input/touch_menu_controls.h",
     "src/input/touch_pad.cpp",
     "src/input/touch_pad.h",
     "src/input/touch_pad_publisher.cpp",
@@ -50,7 +48,6 @@ OWNERS = (
     "src/input/thumb_stick.h",
     "src/input/cutscene_skip.cpp",
     "src/input/cutscene_skip.h",
-    "src/input/touch_runtime_menu.hpp",
     # input.touch_controls decides touch play on every platform.
     "src/config/settings.cpp",
     "src/input/gameplay_control.cpp",

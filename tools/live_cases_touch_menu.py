@@ -7,7 +7,6 @@ import json
 import re
 import time
 
-from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     drag_between,
@@ -95,9 +94,6 @@ def case_touch_shop(case: Case) -> None:
     case.check("and the selected entry's description",
                bool(menu_text(labels.get("item_desc", ""))),
                repr(labels.get("item_desc")))
-    controls = live_controls(case)
-    case.check("and the menu pad is not drawn over it",
-               "menu-a" not in controls, "drawn: %s" % sorted(controls))
     case.shot("shop")
 
     lit = next((label for label, on in tabs.items() if on), None)

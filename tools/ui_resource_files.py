@@ -22,16 +22,4 @@ UI_FILES = (
     # Port Settings' device-assignment marks (assets/ui/assign_*.svg).
     "assign_on.svg",
     "assign_off.svg",
-    # The menu pad's buttons: shared port-assets Xbox glyphs, staged by the
-    # build under these names.
-    "pad_dpad_up.svg",
-    "pad_dpad_down.svg",
-    "pad_dpad_left.svg",
-    "pad_dpad_right.svg",
-    "pad_face_a.svg",
-    "pad_face_b.svg",
-    "pad_face_x.svg",
-    "pad_face_y.svg",
-    "pad_lb.svg",
-    "pad_rb.svg",
 )

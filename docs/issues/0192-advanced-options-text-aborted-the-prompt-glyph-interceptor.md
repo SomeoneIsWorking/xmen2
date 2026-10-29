@@ -38,7 +38,11 @@ text batch's vtable; any other sink keeps the whole string stock and is counted
 ("because the writer was not the text batch"). Advanced Options therefore
 shows the stock "Esc Back" text.
 
-## Open
+## Escape inside Advanced Options
 
-A second Escape does not leave Advanced Options in the headless case; whether
-that screen takes keyboard Back at all on retail PC is not established.
+A second Escape does not leave Advanced Options: the update `FUN_005d1e90`
+tests the pad's actions before the keys, Escape is bound to actions 4 and
+`0x11`, and that path (`0x0061922e`) dispatches message 0, so the direct
+Escape test at `0x0061918b` is never reached
+([menus](../RE/menus.md#advanced-options-cmenusebas)). A click on its
+`Esc Back` or Accept closes it, and on touch both are finger buttons (#199).

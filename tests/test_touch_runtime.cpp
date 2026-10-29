@@ -47,7 +47,6 @@
 #include "touch_census.h"
 #include "touch_inject.h"
 #include "touch_runtime.h"
-#include "touch_runtime_menu.hpp"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
 
@@ -657,97 +656,26 @@ int main() {
   x2::config::settings_store()->touch_controls =
       x2::config::kTouchControlsAlways;
 
-  /* THE MENU PAD. Over a retail menu with no touch path of its own the
-     overlay draws the controller the retail menus are navigated with; off
-     gameplay with no such menu (a cinematic) it draws nothing. Both classes
-     of finger: one that begins on a pad button presses that button, one
-     that begins anywhere else is the retail pointer's and presses nothing on
-     the pad. */
+  /* Off gameplay in touch play nothing is drawn over the game: every menu is
+     the game's own, laid out for a finger, so a finger anywhere is the
+     retail pointer and presses no pad button. */
   x2_gameplay_control_reset();
-  check(!x2::input::touch_runtime_overlay_visible() &&
-            x2::input::touch_runtime_has_visuals() == 0,
-        "off gameplay with no menu up nothing is drawn", "no HUD heartbeat");
-  x2::input::touch_runtime_set_menu(true);
-  check(!x2::input::touch_runtime_overlay_visible() &&
-            x2::input::touch_runtime_has_visuals() != 0,
-        "over a menu without a touch path the menu pad is drawn instead of "
-        "the controls",
-        "no HUD heartbeat");
+  check(!x2::input::touch_runtime_overlay_visible() && visuals().empty(),
+        "off gameplay nothing is drawn", "no HUD heartbeat");
   {
-    const auto menu = visuals();
-    const x2::input::TouchVisual *menu_a =
-        find_action(menu, TouchAction::MenuA);
-    check(menu_a != nullptr && !find_action(menu, TouchAction::Jump),
-          "the menu pad draws A and none of the gameplay controls",
-          std::to_string(menu.size()) + " visual(s)");
-    if (!menu_a) {
-      return 1;
-    }
-    const float a_x = (menu_a->left + menu_a->right) * 0.5F;
-    const float a_y = (menu_a->top + menu_a->bottom) * 0.5F;
     x2::input::TouchPointer drained{};
     while (touch_runtime_take_pointer(&drained)) {
     }
-
-    send_finger(SDL_EVENT_FINGER_DOWN, 20, a_x, a_y, width, height);
-    check(zone_is_active(TouchAction::MenuA) && button_down(pad, "a"),
-          "a finger on the menu pad's A presses the pad's A",
-          "gamepad button a is down");
-    check(guest_buttons(slot) == (1 << kDirectInputButtonA),
-          "and the guest reads DirectInput button 0 and nothing else",
-          "buttons bitmap " + std::to_string(guest_buttons(slot)));
-    x2::input::TouchPointer none{};
-    check(!touch_runtime_take_pointer(&none),
-          "a menu pad press is not also a click on the retail GUI",
-          "no pointer event");
-    send_finger(SDL_EVENT_FINGER_UP, 20, a_x, a_y, width, height);
-    check(!button_down(pad, "a"), "lifting it releases A", "button a is up");
-
-    send_finger(SDL_EVENT_FINGER_DOWN, 21, empty_x, empty_y, width, height);
+    send_finger(SDL_EVENT_FINGER_DOWN, 21, jump_x, jump_y, width, height);
     x2::input::TouchPointer click{};
     const bool clicked = touch_runtime_take_pointer(&click);
-    check(clicked && click.button_change == 1 && !button_down(pad, "a"),
-          "a finger off the pad is the retail pointer and presses no button",
-          "centre of the screen");
-    /* Dragged over A, it stays the pointer's. */
-    send_finger(SDL_EVENT_FINGER_MOTION, 21, a_x, a_y, width, height);
-    check(!button_down(pad, "a"), "and dragging it onto A does not press A",
-          "the contact began off the pad");
-    send_finger(SDL_EVENT_FINGER_UP, 21, a_x, a_y, width, height);
+    check(clicked && click.button_change == 1 && !button_down(pad, "y"),
+          "a finger off gameplay is the retail pointer and presses no button",
+          "where Jump is drawn in gameplay");
+    send_finger(SDL_EVENT_FINGER_UP, 21, jump_x, jump_y, width, height);
     while (touch_runtime_take_pointer(&drained)) {
     }
-
-    /* Skip offered over a padded menu: both are drawn, neither on the
-       other. */
-    x2_cutscene_skip_offer(1);
-    x2::presentation::Rect skip{};
-    int skip_held = 0;
-    const bool skip_drawn =
-        x2::input::touch_runtime_skip_button(&skip, &skip_held);
-    const auto beside = visuals();
-    bool overlap = false;
-    for (const auto &visual : beside) {
-      overlap =
-          overlap || (visual.left < skip.right && skip.left < visual.right &&
-                      visual.top < skip.bottom && skip.top < visual.bottom);
-    }
-    check(skip_drawn && find_action(beside, TouchAction::MenuA) != nullptr &&
-              !overlap,
-          "Skip and the menu pad are drawn apart",
-          std::to_string(beside.size()) + " pad button(s) beside Skip");
-    x2_cutscene_skip_offer(0);
-
-    /* A held pad button is let go when gameplay takes the screen, even if
-       the finger never moves again. */
-    send_finger(SDL_EVENT_FINGER_DOWN, 22, a_x, a_y, width, height);
-    check(button_down(pad, "a"), "A is held again", "before gameplay");
     x2_gameplay_control_hud_drawn(guest_clock_now_s());
-    (void)touch_runtime_take_pointer(&drained);
-    check(!button_down(pad, "a"),
-          "gameplay taking the screen lets go of a held menu button",
-          "no finger event arrived");
-    send_finger(SDL_EVENT_FINGER_UP, 22, a_x, a_y, width, height);
-    x2::input::touch_runtime_set_menu(false);
   }
 
   /* The control channel's d-pad press ends with its hold, as its buttons do. */

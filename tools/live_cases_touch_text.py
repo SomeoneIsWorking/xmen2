@@ -6,8 +6,8 @@ Text is typed as the platform's text input delivers it (GET /ui/text, one
 event for a whole word, as a phone's keyboard commits it) and Backspace as
 a host key. It judges by the entry's own field (`data_playername` in GET
 /menu?items=all) that every character of the word lands and that Backspace
-takes one off; that Done and Back are finger buttons, with no menu pad drawn
-over the screen, and each closes the entry; and by GET /menu's `text_input`
+takes one off; that Done and Back are finger buttons and each closes the
+entry; and by GET /menu's `text_input`
 that the platform's text input (a phone's screen keyboard) is on exactly
 while the entry is up.
 """
@@ -18,7 +18,6 @@ import time
 import urllib.parse
 
 from live_cases_touch_map import disjoint, inside_window, into_level, tap
-from live_game import live_controls
 from live_harness import Case
 from live_menu import finger_tall, read_menu, read_menu_items
 
@@ -91,10 +90,6 @@ def case_touch_text_entry(case: Case) -> None:
         case.shot("no-entry")
         return
     case.shot("open")
-    controls = live_controls(case)
-    case.check("no menu pad is drawn over it",
-               not any(name.startswith("menu-") for name in controls),
-               "drawn: %s" % sorted(controls))
     back, done = sorted(menu["touch_buttons"], key=lambda b: b["tap"]["x"])[:2]
     case.check("Back and Done are finger buttons in the window",
                all(finger_tall(b) and inside_window(b) for b in (back, done)),
