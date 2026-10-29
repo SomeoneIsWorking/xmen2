@@ -393,6 +393,38 @@ a tap selects a hero and a tap on the selected one accepts it, and Back and
 Select are finger buttons. Prove it with `tools/live_case.py touch-hero-list`
 (and `-4x3`, `-tablet`, `-20x9`).
 
+**The review's image viewer, the credits, the controller page and a
+personal file are the game's own pages on touch** (issue #199), with no pad
+over them:
+
+- The image viewer (CMenuImageViewer, a screen, comic or concept accepted
+  in the review) draws Back, Previous and Next as the footers' finger
+  buttons, and a swipe across the image (`x2::input::page_gesture`: at least
+  a finger along x, more across than up) posts the pad's Next (`0x16`) for a
+  swipe to the left and Previous (`0x17`) to the right, the actions its
+  update pages by (`FUN_005bb370`). `GET /menu` reports the image it shows
+  (`viewer.image`). The press is the page's only when it starts off every
+  touch button (`src/native/page_touch.cpp`, over the shared onMouse
+  `0x005bb590`).
+- The credits (CMenuCredits, Credits in the review's cinematics) have no
+  prompt; their update ends them on A, Start or B (`FUN_005b1c60`), and on
+  touch a tap anywhere, a lift within half a finger of its press, posts
+  Back.
+- The controller page (CMenuOptionsController) names its Back in its
+  menu's `desctext1` and has no item to show it; on touch its empty
+  `description_text` line on the page's bottom strip draws that prompt as a
+  finger button that posts Back itself (`kPromptHosts` in
+  `text_item_touch.cpp`, `name` `page prompt` in `GET /menu`).
+- A personal file (CMenuPersonal) draws its Back as the footer's finger
+  button; its `$DPAD_DN Scroll` hint is not drawn.
+
+Prove them with `tools/live_case.py touch-image-viewer` (the jungle loaded
+from the autosave so the review holds two screens: Next, Previous, a swipe
+each way, Back), `touch-credits` (rolling 3 s with no pad, a tap ends them
+back to the review), `touch-controller-page` (Back's edge closes it) and
+`touch-personal` (the install's one file through the game's `personalItem`,
+Back), each also `-4x3`, `-tablet` and `-20x9`.
+
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
 poll while an authored sequence holds the player's controls, and it takes a

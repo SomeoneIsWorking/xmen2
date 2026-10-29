@@ -6,11 +6,13 @@
 namespace x2::input {
 namespace {
 
-constexpr std::array<std::string_view, 14> kNativeClasses = {
-    "CMenuMain",      "CMenuOptions",     "CMenuPDA",        "CMenuShop",
-    "CMenuCodex",     "CMenuReviewPaths", "CMenuDangerRoom", "CMenuTrivia",
-    "CMenuRegion",    "CMenuWorldMap",    "CMenuTeam",       "CMenuAutoMap",
-    "CMenuTextEntry", "CMenuHeroList"};
+constexpr std::array<std::string_view, 18> kNativeClasses = {
+    "CMenuMain",        "CMenuOptions",  "CMenuPDA",
+    "CMenuShop",        "CMenuCodex",    "CMenuReviewPaths",
+    "CMenuDangerRoom",  "CMenuTrivia",   "CMenuRegion",
+    "CMenuWorldMap",    "CMenuTeam",     "CMenuAutoMap",
+    "CMenuTextEntry",   "CMenuHeroList", "CMenuOptionsController",
+    "CMenuImageViewer", "CMenuCredits",  "CMenuPersonal"};
 
 } // namespace
 

@@ -24,7 +24,7 @@ from live_menu import read_menu
 LEVEL = "act2/jungle/jungle1"
 FRONT_END_MENUS = ("options", "options_controller")
 LEVEL_MENUS = ("pda", "options", "options_controller", "team", "shop", "stash", "codex", "worldmap", "review",
-               "region", "danger_room", "automap", "trivia")
+               "region", "danger_room", "automap", "trivia", "image_viewer", "credits", "personal")
 REPORT_PREFIX = "menu touch gap:"
 IDLE_SECONDS = 3.0
 

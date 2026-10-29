@@ -1297,6 +1297,85 @@ the lobby's setup screens (`text_gamename`, `text_playername`, ...); with none
 of those items it is the base's. Measured: 18 entries (`Any`, then the
 heroes), rows 8 scene units apart.
 
+## The image viewer, the credits and a personal file
+
+`CMenuImageViewer` (vtable `0x0069ef04`), `CMenuCredits` (`0x0069f1d4`) and
+`CMenuPersonal` (`0x0069f97c`) share the onMouse `0x005bb590`, which only
+runs the base `CMenu::onMouse` and returns its answer, and the image
+viewer's update `FUN_005bb370`, which the other two call last.
+
+`FUN_005bb370` closes the menu (input manager `+0xe8(5)`, then `+0x74`) on
+`MENU_BACK` (bit 21). With the parse's `canclose` (`menu+0x192a` bit 0) it
+also reads the pressed bits (`+0x140`); with `anyinput` (bit 1) any bit but
+the move, camera and paging ones closes it. Bit 23 (`MENU_PREV`, `0x17`) and
+bit 22 (`MENU_NEXT`, `0x16`) ask the review object (`FUN_004ae7e0`) for the
+previous or next entry (`+0x5c`, `+0x58`) of the mode the manager holds
+(`+0x1c8`, `FUN_005d8450`, `CMenuMgr+0x86040`) and show it (`menu +0x84`
+with the name at `+0x1bc`, `CMenuMgr+0x85eb0`). The parse `FUN_005bb990`
+hides `desctext2` and `desctext3` (Previous, Next) when the mode is -1, as
+it is for a console-opened viewer. The review opens it on accepting a
+screen, comic or concept (`openmenu image_viewer`, `FUN_004add90`).
+
+`CMenuCredits` (`credits.XMLB`, no items) rolls `data/credits.xmlb`: init
+`FUN_005b1a60`, update `FUN_005b1c60`, draw `FUN_005b2340`. In state 1
+(`menu+0x1958`) the update ends the roll on bit 20, 4 or 21 (Start, A, B)
+and the roll restarts at its end; Credits in the review's cinematics opens
+it.
+
+`CMenuPersonal` shows `data/personal/<name>.xmlb` (`FUN_005cedd0`: its
+`ITEM`'s `text` into the text box `text`, its `texture` as the image). The
+script function `personalItem(name)` (`FUN_0049e570`, table `0x0068b1c8`)
+stores the name (`CMenuMgr +0x1d0`, at most `0x80` bytes) and runs `openmenu
+personal`. The install holds one file, `wolverine01` (text
+`!BADFILE:@DATA_PERSONAL@WOLVERINE_FLAG`, texture
+`textures/personal/wlv_1.png`, which the install lacks), and no shipped
+script calls `personalItem`: retail never opens the menu.
+
+Measured (`act2/jungle/jungle1`): the autosave's review lists one screen,
+Prison Outpost (`textures/loading/10703`); a `loadmap` of the jungle adds
+Garokk, and Next from Prison Outpost showed `textures/loading/tutorial`.
+
+## The controller page (`CMenuOptionsController`)
+
+`CMenuOptionsController` (vtable `0x0069edf4`, parse `FUN_005cbfc0`) is the
+Xbox/PS2 controller diagram: thirteen label items, a `controller` model and
+an empty `description_text`; its onMouse is the base `0x005ae0a0` and its
+close `FUN_005b9fe0`. `options_controller.XMLB` names `desctext1` `$MENU_BACK
+Back` on its `MENU` and has no desctext item, so retail draws no Back. No
+string in `XMen2.exe` and no other package names `options_controller`; the
+PC Options' `label_controllersetup` row (in the row table at `0x006e6894`)
+is absent from `options.xmlb`. Only the console opens it.
+
+## Advanced Options (`CMenuSebas`)
+
+The factory builds `SEBAS_MENU` as `CMenuSebas` (vtable `0x006a1f64`) only
+while `DAT_008afde4` is set, a plain `CMenu` otherwise (`0x005b8305`).
+`CMenuOptions`' update (`FUN_005cbdf0`, vtable `0x0069ebd4 +0x38`) sets it on
+Start (bit 20, the keyboard's Escape) and runs `openmenu sebas`; the
+CMenuSebas init (`FUN_005d1dd0`) sets it too and its close (`0x005d1ecb`)
+clears it. The screen (`x2m_review` art) is the PC's Advanced Options:
+resolution, the four players' key bindings with their defaults, Accept and
+Revert to default. A console `openmenu sebas` builds the plain `CMenu`.
+
+## The online lobby menus
+
+`CMenuOnline` (`0x0069efa4`), `CMenuHeroList` and `CMenuRegion` share the
+onMouse `0x005caa80`. On the game setup screen (`text_gamename` shown) it
+tests the raw boxes of `text_gamename`, `text_difficulty`, `text_gametype`,
+`text_mapname`, `text_inviteslots` and their `data_*`; on the player setup
+screen those of `text_playername`, `data_playerfile`, `text_networkset`,
+`text_networkfile`, `text_loadpref`, `text_savepref` and `text_ready`. A
+message over a row other than the focused one walks the focus toward it
+(menu `+0x40`, `+0x04`); `0x202` on the focused row posts `MENU_ACCEPT`.
+Anything else goes to the base onMouse. `CMenuCampaignLobby`
+(`0x0069f404`, onMouse `0x005b03b0`: Host Game, Join Game), `CMenuHost`
+(`0x0069f274`, onMouse `0x005ba2b0`: Start Game, Kick Player, Leave Room)
+and `CMenuJoin` (`0x0069f33c`, onMouse `0x005c8da0`: Ready, Leave Room) have
+their own onMouse, not read. From the jungle, `openmenu join` raised its
+"This game session is no longer available" popup, and the `openmenu`s of
+`players`, `players_list`, `games_list` and `player_game_options` after it
+left `join` up, so those four are not seen yet.
+
 ## The danger room (`CMenuDangerRoom`)
 
 `CMenuDangerRoom` (vtable `0x69e964`) picks a training course in steps; the

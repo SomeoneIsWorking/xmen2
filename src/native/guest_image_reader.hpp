@@ -32,6 +32,8 @@ public:
   bool c_string(std::uint32_t address, std::size_t capacity, std::string *out);
   /* handle_str<2> (FUN_00602200), as UTF-8; "" for handle 0. */
   bool pool2_string(std::uint32_t handle, std::string *out);
+  /* The same string as the game's raw bytes. */
+  bool pool2_bytes(std::uint32_t handle, std::string *out);
   /* handle_str<0> (FUN_00602140), as raw bytes; "" for a handle that names no
      string in the pool. */
   bool pool0_string(std::uint32_t handle, std::string *out);

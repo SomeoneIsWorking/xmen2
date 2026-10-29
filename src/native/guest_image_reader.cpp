@@ -86,6 +86,16 @@ bool GuestImageReader::c_string(std::uint32_t address, std::size_t capacity,
 /* pool + 0x1008 + pool[1 + (handle & 0xffffff)], the lookup every CMenuItem
    accessor inlines; the high byte is not checked by the game either. */
 bool GuestImageReader::pool2_string(std::uint32_t handle, std::string *out) {
+  std::string raw;
+  if (!pool2_bytes(handle, &raw)) {
+    out->clear();
+    return false;
+  }
+  *out = latin1_to_utf8(raw);
+  return true;
+}
+
+bool GuestImageReader::pool2_bytes(std::uint32_t handle, std::string *out) {
   out->clear();
   if (handle == 0u) {
     return true;
@@ -100,12 +110,7 @@ bool GuestImageReader::pool2_string(std::uint32_t handle, std::string *out) {
       !u32(pool + 4u + index * 4u, &offset) || offset >= kPool2Capacity) {
     return fail(pool + 4u + index * 4u);
   }
-  std::string raw;
-  if (!c_string(pool + kPool2Strings + offset, kPool2Capacity - offset, &raw)) {
-    return false;
-  }
-  *out = latin1_to_utf8(raw);
-  return true;
+  return c_string(pool + kPool2Strings + offset, kPool2Capacity - offset, out);
 }
 
 bool GuestImageReader::pool0_string(std::uint32_t handle, std::string *out) {

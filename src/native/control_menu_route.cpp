@@ -596,6 +596,14 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   if (menu.assigning_skill) {
     put_int(&out, "assigning_skill", static_cast<long>(*menu.assigning_skill));
   }
+  if (menu.viewer) {
+    put_key(&out, "viewer");
+    out.push_back('{');
+    put_int(&out, "review_mode", static_cast<long>(menu.viewer->review_mode));
+    put_text(&out, "image", menu.viewer->image);
+    close_object(&out);
+    out.push_back(',');
+  }
   if (menu.menu_class == "CMenuAutoMap") {
     put_automap(&out, menu.address);
   }
