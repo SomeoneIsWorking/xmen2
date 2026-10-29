@@ -9,6 +9,7 @@
 
 #include <lucent/cvar_c.h>
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -309,6 +310,39 @@ static void report_thunk_leaves(void) {
       "imports; %llu call(s) completed in place across %d thunk(s)%s%s\n",
       g_nthunk_leaf, (unsigned long long)total, nbusy, ntop ? ", busiest:" : "",
       line);
+}
+
+/* Each leaf's completions as of the previous heartbeat line. */
+static uint64_t g_leaf_reported[X2_MAX_OVERRIDE_LEAVES];
+
+void x86_override_leaves_heartbeat(void) {
+  int order[X2_MAX_OVERRIDE_LEAVES];
+  uint64_t delta[X2_MAX_OVERRIDE_LEAVES];
+  int busy = 0;
+  for (int i = 0; i < g_nleaf; i++) {
+    delta[i] = g_leaf[i].completed - g_leaf_reported[i];
+    g_leaf_reported[i] = g_leaf[i].completed;
+    if (delta[i]) {
+      order[busy++] = i;
+    }
+  }
+  std::sort(order, order + busy,
+            [&](int a, int b) { return delta[a] > delta[b]; });
+  char line[512];
+  size_t used = 0;
+  line[0] = '\0';
+  for (int k = 0; k < busy && used < sizeof line; k++) {
+    const OverrideLeaf &leaf = g_leaf[order[k]];
+    const int n = snprintf(line + used, sizeof line - used,
+                           "%s %s!0x%08x +%llu", k ? ";" : "", leaf.module,
+                           leaf.linked_ep, (unsigned long long)delta[order[k]]);
+    if (n < 0) {
+      break;
+    }
+    used += (size_t)n;
+  }
+  x2_log_error("[HB]           override leaves completed this interval:%s\n",
+               busy ? line : " none");
 }
 
 void x86_override_leaves_report(void) {

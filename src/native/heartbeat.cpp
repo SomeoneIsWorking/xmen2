@@ -5,6 +5,7 @@
 #include "heartbeat_reports.h"
 #include "heartbeat_stall.h"
 #include "kernel32_handles.h"
+#include "override_leaf.h"
 #include "threads.h"
 #include "threads_yield.h"
 
@@ -144,6 +145,7 @@ static void *heartbeat_thread(void *arg) {
     {
       guest_thread_state_report();
     }
+    x86_override_leaves_heartbeat();
     {
       static unsigned long p_q;
       unsigned long q = guest_quantum_count();

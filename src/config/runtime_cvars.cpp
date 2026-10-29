@@ -109,6 +109,16 @@ lucent::cvar::Var<bool> g_math_invert{"math.invert", true};
  * EAX, ECX, EDX or x87 state. off in normal play. */
 lucent::cvar::Var<bool> g_math_invert_verify{"math.invert_verify", false};
 
+/* on: native overrides and JIT leaves for XMen2.exe's vec3 helpers (affine
+ * transform, add, sub, scale, dot, cross at 0x005fcf70..0x005fe690),
+ * vec3_math.cpp. off restores full guest JIT execution. */
+lucent::cvar::Var<bool> g_math_vec3{"math.vec3", true};
+
+/* on: after each native vec3 answer, re-run the guest's own body from the
+ * same start state and abort on any difference in memory, ESP, EAX, ECX, EDX
+ * or x87 state. off in normal play. */
+lucent::cvar::Var<bool> g_math_vec3_verify{"math.vec3_verify", false};
+
 /* on: native override for the per-frame audio channel poll (XMen2.exe
  * 0x00594500). off restores full guest JIT execution of the 24-channel
  * completion sweep. */
@@ -340,6 +350,8 @@ void runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_math_matrix_verify);
   lucent::cvar::register_var(g_math_invert);
   lucent::cvar::register_var(g_math_invert_verify);
+  lucent::cvar::register_var(g_math_vec3);
+  lucent::cvar::register_var(g_math_vec3_verify);
   lucent::cvar::register_var(g_audio_channel_poll);
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);

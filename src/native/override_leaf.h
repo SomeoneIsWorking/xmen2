@@ -56,4 +56,9 @@ int x86_override_leaves_install(X86pJitEngine *jit, char *reason,
 /* One line: per leaf, calls completed in place and calls declined. */
 void x86_override_leaves_report(void);
 
+/* One heartbeat line: the leaves that completed calls since the previous
+   line, busiest first -- the per-call denominator for a leaf's profile
+   share. */
+void x86_override_leaves_heartbeat(void);
+
 #endif

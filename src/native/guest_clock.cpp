@@ -18,6 +18,19 @@ static unsigned long g_skips, g_idle_calls, g_refused_backwards;
 static double g_skipped_s, g_largest_skip;
 static double g_start_real;
 
+/* How far CLOCK_MONOTONIC_COARSE may trail CLOCK_MONOTONIC: two of its
+   ticks, so a late tick is covered too; negative where the host has none. */
+static double coarse_lag_s(void) {
+#if defined(CLOCK_MONOTONIC_COARSE) && !defined(__EMSCRIPTEN__)
+  struct timespec res;
+  if (clock_getres(CLOCK_MONOTONIC_COARSE, &res) == 0) {
+    return 2.0 * ((double)res.tv_sec + (double)res.tv_nsec / 1e9);
+  }
+#endif
+  return -1.0;
+}
+static const double g_coarse_lag_s = coarse_lag_s();
+
 /* The most recent precise reading any thread took; 0 before the first. */
 static std::atomic<uint64_t> g_last_real_ns;
 
@@ -52,6 +65,18 @@ double guest_clock_now_s(void) {
   if (g_start_real == 0.0)
     g_start_real = real_now_s();
   return real_now_s() + g_skew;
+}
+
+int guest_clock_reached(double deadline_s) {
+#if defined(CLOCK_MONOTONIC_COARSE) && !defined(__EMSCRIPTEN__)
+  struct timespec ts;
+  if (g_coarse_lag_s > 0.0 && clock_gettime(CLOCK_MONOTONIC_COARSE, &ts) == 0 &&
+      (double)ts.tv_sec + (double)ts.tv_nsec / 1e9 + g_skew + g_coarse_lag_s <
+          deadline_s) {
+    return 0;
+  }
+#endif
+  return guest_clock_now_s() >= deadline_s;
 }
 
 double guest_clock_coarse_now_s(void) {

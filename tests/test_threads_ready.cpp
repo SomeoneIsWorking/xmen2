@@ -26,9 +26,9 @@ static void expect(int value, const char *what) {
 static unsigned g_clock_reads;
 static double g_clock_now;
 
-static double counted_clock(void) {
+static int counted_clock(double deadline) {
   g_clock_reads++;
-  return g_clock_now;
+  return g_clock_now >= deadline;
 }
 
 static x2::native::GuestThread parked(double deadline, int ready) {

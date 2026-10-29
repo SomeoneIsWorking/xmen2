@@ -22,14 +22,14 @@ namespace x2::native {
 int guest_thread_ready_to_run(const GuestThread *t, double now);
 
 /*
- * Is any thread in `table` other than `self` ready to run? `clock` is the
- * guest clock, and it is read at most once and only when some thread's answer
- * depends on it -- a condition wait no broadcast has ended. The scheduler asks
- * this at every host crossing, where a clock read per call was ~2% of the
- * product's samples while the main thread ran alone.
+ * Is any thread in `table` other than `self` ready to run? `reached` says
+ * whether guest time has reached a deadline (guest_clock_reached); it is asked
+ * at most once, for the earliest deadline of the condition waits no broadcast
+ * has ended, and not at all when there are none. The scheduler asks this
+ * after every JIT run.
  */
 int guest_thread_any_ready(const GuestThread *table, int count,
-                           const GuestThread *self, double (*clock)(void));
+                           const GuestThread *self, int (*reached)(double));
 
 /*
  * Can any record other than `self` be ready at all? `live` counts the records

@@ -1957,6 +1957,8 @@ set(X2_NATIVE_SOURCES
     src/native/ig_matrix_override.cpp
     src/native/ig_matrix_invert.cpp
     src/native/ig_matrix_invert_override.cpp
+    src/native/vec3_math.cpp
+    src/native/vec3_override.cpp
     src/native/x86_engine_jit_diag.cpp
     src/native/guest_inspect.cpp
     src/native/x86_engine_x87_census.cpp
@@ -2201,6 +2203,7 @@ set(X2_NATIVE_SOURCES
     src/native/macos_bundle.cpp
     src/native/windows_package.cpp
     src/native/control_performance_route.cpp
+    src/native/host_sampler.cpp
     src/native/control_status_route.cpp
     src/native/control_png.cpp
     src/native/control_query.cpp

@@ -39,6 +39,14 @@ double guest_clock_elapsed_s(void);
  */
 double guest_clock_coarse_now_s(void);
 
+/*
+ * Whether guest_clock_now_s() >= deadline_s, read cheaply where the host has
+ * a coarse clock with a bounded lag: a coarse reading a full lag short of the
+ * deadline answers no without the precise read, which cost four times as much
+ * on an arm64 phone and is asked after every JIT run.
+ */
+int guest_clock_reached(double deadline_s);
+
 /* The same instant in nanoseconds, for QueryPerformanceCounter (which this
    port defines as a nanosecond counter) and GetTickCount. */
 uint64_t guest_clock_ns(void);
