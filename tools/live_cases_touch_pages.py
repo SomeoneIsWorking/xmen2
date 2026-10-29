@@ -290,3 +290,62 @@ def case_touch_personal(case: Case) -> None:
 
 
 PAGE_CASES.update({name: case_touch_personal for name in PERSONAL_SHAPES})
+
+
+ADVANCED_SHAPES = shapes("touch-advanced-options")
+
+
+def case_touch_advanced_options(case: Case) -> None:
+    """Options' Advanced... footer is a finger button and a tap on its edge
+    opens the real Advanced Options (CMenuSebas), as Escape does. The menu
+    pad is still drawn over it: it has no touch layout (issue #199)."""
+    case.check("the run reached the level's gameplay",
+               into_level(case, *ADVANCED_SHAPES[case.name]))
+    menu = open_page(case, "options", "CMenuOptions",
+                     lambda m: footer_button(m, "$MENU_OK"))
+    advanced = footer_button(menu, "$MENU_OK")
+    case.check("Options' Advanced... is a finger button in the window",
+               finger_tall(advanced) and inside_window(advanced),
+               str(advanced))
+    case.shot("options")
+    tap_button_edge(case, advanced)
+    sebas = wait_page(case, "CMenuSebas", lambda m: True, 15)
+    case.check("a tap on its edge opens Advanced Options",
+               sebas.get("menu") == "sebas"
+               and sebas.get("class") == "CMenuSebas",
+               "%s %s" % (sebas.get("menu"), sebas.get("class")))
+    time.sleep(2.0)
+    case.shot("advanced")
+    controls = live_controls(case)
+    case.check("the menu pad is drawn over it",
+               "menu-b" in controls, "drawn: %s" % sorted(controls))
+
+
+PAGE_CASES.update({name: case_touch_advanced_options
+                   for name in ADVANCED_SHAPES})
+
+
+def case_menu_action_route(case: Case) -> None:
+    """GET /menu/action?name=ok posted while Options is up reaches its own
+    update, which opens the real Advanced Options; with no menu up it is
+    refused."""
+    case.check("the run reached the level's gameplay",
+               into_level(case, 1280, 720))
+    code, body = case.http("/menu/action?name=ok")
+    case.check("with no menu up the route refuses", code == 409,
+               "%d %s" % (code, body.decode(errors="replace").strip()))
+    open_page(case, "options", "CMenuOptions",
+              lambda m: footer_button(m, "$MENU_OK"))
+    code, body = case.http("/menu/action?name=ok")
+    case.check("it posts $MENU_OK to Options", code == 200
+               and b"CMenuOptions" in body,
+               body.decode(errors="replace").strip())
+    routed = wait_page(case, "CMenuSebas", lambda m: True, 15)
+    case.check("and Options opens Advanced Options",
+               routed.get("menu") == "sebas"
+               and routed.get("class") == "CMenuSebas",
+               "%s %s" % (routed.get("menu"), routed.get("class")))
+    case.shot("routed")
+
+
+PAGE_CASES["menu-action-route"] = case_menu_action_route

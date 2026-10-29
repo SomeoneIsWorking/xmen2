@@ -40,7 +40,13 @@ def into_level(case: Case, width: int, height: int) -> bool:
                           "video.mode=windowed"])
     case.launch({"X2_BOOT_MAP": LEVEL})
     case.wait_control(120)
-    deadline = time.monotonic() + 240
+    return past_opening_line(case, 240)
+
+
+def past_opening_line(case: Case, timeout: float) -> bool:
+    """The level's opening line answered by a tap on its card, gameplay's
+    controls drawn."""
+    deadline = time.monotonic() + timeout
     calm = 0
     while time.monotonic() < deadline:
         menu = read_menu(case)

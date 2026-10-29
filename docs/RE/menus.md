@@ -1353,9 +1353,58 @@ while `DAT_008afde4` is set, a plain `CMenu` otherwise (`0x005b8305`).
 `CMenuOptions`' update (`FUN_005cbdf0`, vtable `0x0069ebd4 +0x38`) sets it on
 Start (bit 20, the keyboard's Escape) and runs `openmenu sebas`; the
 CMenuSebas init (`FUN_005d1dd0`) sets it too and its close (`0x005d1ecb`)
-clears it. The screen (`x2m_review` art) is the PC's Advanced Options:
-resolution, the four players' key bindings with their defaults, Accept and
-Revert to default. A console `openmenu sebas` builds the plain `CMenu`.
+clears it. A console `openmenu sebas` builds the plain `CMenu`.
+
+Options shows the way in as its footer `$MENU_OK Advanced...` (the string
+`Advanced Options` beside `$MENU_OK ` in CMenuOptions' code); a click on it
+posts `MENU_OK`, the same bit 20. `GET /menu/action?name=ok` posts it while
+Options is up, which is how `tools/scan.py` reaches the real menu.
+
+`sebas.xmlb` is a copy of the review's package (`x2m_review`, the review's
+tabs and list), and none of those items are what is shown. The screen is a
+second GUI, retained and separate from the CMenu item tree:
+
+- `FUN_0061dc10`, run by the init, builds it into the object at
+  `DAT_00a6ad34` (`DAT_00a6abfc` while up): the panels from `texs\col.png`
+  and `texs\title.png`, the title `Advanced Options`, the Resolution slider,
+  Accept, the tabs `Player 1`..`Player 4` (`texs\tabbtn.png`), the binding
+  table (`texs\controllist.png`: Actions, Primary, Secondary, a scroll bar),
+  `Defaults 1`..`Defaults 3`, and the strip `Esc Back` / `Revert to default`.
+  Each widget's rectangle is set by `FUN_0061fe20` in client pixels and its
+  open and close animation by `FUN_00620090`.
+- `FUN_00621ea0(message, wparam, lparam)` dispatches to it. Mouse messages
+  `0x200..0x205` and the wheel `0x20a` are hit-tested against each widget's
+  client rectangle (`widget+4..+0x10`, left, top, right, bottom) and handed
+  to the widget's `+0x40`; `WM_KEYUP` (`0x101`) with Return or an arrow goes
+  to the focused widget, Escape (`0x1b`) to its `+0x08`.
+- The update `FUN_005d1e90` turns the pad and the keyboard into those key
+  messages: pad buttons 5, 4, `0x11` and 0..3 (`FUN_00618f20`) and the
+  scancodes Escape, Return and the arrows (`FUN_00627100`) become `VK_ESCAPE`,
+  `VK_RETURN` and the arrow keys.
+- `CMenuSebas::onMouse` (`+0x80`, `0x005d1e10`) returns 0: the CMenu pointer
+  path never acts on it. Its `+0x30` (`FUN_005d1e20`) closes the menu
+  (`+0x84`, `FUN_005d1eb0`: `closemenu`, flag cleared) once the GUI reports
+  itself done.
+
+Measured (`act2/jungle/jungle1`, `openmenu options`, a tap on `Advanced...`):
+CMenuSebas opened. A tap on `Player 2` selected that tab and a tap on a
+Primary cell put it into capture (`?????`, waiting for a key), so the
+retail pointer drives the GUI's widgets. `Esc Back` is a label: a tap on it
+did nothing, and only Escape (the pad's B) leaves or cancels a capture. At
+1280x720 the table's rows are 24 pixels apart and the tabs about 20 tall
+(read off the screenshot), under the 38.4-pixel finger. While it is up,
+every `openmenu` builds a plain `CMenu` whatever its package's type
+(`online`, `host`, `options` and the rest, measured by `tools/scan.py`
+before it opened Advanced Options last).
+
+Leaving it is not established. Escape reaches the GUI only through
+`FUN_0061919c`: `FUN_00621ea0(WM_KEYUP, VK_ESCAPE)` runs only while one of
+`DAT_00a6ad38..44` is set or the GUI's state (`DAT_00a6ad34+0x48`) is not 2,
+and a press consumed by the pad check (`FUN_00618f20`, `DAT_00a6ad54`) is
+dropped once. Measured from the jungle: Escape held 0.2 s and 1 s, the
+pad's B and a tap at Accept's label each left CMenuSebas up. The widget
+classes, the table's row height, the GUI's text size and what state 2 is
+are not read.
 
 ## The online lobby menus
 
@@ -1371,10 +1420,33 @@ Anything else goes to the base onMouse. `CMenuCampaignLobby`
 (`0x0069f404`, onMouse `0x005b03b0`: Host Game, Join Game), `CMenuHost`
 (`0x0069f274`, onMouse `0x005ba2b0`: Start Game, Kick Player, Leave Room)
 and `CMenuJoin` (`0x0069f33c`, onMouse `0x005c8da0`: Ready, Leave Room) have
-their own onMouse, not read. From the jungle, `openmenu join` raised its
-"This game session is no longer available" popup, and the `openmenu`s of
-`players`, `players_list`, `games_list` and `player_game_options` after it
-left `join` up, so those four are not seen yet.
+their own onMouse of the same shape: it finds its rows by name
+(`text_hostgame`, `text_joingame`; `text_startgame`, `text_kickplayer`,
+`text_leaveroom`; `text_readygame`, `text_leaveroom`), tests each enabled
+one's raw box, walks the focus toward the row under the pointer (menu
+`+0x40`, `+0x04`, the move sound) and on `0x202` over the focused row posts
+`MENU_ACCEPT`. CMenuHost and CMenuJoin swallow a message over their
+`text_playername1` list while it is not focused; CMenuJoin also takes a
+release over `desctext1` (its close, `+0x2c`) and `desctext4` (the Ready
+toggle) itself. `CMenuGameOptions` (`0x0069f65c`), `CMenuPlayerGameOptions`
+(`0x0069f724`) and `CMenuPlayersList` (`0x0069f4cc`) use the shared onMouse
+`0x005caa80`; `CMenuGamesList` (`0x0069f8b4`) has its own (`0x005b9650`, not
+read).
+
+The front end opens them in this order, as `src/native/lan_session_director.cpp`
+drives them: the main menu's `play online` opens `online` (the player
+setup: Input Name, LocalIP, Ready); Ready opens `campaign_lobby`; Host Game
+opens `game_options` (Game Name, Difficulty, Game Type, Max. Players, Post
+Game), whose Post Game (`text_inviteslots`) opens `host`; Join Game opens
+`player_game_options`, whose `text_mapname` (Search) opens `games_list`.
+Measured from the title menu by finger: each step opened the next, the host
+room's Leave Room returned to `game_options` and the games list's Back to
+`player_game_options`; `players_list` opens only by the console.
+`openmenu join` with no session raises "This game session is no longer
+available" over the join room, and closing the popup closes the room too.
+`players` (`PLAYERS_MENU`) is not a type the PC factory builds: `openmenu
+players` gives a plain `CMenu` that draws nothing, and no PC string opens
+it.
 
 ## The danger room (`CMenuDangerRoom`)
 

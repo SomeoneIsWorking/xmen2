@@ -425,6 +425,35 @@ back to the review), `touch-controller-page` (Back's edge closes it) and
 `touch-personal` (the install's one file through the game's `personalItem`,
 Back), each also `-4x3`, `-tablet` and `-20x9`.
 
+**The online lobby menus are the game's own screens on touch** (issue #199):
+the player setup (CMenuOnline), the campaign lobby (CMenuCampaignLobby),
+the host's and joiner's game options (CMenuGameOptions,
+CMenuPlayerGameOptions), the host and join rooms (CMenuHost, CMenuJoin), the
+games list and the players list, with no pad over them. Their own onMouse
+(`0x005caa80`, `0x005b03b0`, `0x005ba2b0`, `0x005c8da0`) tests each row's raw
+box, walks the focus to the row under the pointer and posts `MENU_ACCEPT`
+on a release over the focused one, so a finger's down and up on one row is
+a tap that opens it. Each row gets a finger area over its text, delivered
+at its raw box (`kFingerItems` in `text_item_touch.cpp`), the footers are
+finger buttons, and the games and players lists take the list layout (both
+empty with no session). Prove it with
+`tools/live_case.py touch-lobby-host` (the title's play online, Ready, Host
+Game, the game options' Post Game, the host room's Leave Room) and
+`touch-lobby-join` (Join Game, Search, the games list's Back, then the
+players list and the join room by the console; with no session the join
+room closes with its "no longer available" popup, so its rows are judged
+under it), each also `-4x3`, `-tablet` and `-20x9`.
+
+**Advanced Options (CMenuSebas) still draws the menu pad.** Options' footer
+`Advanced...` is a finger button and a tap opens it (`MENU_OK`, CMenuOptions'
+update), and the retail pointer drives its widgets: a tap selects a player
+tab or puts a binding cell into capture. But the screen is a second GUI
+built in client pixels ([menus](RE/menus.md#advanced-options-cmenusebas)),
+its rows and tabs under a finger, its `Esc Back` a label, and a capture
+waits for a key a touch player does not have; Escape, the pad's B and a tap
+at Accept each left it up, so no way out of it is established. Its touch layout is not built. Prove the way in with
+`tools/live_case.py touch-advanced-options` (and `-4x3`, `-tablet`, `-20x9`).
+
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
 poll while an authored sequence holds the player's controls, and it takes a

@@ -18,6 +18,11 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
    poll so it never sees a menu half-updated. */
 void menu_route(x2::native::Socket fd, const char *query);
 
+/* GET /menu/action?name=<token>: the `$MENU_<TOKEN>` action posted at the
+   guest input poll, as a click on a footer carrying it posts it, so the
+   active menu's own update acts on it (Options' ok opens Advanced Options). */
+void menu_action_route(x2::native::Socket fd, const char *query);
+
 } // namespace x2::control
 
 #endif
