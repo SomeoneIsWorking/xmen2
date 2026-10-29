@@ -24,6 +24,7 @@
 #include "gpu_device.h"
 #include "guest_body.h"
 #include "guest_modules.h"
+#include "hud_cinematic_skip.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <stdint.h>
@@ -401,7 +402,7 @@ void x2_override_004d7c10(CPU *cpu) {
 
 void x2_override_004a00d0(CPU *cpu) {
   uint32_t mask = 0;
-  int down = 0, locked, requested;
+  int down = 0, locked, requested, briefing;
 
   x86_guest_body(cpu, "XMen2.exe", 0x004a00d0u);
   retire_released_sequence();
@@ -412,12 +413,16 @@ void x2_override_004a00d0(CPU *cpu) {
      the RELEASE is published as reliably as the acquisition. The same fact
      is the skip offer a touch button reads (cutscene_skip.h). */
   x2_gameplay_control_set_cutscene_locked(locked);
-  x2_cutscene_skip_offer(locked);
+  /* A briefing's cancel script is CHud's own action-20 skip. */
+  briefing = x2::native::hud_cinematic_skippable();
+  x2_cutscene_skip_offer(locked || briefing);
   g_player.input_polls++;
   if (call_action_mask(cpu, &mask))
     down = !!(mask & (1u << CINEMATIC_SKIP_ACTION));
   /* A touch request is the same edge as the key going down: one route. */
   requested = x2_cutscene_skip_take_request();
+  if (requested && briefing)
+    x2::native::hud_cinematic_skip_press();
   if ((down && !g_player.skip_down) || requested) {
     g_player.input_edges++;
     (void)finish(cpu);

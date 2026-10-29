@@ -55,7 +55,7 @@ static x2::presentation::HudRegions g_regions;
    overlay has drawn one. The overlay draws after the HUD, so a frame lines
    up with the row the previous frame drew. */
 static float g_menu_row_top = -1.0f;
-/* Inside the message draw while its bottom band holds the use prompt alone. */
+/* Inside the message draw while its bottom band holds the use prompt. */
 static int g_prompt_scope;
 /* A submit the port makes itself, drawn as it is given. */
 static int g_own_submit;
@@ -292,9 +292,10 @@ static void mouse_overlay_draw(CPU *cpu) {
 /*
  * The use prompt (FUN_0042eaf0, docs/RE/hud.md) is a type-0 GUI message: the
  * message draw (0059dc00) lays its line out at the bottom centre and puts a
- * dark band (sprite icon 0x1b) behind every type-0 line. On touch, while the
- * prompt is that band's only line, the band is grown to a finger-sized button
- * around it and published, and a tap is the Use button the prompt names.
+ * dark band (sprite icon 0x1b) behind all its type-0 lines. On touch, while
+ * the prompt is one of them, the band is grown to a finger-sized button round
+ * its lines and published, and a tap is the Use button the prompt names; a
+ * notice sharing the band (an XP award) sits inside the button with it.
  */
 enum {
   USE_PROMPT_HANDLE = 0x0070b7f0u,
@@ -324,22 +325,18 @@ static float g_prompt_shift[2];
 /* The prompt's message record, inside g_prompt_scope. */
 static uint32_t g_prompt_record;
 
-/* The record of player one's prompt when it is the band's only line, or 0. */
-static uint32_t use_prompt_alone(uint32_t gui) {
+/* The record of player one's prompt when it is a line of the band, or 0. */
+static uint32_t use_prompt_record(uint32_t gui) {
   const uint32_t prompt = RD32(USE_PROMPT_HANDLE);
-  int bottom_lines = 0;
-  uint32_t found = 0;
   uint32_t index = RD32(gui + MESSAGE_HEAD);
   for (int i = 0; i < MESSAGE_POOL && index < (uint32_t)MESSAGE_POOL; ++i) {
     const uint32_t record = gui + MESSAGE_RECORDS + index * MESSAGE_STRIDE;
-    if (RD8(record + 0x20u) && RD8(record + 0x158u) == 0) {
-      ++bottom_lines;
-      if (RD32(record + 0x124u) == prompt)
-        found = record;
-    }
+    if (RD8(record + 0x20u) && RD8(record + 0x158u) == 0 &&
+        RD32(record + 0x124u) == prompt)
+      return record;
     index = RD32(record);
   }
-  return bottom_lines == 1 ? found : 0;
+  return 0;
 }
 
 /* The prompt's words without its leading button token ("$GUARD1 Use ..."):
@@ -360,7 +357,7 @@ static void drop_button_token(uint32_t text, uint8_t *saved) {
 
 static void message_draw(CPU *cpu) {
   const uint32_t record = x2::input::touch_runtime_overlay_visible()
-                              ? use_prompt_alone(cpu->reg[kX86pEcx])
+                              ? use_prompt_record(cpu->reg[kX86pEcx])
                               : 0;
   g_prompt_scope = record != 0 && prepare_space();
   g_prompt_record = record;

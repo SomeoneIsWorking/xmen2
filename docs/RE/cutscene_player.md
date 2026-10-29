@@ -167,10 +167,26 @@ DirectSound remains unmodified, so ambient/gameplay voices and unrelated audio
 started during the same host interval are not caught by a broad global gate.
 Neither dialogue nor script-audio policy changes guest/world time.
 
-`CHud::startCinematic` (`0059b3b0`), `endCinematic` (`00599da0`), and its active
-update in `0059f1a0` own the separate `cinematicStart`/`cinematicEnd` briefing
-surface used by 18 shipping scripts. That CHud player is not the general
-gameplay control-lock player and does not define when player control returns.
+`CHud::startCinematic` (`0059b3b0`, vtable `0069dca4` `+e4`), `endCinematic`
+(`00599da0`, `+e8`), and its active update in `0059f1a0` (`+1c`) own the
+separate `cinematicStart`/`cinematicEnd` briefing surface used by 18 shipping
+scripts. That CHud player is not the general gameplay control-lock player and
+does not define when player control returns: the briefings call
+`lockControls(0)`. CHud is the static at `0081d7e0` that `0059ee20` builds
+once (guard `008a6194` bit 0). `startCinematic(subtitles, cancel)` sets bit
+`0x4` of `+889b1` and copies the cancel script name (0x80 bytes) to `+8890c`;
+`endCinematic` clears the bit. While the bit is set, the update draws the
+letterbox and reads the input action mask (input vtable `+140`, `005d4b00`);
+with action 4 or 20 down and a cancel script named it fades (`00592480`
+`+80`, 0.5) and runs the cancel script through the script interface
+(`004a1670` `+c`, then `+3c`). Escape reaches it as action 20. The briefing
+cancel scripts (`briefing/briefing1_cancel` and the others) fade, release the
+controls and `loadZone` the hub.
+
+On touch `src/native/hud_cinematic_skip.cpp` wraps `0059f1a0` and `005d4b00`:
+a Skip request taken by the cutscene player while the bit is set and a cancel
+script is named makes the action mask report action 20 down inside the next
+CHud update only, so the retail branch above performs the skip.
 
 ## Verification contract
 

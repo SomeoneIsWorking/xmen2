@@ -8,10 +8,12 @@
  * run, and pressing it must take exactly that route.
  *
  * So this owner holds two facts and no behaviour. The cutscene player OFFERS a
- * skip every input poll (a sequence it owns holds the player's controls), and
- * TAKES a request on the same poll, performing the one skip it already
- * performs for the key. The touch layer only READS the offer and REQUESTS.
- * Neither side reaches into the other, and there is no second skip path.
+ * skip every input poll (a sequence it owns holds the player's controls, or a
+ * briefing names its cancel script), and TAKES a request on the same poll,
+ * performing the skip the key performs: its own completion, and for a
+ * briefing action 20 down for one CHud update (hud_cinematic_skip.h). The
+ * touch layer only READS the offer and REQUESTS. Neither side reaches into the
+ * other, and there is no second skip path.
  *
  * The poll and the touch events run on different threads, so both facts are
  * atomic. A request made while nothing is offered is refused rather than

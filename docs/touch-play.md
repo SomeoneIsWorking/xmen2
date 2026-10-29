@@ -468,7 +468,13 @@ keeping the screen and its Yes leaving it, Accept and Back each closing it.
 corner, the phone's Escape. The cutscene player offers the skip on every input
 poll while an authored sequence holds the player's controls, and it takes a
 touch request on the same poll as the Escape edge, running the same owned
-completion (`src/input/cutscene_skip.h`). The button draws from its own
+completion (`src/input/cutscene_skip.h`). A mission briefing
+(`cinematicStart`) does not hold the controls (`lockControls(0)`); CHud's
+update cancels it itself when action 20 is down. The cutscene player offers
+the skip while that cinematic is shown with a cancel script as well, and
+hands a request to `src/native/hud_cinematic_skip.cpp`, which reports action
+20 down to the next CHud update only: the press Escape makes, so the
+briefing's own cancel script runs. The button draws from its own
 document (`src/ui/skip_document.cpp`), because the gameplay overlay is hidden
 then. A tap after the offer has ended is refused rather than held, so it
 cannot skip the next cinematic. `/controls` lists it as `skip button` while
@@ -510,7 +516,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
-| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. It is a button only while it is the band's only line |
+| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. A notice that shares the band, such as an XP award, sits inside the button with the prompt, and the button stays pressable while it does |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
@@ -646,7 +652,18 @@ low inboard power covered the prompt before it moved); `touch-use-prompt-4x3`,
 `-16x9` and `-20x9` run the same at 960x720, 1280x720 and 1600x720. Observed
 2026-10-28 with one power drawn: at 1096x720 and 960x720 the button moved up
 clear of that power (left 461 and 351, top 464); at 16:9 and 20:9 it stayed
-where the game puts it.
+where the game puts it. `touch-use-prompt-xp-16x9` and `-xp-20x9` then award
+XP with `awardXPToPlayable(500)`, so the game's "500 XP" line shares the
+prompt's band, and require the button through the notice's first second and
+the press made while it is up to open the trivia menu.
+
+`tools/live_case.py touch-briefing` (and `-20x9`) loads
+`briefing/briefing1_10`, the mission briefing Sanctuary's projector loads,
+and waits until the input probe (`GET /input`, `retail cinematic:`) reports
+CHud's cinematic shown with its cancel script. The Skip button must be drawn,
+and a press on it must end the briefing within seconds through one forced
+action-20 read, after which `briefing1_cancel` brings back the Sanctuary's
+gameplay controls.
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.

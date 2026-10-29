@@ -14,6 +14,7 @@ judged by GET /menu: the line inside the panel, each response a finger-tall card
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.parse
 
@@ -275,3 +276,104 @@ def case_touch_cinematic(case: Case) -> None:
     case.check("gameplay's controls are back after the cinematic", gameplay,
                "drawn: %s" % sorted(live_controls(case)))
     case.shot("gameplay")
+
+
+# Sanctuary's first mission briefing, the map show_blink_briefing loads.
+BRIEFING_MAP = "briefing/briefing1_10"
+BRIEFING_SHAPES = {
+    "touch-briefing": (1280, 720),
+    "touch-briefing-20x9": (1600, 720),
+}
+
+
+def retail_cinematic(case: Case) -> str:
+    """The probe's line for CHud's cinematicStart surface, a briefing."""
+    for line in case.get_text("/input").splitlines():
+        if line.strip().startswith("retail cinematic:"):
+            return line.strip()
+    return ""
+
+
+def skip_rect(case: Case) -> tuple[float, ...] | None:
+    for line in case.get_text("/controls").splitlines():
+        found = re.match(r"skip button ([\d.]+),([\d.]+) ([\d.]+)x([\d.]+)",
+                         line)
+        if found:
+            return tuple(float(v) for v in found.groups())
+    return None
+
+
+def case_touch_briefing(case: Case) -> None:
+    """A mission briefing on touch (briefing1_10, loaded as Sanctuary's
+    projector loads it; its script is a cinematicStart with a cancel script):
+    it offers the Skip button, and a tap on the button cancels the briefing
+    through CHud's own action-20 skip long before the briefing would end."""
+    width, height = BRIEFING_SHAPES[case.name]
+    case.prepare_profile(["boot.mode=continue", "input.touch_controls=2",
+                          "video.width=%d" % width,
+                          "video.height=%d" % height,
+                          "video.mode=windowed"])
+    case.seed_save("autosave0.save")
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    menu = keyboard_into_gameplay(case, 300)
+    case.check("the run reached gameplay through the PDA",
+               menu.get("active") is False, str(menu.get("menu")))
+    case.http("/console?command=loadmap%20" + BRIEFING_MAP)
+
+    deadline = time.monotonic() + 180
+    shown = ""
+    while time.monotonic() < deadline:
+        shown = retail_cinematic(case)
+        if shown.startswith("retail cinematic: shown"):
+            break
+        time.sleep(0.5)
+    case.check("loadmap %s played a briefing with a cancel script"
+               % BRIEFING_MAP,
+               shown.startswith("retail cinematic: shown")
+               and "''" not in shown, shown)
+    if not shown.startswith("retail cinematic: shown"):
+        return
+    # Past the opening fade, onto the briefing's first shot.
+    time.sleep(5.0)
+    rect = None
+    for _ in range(12):
+        rect = skip_rect(case)
+        if rect:
+            break
+        time.sleep(0.25)
+    case.shot("briefing")
+    case.check("the briefing draws the Skip button", rect is not None)
+    if not rect:
+        return
+    left, top, w, h = rect
+    case.check("the button lies inside the %dx%d window" % (width, height),
+               left >= 0 and top >= 0 and left + w <= width
+               and top + h <= height, str(rect))
+    started = time.monotonic()
+    case.check("a finger on the Skip button is delivered",
+               press(case, (left + w * 0.5) / width, (top + h * 0.5) / height))
+    gone = ""
+    while time.monotonic() - started < 15:
+        gone = retail_cinematic(case)
+        if gone.startswith("retail cinematic: not shown"):
+            break
+        time.sleep(0.5)
+    case.check("the tap ended the briefing within %.0fs"
+               % (time.monotonic() - started),
+               gone.startswith("retail cinematic: not shown"), gone)
+    case.check("it went through one touch press and CHud's action-20 read",
+               "1 touch press(es)" in gone and "0 forced" not in gone, gone)
+    # briefing1_cancel fades out and loads the Sanctuary, whose arrival opens
+    # with Xavier's greeting.
+    deadline = time.monotonic() + 90
+    line = ""
+    while time.monotonic() < deadline:
+        shown = read_menu(case).get("conversation") or {}
+        line = (shown.get("line") or "").lower()
+        if "sanctuary" in line or live_controls(case):
+            break
+        time.sleep(0.5)
+    case.check("the cancel script loaded the Sanctuary",
+               "sanctuary" in line or bool(live_controls(case)), line)
+    case.shot("after")

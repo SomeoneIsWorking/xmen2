@@ -15,6 +15,7 @@
 #include "cutscene_player.h"
 #include "cutscene_script_audio.h"
 #include "cutscene_skip_publication.h"
+#include "hud_cinematic_skip.h"
 #include "input_bindings.h"
 #include "rmlui_ui.h"
 #include "text_put.h"
@@ -242,6 +243,14 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
         out, size, &at,
         "  cinematic mask: UNREADABLE at input vtable +0x140\n");
   report_player(cpu, out, size, &at);
+  x2::native::HudCinematicSkipSnapshot briefing;
+  x2::native::hud_cinematic_skip_snapshot(&briefing);
+  x2::native::text_put(
+      out, size, &at,
+      "  retail cinematic: %s, cancel script '%s'; %lu touch press(es), "
+      "%lu forced action-20 read(s)\n",
+      briefing.shown ? "shown" : "not shown", briefing.cancel_script,
+      briefing.presses, briefing.forced);
   x2::native::text_put(
       out, size, &at,
       "  boundary rule: an action 20 edge asks the ported cutscene "

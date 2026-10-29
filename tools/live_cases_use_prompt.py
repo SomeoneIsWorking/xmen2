@@ -4,7 +4,9 @@ The run loads the Sanctuary hub, teleports the active hero with setPos* into
 the trivia console's use trigger, taps the game's own "Use Trivia Game"
 prompt near its edge and judges the result by GET /menu: the game's trivia
 menu opens. Each variant runs in one window shape, and in each no drawn
-control overlaps the prompt. See docs/RE/hud.md for the prompt.
+control overlaps the prompt. The -xp variants award XP first, so the game's
+XP notice shares the prompt's band, and tap the button while it does. See
+docs/RE/hud.md for the prompt.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ SHAPES = {
     "touch-use-prompt-4x3": (960, 720),
     "touch-use-prompt-16x9": (1280, 720),
     "touch-use-prompt-20x9": (1600, 720),
+    "touch-use-prompt-xp-16x9": (1280, 720),
+    "touch-use-prompt-xp-20x9": (1600, 720),
 }
 
 
@@ -59,6 +63,22 @@ def wait_prompt(case: Case, timeout: float):
             return rect
         time.sleep(0.3)
     return None
+
+
+def sample_prompt(case: Case, seconds: float, shot: str) -> tuple[int, int]:
+    """How often the prompt's button was published over `seconds`, and how
+    often it was missing; the first sample is shot."""
+    seen = lost = 0
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if live_use_prompt(case):
+            seen += 1
+        else:
+            lost += 1
+        if seen + lost == 1:
+            case.shot(shot)
+        time.sleep(0.05)
+    return seen, lost
 
 
 def wait_menu(case: Case, name: str, timeout: float) -> str:
@@ -128,6 +148,21 @@ def case_touch_use_prompt(case: Case) -> None:
                % (window[0], window[1], rect), not covered,
                "; ".join("%s %s" % (name, controls[name]) for name in covered))
     case.shot("prompt")
+    if "-xp" in case.name:
+        # The notice stays up about two seconds; the button is read through
+        # its first second and pressed inside it.
+        script(case, "awardXPToPlayable(500)")
+        seen, lost = sample_prompt(case, 1.0, "prompt-xp")
+        case.check("with the XP notice in its band the prompt stayed a "
+                   "button (%d sample(s), %d without it)" % (seen, lost),
+                   seen >= 5 and lost == 0)
+        rect = live_use_prompt(case)
+        if not rect:
+            return
+        left, top, width, height = rect
+        covered = overlapping(rect, live_controls(case))
+        case.check("with the XP notice no drawn control overlaps the "
+                   "button %s" % (rect,), not covered, str(covered))
 
     # Near the button's corner, outside the text the game draws.
     px, py = left + 4.0, top + 4.0

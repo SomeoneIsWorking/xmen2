@@ -103,10 +103,17 @@ not `005f11b0`, and then one dark band behind all type-0 lines through `+4c`:
 position (mid - w/2, 0, top), size (w, h), colour (0, 0, 0, alpha), icon
 `0x1b`, layer 1. The prompt is a type-0 message.
 
+Each visible type-0 line, in list order, is laid out at the anchor less the
+lines above it (`+14c` z = anchor z - sum of 1.125 x line height); the band
+is as wide as the widest line plus 15, its top the first line's z + h/2 + 2
+and its bottom the lowest line's z - h/2 - 6. An XP award (`500 XP`) is a
+type-0 line too, so it shares the prompt's band.
+
 On touch, `hud_draw_runtime.cpp` wraps `0059dc00`; while the record holding
-player one's prompt handle is the only visible type-0 line, it grows that
-band to `text_button` around its line (one finger tall) and publishes the
-grown band as `HudRegions::use_prompt`, the touch zone pressing Use. The band
+player one's prompt handle is a visible type-0 line, it grows that band to
+`text_button` around its lines (at least one finger tall) and publishes the
+grown band as `HudRegions::use_prompt`, the touch zone pressing Use. Other
+lines in the band are inside the button with the prompt. The band
 is submitted twice, an orange frame and an inset dark fill (lit while held),
 and for that draw the record's text (`+24`, 0x100 bytes of ASCII such as
 `$GUAR1 Use Trivia Game`) is the words after the leading token, restored after.
