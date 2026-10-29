@@ -11,6 +11,7 @@ reopened list closes it.
 
 from __future__ import annotations
 
+import itertools
 import time
 
 from live_cases_touch_map import inside_window, into_level
@@ -86,7 +87,7 @@ def case_touch_hero_list(case: Case) -> None:
     if not back:
         return
     finger = finger_window(back)
-    pitch = min(b["tap"]["y"] - a["tap"]["y"] for a, b in zip(cards, cards[1:]))
+    pitch = min(b["tap"]["y"] - a["tap"]["y"] for a, b in itertools.pairwise(cards))
     case.check("the hero cards are at least a finger apart",
                pitch >= finger * 0.999,
                "pitch %.4f, finger %.4f of the window" % (pitch, finger))
