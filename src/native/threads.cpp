@@ -160,7 +160,7 @@ int scheduler_has_waiter(void) {
                                 g_self))
     return 0;
   return guest_thread_any_ready(g_thread, MAIN_SLOT + 1, g_self,
-                                guest_clock_now_s);
+                                guest_clock_reached);
 }
 
 /* Attach the process main thread to the same bookkeeping as created threads. */

@@ -15,7 +15,13 @@ address charged hot samples to one-time registration code in the first use.
     tools/jit_map_profile.py --map scratch/jitdump/jit.map \\
         --perf-data scratch/jitdump/perf.data --log scratch/jitdump/run.log \\
         --game-dir "$GAME_PC_DIR" [--top 30] [--blocks] [--time START,END]
+    tools/jit_map_profile.py --map jit.map --samples samples.txt \\
+        --lib build/android-arm64-v8a/libmain.so --log run.log --game-dir "$GAME_PC_DIR"
     tools/jit_map_profile.py --selftest
+
+`--samples` reads the control channel's `/performance/sample` report in place
+of perf.data, for a device that refuses perf_event_open: its module lines place
+the host library, whose symbols name every sample outside JIT code.
 """
 import argparse
 import bisect
@@ -137,7 +143,103 @@ def sample_ips(perf_data, time_range=None):
     return [int(word, 16) for word in out.split()]
 
 
-def report(ips, ranges, names, top, blocks):
+class HostNames:
+    """Nearest symbol at or below a host address in the sampled process's modules."""
+
+    def __init__(self, modules, libs):
+        self.modules = sorted(modules)  # (low, high, bias, path)
+        self.tables = {}  # library basename -> (addresses, names)
+        self.primary = os.path.basename(libs[0]) if libs else None
+        for lib in libs or []:
+            out = subprocess.run(["llvm-nm", "--defined-only", "-C", "--numeric-sort", lib],
+                                 capture_output=True, text=True, check=True).stdout
+            if not out.strip():
+                out = subprocess.run(["llvm-nm", "-D", "--defined-only", "-C", "--numeric-sort", lib],
+                                     capture_output=True, text=True, check=True).stdout
+            symbols = []
+            for line in out.splitlines():
+                fields = line.split(" ", 2)
+                if len(fields) == 3 and fields[1] in "tTwWiI":
+                    symbols.append((int(fields[0], 16), fields[2]))
+            self.tables[os.path.basename(lib)] = ([a for a, _ in symbols], [n for _, n in symbols])
+
+    def in_primary(self, ip):
+        """Whether `ip` lies in the first library given, the one being profiled."""
+        for low, high, _, path in self.modules:
+            if low <= ip < high:
+                return bool(self.primary) and os.path.basename(path) == self.primary
+        return False
+
+    def name(self, ip):
+        for low, high, bias, path in self.modules:
+            if low <= ip < high:
+                base = os.path.basename(path)
+                if base in self.tables:
+                    keys, labels = self.tables[base]
+                    i = bisect.bisect_right(keys, ip - bias) - 1
+                    if i >= 0:
+                        return labels[i]
+                return f"{base}+{ip - bias:#x}"
+        return "[anonymous]"
+
+
+def caller(label, chain, ranges, names, host):
+    """The first return address in `chain` outside the sampled symbol that is
+    JIT code or in the profiled library: system and driver frames between are
+    skipped, since they say nothing about which of our callers paid."""
+    for address in chain:
+        guest = ranges.guest_at(address)
+        if guest is not None:
+            return f"JIT {names.name(guest)}"
+        name = host.name(address)
+        if name != label and host.in_primary(address):
+            return name
+    return "?"
+
+
+def inclusive(ips, chains, ranges, host):
+    """Samples beneath each profiled-library symbol, each counted once per sample."""
+    total = collections.Counter()
+    for ip, chain in zip(ips, chains):
+        seen = set()
+        for address in (ip, *chain):
+            if ranges.guest_at(address) is not None:
+                break
+            if host.in_primary(address):
+                seen.add(host.name(address))
+        total.update(seen)
+    return total
+
+
+def callers_of(target, ips, chains, ranges, names, host):
+    """For samples with `target` on their stack, the frame that called it."""
+    found = collections.Counter()
+    for ip, chain in zip(ips, chains):
+        frames = (ip, *chain)
+        for i, address in enumerate(frames):
+            if ranges.guest_at(address) is None and host.name(address) == target:
+                outer = [a for a in frames[i + 1:]
+                         if ranges.guest_at(a) is not None or host.name(a) != target]
+                found[caller(target, outer, ranges, names, host) if outer else "?"] += 1
+                break
+    return found
+
+
+def sample_file(path):
+    """The /performance/sample report: modules and (pc, lr, return...) tuples."""
+    modules, samples = [], []
+    with open(path) as f:
+        for line in f:
+            fields = line.split()
+            if fields[:1] == ["module"] and len(fields) >= 5:
+                bias, low, high = (int(v, 16) for v in fields[1:4])
+                modules.append((low, high, bias, " ".join(fields[4:])))
+            elif fields[:1] == ["sample"] and len(fields) >= 3:
+                samples.append(tuple(int(v, 16) for v in fields[1:]))
+    return modules, samples
+
+
+def report(ips, ranges, names, top, blocks, host=None, chains=None):
     by_block, unowned = attribute(ips, ranges)
     total = len(ips)
     owned = sum(by_block.values())
@@ -148,8 +250,22 @@ def report(ips, ranges, names, top, blocks):
     rank = collections.Counter()
     for guest, count in by_block.items():
         rank[names.name(guest) if not blocks else f"{guest:#010x} {names.name(guest)}"] += count
+    if host:
+        callers = collections.Counter()
+        for ip, chain in zip(ips, chains):
+            if ranges.guest_at(ip) is None:
+                label = host.name(ip)
+                rank[label] += 1
+                callers[f"{label} <- {caller(label, chain, ranges, names, host)}"] += 1
     for label, count in rank.most_common(top):
         print(f"{100 * count / max(total, 1):6.2f}% {label}")
+    if host:
+        print("host symbols inclusive of their callees (up to the first JIT frame):")
+        for label, count in inclusive(ips, chains, ranges, host).most_common(top):
+            print(f"{100 * count / max(total, 1):6.2f}% {label}")
+        print("host samples by nearest caller outside their own symbol:")
+        for label, count in callers.most_common(top):
+            print(f"{100 * count / max(total, 1):6.2f}% {label}")
 
 
 def selftest():
@@ -185,6 +301,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--map")
     parser.add_argument("--perf-data")
+    parser.add_argument("--samples", help="a /performance/sample report, in place of --perf-data")
+    parser.add_argument("--callers", help="with --samples: who called this host symbol")
+    parser.add_argument("--lib", action="append",
+                        help="an unstripped host library the samples ran in (repeatable)")
     parser.add_argument("--log", help="the run's log, for where each module was mapped")
     parser.add_argument("--game-dir", help="the directory holding the mapped modules")
     parser.add_argument("--top", type=int, default=30)
@@ -195,6 +315,8 @@ def main():
     args = parser.parse_args()
     if args.selftest:
         return selftest()
+    if args.samples:
+        args.perf_data = args.samples
     for flag in ("map", "perf_data", "log", "game_dir"):
         if not getattr(args, flag):
             parser.error(f"--{flag.replace('_', '-')} is required")
@@ -207,7 +329,20 @@ def main():
     if not modules:
         sys.exit(f"jit_map_profile: {args.log} says no module was mapped")
     names = Names(modules, export_table(modules, args.game_dir))
-    report(sample_ips(args.perf_data, args.time), ranges, names, args.top, args.blocks)
+    if args.samples:
+        host_modules, samples = sample_file(args.samples)
+        ips = [sample[0] for sample in samples]
+        chains = [sample[1:] for sample in samples]
+        host = HostNames(host_modules, args.lib)
+        if args.callers:
+            found = callers_of(args.callers, ips, chains, ranges, names, host)
+            print(f"{sum(found.values())} of {len(ips)} sample(s) have {args.callers} on the stack; its callers:")
+            for label, count in found.most_common(args.top):
+                print(f"{100 * count / max(len(ips), 1):6.2f}% {label}")
+        else:
+            report(ips, ranges, names, args.top, args.blocks, host, chains)
+    else:
+        report(sample_ips(args.perf_data, args.time), ranges, names, args.top, args.blocks)
     return 0
 
 

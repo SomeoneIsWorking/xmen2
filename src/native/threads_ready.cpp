@@ -27,25 +27,23 @@ int guest_thread_others_live(int live, const GuestThread *self) {
 }
 
 int guest_thread_any_ready(const GuestThread *table, int count,
-                           const GuestThread *self, double (*clock)(void)) {
-  double now = 0.0;
-  int have_now = 0;
+                           const GuestThread *self, int (*reached)(double)) {
+  double earliest = HUGE_VAL;
   int i;
   for (i = 0; i < count; i++) {
     const GuestThread *t = &table[i];
-    if (t == self) {
+    if (t == self || !t->used || t->finished) {
       continue;
     }
-    if (!have_now && t->used && !t->finished && t->state == TS_COND &&
-        !t->cond_ready) {
-      now = clock();
-      have_now = 1;
+    if (t->state == TS_COND && !t->cond_ready) {
+      earliest = fmin(earliest, t->cond_deadline);
+      continue;
     }
-    if (guest_thread_ready_to_run(t, now)) {
+    if (guest_thread_ready_to_run(t, 0.0)) {
       return 1;
     }
   }
-  return 0;
+  return earliest != HUGE_VAL && reached(earliest);
 }
 
 void guest_thread_mark_cond_ready(GuestThread *table, int count) {

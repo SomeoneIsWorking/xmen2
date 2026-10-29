@@ -436,6 +436,8 @@ static void serve(x2::native::Socket fd) {
     x2::native::control_performance_reset_route(fd);
   else if (!strcmp(path, "/performance/probe"))
     x2::native::control_performance_probe_route(fd, query ? query : "");
+  else if (!strcmp(path, "/performance/sample"))
+    x2::native::control_performance_sample_route(fd, query ? query : "");
   else
     control_reply_text(
         fd, 404, "Not Found",
@@ -470,6 +472,8 @@ static void serve(x2::native::Socket fd) {
         "  GET /performance/reset  start a fresh frame-time window\n"
         "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "
         "probe (n=0 disarms)\n"
+        "  GET /performance/sample?hz=1000&n=20000  sample the frame "
+        "thread; again without arguments to read the samples\n"
         "  GET /reached      has the game ever entered that "
         "function? (self-documents)\n",
         path);

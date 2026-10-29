@@ -11,4 +11,8 @@ void control_performance_reset_route(x2::native::Socket fd);
    in, and reinstalling a debug build to get one costs the player's data. */
 void control_performance_probe_route(x2::native::Socket fd, const char *query);
 
+/* /performance/sample?hz=&n=: arm a CPU-time sampler on the frame thread;
+   without arguments, stop it and return the modules and samples. */
+void control_performance_sample_route(x2::native::Socket fd, const char *query);
+
 } // namespace x2::native
