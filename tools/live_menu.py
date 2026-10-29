@@ -7,7 +7,6 @@ import json
 import re
 import time
 
-from live_game import live_controls, live_viewport, tap_control
 from live_harness import Case
 
 
@@ -194,14 +193,11 @@ def setting_cards(menu: dict) -> dict[str, dict]:
 
 def leave_to(case: Case, name: str, timeout: float = 20) -> dict:
     """Back to the game's menu `name` the way a finger leaves: a popup's
-    Back, No, Cancel or only button, the menu's Back footer button, or on a
-    menu not native on touch the menu pad's B."""
+    Back, No, Cancel or only button, or the menu's Back footer button."""
     deadline = time.monotonic() + timeout
     menu = read_menu_items(case)
     while time.monotonic() < deadline and not (
             menu.get("menu") == name and menu.get("popup") is False):
-        controls = live_controls(case)
-        viewport = live_viewport(case)
         if menu.get("popup"):
             footers = (menu.get("popup_page") or {}).get("footers", [])
             out = next((f for f in footers if f.get("text", "").strip().lower()
@@ -210,8 +206,6 @@ def leave_to(case: Case, name: str, timeout: float = 20) -> dict:
             tap_point(case, out and out.get("tap"))
         elif footer_button(menu, "$MENU_BACK"):
             tap_button_edge(case, footer_button(menu, "$MENU_BACK"))
-        elif "menu-b" in controls and viewport:
-            tap_control(case, controls["menu-b"], viewport)
         time.sleep(2.0)
         menu = read_menu_items(case)
     return menu

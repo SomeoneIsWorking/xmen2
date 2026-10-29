@@ -296,9 +296,8 @@ int main(int argc, char **argv) {
                       "pad selected the reordered guest slot\n");
       return 1;
     }
-    /* THE TOUCH PAD IS A CONTROLLER ON SCREEN. Touch play publishes
-       through the synthetic pad and draws the menu pad's A/B/X/Y beside the
-       prompts, so the prompts name that pad's buttons like any other. */
+    /* Touch play publishes through the synthetic pad, so the prompts name
+       that pad's buttons like any other. */
     active_pad = 1;
     if (!reader_says(4u, &kind, &code, 0) || kind != 3u || code != 0x15u ||
         !check_call(3, 0x15, 0x80, 0)) {

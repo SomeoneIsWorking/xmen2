@@ -20,9 +20,8 @@ std::optional<presentation::RetailScenePlane> live_scene_plane();
 
 /*
  * While touch play is the input, reads the active retail menu at a bounded
- * cadence, tells the touch runtime whether the menu pad goes over it, and
- * feeds the gap report. With touch play off it reads nothing. Guest thread
- * only.
+ * cadence and feeds the gap report. With touch play off it reads nothing.
+ * Guest thread only.
  */
 class TouchMenuSource {
 public:
@@ -32,7 +31,6 @@ public:
 private:
   input::MenuTouchGapReport gaps_;
   std::uint64_t last_ms_ = 0;
-  bool offered_ = false;
 };
 
 /* The running game's source, polled by the Win32 event pump. */

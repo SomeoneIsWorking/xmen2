@@ -431,7 +431,6 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_skip_button.cpp
                src/input/cutscene_skip.cpp
                src/input/touch_pad_publisher.cpp
-               src/input/touch_menu_controls.cpp
                src/input/touch_pointer.cpp
                src/native/extraction_revive_policy.cpp
                src/presentation/retail_scene_plane.cpp
@@ -1039,37 +1038,6 @@ if(NOT X2_KEY_FONT_RESULT EQUAL 0 OR NOT EXISTS "${X2_KEY_FONT}")
 endif()
 configure_file("${X2_KEY_FONT}" "${CMAKE_BINARY_DIR}/ui/NotoSans-Bold-keys.ttf"
                COPYONLY)
-
-# The touch menu pad draws the controller's own buttons from the same shared
-# Xbox set as the prompt atlas; tools/ui_resource_files.py lists the staged
-# names for packaging.
-set(X2_MENU_PAD_ICONS dpad_up dpad_down dpad_left dpad_right face_a face_b
-                      face_x face_y lb rb)
-execute_process(
-    COMMAND ${Python3_EXECUTABLE}
-            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py" --print-pad-svgs
-            ${X2_MENU_PAD_ICONS}
-    RESULT_VARIABLE X2_MENU_PAD_RESULT
-    OUTPUT_VARIABLE X2_MENU_PAD_SVGS
-    ERROR_VARIABLE X2_MENU_PAD_ERROR
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
-string(REPLACE "\r\n" "\n" X2_MENU_PAD_SVGS "${X2_MENU_PAD_SVGS}")
-string(REPLACE "\n" ";" X2_MENU_PAD_SVGS "${X2_MENU_PAD_SVGS}")
-list(LENGTH X2_MENU_PAD_ICONS X2_MENU_PAD_ICON_COUNT)
-list(LENGTH X2_MENU_PAD_SVGS X2_MENU_PAD_SVG_COUNT)
-if(NOT X2_MENU_PAD_RESULT EQUAL 0 OR
-   NOT X2_MENU_PAD_SVG_COUNT EQUAL X2_MENU_PAD_ICON_COUNT)
-    message(FATAL_ERROR
-        "Refusing configuration: resolved ${X2_MENU_PAD_SVG_COUNT} of "
-        "${X2_MENU_PAD_ICON_COUNT} menu pad SVGs:\n${X2_MENU_PAD_ERROR}")
-endif()
-math(EXPR X2_MENU_PAD_LAST "${X2_MENU_PAD_ICON_COUNT} - 1")
-foreach(x2_menu_pad_index RANGE ${X2_MENU_PAD_LAST})
-    list(GET X2_MENU_PAD_ICONS ${x2_menu_pad_index} x2_menu_pad_icon)
-    list(GET X2_MENU_PAD_SVGS ${x2_menu_pad_index} x2_menu_pad_svg)
-    configure_file("${x2_menu_pad_svg}"
-                   "${CMAKE_BINARY_DIR}/ui/pad_${x2_menu_pad_icon}.svg" COPYONLY)
-endforeach()
 
 set(X2_PROMPT_GLYPH_ATLAS_HEADER
     "${CMAKE_SOURCE_DIR}/src/gen/prompt_glyph_atlas.h")
@@ -2133,6 +2101,8 @@ set(X2_NATIVE_SOURCES
     src/native/text_item_touch.cpp
     src/native/automap_touch.cpp
     src/native/page_touch.cpp
+    src/native/sebas_gui.cpp
+    src/native/sebas_touch.cpp
     src/native/text_entry_input.cpp
     src/native/options_touch.cpp
     src/native/team_touch.cpp
@@ -2157,7 +2127,6 @@ set(X2_NATIVE_SOURCES
     src/input/cutscene_skip.cpp
     src/input/revive_prompt.cpp
     src/input/touch_pad_publisher.cpp
-    src/input/touch_menu_controls.cpp
     src/input/touch_pointer.cpp
     src/input/touch_visuals.cpp
     src/input/menu_touch_gaps.cpp
@@ -2170,6 +2139,7 @@ set(X2_NATIVE_SOURCES
     src/input/text_touch_layout.cpp
     src/input/automap_touch_layout.cpp
     src/input/page_touch_layout.cpp
+    src/input/sebas_touch_layout.cpp
     src/input/options_touch_layout.cpp
     src/input/team_touch_layout.cpp
     src/input/native_touch_menus.cpp

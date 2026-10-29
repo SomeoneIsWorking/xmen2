@@ -18,7 +18,6 @@ from live_cases_touch_menu import (
     wait_labels,
     wait_tabs,
 )
-from live_game import live_controls
 from live_harness import Case
 from live_menu import (
     dismiss_level_up,
@@ -301,10 +300,6 @@ def case_touch_team(case: Case) -> None:
     case.check("the tap opened the game's team menu on its party",
                team.get("menu") == "team" and team.get("mode") == 0,
                "%s mode %s" % (team.get("menu"), team.get("mode")))
-    controls = live_controls(case)
-    case.check("and the menu pad is not drawn over it",
-               not any(c.startswith("menu-") for c in controls),
-               "drawn: %s" % sorted(controls))
     time.sleep(1.0)
     items = read_menu_items(case)
     (case.dir / "team.json").write_text(json.dumps(items, indent=1) + "\n")

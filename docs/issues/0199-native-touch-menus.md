@@ -1,7 +1,7 @@
 ---
 id: 199
 title: Native touch menus: the game's own menus answer a finger, nothing drawn over them
-status: open
+status: resolved
 symptom: "Touch menus are a port-styled RmlUi panel over the retail menu, and the other menus get a drawn controller pad"
 state_items: S025, S020
 tags: touch,menus,ui
@@ -33,7 +33,7 @@ refuses the finger:
 | list | list box `onMouse` `0x005c0e10` (no scroll) | none on touch: `list_touch` takes it |
 | footer token | `CMenuItemText::onMouse` `0x005c6490`, unless the menu's own `onMouse` acts on it (`x2::native::menu_handles_token`: the codex's and the team's `$MENU_DETAILS`) | none |
 | popup | none: `CPopupDialog::onMouse` takes rows and footers; native on touch | -- |
-| small target | the menu's own layout | every menu not native on touch: each clickable row and footer is under a tenth of the shorter client edge at 1280x720; not on a native item with a finger area (`x2::native::text_has_finger_area`) |
+| small target | the menu's own layout | Options' setting labels (`label_*`, one each, from the front end and the level): retail rows the touch cards draw over, under a tenth of the shorter client edge at 1280x720; not on a native item with a finger area (`x2::native::text_has_finger_area`) |
 
 Not reached by any route yet, so not in the list: the team menu's roster and a
 hero's detail tabs (LT Details, RT Next hero, RB Drop and Assign), and `options`/`options_controller`
@@ -89,8 +89,8 @@ buttons for the prompts, one tap to act, a drag to scroll), shown working by
 `tools/live_case.py touch-popup` (13 of 13) and `touch-load` (9 of 9, eleven
 saves, the last past the page's ten reached by drag through Load Game's own
 window). A message popup's text, a tutorial Game Tip's whole message, is
-wrapped across the grown frame and sizes it, and a popup up in gameplay, with
-no menu under it, has no pad over it: `touch-game-tip` (17/17 at 1096x720,
+wrapped across the grown frame and sizes it, also for a popup up in
+gameplay with no menu under it: `touch-game-tip` (17/17 at 1096x720,
 the tablet's aspect) and `touch-game-tip-720` (17/17). The list boxes are step 5's second screen, done: CMenuItemListBox and
 CMenuItemListCodex draw finger cards of the PDA's option art in their own box,
 with the entry's icons and fitted text, a tap selecting through retail's own
@@ -130,13 +130,11 @@ span into equal buttons. Shown by `touch-team` (12/12),
 Conversations are native on touch: the speaker and line readable in the
 game's panel and each response a finger-tall card of `ui/hud/dialog_select`
 that a tap picks (`src/native/conversation_touch.cpp`, see
-[touch play](../touch-play.md)); no pad is drawn over them. Shown by
+[touch play](../touch-play.md)). Shown by
 `touch-conversation`, `-4x3`, `-16x9` and `-20x9`.
 
-A cinematic draws no pad: the pad goes only over a readable retail menu with
-no touch path (`x2::native::TouchMenuSource::refresh`), where it had gone
-over every control-locked stretch with no menu up, the cinematic gaps between
-a conversation's lines included. Shown by `touch-cinematic` (CINEMATIC_COUNT).
+A cinematic draws only its Skip button, shown by `touch-cinematic`
+(CINEMATIC_COUNT).
 The automap is native on touch: a drag keeps the ground under the finger, a
 held finger pans nothing, the Rotate prompt is two hold buttons
 (`src/native/automap_touch.cpp`), shown by `touch-automap`, `-4x3`, `-tablet`
@@ -172,20 +170,23 @@ popup, and a session needs a second running game. `players` is
 `PLAYERS_MENU`, which the PC factory does not build: `openmenu players`
 gives a plain `CMenu` that draws nothing, and no PC string opens it.
 
-The menu pad is not deleted, because CMenuSebas (Advanced Options) still
-draws it. The way in is touchable: Options' footer `Advanced...` is a finger
-button posting `MENU_OK`, the Start its update opens Advanced Options on
-(`touch-advanced-options`), and `GET /menu/action?name=ok` is the scan's
-route to it. But the screen is a second GUI, not CMenu items
-([menus](../RE/menus.md#advanced-options-cmenusebas)): `FUN_0061dc10` builds
-its widgets in client pixels and `FUN_00621ea0` hit-tests the pointer
-against them. A tap selects a tab and puts a binding cell into capture, but
-its rows (24 pixels apart at 720p) and tabs are under a finger, `Esc Back`
-is a label, and a capture waits for a key; Escape, the pad's B and a tap at
-Accept each left it up, so no way out of it is established. Its touch layout needs that GUI's widget classes read
-(rectangle, the table's row height and text size, the capture state) so a
-port layout can place them as finger cards and give Back and Cancel a
-button; until then the pad stays the touch path over it.
+Advanced Options (CMenuSebas) is native on touch, and with it every menu, so
+the menu pad is deleted (step 6's second half). The screen is a second
+widget GUI, not CMenu items
+([menus](../RE/menus.md#advanced-options-cmenusebas)); after each builder
+runs, the port moves its widgets through their own layout setter into
+finger places (`src/native/sebas_touch.cpp`, `src/input/sebas_touch_layout.cpp`,
+see [touch play](../touch-play.md)). Two causes kept a finger in: the menu
+pad's right button covered Accept, so a tap there pressed the pad, and
+Escape and the pad's B never reach the GUI (`FUN_005d1e90` takes Escape as a
+pad action and dispatches message 0). Back (the footer's `Esc Back`) and
+Accept are finger buttons that close it through the game's own callbacks,
+and each confirmation dialog's Yes and No are a finger row with a Back. The
+key table is read-only on touch, dragged to scroll, because a binding is
+finished only by a key. Shown by `touch-advanced-options`, `-4x3`, `-tablet`
+and `-20x9` (19/19 each). `tools/scan.py` with touch forced on drew the pad
+over no menu before it was deleted, and reports only Options' `label_*`
+small targets.
 
 The team menu's open items are closed: footer buttons disjoint with five
 footers (`touch-team-skills` and its `-4x3`, `-tablet` and `-20x9` windows),

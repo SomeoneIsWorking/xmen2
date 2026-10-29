@@ -7,11 +7,9 @@
 #include "../config/settings_store.h"
 #include "touch_census.h"
 #include "touch_controls.h"
-#include "touch_menu_controls.h"
 #include "touch_pad.h"
 #include "touch_pad_publisher.h"
 #include "touch_pointer.h"
-#include "touch_runtime_menu.hpp"
 #include "touch_skip_button.h"
 #include "touch_source.h"
 #include "touch_visuals.h"
@@ -63,10 +61,10 @@ bool is_release(lucent::touch::Phase phase) {
  * and a browser reach this the same way -- and the one decision that follows:
  * a finger under a drawn control is a pad press, and any other finger outside
  * gameplay is the retail GUI's pointer. Gameplay draws TouchControls; every
- * other screen draws the menu pad, MenuControls. The pad belongs to
- * PadPublisher, the retail pointer to RetailPointer, and the account of what
- * happened to the census. This composes them and owns only the window, the
- * live contacts, and the gate.
+ * other screen is the game's own, laid out for a finger by its menu's touch
+ * owner. The pad belongs to PadPublisher, the retail pointer to
+ * RetailPointer, and the account of what happened to the census. This composes
+ * them and owns only the window, the live contacts, and the gate.
  */
 class TouchRuntime {
 public:
@@ -94,20 +92,13 @@ public:
                          x2::presentation::Rect &placed) const;
 
   bool has_window() const { return window_ != nullptr; }
-  // Is there anything for the overlay document to draw -- the gameplay
-  // controls, or the menu pad on a screen that is not gameplay?
-  bool has_visuals() const;
   // The setting can force either end on every platform. ALWAYS is what makes
   // the layout reachable on a desktop with no touchscreen -- a layout nobody
   // can look at until it is on a phone is a layout that ships wrong.
   static bool active();
   bool overlay_visible() const;
-  // The menu pad: touch play and a window, over a retail menu that has no
-  // touch path of its own. A cinematic, a conversation, a popup and a native
-  // menu have none drawn over them.
-  bool menu_visible() const;
-  // Whether the retail menu up is one the pad is drawn over.
-  void set_menu(bool padded);
+  // While touch play is the input, the virtual pad attached and player one's.
+  void ready_pad();
 
 private:
   struct Contact {
@@ -120,10 +111,6 @@ private:
   bool route_to_controls(const SDL_Event &event);
   // A finger with no drawn control under it: the retail GUI's pointer.
   bool route_to_pointer(const SDL_Event &event);
-  // A finger that began on the menu pad: its button, until it lifts.
-  bool route_to_menu(const SDL_TouchFingerEvent &finger);
-  // Let go of every menu pad button, when the pad stops being drawn.
-  void release_menu();
   // A finger on the cinematic's skip button: the offered skip.
   bool route_to_skip(const SDL_TouchFingerEvent &finger);
   void publish(std::span<const ActionEvent> actions);
@@ -131,15 +118,11 @@ private:
   bool window_size(int &width, int &height) const;
 
   TouchControls controls_;
-  MenuControls menu_;
   PadPublisher pad_;
   PortraitPointer portraits_;
   RetailPointer pointer_;
   SkipButton skip_;
   std::map<SDL_FingerID, Contact> contacts_;
-  // Fingers the menu pad captured; every other finger outside gameplay is
-  // the pointer's.
-  std::map<SDL_FingerID, Contact> menu_contacts_;
   std::set<std::uint32_t> active_zones_;
   SDL_Window *window_ = nullptr;
   /* The one viewport both the control zones and the relocated HUD lay out
@@ -147,7 +130,6 @@ private:
      where the screen is. */
   x2::presentation::LayoutViewport viewport_{};
   bool menu_requested_ = false;
-  bool padded_menu_ = false;
 };
 
 namespace {
@@ -168,19 +150,13 @@ bool TouchRuntime::overlay_visible() const {
          x2_gameplay_control_active(guest_clock_now_s());
 }
 
-bool TouchRuntime::menu_visible() const {
-  return window_ != nullptr && active() && padded_menu_ &&
-         !x2_gameplay_control_active(guest_clock_now_s());
-}
-
-void TouchRuntime::set_menu(bool padded) {
-  /* The game must be reading the pad before the first tap on a pad control:
-     the press that claims it is lost while player one resolves. */
+void TouchRuntime::ready_pad() {
+  /* The game must be reading the pad before the first tap on a control: the
+     press that claims it is lost while player one resolves. */
   if (window_ != nullptr && active()) {
     touch_pad::ensure();
     touch_pad::claim_player_one();
   }
-  padded_menu_ = padded;
 }
 
 bool TouchRuntime::window_size(int &width, int &height) const {
@@ -216,7 +192,6 @@ void TouchRuntime::publish(std::span<const ActionEvent> actions) {
 void TouchRuntime::set_window(SDL_Window *window) {
   publish(controls_.cancel());
   contacts_.clear();
-  release_menu();
   publish(controls_.set_hud({}));
   window_ = window;
   if (!window_) {
@@ -243,7 +218,6 @@ void TouchRuntime::set_window(SDL_Window *window) {
                         {viewport_.safe_left, viewport_.safe_top,
                          viewport_.safe_right, viewport_.safe_bottom}};
   publish(controls_.set_viewport(layout));
-  publish(menu_.set_viewport(layout));
 }
 
 bool TouchRuntime::viewport(x2::presentation::LayoutViewport &out) const {
@@ -270,46 +244,6 @@ void TouchRuntime::count_contact(Uint32 event_type) const {
     census.contacts_canceled++;
     break;
   }
-}
-
-bool TouchRuntime::route_to_menu(const SDL_TouchFingerEvent &finger) {
-  int width = 0;
-  int height = 0;
-  if (!window_size(width, height)) {
-    return false;
-  }
-  const lucent::touch::Phase phase = phase_of(finger.type);
-  const lucent::touch::Point at{finger.x * static_cast<float>(width),
-                                finger.y * static_cast<float>(height)};
-  const auto held = menu_contacts_.find(finger.fingerID);
-  /* A finger belongs to the pad only if it BEGAN on a button; one that began
-     elsewhere is the pointer's for its whole life, so a drag across the pad
-     never presses it. */
-  if (held == menu_contacts_.end() &&
-      (phase != lucent::touch::Phase::began || !menu_.hit(at))) {
-    return false;
-  }
-  Contact &contact = menu_contacts_[finger.fingerID];
-  contact = {at.x, at.y, !is_release(phase)};
-  std::vector<lucent::touch::Contact> live;
-  for (const auto &[id, value] : menu_contacts_) {
-    live.push_back(
-        {static_cast<std::int64_t>(id),
-         {value.x, value.y},
-         id == finger.fingerID ? phase : lucent::touch::Phase::moved});
-  }
-  const auto actions = menu_.route(live);
-  x2::input::touch_census()->zone_presses += actions.size();
-  publish(actions);
-  if (!contact.active) {
-    menu_contacts_.erase(finger.fingerID);
-  }
-  return true;
-}
-
-void TouchRuntime::release_menu() {
-  publish(menu_.cancel());
-  menu_contacts_.clear();
 }
 
 bool TouchRuntime::route_to_skip(const SDL_TouchFingerEvent &finger) {
@@ -409,21 +343,13 @@ bool TouchRuntime::handle(const SDL_Event &event) {
     if (!contacts_.empty()) {
       cancel(TouchCancelCause::OverlayHidden);
     }
-    if (!menu_visible() && !menu_contacts_.empty()) {
-      release_menu();
-    }
     if (!finger) {
       return false;
     }
-    /* The skip button and then the menu pad first: both sit ON the retail
-       GUI, and a contact that reached the pointer as well would both press
-       the control and click whatever is drawn beneath it. */
-    return route_to_skip(event.tfinger) ||
-           (menu_visible() && route_to_menu(event.tfinger)) ||
-           route_to_pointer(event);
-  }
-  if (!menu_contacts_.empty()) {
-    release_menu();
+    /* The skip button first: it sits ON the retail GUI, and a contact that
+       reached the pointer as well would both skip and click whatever is
+       drawn beneath it. */
+    return route_to_skip(event.tfinger) || route_to_pointer(event);
   }
   /* Gameplay has begun under a held menu tap: retail's button must not be
      left down at a position nothing will press again. */
@@ -488,7 +414,6 @@ void TouchRuntime::cancel(TouchCancelCause cause) {
   publish(controls_.set_hud({}));
   publish(controls_.set_hud_placement(nullptr));
   contacts_.clear();
-  release_menu();
   active_zones_.clear();
   skip_.release();
 }
@@ -523,11 +448,6 @@ bool TouchRuntime::take_pointer(TouchPointer &out) {
   if (!overlay_visible() && !contacts_.empty()) {
     cancel(TouchCancelCause::OverlayHidden);
   }
-  /* Asked every frame, so a pad button held while its screen gave way to
-     gameplay or a cinematic is let go even if the finger never moves. */
-  if (!menu_visible() && !menu_contacts_.empty()) {
-    release_menu();
-  }
   return pointer_.take(out);
 }
 
@@ -550,21 +470,14 @@ bool TouchRuntime::clear_of_controls(x2::presentation::Rect natural,
   return true;
 }
 
-bool TouchRuntime::has_visuals() const {
-  return overlay_visible() || menu_visible();
-}
-
 std::size_t TouchRuntime::visuals(TouchVisual *out,
                                   std::size_t capacity) const {
-  const auto zones = overlay_visible() ? controls_.zones()
-                     : menu_visible()
-                         ? menu_.zones()
+  const auto zones = overlay_visible()
+                         ? controls_.zones()
                          : std::span<const TouchControls::ZoneVisual>{};
   return overlay_visuals(zones, active_zones_, controls_.stick_deflection(),
                          controls_.stick_ring(), out, capacity);
 }
-
-void touch_runtime_set_menu(bool padded) { runtime.set_menu(padded); }
 
 /* ------------------------------------------------------------------------ */
 /* The C surface the host event pump, the HUD and the renderer call. It holds
@@ -672,7 +585,7 @@ int touch_runtime_overlay_visible(void) {
   return runtime.overlay_visible() ? 1 : 0;
 }
 
-int touch_runtime_has_visuals(void) { return runtime.has_visuals() ? 1 : 0; }
+void touch_runtime_ready_pad(void) { runtime.ready_pad(); }
 
 void touch_runtime_report(const char *tag) {
   touch_census_report(tag, runtime.has_window() ? 1 : 0,

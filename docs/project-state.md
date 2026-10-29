@@ -1036,16 +1036,8 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 `--test-map=<path>` makes the route selectable; the default is unchanged
 (issue #171).
 
-Off gameplay, touch play draws the menu pad: a d-pad bottom left, the Xbox
-face buttons bottom right (A below, B right, X left, Y above), and a shoulder
-above each cluster, publishing through the same virtual pad as the gameplay
-controls. The footers name that pad's buttons, so the prompts and the buttons
-beside them agree. Conversations draw it beside their Skip button, and A
-advances their lines. Popups no longer draw it: every `CPopupDialog` is
-touched natively, its options a finger apart, measured by
-`tools/live_case.py touch-popup`, 11 of 11 on 2026-10-28. The pad replaced making the footer's words tappable, whose prompt-to-draw
-pairing by glyph count put the World Map's Back and Go on level names and left
-that screen with no way out (issue #190).
+Off gameplay, touch play draws nothing over the game: every menu, popup and
+conversation is laid out for a finger by its own owner (S025).
 
 The main menu, Options and the PDA are replaced in touch play by the port's
 touch menu: an opaque, finger-sized RmlUi list built from the live retail menu
@@ -1141,10 +1133,8 @@ unlocked points of one act is unit-tested only; what a
 review entry opens keeps the retail screen and only Credits was driven
 (screens and movies are untested by touch); the region list was only seen
 empty (no online service), so a tap on a region row is unit-tested only
-and Refresh's effect is unobserved; the automap keeps the retail map and the
-menu pad (a held finger and the d-pad pan it, B closes it) and nothing a
-touch player has turns it; the online lists, Advanced Options (`sebas`) and
-`options_controller` still show the retail menu with the menu pad.
+and Refresh's effect is unobserved; the automap, the online lists, Advanced
+Options (`sebas`) and `options_controller` became native on touch under S025.
 
 The stick steers from the thumb, not from the ring. It measured its axes from
 the ring's geometric centre, so where the thumb happened to land was itself an
@@ -2263,9 +2253,9 @@ asks (it decides whether a revive keeps its fraction) is not decoded.
 
 Touch menus drawn with the game's own panels, fonts, colours and focus art from the install,
 laid out for fingers (G008). The menus `tools/scan.py` opens are native on touch, the online
-lobby's included: the game draws them, nothing covers them, their rows and footers are finger
-targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host` and the other `touch-*`
-cases). The RmlUi touch menu is deleted. Advanced Options (CMenuSebas) still draws the menu
-pad: it is a second GUI in client pixels whose widgets are not read, so the pad is not
-deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` lists what a finger
-cannot yet do on each menu and every menu the pad is drawn over.
+lobby's and Advanced Options' included: the game draws them, nothing covers them, their rows
+and footers are finger targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host`,
+`touch-advanced-options` and the other `touch-*` cases). The RmlUi touch menu and the menu pad
+are deleted ([#199](issues/0199-native-touch-menus.md)). Gap: `tools/scan.py` still reports
+Options' setting labels (`label_*`) as small targets, the retail rows its touch cards draw
+over; the join room's Ready and Leave Room were not tapped, a session needing a second game.

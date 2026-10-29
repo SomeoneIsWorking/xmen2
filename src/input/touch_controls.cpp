@@ -137,30 +137,6 @@ const char *touch_action_name(TouchAction action) {
     return "retail-team-menu";
   case TouchAction::PortMenu:
     return "port-menu";
-  case TouchAction::MenuUp:
-    return "menu-up";
-  case TouchAction::MenuDown:
-    return "menu-down";
-  case TouchAction::MenuLeft:
-    return "menu-left";
-  case TouchAction::MenuRight:
-    return "menu-right";
-  case TouchAction::MenuA:
-    return "menu-a";
-  case TouchAction::MenuB:
-    return "menu-b";
-  case TouchAction::MenuX:
-    return "menu-x";
-  case TouchAction::MenuY:
-    return "menu-y";
-  case TouchAction::MenuLeftShoulder:
-    return "menu-left-shoulder";
-  case TouchAction::MenuRightShoulder:
-    return "menu-right-shoulder";
-  case TouchAction::MenuRightTrigger:
-    return "menu-right-trigger";
-  case TouchAction::MenuLeftTrigger:
-    return "menu-left-trigger";
   }
   return "unknown-action";
 }

@@ -141,40 +141,6 @@ int layout_build(LayoutViewport viewport, const HudPlacement *hud, Rect *out);
  */
 Rect layout_stick_reach(LayoutViewport viewport, const Rect *slots);
 
-/*
- * THE MENU PAD: what touch play draws on every screen that is not gameplay --
- * the front end, the pause and team menus, the World Map, dialogue.
- *
- * The retail menus are navigated with a controller exactly as on the Xbox,
- * and their footers name the pad's buttons, so the port draws that controller
- * rather than making the menus' own narrow rows tappable: a d-pad bottom left
- * where the movement stick sits in gameplay, the face buttons bottom right in
- * the Xbox's arrangement (A below, B right, X left, Y above), and the
- * shoulders above each cluster for tabbed screens. Its own slot list, because
- * it REPLACES the gameplay controls rather than sitting beside them: the two
- * are never drawn together, so overlapping them is not a collision.
- */
-enum MenuSlot : int {
-  kMenuDpadUp = 0,
-  kMenuDpadDown,
-  kMenuDpadLeft,
-  kMenuDpadRight,
-  kMenuA,
-  kMenuB,
-  kMenuX,
-  kMenuY,
-  kMenuLeftShoulder,
-  kMenuRightShoulder,
-  kMenuSlotCount /* MUST stay last */
-};
-
-const char *menu_slot_name(int slot);
-
-/* Fill `out` with kMenuSlotCount rectangles for this viewport, sized like
-   the gameplay buttons. Returns 0 without touching `out` for a viewport with
-   no usable area, exactly as layout_build does. */
-int layout_build_menu(LayoutViewport viewport, Rect *out);
-
 /* Where a box the size of `natural` goes so that it overlaps none of the
    `count` rectangles in `drawn`: `natural` itself when it is clear, else the
    clear place inside the safe area nearest it, a button gap from what it

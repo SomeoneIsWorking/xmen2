@@ -146,11 +146,10 @@ void touch_runtime_report(const char *tag);
 void touch_runtime_note_source(const union SDL_Event *event);
 int touch_runtime_overlay_visible(void);
 
-/* Is there anything for the overlay document to draw at all? The gameplay
-   controls answer touch_runtime_overlay_visible; the menu pad is drawn on
-   exactly the screens where that is false, so a document shown only on the
-   first answer would draw no menu pad anywhere. */
-int touch_runtime_has_visuals(void);
+/* While touch play is the input, attaches the virtual pad and gives it
+   player one, so the first tap on a control is read. Polled by the event
+   pump. */
+void touch_runtime_ready_pad(void);
 
 /* The atlas cell of each of the player's four RT powers, in the game's slot
    order (A, B, X, Y), or -1 where the hero has none; that slot gets no button.

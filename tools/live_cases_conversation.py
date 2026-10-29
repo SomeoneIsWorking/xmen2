@@ -8,8 +8,7 @@ startConversation, taps through to the player's question list, taps the
 second question and judges by the game's own state that the conversation
 went down that branch: the line shown next is one the second question leads
 to and not the first. It leaves by the list's last question, the goodbye. Every conversation screen is
-judged by GET /menu: no menu pad drawn, the line inside the panel, each
-response a finger-tall card inside the panel and clear of every other.
+judged by GET /menu: the line inside the panel, each response a finger-tall card inside the panel and clear of every other.
 """
 
 from __future__ import annotations
@@ -78,10 +77,6 @@ def overlap(a: dict, b: dict) -> bool:
 
 def judge(case: Case, shown: dict, what: str) -> None:
     """The touch layout of one conversation screen."""
-    controls = live_controls(case)
-    case.check("%s: no menu pad is drawn" % what,
-               not any(name.startswith("menu-") for name in controls),
-               "drawn: %s" % sorted(controls))
     panel = (shown.get("panel_low"), shown.get("panel_high"))
     text = (shown.get("text_low"), shown.get("text_high"))
     case.check("%s: the line is inside the panel" % what,
@@ -111,9 +106,7 @@ def tap(case: Case, card: dict) -> bool:
 def gameplay_back(case: Case) -> bool:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
-        controls = live_controls(case)
-        if controls and not any(name.startswith("menu-")
-                                for name in controls):
+        if live_controls(case):
             return True
         time.sleep(0.5)
     return False
@@ -222,8 +215,8 @@ def case_touch_cinematic(case: Case) -> None:
     """The tutorial's opening cinematic on touch, from the autosave's Continue
     to gameplay: the stretches with no conversation up and every line of the
     conversations inside it, each line tapped on its card. Sampled four times
-    a second, no screen of it draws the menu pad, the cinematic offers its
-    Skip, and gameplay's controls come back at its end."""
+    a second, the cinematic offers its Skip, and gameplay's controls come
+    back at its end."""
     case.prepare_profile(["boot.mode=continue", "input.touch_controls=2",
                           "video.width=1280", "video.height=720",
                           "video.mode=windowed"])
@@ -232,7 +225,6 @@ def case_touch_cinematic(case: Case) -> None:
     case.wait_control(60)
 
     samples = {"cinematic": 0, "conversation": 0}
-    padded = {"cinematic": [], "conversation": []}
     skip_seen = 0
     lines_tapped = 0
     conversation_seen = False
@@ -246,18 +238,15 @@ def case_touch_cinematic(case: Case) -> None:
         if menu.get("active"):
             time.sleep(0.25)
             continue
-        if any(not name.startswith("menu-") for name in controls):
+        if controls:
             if conversation_seen:
                 gameplay = True
                 break
             time.sleep(0.25)
             continue
-        pad = sorted(name for name in controls if name.startswith("menu-"))
         shown = menu.get("conversation")
         kind = "conversation" if shown else "cinematic"
         samples[kind] += 1
-        if pad:
-            padded[kind].append(pad)
         skip_seen += skip_drawn(case)
         if shown:
             conversation_seen = True
@@ -277,15 +266,8 @@ def case_touch_cinematic(case: Case) -> None:
 
     case.check("the opening's stretches with no conversation up were seen",
                samples["cinematic"] > 0, str(samples))
-    case.check("no cinematic stretch draws the menu pad",
-               not padded["cinematic"],
-               "%d of %d sample(s) drew %s" % (
-                   len(padded["cinematic"]), samples["cinematic"],
-                   padded["cinematic"][:1]))
-    case.check("no conversation line draws the menu pad",
-               samples["conversation"] > 0 and not padded["conversation"],
-               "%d of %d sample(s) drew it" % (len(padded["conversation"]),
-                                               samples["conversation"]))
+    case.check("the opening's conversation lines were seen",
+               samples["conversation"] > 0, str(samples))
     case.check("the opening's lines were tapped through on their cards",
                lines_tapped >= 3, "%d tap(s)" % lines_tapped)
     case.check("the cinematic offers its Skip", skip_seen > 0,

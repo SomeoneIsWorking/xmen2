@@ -45,20 +45,7 @@ static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                   (int)kSlotCount,
               "every LayoutSlot needs a name");
 
-const char *const kMenuSlotNames[] = {
-    "dpad-up", "dpad-down", "dpad-left", "dpad-right",    "a",
-    "b",       "x",         "y",         "left-shoulder", "right-shoulder"};
-
-static_assert((int)(sizeof kMenuSlotNames / sizeof kMenuSlotNames[0]) ==
-                  (int)kMenuSlotCount,
-              "every MenuSlot needs a name");
 } // namespace
-
-const char *menu_slot_name(int slot) {
-  if (slot < 0 || slot >= (int)kMenuSlotCount)
-    return "invalid-slot";
-  return kMenuSlotNames[slot];
-}
 
 const char *layout_slot_name(int slot) {
   if (slot < 0 || slot >= (int)kSlotCount)
@@ -237,60 +224,6 @@ int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
     }
   }
 
-  return 1;
-}
-
-int layout_build_menu(LayoutViewport v, Rect *out) {
-  float left, top, right, bottom, width, height, shortest;
-  float inset, button, gap, reach, extent, fit, centre_y, dpad_x, face_x;
-
-  if (!out || !finite_viewport(v))
-    return 0;
-  left = v.safe_left;
-  top = v.safe_top;
-  right = v.width - v.safe_right;
-  bottom = v.height - v.safe_bottom;
-  width = right - left;
-  height = bottom - top;
-  if (!(width > 0.0F) || !(height > 0.0F))
-    return 0;
-  shortest = width < height ? width : height;
-
-  /* Two crosses of three buttons each way, a shoulder above each: the same
-     button size as gameplay, scaled down by one factor if the two clusters
-     would meet across the width or the shoulders would leave the top. */
-  button = shortest * kButtonDiameter;
-  gap = shortest * kButtonGap;
-  inset = shortest * kEdgeInset;
-  reach = button + gap * 0.5F;
-  extent = reach + button * 0.5F;
-  {
-    const float needed_w = (inset + extent * 2.0F) * 2.0F + button;
-    const float needed_h = inset + extent * 2.0F + gap + button;
-    fit = fminf(1.0F, fminf(width / needed_w, height / needed_h));
-  }
-  button *= fit;
-  gap *= fit;
-  inset *= fit;
-  reach *= fit;
-  extent *= fit;
-
-  centre_y = bottom - inset - extent;
-  dpad_x = left + inset + extent;
-  face_x = right - inset - extent;
-  out[kMenuDpadUp] = centred(dpad_x, centre_y - reach, button);
-  out[kMenuDpadDown] = centred(dpad_x, centre_y + reach, button);
-  out[kMenuDpadLeft] = centred(dpad_x - reach, centre_y, button);
-  out[kMenuDpadRight] = centred(dpad_x + reach, centre_y, button);
-  out[kMenuA] = centred(face_x, centre_y + reach, button);
-  out[kMenuB] = centred(face_x + reach, centre_y, button);
-  out[kMenuX] = centred(face_x - reach, centre_y, button);
-  out[kMenuY] = centred(face_x, centre_y - reach, button);
-  {
-    const float shoulder_y = centre_y - extent - gap - button * 0.5F;
-    out[kMenuLeftShoulder] = centred(dpad_x, shoulder_y, button);
-    out[kMenuRightShoulder] = centred(face_x, shoulder_y, button);
-  }
   return 1;
 }
 

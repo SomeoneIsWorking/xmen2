@@ -44,39 +44,9 @@ const char *action_art(int action) {
     return "touch_jump.svg";
   case TouchAction::PortMenu:
     return "touch_menu.svg";
-  /* The menu pad draws the controller's own buttons, from the shared Xbox
-     set the footer prompts are drawn from, so a footer's "B Back" names the
-     button beside it. */
-  case TouchAction::MenuUp:
-    return "pad_dpad_up.svg";
-  case TouchAction::MenuDown:
-    return "pad_dpad_down.svg";
-  case TouchAction::MenuLeft:
-    return "pad_dpad_left.svg";
-  case TouchAction::MenuRight:
-    return "pad_dpad_right.svg";
-  case TouchAction::MenuA:
-    return "pad_face_a.svg";
-  case TouchAction::MenuB:
-    return "pad_face_b.svg";
-  case TouchAction::MenuX:
-    return "pad_face_x.svg";
-  case TouchAction::MenuY:
-    return "pad_face_y.svg";
-  case TouchAction::MenuLeftShoulder:
-    return "pad_lb.svg";
-  case TouchAction::MenuRightShoulder:
-    return "pad_rb.svg";
   default:
     return "";
   }
-}
-
-/* A menu pad button: the glyph IS the button, drawn with no plate. */
-bool pad_glyph(int action) {
-  using x2::input::TouchAction;
-  return action >= static_cast<int>(TouchAction::MenuUp) &&
-         action <= static_cast<int>(TouchAction::MenuRightShoulder);
 }
 
 /* True for a control drawn as a bare ring: one laid over art the game draws
@@ -108,9 +78,6 @@ const char *visual_class(const x2::input::TouchVisual &visual) {
   }
   if (ring_only(visual.action)) {
     return " zone-ring";
-  }
-  if (pad_glyph(visual.action)) {
-    return " zone-glyph";
   }
   return " zone-icon";
 }

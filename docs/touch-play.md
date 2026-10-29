@@ -154,14 +154,13 @@ retail's and the frame goes back to its retail placement. `GET /menu` reports
 each card and button where the last draw put it (`popup_page.rows`,
 `popup_page.footers`, `touch`, and `frame_low`/`frame_high` and
 `text_low`/`text_high`, the frame and the span its text was wrapped into),
-also when the popup is up in gameplay with no menu under it. A popup counts
-as a native menu wherever it is up, so the menu pad is never drawn over one.
+also when the popup is up in gameplay with no menu under it.
 Prove it with `tools/live_case.py touch-popup`
 (difficulty: Hard refused, Back, one tap on Easy starts), `touch-load`
 (eleven saves: drag to the last, tap to load, Continue) and `touch-game-tip`
 (the tutorial's switching hint from its "?" trigger near the start, at
 1096x720, the tablet's 1.52 aspect; `touch-game-tip-720` at 16:9: the message
-inside the frame above a finger-tall Continue, no pad, a tap closing it).
+inside the frame above a finger-tall Continue, a tap closing it).
 
 **Every list box in a menu native on touch has a touch layout**
 (CMenuItemListBox and the codex's CMenuItemListCodex: the shop and stash, the
@@ -241,8 +240,8 @@ fit scroll with a drag. A tap on a card makes it the highlighted response and
 posts the game's accept, which goes through the conversation update's own
 accept gate, so a tap before the line takes input is dropped exactly like a
 pad press. The retail pointer handler, which accepts on a release anywhere,
-does not see touch while the layout is up. No pad is drawn over it; a single
-`continue...` is one wide card. `GET /menu` reports it as `conversation`:
+does not see touch while the layout is up. A single `continue...` is one wide
+card. `GET /menu` reports it as `conversation`:
 the line id, the highlighted response, whether a tap picks now (`accepts`),
 the speaker and line, the panel and text boxes, and each card's `tap`,
 `fingers`, text and the line ids it leads to. Prove it with
@@ -250,30 +249,16 @@ the speaker and line, the panel and text boxes, and each card's `tap`,
 continue-only lines tapped through, then Cyclops' Sanctuary question list,
 whose second question must lead to its own line.
 
-**A retail menu with no touch path of its own draws the menu pad** -- the
-menu classes not yet native, and nothing else: never a cinematic or the
-stretch between a conversation's lines with no menu up, a popup or a
-conversation drawn for touch (`x2::native::TouchMenuSource::refresh`). The retail menus are
-navigated with a controller exactly as on the Xbox, so the port draws that
-controller: a d-pad bottom left where the stick sits in gameplay, the face
-buttons bottom right in the Xbox arrangement (A below, B right, X left, Y
-above), and a shoulder above each cluster for tabbed screens
-(`layout_build_menu`, `x2::input::MenuControls`). They publish through the
-same virtual pad as the gameplay controls, so the footers name that pad's
-buttons -- `B Back` beside a B -- in the shared Xbox glyphs the buttons are
-drawn from. A finger that begins on a pad button holds it until it lifts; one
-that begins anywhere else is the retail pointer for its whole life, so a drag
-across the pad never presses it. A held button is let go when gameplay takes
-the screen, even if the finger never moves. A cinematic draws only its Skip
-button. Prove it with `tools/live_case.py touch-cinematic`: a Continue of the
-autosave plays the briefing and the Sanctuary opening, sampled four times a
-second, and no sample of a cinematic or a conversation draws any `menu-*`
-control.
-
-The port once made the footer's words themselves tappable instead, pairing
-each prompt with the draw that placed it by glyph count. The World Map's level
-names draw as many glyphs as its footer, so Back and Go were published over
-`Sanctuary` and `Grand Hall` and the screen could not be left (issue #190).
+**Nothing is drawn over a screen that is not gameplay.** Every retail menu,
+popup and conversation is laid out for a finger by its own owner, so off
+gameplay a finger is the retail pointer (`x2::input::TouchRuntime::handle`);
+a cinematic draws only its Skip button. The virtual pad the gameplay controls
+publish through is attached and given player one on every event pump while
+touch play is the input (`touch_runtime_ready_pad`), so the first tap in
+gameplay is read. Prove it with `tools/live_case.py touch-cinematic`: a
+Continue of the autosave plays the briefing and the Sanctuary opening,
+sampled four times a second, each line tapped on its card, the Skip offered
+and gameplay's controls back at the end.
 
 **The team menu is the game's own screen on touch** (CMenuTeam, issue #199).
 The party's hero cards and the roster's three cards are already finger-sized
@@ -380,7 +365,7 @@ Return, Escape and Backspace are queued as Win32 would send them in
 keyboard commits at once lands whole. Text input goes off when the menu
 closes (its vtable `+0x18`, `0x005e7490`). The name bar sits at the top of
 the screen, clear of a phone's keyboard; Back and Done are the footers'
-finger buttons and no pad is drawn. `GET /menu` reports `text_input`.
+finger buttons. `GET /menu` reports `text_input`.
 Prove it with `tools/live_case.py touch-text-entry` (and `-4x3`, `-tablet`,
 `-20x9`): a word typed in one event (`/ui/text`) and Backspace (`/ui/key`)
 change the entry's field, Done and Back close it, and text input is on
@@ -394,8 +379,7 @@ Select are finger buttons. Prove it with `tools/live_case.py touch-hero-list`
 (and `-4x3`, `-tablet`, `-20x9`).
 
 **The review's image viewer, the credits, the controller page and a
-personal file are the game's own pages on touch** (issue #199), with no pad
-over them:
+personal file are the game's own pages on touch** (issue #199):
 
 - The image viewer (CMenuImageViewer, a screen, comic or concept accepted
   in the review) draws Back, Previous and Next as the footers' finger
@@ -420,7 +404,7 @@ over them:
 
 Prove them with `tools/live_case.py touch-image-viewer` (the jungle loaded
 from the autosave so the review holds two screens: Next, Previous, a swipe
-each way, Back), `touch-credits` (rolling 3 s with no pad, a tap ends them
+each way, Back), `touch-credits` (rolling 3 s, a tap ends them
 back to the review), `touch-controller-page` (Back's edge closes it) and
 `touch-personal` (the install's one file through the game's `personalItem`,
 Back), each also `-4x3`, `-tablet` and `-20x9`.
@@ -429,7 +413,7 @@ Back), each also `-4x3`, `-tablet` and `-20x9`.
 the player setup (CMenuOnline), the campaign lobby (CMenuCampaignLobby),
 the host's and joiner's game options (CMenuGameOptions,
 CMenuPlayerGameOptions), the host and join rooms (CMenuHost, CMenuJoin), the
-games list and the players list, with no pad over them. Their own onMouse
+games list and the players list. Their own onMouse
 (`0x005caa80`, `0x005b03b0`, `0x005ba2b0`, `0x005c8da0`) tests each row's raw
 box, walks the focus to the row under the pointer and posts `MENU_ACCEPT`
 on a release over the focused one, so a finger's down and up on one row is
@@ -444,15 +428,41 @@ players list and the join room by the console; with no session the join
 room closes with its "no longer available" popup, so its rows are judged
 under it), each also `-4x3`, `-tablet` and `-20x9`.
 
-**Advanced Options (CMenuSebas) still draws the menu pad.** Options' footer
-`Advanced...` is a finger button and a tap opens it (`MENU_OK`, CMenuOptions'
-update), and the retail pointer drives its widgets: a tap selects a player
-tab or puts a binding cell into capture. But the screen is a second GUI
-built in client pixels ([menus](RE/menus.md#advanced-options-cmenusebas)),
-its rows and tabs under a finger, its `Esc Back` a label, and a capture
-waits for a key a touch player does not have; Escape, the pad's B and a tap
-at Accept each left it up, so no way out of it is established. Its touch layout is not built. Prove the way in with
-`tools/live_case.py touch-advanced-options` (and `-4x3`, `-tablet`, `-20x9`).
+**Advanced Options (CMenuSebas) is a settings screen laid out for a finger**
+(issue #199). Options' footer `Advanced...` opens it (`MENU_OK`,
+CMenuOptions' update). The screen is a second widget GUI
+([menus](RE/menus.md#advanced-options-cmenusebas)), so after each builder
+runs `x2::native::sebas` moves its widgets through their own layout setter
+into the places `x2::input::sebas_touch_place` names, in the game's own art
+and font: the Player tabs, Defaults 1..3, FSAA, Accept, the footer's Back and
+Revert to default are each at least a finger tall, the footer's `Esc Back`
+reads `Back`, and the key table's panel sits below the taller tabs. The way
+out is the game's own: Back runs the root's Escape callback (state 2, or the
+"cancel your changes?" question after a change) and Accept its accept
+callback (state 1, or the restart or no-binding question); Escape and the
+pad's B never reach the GUI (the pad check takes them first).
+
+- The key binding table is read-only on touch. A binding is finished only by
+  a key, which a touch player does not have, so a press on the table never
+  reaches its click: it is a drag, sent to the table as wheel notches, one
+  per row of travel. A tab still shows that player's keys.
+- The Resolution slider's line is 12 layout units tall; a press within half a
+  finger of it is delivered on the line, hover included, since hovering takes
+  the GUI's capture.
+- Each question (CANCEL_WARNING, NEW_RESZ_RESTART, PREVENT_NO_BINDING,
+  REVERT_DEFAULT) puts Yes and No side by side in one finger row, the
+  highlight a finger tall behind the chosen one and its steps aimed at the
+  new places, and its Back reads `Back`.
+
+`GET /menu` reports the window and each dialog as `sebas` and
+`sebas_dialogs` (state, animating, each widget's id, kind, text, client and
+layout rects, `tap`, `edge`, `fingers`, `fingers_wide`) and the table as
+`sebas_table` (player, capture cell, scroll). Prove it with
+`tools/live_case.py touch-advanced-options` (and `-4x3`, `-tablet`,
+`-20x9`): every control a finger target, a tab, a drag and a cell tap on the
+table, the slider's band, Revert's question answered No, a change then Back
+asking, a finger on No moving the highlight onto it, the question's Back
+keeping the screen and its Yes leaving it, Accept and Back each closing it.
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input
@@ -658,16 +668,6 @@ movie reports the same 312 decoded frames. A pixel delta cannot say whether a
 menu responded — the menu animates, and its idle frame-to-frame difference
 measured 11–19 against the 27 a working tap produced.
 
-### The menu pad, 2026-09-26
-
-The case below was retired on 2026-10-28, when popups became native and its
-screen stopped drawing the pad; `touch-popup` replaced it. It reached the main menu, reads `/controls` for the
-buttons the run is drawing and the surface they are in, taps d-pad Down five
-times and A, and requires the game's own first open of the Options package. B
-must then return to the main menu, judged on the menu column's static art
-rather than the whole frame, whose animated backdrop moves as much as a
-screen change: 11.5 from the main menu against 49.3 from Options. 12 of 12.
-
 ### Native presentation observation, 2026-09-25
 
 The [actual RmlUi/game capture](screenshots/touch-controls.png) is the shipping
@@ -692,7 +692,7 @@ routing calls the host event pump takes — a second copy of that sequence
 could only agree with the shipping one by luck.
 
 `/controls` lists what the overlay draws right now, one control per line with
-its rectangle and action name (`menu-a`, `jump`, ...), and the viewport those
+its rectangle and action name (`jump`, `use`, ...), and the viewport those
 rectangles are in, so a run driving itself taps what the game is drawing
 rather than a coordinate chosen before the run started.
 

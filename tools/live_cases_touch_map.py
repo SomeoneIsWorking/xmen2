@@ -5,8 +5,7 @@ line, and opens CMenuAutoMap with the console's `openmenu automap`. It judges
 by GET /menu's `automap` (where the map looks, its turn and bounds, read from
 the menu) that a drag moves the map with the finger, that a finger held
 still does not pan it, that each Rotate button turns it its own way while
-held, and that a tap on Back's edge outside the game's own box closes it. No
-menu pad is drawn over it.
+held, and that a tap on Back's edge outside the game's own box closes it.
 """
 
 from __future__ import annotations
@@ -54,8 +53,7 @@ def past_opening_line(case: Case, timeout: float) -> bool:
         if shown and shown.get("accepts") and shown.get("responses"):
             tap(case, shown["responses"][0]["tap"])
             calm = 0
-        elif not shown and any(not name.startswith("menu-")
-                               for name in live_controls(case)):
+        elif not shown and live_controls(case):
             calm += 1
             if calm >= 4:
                 return True
@@ -169,10 +167,6 @@ def case_touch_automap(case: Case) -> None:
         return
     time.sleep(1.0)
     case.shot("open")
-    controls = live_controls(case)
-    case.check("no menu pad is drawn over it",
-               not any(name.startswith("menu-") for name in controls),
-               "drawn: %s" % sorted(controls))
     found = buttons(menu)
     named = ("back", "turn left", "turn right")
     case.check("Back and both Rotate buttons are finger buttons in the window",

@@ -1,7 +1,6 @@
 #include "control_menu_route.hpp"
 
 #include "../input/menu_touch_gaps.hpp"
-#include "../input/touch_runtime_menu.hpp"
 #include "../input/touch_targets.hpp"
 #include "automap_touch.hpp"
 #include "control.h"
@@ -15,6 +14,7 @@
 #include "menu_action.hpp"
 #include "options_touch.hpp"
 #include "popup_touch_drawn.hpp"
+#include "sebas_gui.hpp"
 #include "touch_menu_source.hpp"
 #include "win32_events.h"
 #include "win32_pointer.h"
@@ -437,6 +437,103 @@ void put_popup(std::string *out, const menu::PopupSnapshot &popup,
   out->append("]},");
 }
 
+/* One Advanced Options window: its close state and each widget's id,
+   class, text, client rectangle, the centre as a tap and its height in
+   fingers. */
+void put_sebas_window(std::string *out, const native::sebas::Window &window,
+                      const presentation::RetailScenePlane *plane) {
+  out->push_back('{');
+  put_int(out, "state", window.state);
+  put_bool(out, "animating", window.animating);
+  put_key(out, "widgets");
+  out->push_back('[');
+  for (const native::sebas::Widget &widget : window.widgets) {
+    out->push_back('{');
+    put_int(out, "id", widget.id);
+    put_text(out, "kind", native::sebas::kind_name(widget.kind));
+    put_text(out, "text", widget.text);
+    put_bool(out, "shown", widget.shown);
+    put_int(out, "animation", widget.animation);
+    char text[160];
+    std::snprintf(text, sizeof text,
+                  "\"client\":[%d,%d,%d,%d],\"layout\":[%d,%d,%d,%d],",
+                  widget.client.left, widget.client.top, widget.client.right,
+                  widget.client.bottom, widget.layout.left, widget.layout.top,
+                  widget.layout.right, widget.layout.bottom);
+    out->append(text);
+    float x = 0.0F;
+    float y = 0.0F;
+    if (native::win32_pointer_client_to_window(
+            (widget.client.left + widget.client.right) / 2,
+            (widget.client.top + widget.client.bottom) / 2, &x, &y) != 0) {
+      std::snprintf(text, sizeof text, "\"tap\":{\"x\":%.5f,\"y\":%.5f},", x,
+                    y);
+      out->append(text);
+    }
+    /* A point a tenth in from the top-left corner. */
+    if (native::win32_pointer_client_to_window(
+            widget.client.left +
+                (widget.client.right - widget.client.left) / 10,
+            widget.client.top + (widget.client.bottom - widget.client.top) / 10,
+            &x, &y) != 0) {
+      std::snprintf(text, sizeof text, "\"edge\":{\"x\":%.5f,\"y\":%.5f},", x,
+                    y);
+      out->append(text);
+    }
+    if (plane != nullptr) {
+      const float finger = input::menu_finger_target(*plane);
+      std::snprintf(
+          text, sizeof text, "\"fingers\":%.3f,\"fingers_wide\":%.3f,",
+          static_cast<double>(
+              static_cast<float>(widget.client.bottom - widget.client.top + 1) /
+              finger),
+          static_cast<double>(
+              static_cast<float>(widget.client.right - widget.client.left + 1) /
+              finger));
+      out->append(text);
+    }
+    close_object(out);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("]}");
+}
+
+/* Advanced Options' window, then the dialogs over it, the one taking the
+   input first. */
+void put_sebas(std::string *out, const presentation::RetailScenePlane *plane) {
+  const native::LiveGuestMemory memory;
+  const auto gui = native::sebas::read_gui(memory, native::guest_exe_base());
+  if (!gui) {
+    return;
+  }
+  put_key(out, "sebas");
+  put_sebas_window(out, gui->main, plane);
+  out->push_back(',');
+  if (gui->table) {
+    put_key(out, "sebas_table");
+    out->push_back('{');
+    put_int(out, "player", gui->table->player);
+    put_int(out, "capture_row", gui->table->capture_row);
+    put_int(out, "capture_column", gui->table->capture_column);
+    put_exact(out, "scroll", gui->table->scroll);
+    close_object(out);
+    out->push_back(',');
+  }
+  put_key(out, "sebas_dialogs");
+  out->push_back('[');
+  for (const native::sebas::Window &dialog : gui->dialogs) {
+    put_sebas_window(out, dialog, plane);
+    out->push_back(',');
+  }
+  if (out->back() == ',') {
+    out->pop_back();
+  }
+  out->append("],");
+}
+
 /* The conversation while it is shown: its current line and highlighted
    response from the game, and on touch the panel, the span its line was
    wrapped into and each response's card where the last draw put them, with
@@ -608,6 +705,9 @@ std::string menu_json(const menu::MenuSnapshot &menu, bool all_items,
   }
   if (menu.menu_class == "CMenuAutoMap") {
     put_automap(&out, menu.address);
+  }
+  if (menu.menu_class == "CMenuSebas") {
+    put_sebas(&out, plane);
   }
   put_int(&out, "item_count", static_cast<long>(menu.items.size()));
   put_touch_targets(&out, plane);
