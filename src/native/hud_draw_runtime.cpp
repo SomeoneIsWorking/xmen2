@@ -15,9 +15,11 @@
 #include "touch_menu_source.hpp"
 #include "x86rt_native.h"
 
+#include <atomic>
 #include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
 #include <math.h>
+#include <mutex>
 #include <string.h>
 
 enum {
@@ -300,6 +302,7 @@ static void mouse_overlay_draw(CPU *cpu) {
 enum {
   USE_PROMPT_HANDLE = 0x0070b7f0u,
   MESSAGE_HEAD = 0x21e5du * 4u,
+  MESSAGE_TAIL = 0x21e5eu * 4u,
   MESSAGE_RECORDS = 0x21ae6u * 4u,
   MESSAGE_STRIDE = 0x15cu,
   MESSAGE_POOL = 10,
@@ -309,6 +312,7 @@ enum {
   MESSAGE_TEXT_BYTES = 0x100u,
   MESSAGE_BACKDROP_ICON = 0x1bu
 };
+static constexpr uint32_t kNoMessage = 0xffffffffu;
 /* The menus' button look: an orange frame round a dark fill, the fill lit
    while a finger is on it. */
 static constexpr float kPromptFrame[4] = {0.95f, 0.45f, 0.08f, 0.95f};
@@ -324,6 +328,18 @@ static constexpr uint32_t kPromptAnchor = 0x0081d798u;
 static float g_prompt_shift[2];
 /* The prompt's message record, inside g_prompt_scope. */
 static uint32_t g_prompt_record;
+/* How far below the prompt's line the other lines' anchor goes, in HUD
+   units: their band's top a button gap under the prompt's button. */
+static float g_band_drop;
+/* The type-0 anchor as the game left it, during a split draw. */
+static float g_band_anchor[3];
+/* Inside the draw of the band's other lines, which is our own call. */
+static int g_band_scope;
+static int g_own_message;
+/* The other lines' band in output pixels, while it is drawn apart. */
+static std::mutex g_band_lock;
+static x2::presentation::Rect g_band;
+static std::atomic<int> g_band_mask;
 
 /* The record of player one's prompt when it is a line of the band, or 0. */
 static uint32_t use_prompt_record(uint32_t gui) {
@@ -355,28 +371,132 @@ static void drop_button_token(uint32_t text, uint8_t *saved) {
     WR8(text + i, words + i < MESSAGE_TEXT_BYTES ? saved[words + i] : 0);
 }
 
+static uint32_t message_record(uint32_t gui, uint32_t index) {
+  return gui + MESSAGE_RECORDS + index * MESSAGE_STRIDE;
+}
+
+/* Out of the draw's list, as the draw itself unlinks an expired record. */
+static void unlink_message(uint32_t gui, uint32_t index) {
+  const uint32_t record = message_record(gui, index);
+  const uint32_t next = RD32(record);
+  const uint32_t prev = RD32(record + 4u);
+  if (next != kNoMessage)
+    WR32(message_record(gui, next) + 4u, prev);
+  if (prev != kNoMessage)
+    WR32(message_record(gui, prev), next);
+  if (RD32(gui + MESSAGE_TAIL) == index)
+    WR32(gui + MESSAGE_TAIL, prev);
+  if (RD32(gui + MESSAGE_HEAD) == index)
+    WR32(gui + MESSAGE_HEAD, next);
+}
+
+/* Back at the head of the list. */
+static void push_message(uint32_t gui, uint32_t index) {
+  const uint32_t record = message_record(gui, index);
+  const uint32_t head = RD32(gui + MESSAGE_HEAD);
+  WR32(record, head);
+  WR32(record + 4u, kNoMessage);
+  if (head != kNoMessage)
+    WR32(message_record(gui, head) + 4u, index);
+  else
+    WR32(gui + MESSAGE_TAIL, index);
+  WR32(gui + MESSAGE_HEAD, index);
+}
+
+/* The first visible type-0 line in the list, or 0. */
+static uint32_t first_band_line(uint32_t gui) {
+  uint32_t index = RD32(gui + MESSAGE_HEAD);
+  for (int i = 0; i < MESSAGE_POOL && index < (uint32_t)MESSAGE_POOL; ++i) {
+    const uint32_t record = message_record(gui, index);
+    if (RD8(record + 0x20u) && RD8(record + 0x158u) == 0)
+      return record;
+    index = RD32(record);
+  }
+  return 0;
+}
+
+/*
+ * The prompt is drawn apart from the band's other lines: the draw runs once
+ * without the prompt's record, the other lines laid out from the anchor moved
+ * beneath the prompt's button, then once over a list holding only the
+ * prompt, which is drawn as it is when it is the band's only line. Each
+ * record is updated once, by the pass that holds it.
+ */
 static void message_draw(CPU *cpu) {
-  const uint32_t record = x2::input::touch_runtime_overlay_visible()
-                              ? use_prompt_record(cpu->reg[kX86pEcx])
-                              : 0;
-  g_prompt_scope = record != 0 && prepare_space();
-  g_prompt_record = record;
+  const uint32_t gui = cpu->reg[kX86pEcx];
+  if (g_own_message) {
+    x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
+    return;
+  }
+  g_band_mask = 0;
+  const uint32_t record =
+      x2::input::touch_runtime_overlay_visible() ? use_prompt_record(gui) : 0;
+  if (record == 0 || !prepare_space()) {
+    x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
+    return;
+  }
+  const uint32_t index = (record - message_record(gui, 0)) / MESSAGE_STRIDE;
+  read_floats(kPromptAnchor, g_band_anchor, 3);
+  const float *anchor = g_band_anchor;
+
+  unlink_message(gui, index);
+  const float beneath[3] = {anchor[0] + g_prompt_shift[0], anchor[1],
+                            anchor[2] + g_prompt_shift[1] - g_band_drop};
+  write_floats(kPromptAnchor, beneath, 3);
+  g_band_scope = 1;
+  g_own_message = 1;
+  x2::guest::GuestCall(*cpu).thiscall(x2::native::exe_linked(MESSAGE_DRAW), gui,
+                                      {});
+  g_own_message = 0;
+  g_band_scope = 0;
+
+  const uint32_t head = RD32(gui + MESSAGE_HEAD);
+  const uint32_t tail = RD32(gui + MESSAGE_TAIL);
+  WR32(gui + MESSAGE_HEAD, index);
+  WR32(gui + MESSAGE_TAIL, index);
+  WR32(record, kNoMessage);
+  WR32(record + 4u, kNoMessage);
   uint8_t saved[MESSAGE_TEXT_BYTES];
-  float anchor[3];
-  if (g_prompt_scope) {
-    drop_button_token(record + MESSAGE_TEXT, saved);
-    read_floats(kPromptAnchor, anchor, 3);
-    const float moved[3] = {anchor[0] + g_prompt_shift[0], anchor[1],
-                            anchor[2] + g_prompt_shift[1]};
-    write_floats(kPromptAnchor, moved, 3);
-  }
+  drop_button_token(record + MESSAGE_TEXT, saved);
+  const float moved[3] = {anchor[0] + g_prompt_shift[0], anchor[1],
+                          anchor[2] + g_prompt_shift[1]};
+  write_floats(kPromptAnchor, moved, 3);
+  g_prompt_scope = 1;
+  g_prompt_record = record;
   x86_guest_body(cpu, "XMen2.exe", MESSAGE_DRAW);
-  if (g_prompt_scope) {
-    write_floats(kPromptAnchor, anchor, 3);
-    for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
-      WR8(record + MESSAGE_TEXT + i, saved[i]);
-  }
   g_prompt_scope = 0;
+  write_floats(kPromptAnchor, anchor, 3);
+  for (uint32_t i = 0; i < MESSAGE_TEXT_BYTES; ++i)
+    WR8(record + MESSAGE_TEXT + i, saved[i]);
+  /* An expired prompt has left the list: the draw freed it. */
+  const bool kept = RD32(gui + MESSAGE_HEAD) == index;
+  WR32(gui + MESSAGE_HEAD, head);
+  WR32(gui + MESSAGE_TAIL, tail);
+  if (kept)
+    push_message(gui, index);
+}
+
+/* The other lines' band, moved in x with its lines, published as drawn. */
+static void other_band_submit(CPU *cpu) {
+  const uint32_t position = RD32(cpu->reg[kX86pEsp] + 4u);
+  const uint32_t size = RD32(cpu->reg[kX86pEsp] + 8u);
+  float old_position[3], extent[2];
+  read_floats(position, old_position, 3);
+  read_floats(size, extent, 2);
+  const uint32_t line = first_band_line(cpu->reg[kX86pEcx]);
+  const float shift =
+      line ? (float)RDF32(line + MESSAGE_POSITION) - g_band_anchor[0] : 0.0f;
+  const float placed[3] = {old_position[0] + shift, old_position[1],
+                           old_position[2]};
+  write_floats(position, placed, 3);
+  x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
+  write_floats(position, old_position, 3);
+  const x2::presentation::Rect band = x2::presentation::hud_output_box(
+      g_space, g_viewport.width, g_viewport.height,
+      x2::presentation::HudSpace{placed[0], placed[2], extent[0], extent[1]});
+  const std::lock_guard<std::mutex> lock(g_band_lock);
+  g_band = band;
+  g_band_mask = 1;
 }
 
 static void prompt_band_submit(CPU *cpu) {
@@ -415,6 +535,12 @@ static void prompt_band_submit(CPU *cpu) {
       g_space, g_viewport.width, g_viewport.height,
       x2::presentation::HudSpace{natural.left, natural.top, natural.width(),
                                  natural.height()});
+  /* The band is the line's height plus 2 above it and 6 below (0059dc00). */
+  const float line_height = old_size[1] - 8.0f;
+  const float line_z = natural_top - line_height * 0.5f - 2.0f;
+  g_band_drop = line_z - natural.bottom +
+                x2::input::kFooterGap * x2::input::menu_finger_units(*plane) +
+                line_height * 0.5f + 2.0f;
   x2::presentation::Rect placed_out = natural_out;
   x2::input::touch_runtime_clear_of_controls(natural_out, &placed_out);
   g_prompt_shift[0] =
@@ -504,6 +630,11 @@ static void sprite_submit(CPU *cpu) {
     prompt_band_submit(cpu);
     return;
   }
+  if (g_band_scope &&
+      RD32(cpu->reg[kX86pEsp] + 24u) == (uint32_t)MESSAGE_BACKDROP_ICON) {
+    other_band_submit(cpu);
+    return;
+  }
   if (!g_scope.active) {
     x86_guest_body(cpu, "XMen2.exe", SPRITE_SUBMIT);
     return;
@@ -587,6 +718,14 @@ static void scene_matrix(CPU *cpu) {
 }
 
 namespace x2::native {
+
+bool hud_message_band(x2::presentation::Rect *out) {
+  const std::lock_guard<std::mutex> lock(g_band_lock);
+  if (!g_band_mask)
+    return false;
+  *out = g_band;
+  return true;
+}
 
 void hud_draw_report() {
   lucent_log_info("hud",

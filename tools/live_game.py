@@ -139,16 +139,28 @@ def live_controls(case: Case) -> dict[str, tuple[float, float, float, float]]:
     return out
 
 
-def live_use_prompt(case: Case) -> tuple[float, float, float, float] | None:
-    """The game's use prompt button while touch routes a finger to it:
+def live_hud_box(case: Case, name: str
+                 ) -> tuple[float, float, float, float] | None:
+    """A box the game draws itself, listed by GET /controls under `name`:
     left, top, width, height."""
     for line in case.get_text("/controls").splitlines():
         parts = line.split()
-        if len(parts) >= 3 and parts[0] == "use-prompt":
+        if len(parts) >= 3 and parts[0] == name:
             left, top = (float(v) for v in parts[1].split(","))
             width, height = (float(v) for v in parts[2].split("x"))
             return (left, top, width, height)
     return None
+
+
+def live_use_prompt(case: Case) -> tuple[float, float, float, float] | None:
+    """The game's use prompt button while touch routes a finger to it."""
+    return live_hud_box(case, "use-prompt")
+
+
+def live_message_band(case: Case) -> tuple[float, float, float, float] | None:
+    """The game's band of the HUD lines drawn apart from the prompt's
+    button, such as an XP notice."""
+    return live_hud_box(case, "message-band")
 
 
 def tap_control(case: Case, rect, window: tuple[float, float]) -> bool:

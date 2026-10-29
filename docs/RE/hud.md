@@ -109,11 +109,24 @@ is as wide as the widest line plus 15, its top the first line's z + h/2 + 2
 and its bottom the lowest line's z - h/2 - 6. An XP award (`500 XP`) is a
 type-0 line too, so it shares the prompt's band.
 
+The records form a list of pool indices: a record's `+0` is the next index
+and `+4` the previous, `-1` ending it; the head is at GUI `+87974` and the
+tail at `+87978`. Each pass of the draw first calls every record's update
+(object `+8`, vtable `0069dbf4`, `005a7a30(now)`), which eases `+10` toward
+`+14c` by the frame's step and returns the object's visible byte (record
+`+20`); a false return unlinks and frees the record (`0059c320`).
+
 On touch, `hud_draw_runtime.cpp` wraps `0059dc00`; while the record holding
-player one's prompt handle is a visible type-0 line, it grows that band to
-`text_button` around its lines (at least one finger tall) and publishes the
-grown band as `HudRegions::use_prompt`, the touch zone pressing Use. Other
-lines in the band are inside the button with the prompt. The band
+player one's prompt handle is a visible type-0 line, the draw runs twice. The
+first pass runs over the list with the prompt's record unlinked, with the
+type-0 anchor moved down so that the other lines' band (published as
+`message-band`) starts a button gap below the prompt's button. The second
+runs over a list holding only the prompt, which is then the band's only
+line: that band is grown to `text_button` around it (one finger tall) and
+published as `HudRegions::use_prompt`, the touch zone pressing Use. The
+prompt is pushed back at the list's head unless it expired, so each record
+is updated once a frame. The other lines' band follows their x, which the
+prompt's shift moves. The prompt's band
 is submitted twice, an orange frame and an inset dark fill (lit while held),
 and for that draw the record's text (`+24`, 0x100 bytes of ASCII such as
 `$GUAR1 Use Trivia Game`) is the words after the leading token, restored after.

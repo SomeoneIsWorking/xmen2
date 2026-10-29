@@ -516,7 +516,7 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
-| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. A notice that shares the band, such as an XP award, sits inside the button with the prompt, and the button stays pressable while it does |
+| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. Any other line the game would stack in the prompt's band, such as an XP award, keeps the game's own band and art apart from the button, a button gap beneath it: it is no control, and a tap on it does not use. `GET /controls` lists that band as `message-band` |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
@@ -653,9 +653,11 @@ low inboard power covered the prompt before it moved); `touch-use-prompt-4x3`,
 2026-10-28 with one power drawn: at 1096x720 and 960x720 the button moved up
 clear of that power (left 461 and 351, top 464); at 16:9 and 20:9 it stayed
 where the game puts it. `touch-use-prompt-xp-16x9` and `-xp-20x9` then award
-XP with `awardXPToPlayable(500)`, so the game's "500 XP" line shares the
-prompt's band, and require the button through the notice's first second and
-the press made while it is up to open the trivia menu.
+XP with `awardXPToPlayable(500)`, whose "500 XP" line the game would stack
+in the prompt's band. They require the button to keep the size it has alone,
+the notice's `message-band` to lie outside it and clear of every drawn
+control, a tap on the notice not to open the trivia menu, and the button's
+press after it to open it.
 
 `tools/live_case.py touch-briefing` (and `-20x9`) loads
 `briefing/briefing1_10`, the mission briefing Sanctuary's projector loads,
