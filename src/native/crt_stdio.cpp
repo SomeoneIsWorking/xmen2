@@ -18,6 +18,7 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "host_dir_cache.h"
+#include "host_files.h"
 #include "platform_posix.h"
 #include "win_path.h"
 
@@ -107,7 +108,7 @@ void imp_MSVCR71_fopen(CPU *C) {
         mode && (strchr(mode, 'w') || strchr(mode, 'a') || strchr(mode, '+'));
     int repl = k32_open_replaced(guest, wr);
     const char *host = k32_open_path(guest, wr);
-    g_files[i] = fopen(host, mode);
+    g_files[i] = x2::native::host_fopen(host, mode);
     if (wr)
       host_dir_forget_for(host);
     k32_open_note(guest, g_files[i] != NULL, repl, host);
@@ -141,7 +142,7 @@ void imp_MSVCR71_ftell(CPU *C) {
 
 void imp_MSVCR71__mkdir(CPU *C) {
   const char *path = win_path(ACS(0));
-  int rc = mkdir(path, 0777);
+  int rc = x2::native::host_mkdir(path, 0777);
   host_dir_forget_for(path);
   ret_c(C, (uint32_t)rc);
 }

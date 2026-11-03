@@ -39,7 +39,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#include "platform_dirent.h"
+#include "host_files.h"
 #include "platform_posix.h"
 #include "platform_strings.h"
 #include <ctype.h>
@@ -507,7 +507,7 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
     ret_std(C, INVALID_HANDLE, 7);
     return;
   }
-  fd = open(path, flags, 0644);
+  fd = x2::native::host_open(path, flags, 0644);
   if (flags & O_CREAT)
     host_dir_forget_for(path);
   k32_open_note(guest_name, fd >= 0, repl, path);
@@ -1131,7 +1131,7 @@ void imp_KERNEL32_CloseHandle(CPU *C) {
   if (hh->kind == x2::native::H_FILE && hh->fd >= 0)
     close(hh->fd);
   if (hh->kind == x2::native::H_FIND && hh->dir)
-    closedir(hh->dir);
+    x2::native::host_closedir(hh->dir);
   /* A mapping handle owns its duplicated descriptor. Its VIEWS are not
      unmapped here: on Windows a view outlives the mapping handle, and the
      guest unmaps it explicitly. */
@@ -1150,7 +1150,7 @@ void imp_KERNEL32_GetFileAttributesA(CPU *C) {
   struct stat st;
   const char *g = ACS(0);
   const char *p = win_path(g);
-  if (stat(p, &st) != 0) {
+  if (x2::native::host_stat(p, &st) != 0) {
     k32_file_trace("GetFileAttributes", g, p, "does not exist");
     g_last_error = ERROR_FILE_NOT_FOUND;
     ret_std(C, 0xFFFFFFFFu, 1); /* INVALID_FILE_ATTRIBUTES */
@@ -1163,7 +1163,7 @@ void imp_KERNEL32_GetFileAttributesA(CPU *C) {
 
 void imp_KERNEL32_DeleteFileA(CPU *C) {
   const char *g = ACS(0), *p = win_path(g);
-  int ok = unlink(p) == 0;
+  int ok = x2::native::host_unlink(p) == 0;
   host_dir_forget_for(p);
   if (!ok)
     g_last_error = errno == ENOENT ? ERROR_FILE_NOT_FOUND : ERROR_ACCESS_DENIED;
@@ -1173,7 +1173,7 @@ void imp_KERNEL32_DeleteFileA(CPU *C) {
 
 void imp_KERNEL32_CreateDirectoryA(CPU *C) {
   const char *g = ACS(0), *p = win_path(g);
-  int ok = mkdir(p, 0777) == 0;
+  int ok = x2::native::host_mkdir(p, 0777) == 0;
   host_dir_forget_for(p);
   if (!ok) {
     /*
@@ -1196,7 +1196,7 @@ void imp_KERNEL32_CreateDirectoryA(CPU *C) {
 }
 void imp_KERNEL32_RemoveDirectoryA(CPU *C) {
   const char *path = win_path(ACS(0));
-  int ok = rmdir(path) == 0;
+  int ok = x2::native::host_rmdir(path) == 0;
   host_dir_forget_for(path);
   ret_std(C, (uint32_t)ok, 1);
 }
@@ -1918,7 +1918,7 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name) {
   size_t n;
 
   snprintf(full, sizeof full, "%s/%s", dirpath, name);
-  if (stat(full, &st) != 0)
+  if (x2::native::host_stat(full, &st) != 0)
     return 0;
 
   attrs =
@@ -1957,11 +1957,11 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name) {
 
 /* Advance the handle to the next matching entry. 0 at end of directory. */
 static int find_next(x2::native::Handle *hh, uint32_t data) {
-  struct dirent *e;
-  while ((e = readdir(hh->dir)) != NULL) {
-    if (!win_match(hh->pattern, e->d_name))
+  const char *name;
+  while ((name = x2::native::host_readdir(hh->dir)) != NULL) {
+    if (!win_match(hh->pattern, name))
       continue;
-    if (fd_fill(data, hh->dirpath, e->d_name))
+    if (fd_fill(data, hh->dirpath, name))
       return 1;
   }
   return 0;
@@ -2001,7 +2001,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
   hh = x2::native::k32_handle_get(h, 0);
   snprintf(hh->pattern, sizeof hh->pattern, "%s", pattern);
   snprintf(hh->dirpath, sizeof hh->dirpath, "%s", dirpath);
-  hh->dir = opendir(hh->dirpath);
+  hh->dir = x2::native::host_opendir(hh->dirpath);
   if (!hh->dir) {
     x2_log_error("kernel32: FindFirstFileA(\"%s\") -- \"%s\" is not a "
                  "directory this host can open (%s). Returning "
@@ -2014,7 +2014,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
   }
   if (!find_next(hh, data)) {
     k32_file_trace("FindFirstFile", spec, hh->dirpath, "matched NOTHING");
-    closedir(hh->dir);
+    x2::native::host_closedir(hh->dir);
     hh->dir = NULL;
     hh->kind = 0;
     g_last_error = ERROR_FILE_NOT_FOUND;
@@ -2039,7 +2039,7 @@ void imp_KERNEL32_FindNextFileA(CPU *C) {
 void imp_KERNEL32_FindClose(CPU *C) {
   x2::native::Handle *hh = x2::native::k32_handle_get(A(0), x2::native::H_FIND);
   if (hh->dir)
-    closedir(hh->dir);
+    x2::native::host_closedir(hh->dir);
   hh->dir = NULL;
   hh->kind = 0;
   ret_std(C, 1, 1);

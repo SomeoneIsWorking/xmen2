@@ -16,9 +16,12 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 namespace x2::media {
 
@@ -32,6 +35,8 @@ struct VideoFrame {
 };
 
 struct FmvPlayer {
+  int descriptor;
+  AVIOContext *io;
   AVFormatContext *format;
   AVCodecContext *video_codec;
   FmvSfd sfd;
@@ -68,6 +73,46 @@ void error_text(char *out, size_t size, const char *operation, int code) {
     return;
   av_strerror(code, detail, sizeof(detail));
   snprintf(out, size, "%s: %s", operation, detail);
+}
+/* FFmpeg reads the movie through the caller's descriptor, so a file that has
+   no POSIX path (an Android document) plays like any other. */
+int read_descriptor(void *opaque, uint8_t *buffer, int size) {
+  const int descriptor = *static_cast<const int *>(opaque);
+  for (;;) {
+    const ssize_t count = read(descriptor, buffer, (size_t)size);
+    if (count < 0 && errno == EINTR)
+      continue;
+    if (count < 0)
+      return AVERROR(errno);
+    return count == 0 ? AVERROR_EOF : (int)count;
+  }
+}
+int64_t seek_descriptor(void *opaque, int64_t offset, int whence) {
+  const int descriptor = *static_cast<const int *>(opaque);
+  if (whence & AVSEEK_SIZE) {
+    struct stat status;
+    return fstat(descriptor, &status) == 0 ? (int64_t)status.st_size
+                                           : AVERROR(errno);
+  }
+  const off_t at = lseek(descriptor, (off_t)offset, whence & ~AVSEEK_FORCE);
+  return at < 0 ? AVERROR(errno) : (int64_t)at;
+}
+int open_descriptor_input(FmvPlayer *player, const char *name) {
+  constexpr int kBufferBytes = 64 * 1024;
+  auto *buffer = static_cast<unsigned char *>(av_malloc(kBufferBytes));
+  if (!buffer)
+    return AVERROR(ENOMEM);
+  player->io = avio_alloc_context(buffer, kBufferBytes, 0, &player->descriptor,
+                                  read_descriptor, NULL, seek_descriptor);
+  player->format = player->io ? avformat_alloc_context() : NULL;
+  if (!player->format) {
+    if (!player->io)
+      av_free(buffer);
+    return AVERROR(ENOMEM);
+  }
+  player->format->pb = player->io;
+  player->format->flags |= AVFMT_FLAG_CUSTOM_IO;
+  return avformat_open_input(&player->format, name, NULL, NULL);
 }
 AVCodecContext *open_codec(AVFormatContext *format, int stream, char *error,
                            size_t error_size) {
@@ -282,19 +327,28 @@ void select_video_frame(FmvPlayer *player, const VideoFrame *frame) {
 
 } // namespace
 
-FmvPlayer *fmv_open(const char *path, const X2FmvAudioSink *sink, char *error,
+FmvPlayer *fmv_open(int descriptor, const char *name,
+                    const X2FmvAudioSink *sink, char *error,
                     size_t error_size) {
   FmvPlayer *player = (FmvPlayer *)calloc(1, sizeof(*player));
   AVCodecContext *audio_codec;
   AVRational rate;
   int result;
-  if (!player)
+  if (descriptor < 0) {
+    snprintf(error, error_size, "cannot open SFD: %s", strerror(errno));
+    free(player);
     return NULL;
+  }
+  if (!player) {
+    close(descriptor);
+    return NULL;
+  }
+  player->descriptor = descriptor;
   player->video_stream = -1;
   player->audio_stream = -1;
   if (sink)
     player->sink = *sink;
-  result = avformat_open_input(&player->format, path, NULL, NULL);
+  result = open_descriptor_input(player, name);
   if (result >= 0) {
     fmv_sfd_configure_probe(player->format);
     result = avformat_find_stream_info(player->format, NULL);
@@ -398,6 +452,10 @@ void fmv_close(FmvPlayer *player) {
   sws_freeContext(player->scaler);
   avcodec_free_context(&player->video_codec);
   avformat_close_input(&player->format);
+  if (player->io)
+    av_freep(&player->io->buffer);
+  avio_context_free(&player->io);
+  close(player->descriptor);
   free(player);
 }
 void fmv_play(FmvPlayer *player) {

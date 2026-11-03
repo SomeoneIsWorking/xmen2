@@ -50,27 +50,62 @@ import-to-game teardown, late callbacks, cancellation before service creation,
 and a refused start. This is lifecycle evidence, not confirmation that the
 reported ARM64 boot crash has the same cause.
 
-The validated `game/` tree lives under Android's package OBB storage and is
-reused across launches and in-place updates signed with the same certificate.
-Android removes OBB storage on uninstall unless the user chooses to retain app
-data where the platform offers that option; OBB alone cannot preserve this
-install through an ordinary uninstall/reinstall. A separate shared-storage SAF
-design remains necessary to guarantee that outcome. Android documents this
-deletion in the [`getObbDir()` API](https://developer.android.com/reference/android/content/Context#getObbDir()).
+The install lives in a folder the player picks in shared storage
+(`ACTION_OPEN_DOCUMENT_TREE`, suggested `Documents/X-Men Legends 2`), which an
+uninstall does not remove. Its layout is title-owned: `game/` holds the
+validated directory that contains `XMen2.exe`, and `saves/` holds the profile
+root (`x2native.conf`, `registry.txt` and the retail `Activision/X-Men Legends
+2/Save` leaf). Package OBB storage holds only the resumable ZIP staging and its
+private extraction; after title validation the shared framework's
+`AndroidDocumentTree.publish` copies the extracted directory into the folder as
+`game/` and the staging is discarded. A release that kept `game/` in OBB is not
+migrated: the player imports once into a folder, and the old OBB tree is deleted
+when the folder install is first accepted.
+
+The folder grant dies with the package, so after a reinstall the setup screen
+offers **Use existing install folder**. Picking a folder whose `game/XMen2.exe`
+passes the title's identity check (`install_validate_executable`: PE header,
+every mapped DLL, the content sentinels) starts the game with no copy; only a
+missing or invalid tree asks for the ZIP. A remembered folder whose grant still
+persists is validated in place on every launch.
+
+Native code never sees a filesystem path for the folder: files a previous
+install created are not readable by path under scoped storage. The bridge mounts
+the folder at the synthetic root `/document-tree` in `src/native/host_files`,
+the one layer every resolved host path goes through (guest `CreateFile`, CRT
+`fopen`, find/attributes/delete/directory calls, PE image maps, SFD movies,
+install validation, settings, registry and autosave storage). A path under the
+mount is answered by `android_document_tree.cpp` over JNI from the framework's
+cached document index, and opened as a descriptor from
+`ContentResolver.openFileDescriptor`; every other path is the host filesystem.
+Directory listings from either backend come back in NTFS order (`.` and `..`
+first, then names compared upper-cased): a provider lists children in its own
+order, and Alchemy's `igPluginHelper::loadAllPlugins` registers the libraries in
+listing order, so a provider's order failed the front-end `movie` menu with an
+allocation of -2 bytes. Publishing a 13,383-file install into the folder takes
+about 17 minutes on the API 35 emulator, one provider copy per file.
+`host_replace` is the one way a finished file takes its final name. A provider
+cannot rename over a file, so `AndroidDocumentTree.replace` renames the written
+file to `<name>.new`, deletes `<name>`, then renames `<name>.new` to `<name>`;
+`<name>.new` therefore only ever names a complete file. The next open, stat or
+listing that meets a `<name>.new` finishes the swap, so a kill at any step leaves
+the old or the new settings or autosave, never neither. Writers use another
+temporary name (`settings.cpp` writes `<name>.part`). The touch HUD's power icons
+are read through `host_fopen` and parsed with Alchemy's `igb_open_bytes`.
+
 An interrupted ZIP copy
 retains its staging marker and resumes from the last complete byte when the
-same document is selected again. It supports cloud
-and removable-storage providers correctly, avoids broad device access, and
-means later launches never depend on a provider or a working directory. The
-setup persists a canonical private source path, so Android's equivalent
-`/data/data` and `/data/user/0` aliases cannot make a valid retained install
-appear to be outside the app. A missing or unusable selection returns to setup
-with an actionable error.
-`lucent_platform_set_user_data_directory` receives the Activity's absolute
-private files root; there is no Android environment-variable fallback. Saves,
-settings, input recordings, and the live-session record all live below that
-root -- never in the working directory, which a package does not own and which
-is read-only on Android.
+same document is selected again. A missing or unusable selection returns to
+setup with an actionable error.
+`lucent_platform_set_user_data_directory` still receives the Activity's absolute
+private files root, because what lives there cannot go through a document
+provider: the RmlUi resources, run logs (a crash report is written from a
+signal handler), the runtime CVar file, input recordings and the live-session
+record. The bridge sets the profile root that `shell32.cpp:save_dir()` owns to
+the folder's `saves/` through the existing save-directory override, so saves
+and settings follow the folder and every save owner keeps deriving its leaf from
+that one root. Nothing lives in the working directory, which a package does not
+own and which is read-only on Android.
 
 The APK also declares `INTERNET`. The product target always opens the agent
 control channel on loopback, and creating any socket requires that permission's

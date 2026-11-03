@@ -7,10 +7,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- hasFragileUserData: the imported game installation is gigabytes of
-         app-specific data. On supported platforms an uninstall can offer to
-         retain it; ordinary uninstall removes it, including OBB data. Stable
-         release signing allows updates in place without deleting app data. -->
+    <!-- The game and saves live in a folder the player picks in shared
+         storage, which uninstall does not remove; package storage holds only
+         import staging. hasFragileUserData still offers to keep private app
+         data on uninstall where the platform supports it. -->
     <application
         android:icon="@mipmap/xmen2_port_icon"
         android:label="X-Men Legends II"

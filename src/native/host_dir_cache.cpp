@@ -3,7 +3,8 @@
 
 #include "x2_log.h"
 
-#include <dirent.h>
+#include "host_files.h"
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,8 +74,8 @@ static void destroy(Listing *listing) {
  * failure, so a directory that appears later is found then.
  */
 static Listing *enumerate(const char *path) {
-  DIR *directory = opendir(path);
-  struct dirent *entry;
+  x2::native::HostDirectory *directory = x2::native::host_opendir(path);
+  const char *entry;
   Listing *listing;
   size_t used = 0, capacity = 1024, slots = 0, slot_capacity = 64;
   char *names;
@@ -90,12 +91,13 @@ static Listing *enumerate(const char *path) {
     free(names);
     free(offsets);
     free(listing);
-    closedir(directory);
+    x2::native::host_closedir(directory);
     x2_log_error("host_dir_cache: out of memory listing \"%s\"\n", path);
     return NULL;
   }
-  for (entry = readdir(directory); entry; entry = readdir(directory)) {
-    const size_t size = strlen(entry->d_name) + 1u;
+  for (entry = x2::native::host_readdir(directory); entry;
+       entry = x2::native::host_readdir(directory)) {
+    const size_t size = strlen(entry) + 1u;
     if (used + size > capacity) {
       char *grown;
       while (used + size > capacity) {
@@ -116,11 +118,11 @@ static Listing *enumerate(const char *path) {
       offsets = grown;
       slot_capacity *= 2u;
     }
-    memcpy(names + used, entry->d_name, size);
+    memcpy(names + used, entry, size);
     offsets[slots++] = used;
     used += size;
   }
-  closedir(directory);
+  x2::native::host_closedir(directory);
   listing->path = strdup(path);
   if (!listing->path) {
     free(names);

@@ -1,6 +1,7 @@
 #include "fmv_player.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -117,7 +118,8 @@ int main(int argc, char **argv) {
   sink.userdata = &audio;
   sink.queue_stereo_f32 = count_audio;
   sink.queued_seconds = empty_audio_queue;
-  player = x2::media::fmv_open(path, &sink, error, sizeof(error));
+  player = x2::media::fmv_open(open(path, O_RDONLY), path, &sink, error,
+                               sizeof(error));
   if (!player) {
     fprintf(stderr, "FMV decode: FAILED -- %s\n", error);
     return 1;

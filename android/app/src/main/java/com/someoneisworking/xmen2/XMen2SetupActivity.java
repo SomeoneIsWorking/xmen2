@@ -14,6 +14,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import io.github.someoneisworking.android.AndroidDocumentImport;
+import io.github.someoneisworking.android.AndroidDocumentTree;
 import io.github.someoneisworking.android.AndroidImportProgress;
 
 import java.io.File;
@@ -23,16 +24,27 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Locale;
 
-/** Android-owned first-run setup. Native code retains title validation. */
+/**
+ * Android-owned first-run setup. The game and its saves live in a folder the player picks in
+ * shared storage, so they survive an uninstall; native code retains title validation.
+ */
 public final class XMen2SetupActivity extends Activity {
+    private static final String TAG = "XMen2";
     private static final int ZIP_REQUEST = 0x5847;
+    private static final int FOLDER_REQUEST = 0x584A;
     private static final String PICKER_STATE = "xmen2-picker";
-    private static final String SOURCE_PATH = "source-path";
+    private static final String FOLDER_PICK_EXISTING = "xmen2-folder-existing";
     private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
     private static final String TRACE_PERFORMANCE =
             "com.someoneisworking.xmen2.trace.performance";
     private static final String TRACE_DRAW_DUMP = "com.someoneisworking.xmen2.trace.draw_dump";
-    private static final String INSTALL_DIRECTORY = "game";
+    private static final String FOLDER_KEY = "install-folder";
+    private static final String SUGGESTED_FOLDER = "Documents";
+    private static final String GAME_LEAF = "game";
+    private static final String SAVES_LEAF = "saves";
+    /* The package-storage install every release before the shared folder used. */
+    private static final String RETIRED_INSTALL = "game";
+    private static final String PREPARED_LEAF = ".x2-prepared";
     private static final int MAXIMUM_ENTRIES = 100_000;
     private static final long MAXIMUM_IMPORT_BYTES = 4L * 1024L * 1024L * 1024L;
 
@@ -42,18 +54,23 @@ public final class XMen2SetupActivity extends Activity {
 
     private static native boolean nativeConfigureStorage(String dataDirectory,
                                                          String installSource,
+                                                         String saveDirectory,
                                                          boolean traceFiles,
                                                          boolean tracePerformance,
                                                          boolean traceDrawDump,
                                                          String bootMap);
-    private static native boolean nativeValidateInstall(String installSource,
-                                                        String archiveDestination);
+    private static native String nativeValidateInstall(String installSource,
+                                                       String archiveDestination);
+    private static native String nativeMountInstallFolder(AndroidDocumentTree folder);
 
     private TextView status;
     private ProgressBar progressBar;
     private LinearLayout choices;
     private AndroidDocumentImport importer;
     private AndroidImportProgress importNotification;
+    private AndroidDocumentTree folder;
+    private boolean pickingExistingFolder;
+    private boolean copyingToFolder;
     private long importedEntries;
     private long importedBytes;
     private long importTotalBytes;
@@ -77,9 +94,10 @@ public final class XMen2SetupActivity extends Activity {
             bootMap = validatedBootMap(requestedBootMap);
             invalidBootMap = requestedBootMap != null && !requestedBootMap.isEmpty()
                     && bootMap == null;
-            Log.i("XMen2", "debug setup: performance=" + tracePerformance
+            Log.i(TAG, "debug setup: performance=" + tracePerformance
                     + " drawDump=" + traceDrawDump + " bootMap=" + bootMap);
         }
+        pickingExistingFolder = state != null && state.getBoolean(FOLDER_PICK_EXISTING);
         importNotification = new AndroidImportProgress(this, 0x5849, "xmen2_game_import",
                 "Game File Installation", "Installing X-Men Legends II", XMen2SetupActivity.class);
         importer = new AndroidDocumentImport(
@@ -92,12 +110,8 @@ public final class XMen2SetupActivity extends Activity {
            finished, because its post was already in flight -- so it is only
            drawn while the import still owns the screen. */
         importer.setProgressListener((entries, bytes, totalBytes, currentName) -> {
-            importedEntries = entries;
-            importedBytes = bytes;
-            importTotalBytes = totalBytes;
-            importingName = currentName;
             if (importer.active() && status != null) {
-                updateProgressPresentation();
+                noteProgress(entries, bytes, totalBytes, currentName);
             }
         });
         importer.restorePickerState(state == null ? null : state.getBundle(PICKER_STATE), importCallback());
@@ -128,36 +142,36 @@ public final class XMen2SetupActivity extends Activity {
             showError("The debug boot map contains an unsafe or invalid map name.");
             return;
         }
-        String saved = getPreferences(MODE_PRIVATE).getString(SOURCE_PATH, null);
-        if (saved != null && acceptStoredSource(new File(saved))) return;
-        File persistent = new File(importStorageRoot(), INSTALL_DIRECTORY);
-        if (acceptStoredSource(persistent)) {
-            getPreferences(MODE_PRIVATE).edit()
-                    .putString(SOURCE_PATH, persistent.getAbsolutePath()).apply();
-            return;
-        }
-        /* This runs again the moment the Android file picker closes, while the
-           copy the player just started is still running. Offering the Browse
-           buttons here is what makes the screen look idle mid-import: the next
-           tap is refused with "A game-file import is already active", which
-           reads as a stuck app rather than as the copy it actually is. */
-        if (importer.active()) {
+        /* This runs again the moment a picker closes, while the copy the
+           player just started is still running. Offering the buttons here is
+           what makes the screen look idle mid-import. */
+        if (importer.active() || AndroidDocumentTree.publishing()) {
             showImporting();
             return;
         }
-        showChoices();
+        AndroidDocumentTree remembered = AndroidDocumentTree.remembered(this, FOLDER_KEY);
+        if (remembered == null) {
+            showChoices();
+            return;
+        }
+        if (!startFromFolder(remembered)) {
+            showFolderWithoutInstall("The install folder holds no usable X-Men Legends II "
+                    + "install yet. Choose the ZIP of your PC install to put the game there.");
+        }
     }
 
     @Override
     protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
         state.putBundle(PICKER_STATE, importer.savePickerState());
+        state.putBoolean(FOLDER_PICK_EXISTING, pickingExistingFolder);
     }
 
     @Override
     protected void onDestroy() {
         if (isFinishing()) {
             importer.cancel();
+            if (folder != null) folder.cancelPublication();
             importNotification.stop();
         }
         super.onDestroy();
@@ -196,18 +210,47 @@ public final class XMen2SetupActivity extends Activity {
         choices.setOrientation(LinearLayout.HORIZONTAL);
         choices.setGravity(Gravity.CENTER);
         layout.addView(choices, new LinearLayout.LayoutParams(-1, -2));
-
-        Button zip = new Button(this);
-        zip.setText("Choose ZIP");
-        zip.setOnClickListener(view -> openZipPicker());
-        choices.addView(zip, new LinearLayout.LayoutParams(-2, -2));
+        setFolderChoices();
 
         setContentView(layout);
     }
 
-    /* A whole PC install is gigabytes over SAF, so this state can last
-       minutes. It says what is happening and takes the buttons away, because
-       the only thing a second tap can do is be refused. */
+    private void setChoices(String firstLabel, View.OnClickListener first,
+                            String secondLabel, View.OnClickListener second) {
+        choices.removeAllViews();
+        for (int index = 0; index < 2; ++index) {
+            Button button = new Button(this);
+            button.setText(index == 0 ? firstLabel : secondLabel);
+            button.setOnClickListener(index == 0 ? first : second);
+            choices.addView(button, new LinearLayout.LayoutParams(-2, -2));
+        }
+        choices.setVisibility(View.VISIBLE);
+        if (progressBar != null) progressBar.setVisibility(View.GONE);
+    }
+
+    private void showChoices() {
+        status.setText("Choose a folder for X-Men Legends II, for example Documents/X-Men Legends 2."
+                + " The game and your saves are kept there, so they survive reinstalling the app."
+                + " After a reinstall, choose the same folder with Use existing install folder.");
+        setFolderChoices();
+        importNotification.stop();
+    }
+
+    private void setFolderChoices() {
+        setChoices("New install folder", view -> openFolderPicker(false),
+                   "Use existing install folder", view -> openFolderPicker(true));
+    }
+
+    private void showFolderWithoutInstall(String message) {
+        status.setText(message);
+        setChoices("Choose ZIP", view -> openZipPicker(),
+                   "Choose another folder", view -> openFolderPicker(true));
+        importNotification.stop();
+    }
+
+    /* A whole PC install is gigabytes, so this state can last minutes. It
+       says what is happening and takes the buttons away, because the only
+       thing a second tap can do is be refused. */
     private void showImporting() {
         status.setText(importingText());
         choices.setVisibility(View.GONE);
@@ -215,6 +258,14 @@ public final class XMen2SetupActivity extends Activity {
             progressBar.setVisibility(View.VISIBLE);
         }
         importNotification.start(importingText(), importedBytes, importTotalBytes);
+        updateProgressPresentation();
+    }
+
+    private void noteProgress(long entries, long bytes, long totalBytes, String currentName) {
+        importedEntries = entries;
+        importedBytes = bytes;
+        importTotalBytes = totalBytes;
+        importingName = currentName;
         updateProgressPresentation();
     }
 
@@ -235,8 +286,9 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private String importingText() {
-        StringBuilder text = new StringBuilder(
-                "Copying the ZIP into game storage.");
+        StringBuilder text = new StringBuilder(copyingToFolder
+                ? "Copying the game into the install folder."
+                : "Copying the ZIP into game storage.");
         if (importedEntries > 0) {
             text.append("\n\n").append(importedEntries).append(
                     importedEntries == 1 ? " file, " : " files, ")
@@ -250,7 +302,9 @@ public final class XMen2SetupActivity extends Activity {
                 text.append("\n").append(importingName);
             }
         }
-        text.append("\n\nAn interrupted copy can resume when you choose the same ZIP again.");
+        if (!copyingToFolder) {
+            text.append("\n\nAn interrupted copy can resume when you choose the same ZIP again.");
+        }
         return text.toString();
     }
 
@@ -267,15 +321,6 @@ public final class XMen2SetupActivity extends Activity {
         return String.format(Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
-    private void showChoices() {
-        status.setText("Choose a ZIP of your legally obtained PC install. ZIP import is faster for installations with many small files. The installed game is reused on future launches and app updates. Android can remove it if you uninstall the app.");
-        choices.setVisibility(View.VISIBLE);
-        if (progressBar != null) {
-            progressBar.setVisibility(View.GONE);
-        }
-        importNotification.stop();
-    }
-
     // --- Pickers ---
 
     private AndroidDocumentImport.Callback importCallback() {
@@ -287,7 +332,8 @@ public final class XMen2SetupActivity extends Activity {
 
             @Override
             public void onCancelled() {
-                showChoices();
+                showFolderWithoutInstall("Choose the ZIP of your PC install to put the game in"
+                        + " the install folder.");
             }
 
             @Override
@@ -295,6 +341,13 @@ public final class XMen2SetupActivity extends Activity {
                 showError(message);
             }
         };
+    }
+
+    private void openFolderPicker(boolean existing) {
+        pickingExistingFolder = existing;
+        if (!AndroidDocumentTree.pick(this, FOLDER_REQUEST, SUGGESTED_FOLDER)) {
+            showError("No Android folder picker is available.");
+        }
     }
 
     private void openZipPicker() {
@@ -316,11 +369,11 @@ public final class XMen2SetupActivity extends Activity {
         if (source == null) {
             return false;
         }
-        if (!nativeValidateInstall(source.getAbsolutePath(), "")) {
+        if (nativeValidateInstall(source.getAbsolutePath(), "") == null) {
             showError("The debug private install is not a usable X-Men Legends II install.");
             return true;
         }
-        if (!configureNative(source)) {
+        if (!configureNative(source.getAbsolutePath(), null)) {
             showError("Could not configure the debug private install.");
             return true;
         }
@@ -330,6 +383,10 @@ public final class XMen2SetupActivity extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
+        if (request == FOLDER_REQUEST) {
+            acceptPickedFolder(result, data);
+            return;
+        }
         if (!importer.handleActivityResult(request, result, data)) {
             super.onActivityResult(request, result, data);
             return;
@@ -340,44 +397,102 @@ public final class XMen2SetupActivity extends Activity {
             showImporting();
     }
 
-    // --- Handoff ---
+    // --- Install folder ---
 
-    private File sourceFor(AndroidDocumentImport.Result result, File root) {
-        return result.isTree ? root : new File(root, ".x2-prepared");
+    private void acceptPickedFolder(int result, Intent data) {
+        AndroidDocumentTree picked;
+        try {
+            picked = AndroidDocumentTree.accept(this, result, data, FOLDER_KEY);
+        } catch (IOException error) {
+            showError("Could not keep access to that folder: " + error.getMessage());
+            return;
+        }
+        if (picked == null) {
+            showChoices();
+            return;
+        }
+        if (startFromFolder(picked)) return;
+        if (pickingExistingFolder) {
+            showFolderWithoutInstall("That folder holds no usable X-Men Legends II install."
+                    + " Choose the ZIP of your PC install to put the game there, or choose"
+                    + " another folder.");
+        } else {
+            openZipPicker();
+        }
     }
 
-    /** Retains only a complete, title-validated selection. */
+    /** Validates the folder's game in place and starts it; false when there is none. */
+    private boolean startFromFolder(AndroidDocumentTree candidate) {
+        folder = candidate;
+        String root = nativeMountInstallFolder(candidate);
+        if (root == null) {
+            showError("Could not open the install folder.");
+            return true;
+        }
+        String executable = root + "/" + GAME_LEAF + "/XMen2.exe";
+        if (nativeValidateInstall(executable, "") == null) {
+            return false;
+        }
+        Log.i(TAG, "install folder " + candidate.uri() + ": validated in place, no copy");
+        discardRetiredInstall();
+        if (!configureNative(executable, root + "/" + SAVES_LEAF)) {
+            showError("Could not use the install folder.");
+            return true;
+        }
+        startGame();
+        return true;
+    }
+
+    /** Copies a title-validated ZIP extraction into the install folder. */
     private void acceptImported(AndroidDocumentImport.Result result) {
-        if (!result.isTree && !result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+        if (!result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
             showError("That is not a ZIP archive. Choose a ZIP from your PC install."
                     + discardRejectedImport(result));
             return;
         }
-        File pickedSource = result.isTree ? result.stagingDirectory
-                : new File(result.stagingDirectory, result.documentName);
-        File stagedSource = sourceFor(result, result.stagingDirectory);
-        if (!nativeValidateInstall(pickedSource.getAbsolutePath(),
-                                   result.isTree ? "" : stagedSource.getAbsolutePath())) {
+        File archive = new File(result.stagingDirectory, result.documentName);
+        File prepared = new File(result.stagingDirectory, PREPARED_LEAF);
+        String directory = nativeValidateInstall(archive.getAbsolutePath(),
+                                                 prepared.getAbsolutePath());
+        if (directory == null) {
             showError("That is not a usable X-Men Legends II install."
                     + discardRejectedImport(result));
             return;
         }
-        try {
-            if (!result.isTree) importer.discardValidatedDocument(result);
-            File installed = importer.promoteValidated(result, INSTALL_DIRECTORY);
-            File source = sourceFor(result, installed);
-            if (!configureNative(source)) {
-                showError("Could not retain the selected X-Men Legends II install.");
-                return;
-            }
-            getPreferences(MODE_PRIVATE).edit()
-                    .putString(SOURCE_PATH, source.getAbsolutePath()).apply();
-            importNotification.stop();
-            startGame();
-        } catch (IOException error) {
-            importNotification.stop();
-            showError("Could not retain the selected game files: " + error.getMessage());
+        if (folder == null) folder = AndroidDocumentTree.remembered(this, FOLDER_KEY);
+        if (folder == null) {
+            showError("Choose the install folder before the ZIP." + discardRejectedImport(result));
+            return;
         }
+        try {
+            importer.discardValidatedDocument(result);
+        } catch (IOException error) {
+            showError("Could not free the copied ZIP: " + error.getMessage()
+                    + discardRejectedImport(result));
+            return;
+        }
+        resetProgress();
+        copyingToFolder = true;
+        showImporting();
+        folder.publish(new File(directory), GAME_LEAF, this::noteProgress,
+                new AndroidDocumentTree.PublishCallback() {
+                    @Override
+                    public void onPublished() {
+                        copyingToFolder = false;
+                        String discarded = discardRejectedImport(result);
+                        if (!discarded.isEmpty()) Log.w(TAG, discarded);
+                        if (!startFromFolder(folder)) {
+                            showError("The copied game in the install folder did not validate.");
+                        }
+                    }
+
+                    @Override
+                    public void onFailed(String message) {
+                        copyingToFolder = false;
+                        showError("Could not copy the game into the install folder: " + message
+                                + discardRejectedImport(result));
+                    }
+                });
     }
 
     private String discardRejectedImport(AndroidDocumentImport.Result result) {
@@ -391,13 +506,14 @@ public final class XMen2SetupActivity extends Activity {
         }
     }
 
-    private boolean acceptStoredSource(File source) {
-        File privateSource = privateInstallSource(source);
-        if (privateSource == null || !privateSource.exists()) return false;
-        if (!nativeValidateInstall(privateSource.getAbsolutePath(), "") ||
-            !configureNative(privateSource)) return false;
-        startGame();
-        return true;
+    /* No migration: a package-storage install is a one-time re-import, and
+       its gigabytes go once the folder install is in use. */
+    private void discardRetiredInstall() {
+        try {
+            importer.discardPublished(RETIRED_INSTALL);
+        } catch (IOException error) {
+            Log.w(TAG, "could not discard the retired package-storage install", error);
+        }
     }
 
     private File importStorageRoot() {
@@ -406,23 +522,8 @@ public final class XMen2SetupActivity extends Activity {
         return getFilesDir();
     }
 
-    /** Resolves Android's equivalent data-directory aliases before enforcing containment. */
-    private File privateInstallSource(File source) {
-        try {
-            File candidate = source.getCanonicalFile();
-            File persistentRoot = new File(importStorageRoot(), INSTALL_DIRECTORY).getCanonicalFile();
-            if (candidate.toPath().startsWith(persistentRoot.toPath())) return candidate;
-            // Keep accepting a pre-OBB install after an in-place update. New imports use
-            // persistentRoot, and this path becomes unused when the old install is gone.
-            File previousRoot = new File(getFilesDir(), INSTALL_DIRECTORY).getCanonicalFile();
-            return candidate.toPath().startsWith(previousRoot.toPath()) ? candidate : null;
-        } catch (IOException error) {
-            return null;
-        }
-    }
-
-    private boolean configureNative(File source) {
-        return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath(),
+    private boolean configureNative(String source, String saveDirectory) {
+        return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source, saveDirectory,
                                       traceFiles, tracePerformance, traceDrawDump, bootMap);
     }
 

@@ -159,10 +159,15 @@ staging under the package OBB directory. A resumed copy now verifies its staged
 prefix against the reopened SAF source before appending; changed or truncated
 sources are refused and their partial stage discarded. The shared Java contracts
 pass, and the ARM64 debug APK assembles with this framework revision. Lucent remains the shared ZIP
-extraction helper. Reinstall startup checks that retained package installation
-before showing the picker when Android retained app data. OBB is app-specific:
-an ordinary uninstall removes it, so reliable import-free uninstall/reinstall
-still needs a shared-storage SAF design. The user reported that the Android
+extraction helper. The validated tree and the saves/settings profile now live in
+a player-picked shared-storage folder (`AndroidDocumentTree`, `game/` and
+`saves/`), reached from native code only through `src/native/host_files` and its
+JNI document-tree backend; after a reinstall **Use existing install folder**
+validates the folder in place and starts without a copy. On the API 35 x86_64
+emulator on 2026-11-03 a plain `adb uninstall`, a reinstall and a re-pick of the
+folder reached the main menu, and Load Game listed and loaded the autosave written
+before the uninstall. An OBB install from an
+earlier release is not migrated (one re-import). The user reported that the Android
 setup and game path runs on a device. On the user's Huawei BKY-W09 tablet
 (Android 12, 2800x1840) on 2026-10-28 the native touch menus answered real
 taps (Options opened from its row's edge, Combat Music toggled by its card),

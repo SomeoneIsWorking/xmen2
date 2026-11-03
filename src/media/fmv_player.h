@@ -11,7 +11,9 @@ struct FmvPlayer;
 
 enum class FmvState { Ready, Playing, Paused, Finished, Failed };
 
-FmvPlayer *fmv_open(const char *path, const X2FmvAudioSink *sink, char *error,
+/* Takes ownership of `descriptor`; `name` only hints the container probe. */
+FmvPlayer *fmv_open(int descriptor, const char *name,
+                    const X2FmvAudioSink *sink, char *error,
                     std::size_t error_size);
 void fmv_close(FmvPlayer *player);
 void fmv_play(FmvPlayer *player);

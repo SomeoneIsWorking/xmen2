@@ -48,6 +48,7 @@ void file_unmap(FileMap *mapping) {
 
 #else
 
+#include "host_files.h"
 #include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -63,7 +64,7 @@ int file_map_readonly(const char *path, FileMap *out) {
 
   out->address = NULL;
   out->size = 0;
-  descriptor = open(path, O_RDONLY);
+  descriptor = host_open(path, O_RDONLY, 0);
   if (descriptor < 0)
     return -1;
   if (fstat(descriptor, &stat_info) != 0 || stat_info.st_size < 0) {

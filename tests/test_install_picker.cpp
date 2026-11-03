@@ -92,22 +92,17 @@ int main(void) {
     fprintf(stderr, "complete XMen2.exe fixture was refused\n");
     return 1;
   }
-  if (!x2::native::install_picker_prepare_selection(root, "", reason,
-                                                    sizeof reason)) {
-    fprintf(stderr, "complete install folder was refused: %s\n", reason);
-    return 1;
-  }
   if (!x2::native::install_picker_resolve_selection(
           root, "", directory, sizeof directory, reason, sizeof reason) ||
       strcmp(directory, root) != 0) {
-    fprintf(stderr,
-            "platform selection did not return its validated directory\n");
+    fprintf(stderr, "complete install folder was refused: %s\n", reason);
     return 1;
   }
 
   snprintf(path, sizeof path, "%s/XMen2.exe", root);
-  if (!create_file(path) || x2::native::install_picker_prepare_selection(
-                                root, "", reason, sizeof reason)) {
+  if (!create_file(path) ||
+      x2::native::install_picker_resolve_selection(
+          root, "", directory, sizeof directory, reason, sizeof reason)) {
     fprintf(stderr, "invalid executable header was accepted\n");
     return 1;
   }
@@ -121,9 +116,7 @@ int main(void) {
     perror("remove required content fixture");
     return 1;
   }
-  if (x2::native::install_picker_prepare_selection(root, "", reason,
-                                                   sizeof reason) ||
-      x2::native::install_picker_resolve_selection(
+  if (x2::native::install_picker_resolve_selection(
           root, "", directory, sizeof directory, reason, sizeof reason) ||
       directory[0]) {
     fprintf(stderr, "loader-only install was accepted\n");
@@ -142,8 +135,8 @@ int main(void) {
   snprintf(path, sizeof path, "%s/XMen2.exe", root);
   if (x2::native::install_picker_directory_from_executable(path, directory,
                                                            sizeof directory) ||
-      x2::native::install_picker_prepare_selection(root, "", reason,
-                                                   sizeof reason)) {
+      x2::native::install_picker_resolve_selection(
+          root, "", directory, sizeof directory, reason, sizeof reason)) {
     fprintf(stderr, "incomplete install was accepted\n");
     return 1;
   }

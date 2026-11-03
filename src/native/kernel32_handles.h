@@ -1,6 +1,6 @@
 /* Private handle-table contract shared by KERNEL32 services and waits. */
 #pragma once
-#include "platform_dirent.h"
+#include "host_files.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -17,7 +17,7 @@ inline constexpr int H_THREAD = 7;
 struct Handle {
   int kind;
   int fd;
-  DIR *dir;
+  HostDirectory *dir;
   char pattern[256];
   char dirpath[1024];
   void *map;

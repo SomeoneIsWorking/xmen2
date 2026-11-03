@@ -7,6 +7,7 @@
 #include "fmv_player.h"
 #include "fmv_probe.h"
 #include "guest_memory.h"
+#include "host_files.h"
 #include "movie.h"
 #include "movie_audio.h"
 #include "movie_image_layout.h"
@@ -17,6 +18,7 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -183,7 +185,8 @@ static void x2_movie_load(CPU *C) {
   sink.queued_seconds = queued_movie_audio;
   error[0] = '\0';
   close_native_movie();
-  player = x2::media::fmv_open(host_path, &sink, error, sizeof(error));
+  player = x2::media::fmv_open(x2::native::host_open(host_path, O_RDONLY, 0),
+                               host_path, &sink, error, sizeof(error));
   k32_open_note(guest_path, player != NULL, replaced, host_path);
   if (!player) {
     x2_log_error("movie: native SFD load failed for '%s': %s\n", guest_path,

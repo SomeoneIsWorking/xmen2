@@ -138,23 +138,27 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     native_main = (ROOT / "src/native/x2native.cpp").read_text(encoding="utf-8")
-    # The setup uses Android's scoped picker: shared android-port owns persisted SAF grants,
-    # bounded OBB staging, cancellation, and promotion after title validation.
-    # No port code may reconstruct a provider filesystem path or
-    # request broad all-files access.
+    # The setup uses Android's scoped pickers: shared android-port owns persisted SAF grants,
+    # bounded OBB staging, cancellation, and publication of the validated game into the
+    # player's shared-storage folder, which survives an uninstall. No port code may
+    # reconstruct a provider filesystem path or request broad all-files access.
     assert "AndroidDocumentImport" in setup
     assert "savePickerState()" in setup
     assert "restorePickerState(" in setup
     assert "AndroidImportProgress" in setup
     assert "discardValidatedDocument" in setup
     assert "discardRejectedImport" in setup
-    assert setup.count("discardRejectedImport(result)") == 2
     assert "pickDocument" in setup
-    assert "promoteValidated" in setup
+    assert "AndroidDocumentTree.accept(" in setup
+    assert "AndroidDocumentTree.remembered(" in setup
+    assert "Use existing install folder" in setup
+    assert "folder.publish(" in setup
+    assert "promoteValidated" not in setup
     assert "nativeValidateInstall" in setup
     # Diagnostic switches are exposed only by a debug build.
     assert "BuildConfig.DEBUG" in setup
     bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
+    assert "nativeMountInstallFolder" in setup and "nativeMountInstallFolder" in bridge
     # The host-backtrace half of a fault report has its own owner; the check
     # follows the code rather than the file it used to live in.
     fault_report = (ROOT / "src/native/fault_report.cpp").read_text(encoding="utf-8")
@@ -227,8 +231,8 @@ def main() -> int:
     assert not (ROOT / "tools/build_android_deps.py").exists()
     assert "extends AndroidActivity" in activity
     assert "WindowInsetsController" not in activity
-    assert 'setText("Choose ZIP")' in setup
-    assert "reused on future launches and app updates" in setup
+    assert '"Choose ZIP"' in setup
+    assert "they survive reinstalling the app" in setup
     assert "importStorageRoot" in setup
     assert "importTotalBytes" in setup
     debug_install = (

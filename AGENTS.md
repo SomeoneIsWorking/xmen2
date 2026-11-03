@@ -36,10 +36,12 @@ The Linux AppImage is a desktop-first path: it does not require a terminal or
 shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
 containing exactly one copy at any depth, and remembers the resulting install
 under the OS user configuration directory. The AppImage contains no game
-files. The Android APK has a separate setup Activity: it uses SAF to stage a
-ZIP into package OBB storage, validates the loader and
-title content sentinels, then starts SDL only after the native bridge has
-supplied the shared Android framework's user-data root.
+files. The Android APK has a separate setup Activity: the player picks an
+install folder in shared storage, SAF stages a ZIP into package OBB storage, the
+title validates the loader and content sentinels, and the shared framework
+copies the extracted game into that folder, where saves and settings also live,
+so both survive an uninstall. SDL starts only after the native bridge has
+mounted the folder and supplied the user-data root.
 The remaining mobile release gate is measured device performance; see
 `docs/android-release.md`.
 
@@ -230,9 +232,12 @@ setup result into the existing asset mapping path.
 
 The Android setup boundary follows the same pattern: `shared/android-port`
 owns Activity lifecycle, SAF URI permissions, resumable import, notifications,
-raw contact capture, and app-private staging. `android/` owns the X-Men setup UI,
-package identity, and publication after title validation;
-`src/native/android_bridge.cpp` transfers the absolute storage/source contract.
+raw contact capture, app-private staging, and the player's shared-storage folder
+(`AndroidDocumentTree`: grant, index, descriptors, publication). `android/` owns the
+X-Men setup UI, folder layout, package identity, and publication after title
+validation; `src/native/android_bridge.cpp` transfers the storage/source contract
+and mounts the folder in `src/native/host_files`, the one layer resolved host
+paths go through.
 `install_picker.cpp` owns title validation, using Lucent's platform-neutral safe
 ZIP extraction helper.
 

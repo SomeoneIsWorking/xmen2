@@ -71,6 +71,8 @@ add_library(x2_runtime_services STATIC
     src/diagnostics/diagnostics_startup.cpp
     src/diagnostics/host_code_location.cpp
     src/diagnostics/run_log.cpp
+    src/native/host_dir_cache.cpp
+    src/native/host_files.cpp
     src/native/x2_log.cpp)
 set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(x2_runtime_services PUBLIC src/config src/diagnostics
@@ -201,6 +203,10 @@ elseif(ANDROID)
             "x2native: shared android-port prefix omitted ${X2_ANDROID_CXX_LIBRARY}.")
     endif()
 
+    # SDL3_image's config finds the prefix's static libpng through find_dependency(PNG).
+    list(APPEND CMAKE_FIND_ROOT_PATH "${X2_ANDROID_PORT_PREFIX}")
+    # SDL_image's installed Findwebp leaves libwebp's sharpyuv dependency to this hook.
+    set(webp_LINK_LIBRARIES "${X2_ANDROID_PORT_PREFIX}/lib/libsharpyuv.a" CACHE STRING "")
     find_package(SDL3_image CONFIG REQUIRED
                  PATHS "${X2_ANDROID_PORT_PREFIX}/lib/cmake/SDL3_image"
                  NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
@@ -606,8 +612,7 @@ add_executable(test_movie_image_layout tests/test_movie_image_layout.cpp
 target_include_directories(test_movie_image_layout PRIVATE src/native)
 add_test(NAME movie_image_layout COMMAND test_movie_image_layout)
 
-add_executable(test_win_path tests/test_win_path.cpp src/native/win_path.cpp
-    src/native/host_dir_cache.cpp)
+add_executable(test_win_path tests/test_win_path.cpp src/native/win_path.cpp)
 target_include_directories(test_win_path PRIVATE src/native src/save)
 target_link_libraries(test_win_path PRIVATE x2_runtime_config)
 target_compile_definitions(test_win_path PRIVATE
@@ -649,7 +654,6 @@ set_tests_properties(wasm_portability PROPERTIES SKIP_RETURN_CODE 77
 if(NOT WIN32)
     add_executable(test_live_session tests/test_live_session.cpp
                    src/native/live_session.cpp src/native/json_string.cpp
-                   src/native/host_dir_cache.cpp
                    src/config/directory_create.cpp)
     target_include_directories(test_live_session PRIVATE src/native src/config)
     target_compile_definitions(test_live_session PRIVATE
@@ -1219,7 +1223,6 @@ add_executable(test_vformat tests/test_vformat.cpp src/native/crt.cpp
                src/native/crt_format.cpp
                src/native/crt_console.cpp
                src/native/crt_stdio.cpp
-               src/native/host_dir_cache.cpp
                src/native/guest_file_io.cpp
                src/native/crt_write_watch.cpp src/runtime/x86_abi/x87crt.cpp
             tests/native_stubs.cpp
@@ -1890,7 +1893,8 @@ target_compile_definitions(x2_rmlui_ui PRIVATE
     X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
 set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
-                                        PRIVATE lucent::lucent alchemy)
+                                        PRIVATE lucent::lucent alchemy
+                                                x2_runtime_services)
 
 # The desktop first-run screen. CONSUMED, never vendored: shared/setup-ui owns
 # its look and layout, and reuses this build's RmlUi target.
@@ -1927,6 +1931,7 @@ set(X2_NATIVE_SOURCES
     src/native/install_validation.cpp
     src/native/pe_header.cpp
     src/native/android_bridge.cpp
+    src/native/android_document_tree.cpp
     src/input/alchemy_controller_bridge.cpp
     src/input/directinput_controller_sample.cpp
     src/input/ig_controller_manager_adapter.cpp
@@ -2074,7 +2079,6 @@ set(X2_NATIVE_SOURCES
     src/native/kernel32_wait.cpp
     src/native/kernel32_virtual.cpp
     src/native/win_path.cpp
-    src/native/host_dir_cache.cpp
     src/native/advapi32.cpp
     src/native/advapi32_host_store.cpp
     src/native/fault_selftest.cpp

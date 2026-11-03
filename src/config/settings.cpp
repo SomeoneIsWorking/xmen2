@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "host_files.h"
 #include "input_assignments.h"
 #include "platform_posix.h"
 
@@ -405,7 +406,7 @@ int settings_load(Settings *settings, const char *path, char *why, int whyn) {
   parsed.legacy_player[0].device = LEGACY_AUTO;
   for (player = 0; player < kSettingsPlayers; player++)
     parsed.legacy_player[player].profile = player;
-  file = fopen(path, "r");
+  file = x2::native::host_fopen(path, "r");
   if (!file) {
     if (errno == ENOENT) {
       *settings = parsed.settings;
@@ -467,12 +468,12 @@ int settings_save(const Settings *settings, const char *path, char *why,
            "settings contain invalid values or conflicting device assignments");
     return 0;
   }
-  if (snprintf(pending, sizeof pending, "%s.new", path) >=
+  if (snprintf(pending, sizeof pending, "%s.part", path) >=
       (int)sizeof pending) {
     reason(why, whyn, "settings path is too long");
     return 0;
   }
-  file = fopen(pending, "w");
+  file = x2::native::host_fopen(pending, "w");
   if (!file) {
     if (why)
       snprintf(why, (size_t)whyn, "cannot write %s: %s", pending,
@@ -521,7 +522,7 @@ int settings_save(const Settings *settings, const char *path, char *why,
                 p->keyboard[row]);
     }
   }
-  if (fclose(file) != 0 || x2_replace_file(pending, path) != 0) {
+  if (fclose(file) != 0 || x2::native::host_replace(pending, path) != 0) {
     if (why)
       snprintf(why, (size_t)whyn, "cannot publish %s: %s", path,
                strerror(errno));

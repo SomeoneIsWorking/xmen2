@@ -8,6 +8,7 @@
 #include <lucent/cvar_c.h>
 
 #include "host_dir_cache.h"
+#include "host_files.h"
 #include "save_trace_runtime.h"
 #include "shell32.h"
 
@@ -151,7 +152,8 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
     component = separator + 1;
   }
   snprintf(path, WIN_PATH_MAX, "%s", resolved);
-  if (access(path, F_OK) == 0)
+  struct stat found;
+  if (x2::native::host_stat(path, &found) == 0)
     return 1;
   if (files_traced())
     x2_log_error("[FILE] path resolver reached \"%s\" but access failed: %s\n",
@@ -302,14 +304,15 @@ static const char *replacement_under(const char *root, const char *guest_path) {
     relative[index] = guest_path[index] == '\\' ? '/' : guest_path[index];
   relative[index] = '\0';
   snprintf(path, sizeof(path), "%s/%s", root, relative);
-  if (resolve_case_insensitive(path, root) && stat(path, &status) == 0 &&
-      S_ISREG(status.st_mode))
+  if (resolve_case_insensitive(path, root) &&
+      x2::native::host_stat(path, &status) == 0 && S_ISREG(status.st_mode))
     return path;
   for (index = 0; relative[index]; ++index)
     if (relative[index] >= 'A' && relative[index] <= 'Z')
       relative[index] = (char)(relative[index] + 32);
   snprintf(path, sizeof(path), "%s/%s", root, relative);
-  return resolve_case_insensitive(path, root) && stat(path, &status) == 0 &&
+  return resolve_case_insensitive(path, root) &&
+                 x2::native::host_stat(path, &status) == 0 &&
                  S_ISREG(status.st_mode)
              ? path
              : NULL;

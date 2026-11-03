@@ -1,5 +1,7 @@
 #include "pe_header.h"
 
+#include "host_files.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,7 +40,7 @@ int pe32_validate_file(const char *path, char *reason,
     reason[0] = 0;
   if (!path || !*path)
     return refuse(reason, reason_capacity, "Executable path is empty.");
-  file = fopen(path, "rb");
+  file = x2::native::host_fopen(path, "rb");
   if (!file)
     return refuse(reason, reason_capacity, "Executable cannot be opened.");
   if (fseek(file, 0, SEEK_END) != 0 || (file_size = ftell(file)) < 64 ||

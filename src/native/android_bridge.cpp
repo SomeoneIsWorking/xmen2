@@ -1,5 +1,6 @@
 #include "android_bridge.h"
 #include "../config/environment.h"
+#include "android_document_tree.h"
 #include "d3d8_device.h"
 #include "d3d8_drawcall.h"
 #include "gpu_draw.h"
@@ -10,8 +11,10 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -112,9 +115,10 @@ bool configure_draw_dump(jboolean enabled) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     JNIEnv *environment, jclass, jstring data_directory, jstring source,
-    jboolean trace_files, jboolean trace_performance, jboolean trace_draw_dump,
-    jstring boot_map) {
+    jstring save_directory, jboolean trace_files, jboolean trace_performance,
+    jboolean trace_draw_dump, jstring boot_map) {
   char source_path[sizeof install_source];
+  char saves[sizeof install_source];
   char requested_boot_map[129];
   if (!read_string(environment, data_directory, source_path,
                    sizeof source_path) ||
@@ -129,6 +133,16 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     return JNI_FALSE;
   if (!read_string(environment, source, install_source, sizeof install_source))
     return JNI_FALSE;
+  /* Saves and settings follow the player's install folder; the private root
+   * keeps diagnostics, UI resources and runtime state. */
+  if (!read_string(environment, save_directory, saves, sizeof saves))
+    return JNI_FALSE;
+  if (saves[0]) {
+    if (config_override_set(x2::config::ConfigOverride::SaveDir, saves, 1) != 0)
+      return JNI_FALSE;
+  } else {
+    config_override_unset(x2::config::ConfigOverride::SaveDir);
+  }
   if (trace_files == JNI_TRUE) {
     if (config_override_set(x2::config::ConfigOverride::Files, "1", 1) != 0)
       return JNI_FALSE;
@@ -149,21 +163,39 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
   return JNI_TRUE;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
+/* The validated install directory, or null when the selection is refused. */
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeValidateInstall(
     JNIEnv *environment, jclass, jstring source, jstring archive_destination) {
   char source_path[sizeof install_source];
   char destination[sizeof install_source];
+  char directory[sizeof install_source];
   char reason[512];
   if (!read_string(environment, source, source_path, sizeof source_path) ||
       !read_string(environment, archive_destination, destination,
                    sizeof destination))
-    return JNI_FALSE;
-  return x2::native::install_picker_prepare_selection(
-             source_path, destination[0] ? destination : nullptr, reason,
-             sizeof reason)
-             ? JNI_TRUE
-             : JNI_FALSE;
+    return nullptr;
+  if (!x2::native::install_picker_resolve_selection(
+          source_path, destination[0] ? destination : nullptr, directory,
+          sizeof directory, reason, sizeof reason)) {
+    __android_log_print(ANDROID_LOG_WARN, "XMen2", "install rejected: %s",
+                        reason);
+    return nullptr;
+  }
+  return environment->NewStringUTF(directory);
+}
+
+/* Mounts the player's install folder and returns the path it appears at. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeMountInstallFolder(
+    JNIEnv *environment, jclass, jobject tree) {
+  std::unique_ptr<x2::native::HostFileTree> backend =
+      x2::native::android_document_tree_backend(environment, tree);
+  if (!backend)
+    return nullptr;
+  x2::native::host_files_mount(x2::native::kAndroidDocumentTreeRoot,
+                               std::move(backend));
+  return environment->NewStringUTF(x2::native::kAndroidDocumentTreeRoot);
 }
 
 namespace {

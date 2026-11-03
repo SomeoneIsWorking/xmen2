@@ -33,12 +33,12 @@ class SharedRepo:
 
 SHARED_REPOS = (
     SharedRepo("alchemy", "https://github.com/SomeoneIsWorking/alchemy.git",
-               "b04e6657cac3156318506f4145a85e66b1ebc8e6",
+               "a59a9a00747d0ebccf5c4fdffa00563a4d599004",
                "include/alchemy/input/controller.hpp"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "9bb391e1ddfb3a878ac8350e3d28c484e9ecc4a6", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "a8e8e2f208203e9abc61118f67e92222129c604b", "tools/android_port.py"),
+               "2a91b4d97a0664e8c5ed9a78870a7d351ce9ac96", "tools/android_port.py"),
     SharedRepo("setup-ui", "https://github.com/SomeoneIsWorking/setup-ui.git",
                "d4ca35e501733966229b49d49716e00a31e2ad69", "include/setup_ui/setup_ui.h"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",

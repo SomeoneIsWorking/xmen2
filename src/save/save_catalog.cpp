@@ -6,7 +6,7 @@
 
 #include "save_catalog.h"
 
-#include "platform_dirent.h"
+#include "host_files.h"
 #include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -108,35 +108,26 @@ static int is_newer(const SaveCandidate *candidate,
    save_catalog_latest without the found flag. */
 template <typename Visit> static int scan(const char *directory, Visit visit) {
   SaveCandidate candidate;
-  struct dirent *entry;
-  DIR *dir;
-  int directory_fd;
+  const char *entry;
+  x2::native::HostDirectory *dir;
   int result = 0;
 
-  dir = opendir(directory);
+  dir = x2::native::host_opendir(directory);
   if (!dir)
     return errno == ENOENT ? 0 : -1;
-#if !defined(_WIN32)
-  directory_fd = dirfd(dir);
-  if (directory_fd < 0) {
-    closedir(dir);
-    return -1;
-  }
-#else
-  (void)directory_fd;
-#endif
-
-  errno = 0;
-  while ((entry = readdir(dir)) != NULL) {
-    if (!is_save_leaf(entry->d_name))
+  while ((entry = x2::native::host_readdir(dir)) != NULL) {
+    if (!is_save_leaf(entry))
       continue;
-#if defined(_WIN32)
     char filepath[PATH_MAX];
-    int regular = 0;
     int written =
-        snprintf(filepath, sizeof filepath, "%s/%s", directory, entry->d_name);
-    if (written <= 0 || (size_t)written >= sizeof filepath ||
-        !windows_entry(filepath, &regular, &candidate.mtime_ns)) {
+        snprintf(filepath, sizeof filepath, "%s/%s", directory, entry);
+    if (written <= 0 || (size_t)written >= sizeof filepath) {
+      result = -1;
+      break;
+    }
+#if defined(_WIN32)
+    int regular = 0;
+    if (!windows_entry(filepath, &regular, &candidate.mtime_ns)) {
       result = -1;
       break;
     }
@@ -144,7 +135,7 @@ template <typename Visit> static int scan(const char *directory, Visit visit) {
       continue;
 #else
     struct stat st;
-    if (fstatat(directory_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
+    if (x2::native::host_lstat(filepath, &st) != 0) {
       result = -1;
       break;
     }
@@ -155,14 +146,10 @@ template <typename Visit> static int scan(const char *directory, Visit visit) {
       break;
     }
 #endif
-    memcpy(candidate.leaf, entry->d_name, strlen(entry->d_name) + 1);
+    memcpy(candidate.leaf, entry, strlen(entry) + 1);
     visit(candidate);
-    errno = 0;
   }
-  if (result == 0 && errno != 0)
-    result = -1;
-  if (closedir(dir) != 0 && result == 0)
-    result = -1;
+  x2::native::host_closedir(dir);
   return result;
 }
 

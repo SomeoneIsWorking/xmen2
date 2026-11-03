@@ -1,5 +1,6 @@
 #include "igb_textures.hpp"
 
+#include "host_files.h"
 #include "x2_log.h"
 
 // igb is a C library whose header declares no C++ linkage.
@@ -9,6 +10,7 @@ extern "C" {
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -66,6 +68,31 @@ std::vector<Rml::byte> atlas_cell(const uint8_t *rgba, int width, int height,
   return out;
 }
 
+/* Opens `path` through the host file layer, so an install in an Android
+   document tree reads like any other. */
+int open_igb(igb &file, const char *path) {
+  FILE *stream = x2::native::host_fopen(path, "rb");
+  if (!stream) {
+    return -1;
+  }
+  long size = -1;
+  if (std::fseek(stream, 0, SEEK_END) == 0) {
+    size = std::ftell(stream);
+  }
+  auto *bytes =
+      size > 0 ? static_cast<uint8_t *>(std::malloc(static_cast<size_t>(size)))
+               : nullptr;
+  const bool read = bytes && std::fseek(stream, 0, SEEK_SET) == 0 &&
+                    std::fread(bytes, 1, static_cast<size_t>(size), stream) ==
+                        static_cast<size_t>(size);
+  std::fclose(stream);
+  if (!read) {
+    std::free(bytes);
+    return -1;
+  }
+  return igb_open_bytes(&file, bytes, static_cast<size_t>(size));
+}
+
 } // namespace
 
 std::string IgbTextureRenderInterface::source_for(const std::string &host_path,
@@ -94,7 +121,7 @@ IgbTextureRenderInterface::LoadTexture(Rml::Vector2i &texture_dimensions,
   }
   const int cell = std::atoi(source.c_str() + hash + 1);
   igb file{};
-  if (igb_open(&file, path->second.c_str()) != 0) {
+  if (open_igb(file, path->second.c_str()) != 0) {
     x2_log_error("igb texture: cannot read %s\n", path->second.c_str());
     return {};
   }

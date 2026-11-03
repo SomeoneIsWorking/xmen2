@@ -17,15 +17,10 @@ int install_picker_browse(char *selection, unsigned capacity);
 int install_picker_directory_from_executable(const char *path, char *directory,
                                              unsigned capacity);
 
-/* Validate a player selection before the platform publishes it. ZIP installs
- * are extracted into the supplied fresh private destination; folder installs
- * ignore that argument. */
-int install_picker_prepare_selection(const char *selection,
-                                     const char *archive_destination,
-                                     char *reason, unsigned reason_capacity);
-
-/* Resolve the same validated selection for a platform whose first-run UI is
- * outside SDL. The caller publishes the returned directory only on success. */
+/* Validate a player selection for a platform whose first-run UI is outside
+ * SDL. ZIP installs are extracted into the supplied fresh private destination;
+ * folder installs ignore that argument. The caller publishes the returned
+ * directory only on success. */
 int install_picker_resolve_selection(const char *selection,
                                      const char *archive_destination,
                                      char *directory, unsigned capacity,

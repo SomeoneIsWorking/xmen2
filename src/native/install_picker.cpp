@@ -3,6 +3,7 @@
  * ZIP), the OS file dialog, and the remembered directory in the port's user
  * configuration. The first-run screen that uses these is install_setup. */
 #include "../config/config_directory.h"
+#include "host_files.h"
 #include "install_archive.h"
 #include "install_picker.h"
 #include "install_validation.h"
@@ -14,7 +15,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
 #include <string>
 #include <sys/stat.h>
 
@@ -51,7 +51,7 @@ int install_picker_directory_from_executable(const char *path, char *directory,
   struct stat info;
   size_t length;
 
-  if (!path || !directory || capacity < 2 || stat(path, &info) != 0 ||
+  if (!path || !directory || capacity < 2 || host_stat(path, &info) != 0 ||
       !S_ISREG(info.st_mode))
     return 0;
   slash = strrchr(path, '/');
@@ -120,48 +120,55 @@ int is_zip_path(const char *path) {
   return extension && strcasecmp(extension, ".zip") == 0;
 }
 
+bool is_directory(const char *path) {
+  struct stat info;
+  return path && host_stat(path, &info) == 0 && S_ISDIR(info.st_mode);
+}
+
+/* Every XMen2.exe below `folder`; unreadable subdirectories are skipped and
+   the depth bound stops a symbolic-link cycle. */
+void find_executables(const std::string &folder, std::string &found,
+                      unsigned &matches, int depth = 0) {
+  HostDirectory *listing = depth < 32 ? host_opendir(folder.c_str()) : nullptr;
+  if (!listing)
+    return;
+  while (const char *entry = host_readdir(listing)) {
+    if (!strcmp(entry, ".") || !strcmp(entry, ".."))
+      continue;
+    const std::string path = folder + "/" + entry;
+    struct stat info;
+    if (host_stat(path.c_str(), &info) != 0)
+      continue;
+    if (S_ISDIR(info.st_mode)) {
+      find_executables(path, found, matches, depth + 1);
+    } else if (S_ISREG(info.st_mode) && strcasecmp(entry, "XMen2.exe") == 0) {
+      found = path;
+      matches++;
+    }
+  }
+  host_closedir(listing);
+}
+
 int directory_from_folder(const char *folder, char *directory,
                           unsigned capacity, char *reason,
                           size_t reason_capacity) {
-  std::error_code error;
-  std::filesystem::path found;
+  std::string found;
   unsigned matches = 0;
-  const std::filesystem::path root(folder ? folder : "");
-  if (folder == nullptr || !std::filesystem::is_directory(root, error) ||
-      error) {
+  if (!is_directory(folder)) {
     snprintf(reason, reason_capacity, "Cannot inspect the selected folder.");
     return 0;
   }
-  for (std::filesystem::recursive_directory_iterator
-           it(root, std::filesystem::directory_options::skip_permission_denied,
-              error),
-       end;
-       it != end && !error; it.increment(error)) {
-    if (!it->is_regular_file(error) || error) {
-      error.clear();
-      continue;
-    }
-    if (strcasecmp(it->path().filename().string().c_str(), "XMen2.exe") == 0) {
-      found = it->path();
-      if (++matches > 1)
-        return 0;
-    }
-  }
-  if (error) {
-    snprintf(reason, reason_capacity, "Cannot inspect the selected folder.");
-    return 0;
-  }
+  find_executables(folder, found, matches);
   if (matches != 1) {
     snprintf(reason, reason_capacity,
              "That folder must contain exactly one XMen2.exe, including in its "
              "subfolders.");
     return 0;
   }
-  const std::string path = found.string();
-  if (!x2::native::install_validate_executable(path.c_str(), reason,
+  if (!x2::native::install_validate_executable(found.c_str(), reason,
                                                reason_capacity))
     return 0;
-  return install_picker_directory_from_executable(path.c_str(), directory,
+  return install_picker_directory_from_executable(found.c_str(), directory,
                                                   capacity);
 }
 
@@ -169,19 +176,13 @@ int directory_from_selection(const char *selection, char *directory,
                              unsigned capacity, char *reason,
                              size_t reason_capacity,
                              const char *archive_destination = nullptr) {
-  std::error_code status_error;
   if (!selection || !*selection) {
     snprintf(reason, reason_capacity, "No XMen2.exe or ZIP was selected.");
     return 0;
   }
-  if (selection && std::filesystem::is_directory(selection, status_error)) {
+  if (is_directory(selection)) {
     return directory_from_folder(selection, directory, capacity, reason,
                                  reason_capacity);
-  }
-  if (status_error) {
-    snprintf(reason, reason_capacity, "Cannot inspect the selected path: %s",
-             status_error.message().c_str());
-    return 0;
   }
   if (!is_zip_path(selection)) {
     if (!x2::native::install_validate_executable(selection, reason,
@@ -226,15 +227,6 @@ int install_picker_resolve_selection(const char *selection,
   reason[0] = 0;
   return directory_from_selection(selection, directory, capacity, reason,
                                   reason_capacity, archive_destination);
-}
-
-int install_picker_prepare_selection(const char *selection,
-                                     const char *archive_destination,
-                                     char *reason, unsigned reason_capacity) {
-  char directory[X2_INSTALL_PATH_SIZE];
-  return install_picker_resolve_selection(selection, archive_destination,
-                                          directory, sizeof directory, reason,
-                                          reason_capacity);
 }
 
 int install_picker_saved_directory(char *directory, unsigned capacity) {

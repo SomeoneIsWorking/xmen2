@@ -1,10 +1,12 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "autosave_storage.h"
+#include "host_files.h"
 
 #include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -107,20 +109,23 @@ static int publish(const char *directory, const char *leaf, const void *header,
                    const void *payload, size_t payload_size,
                    AutosaveStorageFault fault) {
   static unsigned long sequence;
-  char temporary[96];
-  int directory_fd = -1;
+  char temporary[PATH_MAX];
+  char destination[PATH_MAX];
   int file_fd = -1;
   int published = 0;
   int failed = 0;
   int saved_errno = 0;
 
-  directory_fd = open(directory, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-  if (directory_fd < 0)
+  if (snprintf(temporary, sizeof temporary, "%s/.autosave.tmp.%ld.%lu",
+               directory, (long)getpid(),
+               ++sequence) >= (int)sizeof temporary ||
+      snprintf(destination, sizeof destination, "%s/%s", directory, leaf) >=
+          (int)sizeof destination) {
+    errno = ENAMETOOLONG;
     return 0;
-  snprintf(temporary, sizeof temporary, ".autosave.tmp.%ld.%lu", (long)getpid(),
-           ++sequence);
-  file_fd = openat(directory_fd, temporary,
-                   O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+  }
+  file_fd = x2::native::host_open(
+      temporary, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
   if (file_fd < 0) {
     failed = 1;
     goto done;
@@ -136,12 +141,12 @@ static int publish(const char *directory, const char *leaf, const void *header,
   }
   file_fd = -1;
   if (injected(fault, AutosaveStorageFault::BeforeRename) ||
-      renameat(directory_fd, temporary, directory_fd, leaf) != 0) {
+      x2::native::host_replace(temporary, destination) != 0) {
     failed = 1;
     goto done;
   }
   published = 1;
-  if (fsync(directory_fd) != 0)
+  if (x2::native::host_sync_directory(directory) != 0)
     failed = 1;
 
 done:
@@ -150,9 +155,7 @@ done:
   if (file_fd >= 0 && close(file_fd) != 0 && !saved_errno)
     saved_errno = errno;
   if (!published)
-    unlinkat(directory_fd, temporary, 0);
-  if (directory_fd >= 0 && close(directory_fd) != 0 && !saved_errno)
-    saved_errno = errno;
+    x2::native::host_unlink(temporary);
   if (!published || failed || saved_errno) {
     errno = saved_errno ? saved_errno : EIO;
     return 0;

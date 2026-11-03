@@ -35,12 +35,12 @@
 #include "advapi32.h"
 #include "advapi32_internal.h"
 #include "guest_memory.h"
+#include "host_files.h"
+#include "platform_strings.h"
 #include "shell32.h"
 #include "stdcall_import.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
-
-#include "platform_strings.h"
 #include <ctype.h>
 #include <deque>
 #include <stdio.h>
@@ -199,7 +199,7 @@ void advapi32_store_save(void) {
   int i;
   if (!g_dirty)
     return;
-  f = fopen(store_path(), "w");
+  f = x2::native::host_fopen(store_path(), "w");
   if (!f) {
     x2_log_error("advapi32: cannot write \"%s\" -- everything the game "
                  "put in the registry this run is LOST at exit.\n",
@@ -228,7 +228,7 @@ void advapi32_store_load(void) {
   char line[2048];
   if (done++)
     return;
-  f = fopen(store_path(), "r");
+  f = x2::native::host_fopen(store_path(), "r");
   if (!f)
     return;
   while (fgets(line, sizeof line, f)) {
