@@ -338,6 +338,75 @@ copies that evidenced value into each otherwise-empty private record and
 refuses a font with no non-zero modal baseline. It is font-owned layout data,
 not a positional constant guessed for this screenshot.
 
+## Outline text: every glyph from a scalable face
+
+The same harvest draws the game's ordinary text. The retail atlases are bitmaps
+(`ui/fonts/x2f_*_hd.xmlb` with `Textures/fonts/x2f_*_hd.igb`), so text scaled up
+for touch or a phone's 1264 rows is magnified texels. With `outline_text` on
+(the default, every platform) the engine still measures, wraps and places every
+glyph; only the pixels come from an outline face.
+
+The fonts, read from the atlases and their records:
+
+| retail font | look | outline face |
+|---|---|---|
+| `X2F_med_HD`, `X2F_big_hd`, `X2F_thin_HD` (ger, fre) | bold italic small capitals, one-texel dark rim | Barlow Black Italic |
+| `X2F_hud_HD` | upright bevelled capitals only | Barlow Black |
+| `font_XMEN_digital_HD` | italic seven-segment digits | DSEG7 Classic Bold Italic |
+
+The medium font keeps 27 icons in Latin-1 slots `0xa4..0xbe` (and the big one
+two at `0xbd`, `0xbe`); only printable ASCII, `0xa1`, `0xbf` and `0xc0..0xff`
+are replaced, so those stay retail. Provenance is in `../prior-art.md`.
+
+What the glyph loop provides, read from `FUN_005ee780`:
+
+* The font: `[ECX+0x2140c]` is the index the loop passes to the table's vtable
+  `+0x08` (`0x00597280`, `table + index*0x1c18 + 0x18`, the glyph array).
+* The plane scale per record unit: the text scale at `[arg5+8]` times the
+  scales `FUN_005ee620` cached at `[arg7+0x1c]` (x) and `[arg7+0x20]` (y).
+* The glyph's colour: `[ECX+8]` at the emitter, which the `1000..1999` colour
+  tokens rewrite mid-string.
+* The record's `baseline` is the distance from the box top to the baseline; a
+  capital's ink, rim included, fills exactly that many rows.
+
+The owners:
+
+1. `outline_glyph_atlas.cpp` rasterises each face with FreeType at a 48-pixel
+   reference height (`H`, or `0` for the digits), with a stroked dark rim of
+   1/14 of that height, into one 2048x2048 RGBA atlas with five mip levels,
+   and keeps each face's space advance and its pair kerning for codes
+   0x21..0xff. Barlow kerns only in GPOS, which FreeType does not apply, so
+   `outline_kerning.cpp` reads the `kern` feature's PairPos lookups itself
+   (`hb-shape` gives the same values: `TA` is -100 units, `AW` and `AV` are
+   unkerned in Barlow Black Italic).
+2. `outline_text.cpp` registers every font `FUN_00596af0` loads
+   (`ui_text_scale.cpp` calls it after scaling, and again after each live
+   rescale). Its scale comes from the record: capitals fill 14/16 of the modal
+   `A..Z` baseline; a font whose `b` and `x` share a baseline is small capitals,
+   drawn as the face's capitals at 14/16 of the modal `a..z` baseline; the
+   width is fitted so the face's alphanumeric advances total the record's
+   (clamped to 0.7..1.4). `OutlinePen` places the glyphs on the record's
+   baseline a run at a time. A run is a stretch of outline glyphs and word
+   spaces on one line; a keycap, a colour token, a glyph the face does not
+   draw or a new line ends it. It starts at its first glyph's retail pen,
+   steps by the face's advances, kerning and space, and is stretched once to
+   end where retail's advances end it, so letter and word spacing are the
+   face's while keycaps, colour runs, wraps and the measured width stay
+   retail's.
+3. `prompt_glyph_draw.cpp` arms its cursor for any string in a registered
+   font, counts the replaced glyphs into the whole-string capacity check, and
+   collapses each one as it does a prompt. It retains a run's quads when the
+   pen closes it (before a prompt glyph or keycap, and at the string's end),
+   each at its own glyph's vertex key; a text pass lays out all its strings
+   before it draws any, so no draw takes a range while a run is open.
+4. `gpu_prompt_glyphs.cpp` draws the outline atlas as a third sheet, before
+   the prompt art and key labels, with trilinear sampling.
+
+A string longer than `kPromptWalkMax` (2048) wide characters, a font without a
+face, or a string whose plane scale cannot be read stays retail, each counted
+in the `PROMPT DRAW` and `Outline text` report lines. Compare against retail
+with `--set outline_text=0`.
+
 ## Withdrawn text-space probe
 
 **"The port cannot draw the result itself" was not established.**

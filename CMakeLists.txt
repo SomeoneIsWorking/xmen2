@@ -1038,6 +1038,13 @@ if(NOT X2_KEY_FONT_RESULT EQUAL 0 OR NOT EXISTS "${X2_KEY_FONT}")
 endif()
 configure_file("${X2_KEY_FONT}" "${CMAKE_BINARY_DIR}/ui/NotoSans-Bold-keys.ttf"
                COPYONLY)
+# The outline faces the game's text is drawn in (assets/fonts, SIL OFL 1.1).
+foreach(x2_outline_font Barlow-BlackItalic.ttf Barlow-Black.ttf
+                        Barlow-OFL.txt DSEG7Classic-BoldItalic.ttf
+                        DSEG-OFL.txt)
+    configure_file("${CMAKE_SOURCE_DIR}/assets/fonts/${x2_outline_font}"
+                   "${CMAKE_BINARY_DIR}/ui/${x2_outline_font}" COPYONLY)
+endforeach()
 
 set(X2_PROMPT_GLYPH_ATLAS_HEADER
     "${CMAKE_SOURCE_DIR}/src/gen/prompt_glyph_atlas.h")
@@ -1117,6 +1124,8 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.cpp
                src/native/prompt_glyph_quads.cpp
                src/native/keycap_run.cpp
                src/native/keycap_labels.cpp src/ui/ui_resources.cpp
+               src/native/outline_text.cpp src/native/outline_glyph_atlas.cpp
+               src/native/outline_kerning.cpp
                src/native/guest_memory.cpp src/native/guest_memory_arena.cpp
                tests/native_stubs.cpp)
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
@@ -1156,6 +1165,22 @@ target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE
                                                            X86_NATIVE)
 target_link_libraries(test_prompt_glyph_metrics PRIVATE m pthread)
 add_test(NAME prompt_glyph_metrics COMMAND test_prompt_glyph_metrics)
+
+# The outline text owner against the shipped typefaces.
+add_executable(test_outline_text tests/test_outline_text.cpp
+               src/native/outline_text.cpp src/native/outline_glyph_atlas.cpp
+               src/native/outline_kerning.cpp
+               src/ui/ui_resources.cpp
+               src/native/guest_memory.cpp src/native/guest_memory_arena.cpp
+               tests/native_stubs.cpp)
+target_include_directories(test_outline_text
+                           PRIVATE src/runtime/x86_abi src/native)
+target_compile_definitions(test_outline_text PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_outline_text PRIVATE m pthread x2_runtime_config
+                                                Freetype::Freetype)
+add_test(NAME outline_text COMMAND test_outline_text)
+set_tests_properties(outline_text PROPERTIES
+                     ENVIRONMENT "X2_UI_RESOURCE_DIR=${CMAKE_BINARY_DIR}/ui")
 
 add_executable(test_prompt_glyph_batch tests/test_prompt_glyph_batch.cpp
                src/native/prompt_glyph_batch.cpp src/native/prompt_glyph_quads.cpp
@@ -1984,6 +2009,9 @@ set(X2_NATIVE_SOURCES
     src/native/prompt_glyph_quads.cpp
     src/native/keycap_run.cpp
     src/native/keycap_labels.cpp
+    src/native/outline_text.cpp
+    src/native/outline_glyph_atlas.cpp
+    src/native/outline_kerning.cpp
     src/native/prompt_tokens.cpp
     src/native/ui_transform.cpp
     src/input/binding_rows.cpp

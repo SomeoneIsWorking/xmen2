@@ -7,7 +7,7 @@
 namespace x2::native {
 
 /* Widest line buffer the game builds. */
-inline constexpr unsigned kPromptWalkMax = 512u;
+inline constexpr unsigned kPromptWalkMax = 2048u;
 
 /* Is c in the WHOLE published prompt run, keycap edges included? */
 int prompt_codepoint(std::uint16_t c);

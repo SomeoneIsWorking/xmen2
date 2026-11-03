@@ -14,7 +14,7 @@ struct PromptQuad {
   float u0, v0, u1, v1;
   std::uint32_t color;
   std::uint16_t codepoint;
-  std::uint8_t sheet; /* X2_KEYCAP_SHEET_*: the atlas, or the key label sheet */
+  std::uint8_t sheet; /* X2_KEYCAP_SHEET_*, or kOutlineTextSheet */
 };
 
 /* Where the engine wrote the collapsed glyph a quad replaces: the text
@@ -25,7 +25,12 @@ struct PromptVertexKey {
   std::uint32_t vertex;
 };
 
-inline constexpr unsigned kPromptQuadsMax = 512u;
+/* The outline text atlas (outline_glyph_atlas.hpp), after the generated
+   prompt atlas and the key label sheet. */
+inline constexpr std::uint8_t kOutlineTextSheet = 2u;
+
+/* Every glyph of a dense frame's text, prompts included. */
+inline constexpr unsigned kPromptQuadsMax = 8192u;
 
 /* The glyph count a non-indexed text draw of `primitives` submits, or 0 if
    it is not a run of whole glyphs. */

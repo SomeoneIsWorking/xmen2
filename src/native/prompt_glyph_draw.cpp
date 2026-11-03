@@ -12,6 +12,8 @@
  * prompt_glyph_batch.cpp inserts the retained art at that finalized boundary.
  * A keyboard key (keycap_run.h) is drawn whole from shared art over the span
  * its edges reserve, so the binding's letters inside it are collapsed too.
+ * In a font with an outline face (outline_text.hpp) every text glyph is
+ * harvested the same way and drawn from the outline atlas instead.
  *
  * The string is the first STACK argument. An earlier detector read EDX, which
  * the retail body overwrites before use; I069 and docs/RE/text.md retain that
@@ -22,6 +24,7 @@
 
 #include "keycap_labels.h"
 #include "keycap_run.h"
+#include "outline_text.hpp"
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_atlas.h" /* GENERATED: the port's own cells */
 #include "prompt_glyph_metrics.h"
@@ -33,6 +36,7 @@
 
 #include "guest_body.h"
 #include <limits.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,6 +92,12 @@ static struct {
   unsigned name_at;
 } g_cap;
 static unsigned long g_keys_drawn;
+/* The outline font of the armed string and its plane scale; null for none. */
+static const x2::native::OutlineFont *g_font;
+static x2::native::OutlinePlaneScale g_plane;
+static x2::native::OutlinePen g_pen;
+static unsigned long g_outline_strings, g_outline_glyphs, g_outline_unscaled;
+static unsigned long g_long_refused;
 
 namespace x2::native {
 int glyph_loop_emits_quad(uint16_t c) {
@@ -171,8 +181,10 @@ static void read_key(const CPU *C) {
   g_key.vertex = base + count;
 }
 
-static void retain(const struct x2::native::PromptQuad *quads, unsigned count) {
-  if (!x2::native::prompt_quads_put(g_key, quads, count)) {
+static void retain_at(struct x2::native::PromptVertexKey key,
+                      const struct x2::native::PromptQuad *quads,
+                      unsigned count) {
+  if (!x2::native::prompt_quads_put(key, quads, count)) {
     x2_log_error("PROMPT DRAW: reserved queue capacity was "
                  "lost inside one synchronous retail string; "
                  "atomic interception cannot continue.\n");
@@ -181,14 +193,61 @@ static void retain(const struct x2::native::PromptQuad *quads, unsigned count) {
   g_intercepted += count;
 }
 
+static void retain(const struct x2::native::PromptQuad *quads, unsigned count) {
+  retain_at(g_key, quads, count);
+}
+
+/* The colour this glyph draws in: colour tokens rewrite [ECX+8] mid-string. */
+static uint32_t glyph_color(const CPU *C) {
+  uint32_t color;
+  return guest_memory_try_read32(C->reg[kX86pEcx] + 8u, &color)
+             ? color
+             : g_cursor_color;
+}
+
+/* Retain the outline runs the pen has closed, each at its own glyph's key. */
+static void retain_outline_runs(void) {
+  for (const x2::native::OutlinePlaced &placed : g_pen.placed()) {
+    retain_at(placed.key, &placed.quad, 1u);
+    g_outline_glyphs++;
+  }
+  g_pen.clear_placed();
+}
+
+/* A prompt glyph or keycap is next: the outline run before it ends first, so
+   quads keep their layout order. */
+static void close_outline_run(void) {
+  g_pen.close();
+  retain_outline_runs();
+}
+
+static void intercept_outline(CPU *C) {
+  float corners[4];
+  x2::native::OutlinePlaneScale plane = g_plane;
+
+  read_corners(C, corners);
+  if (corners[2] < corners[0])
+    plane.x = -plane.x;
+  if (corners[3] < corners[1])
+    plane.y = -plane.y;
+  const int queued = g_pen.add(*g_font, g_cursor_index - 1u, corners, plane,
+                               g_key, glyph_color(C));
+  retain_outline_runs();
+  if (queued)
+    collapse(C);
+}
+
 static void intercept_glyph(CPU *C, uint16_t c) {
   const struct x2_prompt_cell *cell = x2::native::prompt_glyph_cell(c);
   struct x2::native::PromptQuad q;
   float corners[4];
 
   if (!cell) {
+    if (g_font && !x2::native::prompt_codepoint(c))
+      intercept_outline(C);
     return;
   }
+  close_outline_run();
   read_corners(C, corners);
   q.u0 = cell->u0;
   q.v0 = cell->v0;
@@ -204,7 +263,7 @@ static void intercept_glyph(CPU *C, uint16_t c) {
   q.y0 = corners[1];
   q.x1 = corners[2];
   q.y1 = corners[3];
-  q.color = g_cursor_color;
+  q.color = glyph_color(C);
   q.sheet = X2_KEYCAP_SHEET_ATLAS;
   retain(&q, 1u);
   collapse(C);
@@ -214,6 +273,7 @@ static void intercept_glyph(CPU *C, uint16_t c) {
    draw nothing, and the right edge draws the whole key. plan_string has
    already proved the run is well formed and its name has art. */
 static void intercept_keycap(CPU *C, uint16_t c) {
+  close_outline_run();
   if (c == X2_KEYCAP_GLYPH_LEFT) {
     read_corners(C, g_cap.left);
     g_cap.open = 1;
@@ -262,23 +322,33 @@ struct PromptStringPlan {
   unsigned emitted;
   unsigned native;
   int unavailable;
+  int unterminated;
 };
 
-static struct PromptStringPlan plan_string(uint32_t s) {
+static struct PromptStringPlan
+plan_string(uint32_t s, const x2::native::OutlineFont *font) {
   struct PromptStringPlan plan = {0};
   uint16_t wide[x2::native::kPromptWalkMax];
-  unsigned i, n, key_end = UINT_MAX; /* the open key's right edge */
+  /* The open key's edges: its name's letters are the key's, not outline text.
+   */
+  unsigned i, n, key_start = UINT_MAX, key_end = UINT_MAX;
   for (n = 0; n < x2::native::kPromptWalkMax; n++) {
     wide[n] = RD16(s + (uint32_t)n * 2u);
     if (!wide[n])
       break;
   }
+  plan.unterminated = n == x2::native::kPromptWalkMax;
   for (i = 0; i < n; i++) {
     const uint16_t c = wide[i];
     if (x2::native::glyph_loop_emits_quad(c))
       plan.emitted++;
-    if (!x2::native::prompt_codepoint(c))
+    if (!x2::native::prompt_codepoint(c)) {
+      const int in_key = key_start != UINT_MAX && i > key_start && i < key_end;
+      if (font && !in_key && x2::native::glyph_loop_emits_quad(c) &&
+          x2::native::outline_text_replaces(*font, c))
+        plan.native++;
       continue;
+    }
     if (c == X2_KEYCAP_GLYPH_LEFT) {
       const unsigned run = x2::native::keycap_run_length(wide, n, i);
       if (!run || !x2::native::prompt_glyph_cell(X2_KEYCAP_GLYPH_LEFT) ||
@@ -287,6 +357,7 @@ static struct PromptStringPlan plan_string(uint32_t s) {
         plan.unavailable = 1;
         continue;
       }
+      key_start = i;
       key_end = i + run - 1u;
       plan.native += x2::native::kKeycapQuads;
     } else if (c == X2_KEYCAP_GLYPH_RIGHT) {
@@ -315,16 +386,54 @@ static int writes_text_batch(uint32_t writer) {
              kTextBatchVtable - kLinkedBase + x86_module_base("XMen2.exe");
 }
 
+/* Engine plane units per record unit for this string: the text scale at
+   arg5+8 and the plane scales FUN_005ee620 cached at arg7+0x1c/+0x20. */
+static int read_plane_scale(const CPU *C,
+                            x2::native::OutlinePlaneScale *plane) {
+  uint32_t style, atlas, scale_bits, x_bits, y_bits;
+  float scale, x, y;
+  if (!guest_memory_try_read32(C->reg[kX86pEsp] + 0x14u, &style) ||
+      !guest_memory_try_read32(C->reg[kX86pEsp] + 0x1cu, &atlas) ||
+      !guest_memory_try_read32(style + 8u, &scale_bits) ||
+      !guest_memory_try_read32(atlas + 0x1cu, &x_bits) ||
+      !guest_memory_try_read32(atlas + 0x20u, &y_bits))
+    return 0;
+  memcpy(&scale, &scale_bits, 4);
+  memcpy(&x, &x_bits, 4);
+  memcpy(&y, &y_bits, 4);
+  plane->x = fabsf(scale * x);
+  plane->y = fabsf(scale * y);
+  return plane->x > 0.0f && plane->y > 0.0f;
+}
+
+static void super_glyph_loop(CPU *C) {
+  g_super_called++;
+  x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+}
+
 void x2_override_005ee780(CPU *C) {
   uint32_t s = glyph_loop_string(C);
-  unsigned i;
+  const x2::native::OutlineFont *font = NULL;
+  int prompts;
 
   x2::native::prompt_string_census(s);
-  /* The cursor is armed only for a string carrying our codepoints, so
-     every other string's quads take the untouched path. */
-  if (x2::native::prompt_glyphs_enabled() && s &&
-      x2::native::string_has_prompt_glyph(s, x2::native::kPromptWalkMax)) {
-    struct PromptStringPlan plan = plan_string(s);
+  if (!s) {
+    super_glyph_loop(C);
+    return;
+  }
+  prompts = x2::native::prompt_glyphs_enabled() &&
+            x2::native::string_has_prompt_glyph(s, x2::native::kPromptWalkMax);
+  if (x2::native::outline_text_enabled()) {
+    font = x2::native::outline_text_string_font(C->reg[kX86pEcx]);
+    if (font && !read_plane_scale(C, &g_plane)) {
+      g_outline_unscaled++;
+      font = NULL;
+    }
+  }
+  /* The cursor is armed only for a string the port draws any of, so every
+     other string's quads take the untouched path. */
+  if (prompts || font) {
+    struct PromptStringPlan plan = plan_string(s, font);
     uint32_t batch = RD32(C->reg[kX86pEsp] + 8u);
     uint32_t color;
 
@@ -332,28 +441,29 @@ void x2_override_005ee780(CPU *C) {
        earlier native glyph may already have been collapsed; discovering
        a later refusal then cannot restore the original string. Validate
        every precondition first, including the one-glyph case. */
+    if (plan.unterminated) {
+      g_long_refused++;
+      super_glyph_loop(C);
+      return;
+    }
     if (plan.unavailable || !plan.native) {
-      g_unavailable_refused++;
-      g_super_called++;
-      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      g_unavailable_refused += (unsigned long)prompts;
+      super_glyph_loop(C);
       return;
     }
     if (!writes_text_batch(batch)) {
       g_sink_refused++;
-      g_super_called++;
-      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      super_glyph_loop(C);
       return;
     }
     if (!guest_memory_try_read32(batch + 8u, &color)) {
       g_color_refused++;
-      g_super_called++;
-      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      super_glyph_loop(C);
       return;
     }
     if (x2::native::prompt_quads_available() < plan.native) {
       g_queue_refused++;
-      g_super_called++;
-      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      super_glyph_loop(C);
       return;
     }
 
@@ -362,9 +472,13 @@ void x2_override_005ee780(CPU *C) {
     g_cursor_string = s;
     g_cursor_index = 0;
     g_cursor_color = color;
-    g_super_called++;
-    x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+    g_font = font;
+    g_pen.begin(s);
+    g_outline_strings += (unsigned long)(font != NULL);
+    super_glyph_loop(C);
+    close_outline_run();
     g_cursor_string = 0;
+    g_font = NULL;
     g_cap.open = 0;
     if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
       g_desync++;
@@ -376,8 +490,7 @@ void x2_override_005ee780(CPU *C) {
     }
     return;
   }
-  g_super_called++;
-  x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+  super_glyph_loop(C);
 }
 
 __attribute__((constructor)) static void x2_prompt_draw_register(void) {
@@ -403,6 +516,13 @@ void prompt_draw_report(void) {
   x2_log_error("PROMPT DRAW: %lu keyboard key(s) drawn whole from shared "
                "art\n",
                g_keys_drawn);
+  x2_log_error("PROMPT DRAW: %lu string(s) in an outline font, %lu glyph(s) "
+               "drawn from outline faces; %lu string(s) kept retail because "
+               "their plane scale was unreadable, %lu because they ran past "
+               "%u wchars\n",
+               g_outline_strings, g_outline_glyphs, g_outline_unscaled,
+               g_long_refused, x2::native::kPromptWalkMax);
+  x2::native::outline_text_report();
   if (g_desync) {
     x2_log_error("PROMPT DRAW: the quad/wchar cursor DESYNCED -- the "
                  "harvested rectangles are not trustworthy.\n");

@@ -229,6 +229,9 @@ lucent::cvar::Var<bool> g_alchemy_input_verify{"alchemy.input.verify", true};
  * X2_* developer overrides through Lucent's typed configuration layering. */
 lucent::cvar::Var<bool> g_native_fmv{"native_fmv", true};
 lucent::cvar::Var<bool> g_prompt_glyphs{"prompt_glyphs", true};
+/* on: the game's text is drawn from outline typefaces at the retail layout;
+   off draws the retail bitmap glyphs. */
+lucent::cvar::Var<bool> g_outline_text{"outline_text", true};
 lucent::cvar::Var<std::string> g_text_scale{"text_scale", ""};
 lucent::cvar::Var<std::string> g_boot_map{"boot_map", ""};
 /* The heartbeat's guest-memory peek. A registered knob rather than a raw
@@ -356,6 +359,7 @@ void runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_audio_channel_poll_verify);
   lucent::cvar::register_var(g_native_fmv);
   lucent::cvar::register_var(g_prompt_glyphs);
+  lucent::cvar::register_var(g_outline_text);
   lucent::cvar::register_var(g_text_scale);
   lucent::cvar::register_var(g_boot_map);
   lucent::cvar::register_var(g_peek);

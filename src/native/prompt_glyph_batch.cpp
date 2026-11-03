@@ -21,6 +21,7 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include <array>
 #include <stdio.h>
 
 namespace x2::native {
@@ -33,6 +34,7 @@ static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
 static unsigned long g_with_prompts, g_drawn;
 static unsigned long g_transform_refused, g_gpu_refused;
 static unsigned long g_unreadable_count, g_unreadable_array;
+static std::array<PromptQuad, kPromptQuadsMax> g_taken;
 
 void prompt_glyph_batch_draw_nonindexed(CPU *C) {
   g_calls++;
@@ -63,7 +65,7 @@ void prompt_glyph_batch_draw_nonindexed(CPU *C) {
  * own draws (issue #184).
  */
 void prompt_glyph_batch_update_context_state(CPU *C) {
-  struct x2::native::PromptQuad quads[x2::native::kPromptQuadsMax];
+  PromptQuad *quads = g_taken.data();
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
   uint32_t vertex_array;

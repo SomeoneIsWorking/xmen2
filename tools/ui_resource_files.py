@@ -11,6 +11,12 @@ UI_FILES = (
     "app_icon.svg",
     # The shared key typeface keyboard prompts are lettered in at runtime.
     "NotoSans-Bold-keys.ttf",
+    # The outline faces the game's text is drawn in (assets/fonts).
+    "Barlow-BlackItalic.ttf",
+    "Barlow-Black.ttf",
+    "Barlow-OFL.txt",
+    "DSEG7Classic-BoldItalic.ttf",
+    "DSEG-OFL.txt",
     "settings.rcss",
     "touch_controls.rcss",
     # The touch buttons' authored art (assets/ui/touch_*.svg).

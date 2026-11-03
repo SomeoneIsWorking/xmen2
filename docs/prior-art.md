@@ -18,6 +18,19 @@ actually reused.
 attribution applies only to that stylesheet material; this project defines its
 own architecture, behavior, and ownership boundaries.
 
+## Outline typefaces for the game's text
+
+`assets/fonts/` holds the unmodified faces `outline_glyph_atlas.cpp` draws the
+retail text in (docs/RE/text.md), each shipped beside its license:
+
+| file | source | license | stands in for |
+|---|---|---|---|
+| `Barlow-BlackItalic.ttf`, `Barlow-Black.ttf` | [google/fonts](https://github.com/google/fonts) `ofl/barlow` at `89f5431ff0db41bd2fe3f7ba21a723a01622428b` (The Barlow Project Authors) | SIL OFL 1.1, `Barlow-OFL.txt` | the bold italic small-caps `X2F_med`/`big`/`thin` faces, and the upright `X2F_hud` capitals |
+| `DSEG7Classic-BoldItalic.ttf` | [keshikan/DSEG](https://github.com/keshikan/DSEG) release v0.46 | SIL OFL 1.1, Reserved Font Name "DSEG", `DSEG-OFL.txt` | the seven-segment `font_XMEN_digital` digits |
+
+The Reserved Font Name means a modified DSEG may not be called DSEG; ship it
+unmodified.
+
 ## D3D8 implementations — DXVK/d8vk and WineD3D
 
 `src/d3d8/` implements Direct3D 8 on the host. Two mature open implementations

@@ -67,6 +67,7 @@
  */
 #include "ui_text_scale.h"
 
+#include "outline_text.hpp"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyphs.h"
 #include "settings_store.h"
@@ -273,6 +274,7 @@ int ui_text_scale_reapply(void) {
        the rescaled record, in the same order as at load. */
     if (prompt_glyphs_enabled())
       x2::native::prompt_glyph_publish_metrics(g_tracked[i].at);
+    x2::native::outline_text_font_rescaled(g_tracked[i].at);
   }
   x2_log_error("UI TEXT: output is %ux%u now; %u loaded font(s) re-derived "
                "from %.3f to %.3f (%s).\n",
@@ -314,6 +316,17 @@ static void x2_override_font_loader(CPU *C) {
      need metrics even when the text scale is 1.0. */
   if (x2::native::prompt_glyphs_enabled())
     x2::native::prompt_glyph_publish_metrics(slot->at);
+  if (x2::native::outline_text_enabled()) {
+    char font_name[64];
+    unsigned i;
+    for (i = 0; name && i + 1u < sizeof font_name; i++) {
+      font_name[i] = (char)RD8(name + i);
+      if (!font_name[i])
+        break;
+    }
+    font_name[i] = 0;
+    x2::native::outline_text_font_loaded(slot->at, font_name);
+  }
 }
 
 /*

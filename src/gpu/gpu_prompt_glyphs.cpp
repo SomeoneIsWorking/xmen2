@@ -2,8 +2,9 @@
  * Native prompt glyph drawing, independent of the guest D3D8 objects.
  *
  * The text engine still owns layout. prompt_glyph_draw.cpp captures its local
- * rectangle and batch colour; this owner retains the port's RGBA SVG atlas
- * and the runtime key label sheet (keycap_labels.h),
+ * rectangle and batch colour; this owner retains the port's RGBA SVG atlas,
+ * the runtime key label sheet (keycap_labels.h) and the mipmapped outline
+ * text atlas (outline_glyph_atlas.hpp),
  * turns each rectangle into two triangles in the stock (x, 0, y) text plane,
  * and submits them through the host GPU. The engine draw bridge supplies the
  * text batch's finalized matrix when it calls this module, so this owner
@@ -15,9 +16,11 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "keycap_labels.h"
+#include "outline_glyph_atlas.hpp"
 #include "prompt_glyph_atlas.h"
 #include "prompt_glyph_quads.h"
 
+#include <array>
 #include <stdio.h>
 #include <string.h>
 
@@ -29,8 +32,12 @@ struct PromptVertex {
   float u, v;
 };
 
+static_assert(x2::native::kOutlineTextSheet > X2_KEYCAP_SHEET_LABELS);
+
 static GpuTexture g_atlas;
 static GpuTexture g_labels;
+static GpuTexture g_outline; /* 0 when the outline atlas could not be built */
+static std::array<PromptVertex, x2::native::kPromptQuadsMax * 6u> g_staged;
 static uint64_t g_labels_uploaded; /* the sheet generation g_labels holds */
 static GpuBuffer g_vertices;
 static unsigned long g_frames_ready, g_render_calls, g_drawn, g_refused;
@@ -42,10 +49,33 @@ static void release_resources(void) {
     gpu_texture_destroy(g_labels);
   if (g_atlas)
     gpu_texture_destroy(g_atlas);
+  if (g_outline)
+    gpu_texture_destroy(g_outline);
+  g_outline = 0;
   g_vertices = 0;
   g_labels = 0;
   g_atlas = 0;
   g_labels_uploaded = 0;
+}
+
+/* The outline atlas and its mip chain, built from the CPU raster. */
+static GpuTexture create_outline(void) {
+  GpuTexture texture =
+      gpu_texture_create(x2::native::kOutlineAtlasW, x2::native::kOutlineAtlasH,
+                         GPU_FMT_RGBA8, x2::native::kOutlineAtlasLevels);
+  for (unsigned level = 0; texture && level < x2::native::kOutlineAtlasLevels;
+       level++) {
+    unsigned w = 0, h = 0;
+    const uint8_t *pixels =
+        x2::native::outline_glyph_atlas_level(level, &w, &h);
+    if (!pixels || !gpu_texture_upload(texture, level, pixels, w * h * 4u)) {
+      gpu_texture_destroy(texture);
+      x2_log_error("prompt GPU: the outline text atlas could not be "
+                   "uploaded; outline text draws will be refused.\n");
+      return 0;
+    }
+  }
+  return texture;
 }
 
 static int ensure_resources(void) {
@@ -66,6 +96,7 @@ static int ensure_resources(void) {
   g_vertices = gpu_buffer_create(GPU_BUF_VERTEX,
                                  x2::native::kPromptQuadsMax * 6u *
                                      (uint32_t)sizeof(struct PromptVertex));
+  g_outline = create_outline();
   if (!g_atlas || !g_labels || !g_vertices) {
     release_resources();
     x2_log_error("prompt GPU: atlas, label sheet or vertex-buffer creation "
@@ -91,10 +122,12 @@ static int labels_current(void) {
 
 /* One draw of `count` quads from quad `first`, sampling `texture`. */
 static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
-                      const float mvp[16]) {
+                      const float mvp[16], int mipmapped) {
   GpuDraw draw;
   if (!count)
     return 1;
+  if (!texture)
+    return 0;
   memset(&draw, 0, sizeof draw);
   draw.vertices = g_vertices;
   draw.vertex_stride = sizeof(struct PromptVertex);
@@ -108,6 +141,7 @@ static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
   draw.texop = GPU_TEXOP_MODULATE;
   draw.alpha_op = GPU_TEXOP_MODULATE;
   draw.texture_clamp = 1;
+  draw.texture_mip = mipmapped ? 2 : 0;
   draw.blend_enable = 1;
   draw.src_blend = GPU_BLEND_SRCALPHA;
   draw.dst_blend = GPU_BLEND_INVSRCALPHA;
@@ -147,8 +181,12 @@ void gpu_prompt_glyphs_frame_begin(void) {
 
 int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
                              unsigned count, const float mvp[16]) {
-  struct PromptVertex vertices[x2::native::kPromptQuadsMax * 6u];
-  unsigned i, atlas = 0, labels = 0;
+  /* Outline text first, then prompt art, then key letters over their caps. */
+  constexpr std::array<uint8_t, 3> kOrder = {x2::native::kOutlineTextSheet,
+                                             X2_KEYCAP_SHEET_ATLAS,
+                                             X2_KEYCAP_SHEET_LABELS};
+  std::array<unsigned, kOrder.size()> first{}, counts{};
+  unsigned i, labels = 0;
 
   g_render_calls++;
   if (!count)
@@ -158,21 +196,26 @@ int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
     g_refused += count;
     return 0;
   }
-  /* Atlas quads first, label quads after them: a key's letters draw over
-     its frame whatever order the string produced them in. */
-  for (i = 0; i < count; i++)
-    atlas += (unsigned)(quads[i].sheet == X2_KEYCAP_SHEET_ATLAS);
   for (i = 0; i < count; i++) {
-    const int on_atlas = quads[i].sheet == X2_KEYCAP_SHEET_ATLAS;
-    write_quad(&vertices[(on_atlas ? i - labels : atlas + labels) * 6u],
-               &quads[i]);
-    labels += (unsigned)!on_atlas;
+    for (unsigned k = 0; k < kOrder.size(); k++)
+      counts[k] += (unsigned)(quads[i].sheet == kOrder[k]);
+    labels += (unsigned)(quads[i].sheet == X2_KEYCAP_SHEET_LABELS);
+  }
+  for (unsigned k = 1; k < kOrder.size(); k++)
+    first[k] = first[k - 1] + counts[k - 1];
+  {
+    std::array<unsigned, kOrder.size()> at = first;
+    for (i = 0; i < count; i++)
+      for (unsigned k = 0; k < kOrder.size(); k++)
+        if (quads[i].sheet == kOrder[k])
+          write_quad(&g_staged[at[k]++ * 6u], &quads[i]);
   }
   if ((labels && !labels_current()) ||
-      !gpu_buffer_upload(g_vertices, 0, vertices,
-                         count * 6u * (uint32_t)sizeof vertices[0]) ||
-      !draw_sheet(g_atlas, 0, atlas, mvp) ||
-      !draw_sheet(g_labels, atlas, labels, mvp)) {
+      !gpu_buffer_upload(g_vertices, 0, g_staged.data(),
+                         count * 6u * (uint32_t)sizeof g_staged[0]) ||
+      !draw_sheet(g_outline, first[0], counts[0], mvp, 1) ||
+      !draw_sheet(g_atlas, first[1], counts[1], mvp, 0) ||
+      !draw_sheet(g_labels, first[2], counts[2], mvp, 0)) {
     g_refused += count;
     return 0;
   }

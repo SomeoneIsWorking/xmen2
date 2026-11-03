@@ -30,10 +30,9 @@ namespace x2::native {
 
 namespace {
 
-/* A frame's text: a few dozen strings, a handful of them prompts of a dozen
-   or so pieces. The cap is a real limit and overflow is COUNTED, never
-   silently dropped -- a truncated harvest would draw a partial keycap and
-   look like a rendering bug rather than a full buffer. */
+/* A frame's text, every glyph of it. The cap is a real limit and overflow is
+   counted: a truncated harvest would draw a partial string and look like a
+   rendering bug rather than a full buffer. */
 struct PromptQuad g_quads[kPromptQuadsMax];
 
 struct PromptVertexKey g_keys[kPromptQuadsMax];
@@ -41,6 +40,12 @@ struct PromptVertexKey g_keys[kPromptQuadsMax];
 unsigned g_count;
 
 int g_frame_had_any;
+
+/* An upper bound on the pending vertices of one array. */
+struct {
+  int valid;
+  uint32_t vertex_array, vertex;
+} g_high;
 
 unsigned long g_total, g_overflow, g_frames;
 
@@ -65,6 +70,7 @@ void prompt_quads_reset(void) {
   g_undrawn += g_count;
   g_count = 0;
   g_frame_had_any = 0;
+  g_high.valid = 0;
 }
 
 unsigned prompt_quads_available(void) { return kPromptQuadsMax - g_count; }
@@ -104,12 +110,26 @@ int prompt_quads_put(struct PromptVertexKey key, const struct PromptQuad *quads,
   unsigned i;
   if (!quads)
     return 0;
-  g_overwritten += drop_where(same_key, &key, NULL);
+  /* The engine appends: a key past every pending one in its array cannot
+     be stale, so only a rewound or switched array is scanned. */
+  if (!g_high.valid || key.vertex_array != g_high.vertex_array ||
+      key.vertex <= g_high.vertex) {
+    g_overwritten += drop_where(same_key, &key, NULL);
+    g_high.valid = 1;
+    g_high.vertex_array = key.vertex_array;
+    g_high.vertex = 0;
+    for (i = 0; i < g_count; i++)
+      if (g_keys[i].vertex_array == key.vertex_array &&
+          g_keys[i].vertex > g_high.vertex)
+        g_high.vertex = g_keys[i].vertex;
+  }
   g_total += count;
   if (count > kPromptQuadsMax - g_count) {
     g_overflow += count;
     return 0;
   }
+  if (key.vertex > g_high.vertex)
+    g_high.vertex = key.vertex;
   for (i = 0; i < count; i++) {
     g_quads[g_count] = quads[i];
     g_keys[g_count] = key;
