@@ -5,9 +5,6 @@
  */
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
-#include "display_settings_document.hpp"
-#include "gameplay_settings_document.hpp"
-#include "hud_settings_document.hpp"
 #include "keyboard_bindings_document.hpp"
 #include "rml_text.hpp"
 #include "ui_resources.h"
@@ -24,10 +21,6 @@
 
 #include "dinput_pad.h"
 #include "dinput_system.h"
-#include "display_geometry.h"
-#include "gpu_shadow.h"
-#include "live_resolution.h"
-#include "render_size.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "x2_log.h"
@@ -38,7 +31,6 @@ namespace {
 Rml::ElementDocument *document;
 SDL_Window *host_window;
 unsigned selected_profile;
-unsigned active_tab;
 int capture_row = -1;
 bool close_requested;
 uint64_t observed_pad_generation;
@@ -84,30 +76,10 @@ void rebuild() {
   dinput_pad_refresh();
   observed_pad_generation = dinput_pad_generation();
   observed_game_bindings = keyboard_bindings_game_known();
-  if (active_tab == 0) {
-    rml << "<pane><div class='section-heading'>Startup</div>"
-           "<select-button id='boot-mode'><key>Boot</key><value>"
-        << escape_rml(x2::config::boot_mode_label(settings->boot_mode))
-        << "</value></select-button>"
-           "<p id='status' class='status'></p><spacer></spacer></pane>"
-           "<pane><div class='section-heading'>Boot behavior</div>"
-           "<div class='help'>Normal plays the retail introduction. Menu "
-           "skips the introduction and opens the retail main menu. "
-           "Continue loads the newest save; if none exists it opens the "
-           "main menu instead.</div><spacer></spacer></pane>"
-        << gameplay_settings_document_rml(*settings);
-  } else if (active_tab == 1) {
-    rml << display_settings_document_rml(*settings);
-  } else {
+  {
     visible_controllers = controller_assignment_rows(*settings);
     rml << "<pane><div class='section-heading'>Device assignments</div>"
-           "<select-button id='touch-controls'><key>Touch controls</key><value>"
-        << x2::config::touch_controls_label(settings->touch_controls)
-        << "</value></select-button>"
-           "<div class='help'>Automatic shows the on-screen pad and the "
-           "mobile HUD placement while the player is using touch, and puts "
-           "both away at the next key, mouse or controller input. "
-           "Player 1 may use keyboard and controller "
+           "<div class='help'>Player 1 may use keyboard and controller "
            "together. Players 2–4 use one device each and press Start to "
            "join. Session-only rows are not saved and temporarily "
            "override the saved device until cleared.</div>"
@@ -143,15 +115,7 @@ void rebuild() {
            "<spacer></spacer></pane>";
   }
   content->SetInnerRML(rml.str());
-  if (active_tab == 0) {
-    wire("boot-mode", "click");
-    wire("boot-mode", "keydown");
-    gameplay_settings_document_wire(*document, listener);
-  } else if (active_tab == 1) {
-    display_settings_document_wire(*document, listener);
-  } else {
-    wire("touch-controls", "click");
-    wire("touch-controls", "keydown");
+  {
     wire("profile", "click");
     wire("profile", "keydown");
     for (unsigned p = 0; p < x2::config::kSettingsKeyboardProfiles; p++)
@@ -192,93 +156,8 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
       event.GetParameter<int>("key_identifier", Rml::Input::KI_UNKNOWN) !=
           Rml::Input::KI_RETURN)
     return;
-  if (id == "boot-mode") {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::BootMode before = settings->boot_mode;
-    char why[256];
-    bool saved;
-    settings->boot_mode =
-        (x2::config::BootMode)(((unsigned)settings->boot_mode + 1u) % 3u);
-    saved = x2::config::settings_store_save(why, sizeof why);
-    if (!saved)
-      settings->boot_mode = before;
-    rebuild();
-    set_status(saved ? "Saved" : why);
-  } else if (id == "dynamic-shadows" || id == "shadow-resolution") {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::Settings before = *settings;
-    char why[256];
-    if (id == "dynamic-shadows")
-      settings->dynamic_shadows ^= 1u;
-    else
-      settings->shadow_resolution =
-          settings->shadow_resolution == 4096
-              ? 512
-              : (uint16_t)(settings->shadow_resolution * 2u);
-    bool saved = x2::config::settings_store_save(why, sizeof why);
-    if (!saved)
-      *settings = before;
-    gpu_shadow_configure(settings->dynamic_shadows,
-                         settings->shadow_resolution);
-    rebuild();
-    set_status(saved ? "Saved" : why);
-  } else if (id.rfind("gameplay-", 0) == 0) {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::Settings before = *settings;
-    if (!gameplay_settings_document_change(*settings, id))
-      return;
-    std::string status = save_settings();
-    if (status != "Saved")
-      *settings = before;
-    rebuild();
-    set_status(status);
-  } else if (id.rfind("hud-", 0) == 0) {
-    x2::config::Settings *settings = x2::config::settings_store();
-    X2HudSettings before = settings->hud;
-    if (!hud_settings_document_change(settings->hud, id))
-      return;
-    std::string status = save_settings();
-    if (status != "Saved")
-      settings->hud = before;
-    rebuild();
-    set_status(status);
-  } else if (id == "resolution") {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::Settings before = *settings;
-    char why[256];
-    x2::presentation::live_resolution_select_next(settings, host_window);
-    bool applied = x2::presentation::live_resolution_apply(
-        host_window, settings, &before, why, sizeof why);
-    rebuild();
-    set_status(why);
-    if (!applied)
-      return;
-  } else if (id == "window-mode" &&
-             !x2::presentation::host_window_fills_display()) {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::Settings before = *settings;
-    char why[256];
-    settings->window_mode =
-        (x2::config::WindowMode)(((unsigned)settings->window_mode + 1u) % 3u);
-    /* Native means another surface in the new mode. */
-    x2::presentation::render_size_resolve(settings, host_window);
-    bool applied = x2::presentation::live_resolution_apply(
-        host_window, settings, &before, why, sizeof why);
-    rebuild();
-    set_status(why);
-    if (!applied)
-      return;
-  } else if (id == "close") {
+  if (id == "close") {
     close_requested = true;
-  } else if (id.rfind("tab-", 0) == 0) {
-    active_tab = id == "tab-general" ? 0 : id == "tab-video" ? 1 : 2;
-    if (Rml::Element *tab = document->GetElementById("tab-general"))
-      tab->SetPseudoClass("selected", active_tab == 0);
-    if (Rml::Element *tab = document->GetElementById("tab-video"))
-      tab->SetPseudoClass("selected", active_tab == 1);
-    if (Rml::Element *tab = document->GetElementById("tab-input"))
-      tab->SetPseudoClass("selected", active_tab == 2);
-    rebuild();
   } else if (id.rfind("assign-kb-", 0) == 0) {
     x2::config::Settings *settings = x2::config::settings_store();
     unsigned profile_index, owner_index;
@@ -323,17 +202,6 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     if (owner_index > 0)
       relocate_session_pad(owner_index - 1, controller.owner);
     std::string status = save_settings();
-    rebuild();
-    set_status(status);
-  } else if (id == "touch-controls") {
-    x2::config::Settings *settings = x2::config::settings_store();
-    x2::config::Settings before = *settings;
-    settings->touch_controls =
-        (uint8_t)((settings->touch_controls + 1u) %
-                  (x2::config::kTouchControlsAlways + 1u));
-    std::string status = save_settings();
-    if (status != "Saved")
-      *settings = before;
     rebuild();
     set_status(status);
   } else if (id == "profile") {
@@ -396,9 +264,7 @@ bool settings_document_load(Rml::Context *context, SDL_Window *window) {
 <link type="text/rcss" href="settings.rcss" /></head>
 <body><window id="window" open>
 <tab-bar closable>
-<tab id="tab-general">General</tab>
-<tab id="tab-video">Video</tab>
-<tab id="tab-input">Input</tab>
+<tab id="tab-input">Controls</tab>
 <tab-end-spacer></tab-end-spacer><close id="close"></close>
 </tab-bar><content id="content"></content>
 </window></body></rml>)RML";
@@ -410,13 +276,7 @@ bool settings_document_load(Rml::Context *context, SDL_Window *window) {
   document->Show();
   wire("close", "click");
   wire("close", "keydown");
-  wire("tab-general", "click");
-  wire("tab-general", "keydown");
-  wire("tab-video", "click");
-  wire("tab-video", "keydown");
-  wire("tab-input", "click");
-  wire("tab-input", "keydown");
-  if (Rml::Element *tab = document->GetElementById("tab-general"))
+  if (Rml::Element *tab = document->GetElementById("tab-input"))
     tab->SetPseudoClass("selected", true);
   rebuild();
   return true;
@@ -426,7 +286,6 @@ void settings_document_shutdown() {
   document = nullptr;
   host_window = nullptr;
   selected_profile = 0;
-  active_tab = 0;
   capture_row = -1;
   close_requested = false;
   observed_pad_generation = 0;
@@ -456,7 +315,7 @@ void settings_document_update() {
     return;
   observed_pad_generation = generation;
   observed_game_bindings = keyboard_bindings_game_known();
-  if (document && active_tab == 2 && capture_row < 0)
+  if (document && capture_row < 0)
     rebuild();
 }
 

@@ -12,7 +12,7 @@
 
 Each run must create its D3D8 device at the resolved size with no retail
 "Display failed!" revert, and the headless capture is that backbuffer. The
-borderless runs open Port Settings on its Video tab and keep that shot, whose
+borderless runs open the game's Options and keep that shot, whose
 Resolution row names the size rendered.
 """
 
@@ -24,10 +24,9 @@ import time
 from pathlib import Path
 
 from live_harness import Case
+from live_menu import open_options, wait_menu
 
 PHONE = (2728, 1264)
-# The Video tab in Port Settings' 1280x720 layout, scaled to the window.
-VIDEO_TAB = (279 / 1280, 97 / 720)
 
 
 def png_size(path: Path) -> tuple[int, int]:
@@ -46,16 +45,12 @@ def device_size(case: Case) -> tuple[int, int]:
     return logged_size(case, r"d3d8: CreateDevice .*? (\d+)x(\d+) fmt")
 
 
-def boot(case: Case, run: str, conf: list[str], emulate: str = "",
-         settings: bool = False) -> None:
+def boot(case: Case, run: str, conf: list[str], emulate: str = "") -> None:
     case.shutdown()
     case.prepare_profile(["boot.mode=normal", *conf])
     if emulate:
         case.runtime_settings.append("display.emulate=" + emulate)
-    env = {"X2_FILES": "1"}
-    if settings:
-        env["X2_SETTINGS_OPEN"] = "1"
-    case.launch(env)
+    case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     case.check("%s: main menu opened" % run,
                case.wait_log("menus/main.pkgb", 300))
@@ -73,16 +68,20 @@ def judge(case: Case, run: str, expected: tuple[int, int]) -> None:
                "Display failed" not in case.log_text())
 
 
-def video_tab(case: Case, run: str, size: tuple[int, int]) -> None:
-    case.http("/ui/click?x=%d&y=%d" % (VIDEO_TAB[0] * size[0],
-                                      VIDEO_TAB[1] * size[1]))
+def options_shot(case: Case, run: str, size: tuple[int, int]) -> None:
+    wait_menu(case, "main", 120)
+    menu = open_options(case)
     time.sleep(1.5)
-    shot = case.shot(run + "-video")
-    (case.dir.parent / ("%s-video.png" % run)).write_bytes(shot.read_bytes())
+    shot = case.shot(run + "-options")
+    (case.dir.parent / ("%s-options.png" % run)).write_bytes(shot.read_bytes())
+    value = next((r.get("value", "") for r in menu.get("rows", [])
+                  if r["label"].lower() == "resolution"), "")
+    case.check("%s: the Resolution row names the size rendered" % run,
+               value == "Native (%dx%d)" % size, value)
 
 
 def borderless(case: Case, run: str, conf: list[str]) -> None:
-    boot(case, run, ["video.mode=borderless", *conf], settings=True)
+    boot(case, run, ["video.mode=borderless", *conf])
     display = logged_size(case, r"GetDeviceCaps answering from SDL's real "
                                 r"desktop mode: (\d+)x(\d+)")
     case.check("%s: the display was measured, not assumed" % run,
@@ -90,7 +89,7 @@ def borderless(case: Case, run: str, conf: list[str]) -> None:
     case.check("%s: the seed published Native at the display size" % run,
                "video %dx%d (Native)" % display in case.log_text())
     judge(case, run, display)
-    video_tab(case, run, display)
+    options_shot(case, run, display)
 
 
 def case_native_resolution(case: Case) -> None:

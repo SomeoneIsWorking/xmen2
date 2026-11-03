@@ -87,6 +87,8 @@ int settings_load(Settings *settings, const char *path, char *why, int whyn);
 int settings_save(const Settings *settings, const char *path, char *why,
                   int whyn);
 const char *window_mode_name(WindowMode mode);
+/* The mode as a settings screen names it. */
+const char *window_mode_label(WindowMode mode);
 int window_mode_parse(const char *text, WindowMode *mode);
 int settings_assign_keyboard(Settings *settings, unsigned profile, int player);
 int settings_assign_controller(Settings *settings, const char *id, int player);

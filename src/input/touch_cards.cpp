@@ -53,4 +53,11 @@ int box_hit(const std::vector<SceneBox> &boxes,
   return -1;
 }
 
+SceneBox card_text_box(const SceneBox &card, float pad) {
+  /* The share of the art's width its slanted right end takes. */
+  constexpr float kArtSlant = 0.12F;
+  return {card.left + pad, card.bottom,
+          card.right - kArtSlant * card.width() - pad, card.top};
+}
+
 } // namespace x2::input

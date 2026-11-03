@@ -7,11 +7,12 @@ struct SDL_Window;
 namespace x2::presentation {
 
 /*
- * Advance the render-resolution choice -- Native, 720p, 1080p, 1440p, 2160p
- * -- and resolve the size it means for `window` (render_size.h).
+ * Step the render-resolution choice -- Native, 720p, 1080p, 1440p, 2160p --
+ * forward (`direction` > 0) or back, and resolve the size it means for
+ * `window` (render_size.h).
  */
-void live_resolution_select_next(x2::config::Settings *settings,
-                                 struct SDL_Window *window);
+void live_resolution_select(x2::config::Settings *settings,
+                            struct SDL_Window *window, int direction);
 
 /*
  * The output surface may have changed size (rotation, resize, the window

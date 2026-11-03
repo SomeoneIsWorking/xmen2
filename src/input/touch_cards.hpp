@@ -49,6 +49,10 @@ CardStack stack_cards(const SceneBox &area, float finger, int entries,
 /* The first entry a drag from `start_first` by `dz` scene units shows. */
 int cards_scrolled(const CardStack &stack, int start_first, float dz);
 
+/* The part of a card of the game's option art (m_pda_option_screen) text
+   may use: `pad` in from its left end and from its slanted right end. */
+SceneBox card_text_box(const SceneBox &card, float pad);
+
 /* The index of the box holding `point`, or -1. */
 int box_hit(const std::vector<SceneBox> &boxes, presentation::ScenePoint point);
 

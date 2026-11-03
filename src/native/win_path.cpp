@@ -284,6 +284,9 @@ void k32_asset_report(void) {
 }
 
 static char g_generated_root[512];
+static K32AssetDeriver g_deriver;
+
+void k32_set_asset_deriver(K32AssetDeriver deriver) { g_deriver = deriver; }
 
 void k32_set_generated_assets(const char *root) {
   snprintf(g_generated_root, sizeof g_generated_root, "%s", root ? root : "");
@@ -321,6 +324,8 @@ static const char *replacement_under(const char *root, const char *guest_path) {
 static const char *asset_replacement(const char *guest_path) {
   const char *path = replacement_under(
       config_override_get(x2::config::ConfigOverride::Assets), guest_path);
+  if (!path && g_deriver)
+    path = g_deriver(guest_path);
   return path ? path : replacement_under(g_generated_root, guest_path);
 }
 

@@ -11,6 +11,7 @@
 #include "../input/touch_runtime.h"
 #include "d3d8_drawcall.h"
 #include "live_resolution.h"
+#include "port_option_rows.hpp"
 #include "rmlui_ui.h"
 #include "touch_menu_source.hpp"
 
@@ -304,6 +305,7 @@ static void pump_sdl(void) {
   x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
   x2::presentation::live_resolution_follow_surface(g_window);
+  x2::native::port_options_service(g_window);
 }
 
 } // namespace

@@ -97,11 +97,9 @@ constexpr std::string_view kLitArt = "ui/models/m_pda_option_focus";
 constexpr float kSettled = 0.999F;
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
-/* The space text keeps from a card's left end, from the art's slanted right
-   end and between a name and its value, in fingers; and the share of a
-   card's width that slanted end takes. */
+/* The space text keeps from a card's ends and between a name and its value,
+   in fingers. */
 constexpr float kTextPad = 0.15F;
-constexpr float kArtSlant = 0.12F;
 /* A remove or add sign's height, in fingers. */
 constexpr float kSignText = 0.7F;
 
@@ -211,9 +209,10 @@ struct Part {
   std::string name;
   std::string value;
   bool lit = false;
-  /* The text's height in fingers, and the column's shared scale for it, or
-     0 to fit the part alone. */
-  float text = x2::input::kCardText;
+  /* The text's height in fingers, 0 for the row size
+     (menu_text::row_scale); and the column's shared scale for it, or 0 to
+     fit the part alone. */
+  float text = 0.0F;
   float scale = 0.0F;
   std::optional<x2::input::TouchTarget> target;
   std::optional<MenuAction> action;
@@ -240,8 +239,9 @@ TextSpans text_spans(x2::guest::GuestCall &call, std::uint32_t box,
                      std::uint32_t line, const Part &part, float finger,
                      float scale) {
   const float pad = kTextPad * finger;
-  const float left = part.box.left + pad;
-  const float right = part.box.right - kArtSlant * part.box.width() - pad;
+  const SceneBox inner = x2::input::card_text_box(part.box, pad);
+  const float left = inner.left;
+  const float right = inner.right;
   if (part.value.empty()) {
     return {{left, part.box.bottom, right, part.box.top}, {}};
   }
@@ -648,9 +648,7 @@ private:
     if (!line) {
       return column.scale;
     }
-    const float high =
-        x2::input::kCardText * finger / menu_text::line_height(call, box);
-    column.scale = menu_text::fitted_scale(high, [&](float scale) {
+    column.scale = menu_text::row_scale([&](float scale) {
       for (const std::string &row : column.rows) {
         const std::size_t tab = row.find('\t');
         Part shown = part;
@@ -677,7 +675,9 @@ private:
     if (!line) {
       return art.scale;
     }
-    const float high = part.text * finger / menu_text::line_height(call, box);
+    const float high = part.text > 0.0F ? part.text * finger /
+                                              menu_text::line_height(call, box)
+                                        : 1.0F;
     art.scale = menu_text::fitted_scale(high, [&](float scale) {
       return fits(call, box, line.address(), part, finger, scale);
     });

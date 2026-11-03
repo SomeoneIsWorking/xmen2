@@ -22,7 +22,6 @@ void check(bool ok, const char *what) {
 ListTouchInput shop(int entries, int top) {
   ListTouchInput in;
   in.box = {215.0F, 191.0F, 482.0F, 377.0F};
-  in.line = 8.533F;
   in.finger = 38.4F;
   in.entries = entries;
   in.top = top;
@@ -45,7 +44,6 @@ void cards_fill_the_box() {
   check(stack.cards[0].top == 377.0F, "the first card starts at the top");
   check(stack.more_below && !stack.more_above, "the list continues below");
   check(out.text_inset > out.icon, "text starts after the icon");
-  check(out.text_scale > 1.5F, "text is larger than retail's");
 }
 
 void a_late_top_is_clamped() {

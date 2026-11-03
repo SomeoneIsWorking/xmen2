@@ -1214,7 +1214,7 @@ else                                                  menu->+0x20();  // Start
 Start is `FUN_005ad730` for every menu that does not override slot `+0x20`: it
 activates the item flagged `menu_ok` and does nothing when none exists. The
 PDA (`FUN_005cc630`) and the main-menu Options override it (Escape closes the
-PDA and opens Advanced Options); the shop closed under Escape in a measured run
+PDA; Options' update opened Advanced Options, which the port removes); the shop closed under Escape in a measured run
 without the mechanism being read. The world map and the codex do not override
 it: measured with a console-opened menu, Escape left both open before the
 override and closes both after it, because a focused row ran an empty Start and
@@ -1228,8 +1228,8 @@ Start did nothing, the dispatch is the focused item's (return address
 is a deliberate difference from retail; the unfocused path and menus with their
 own Start are untouched. Measured by `tools/live_case.py extract-keyboard-back`
 (world map opened through the real pad and the Xtract choice; Escape closes it
-and the party walks again) and `options-back` (Escape still opens Advanced
-Options).
+and the party walks again) and `options-back` (Escape closes Options back
+to the main menu).
 
 ## The automap (`CMenuAutoMap`)
 
@@ -1359,19 +1359,62 @@ string in `XMen2.exe` and no other package names `options_controller`; the
 PC Options' `label_controllersetup` row (in the row table at `0x006e6894`)
 is absent from `options.xmlb`. Only the console opens it.
 
+## Options' port rows (plan #203)
+
+The port's settings are rows of the retail Options menu. The menu file the
+game opens (`ui/menus/options.engb`, or the language's own) is derived from
+the player's install on first open into `<save dir>/derived/ui/menus/` and
+served in its place (`src/native/options_menu_derived.cpp`, through the
+`k32_set_asset_deriver` seam): one text item `port_option_<key>` per row of
+`src/native/port_option_rows.cpp`, inserted after Accept and chained between
+Vibration and Accept, so retail focus walks them with the pad and keys. Each
+runs `usecmd`/`rightcmd` `port_option_next` and `leftcmd` `port_option_prev`,
+which step the row the menu has focused. The rows draw as a column right of
+the retail panel (`src/native/options_port_column.cpp`), which also takes a
+pointer on it. A text item with no IGB node loads, is focusable and draws
+nothing of its own.
+
+A text box (vtable `0x006a362c`) keeps each line it is given (count
+`+0x21630`, at most `0x80`) and holds glyphs of the shared glyph pool
+(`0x008b6938`) until its render callback (`FUN_005ef2e0`, slot 0) draws the
+lines and clears them (`FUN_005ef1a0`). The callback runs only for a box the
+scene renders through its item's node, so a line put into a node-less item's
+box is never shown and never freed: measured, the port rows' twelve boxes
+emptied the pool within seconds and every menu's text vanished. The column
+draws its text through `label_accept`'s box when that label draws. Model
+items' boxes (`title`, `accept`) carry the panel's x but not the scene's z;
+heights come from the text labels.
+
+The menu-command registry (`0x0055c890`, the console at `0x007ac290`;
+register is its vtable `+0x10`, `0x0055c5e0`) keeps commands in a binary tree
+over a fixed pool of 51 nodes (`0x0055baa0` wraps its index at `0x33` without
+a check). Past 51 a new command overwrites node 0 and the tree loops: the
+next lookup that misses spins in `_stricmp` forever. Measured: registering a
+command per row direction (26) hung the menu boot at Loading, its
+`mainmenuexit 1` never found. The port registers four.
+
 ## Advanced Options (`CMenuSebas`)
 
 The factory builds `SEBAS_MENU` as `CMenuSebas` (vtable `0x006a1f64`) only
 while `DAT_008afde4` is set, a plain `CMenu` otherwise (`0x005b8305`).
 `CMenuOptions`' update (`FUN_005cbdf0`, vtable `0x0069ebd4 +0x38`) sets it on
-Start (bit 20, the keyboard's Escape) and runs `openmenu sebas`; the
-CMenuSebas init (`FUN_005d1dd0`) sets it too and its close (`0x005d1ecb`)
-clears it. A console `openmenu sebas` builds the plain `CMenu`.
+Start (bit 20, the keyboard's Escape) and runs `openmenu sebas`
+(`0x005cbe40..0x005cbe72`); the CMenuSebas init (`FUN_005d1dd0`) sets it too
+and its close (`0x005d1ecb`) clears it. A console `openmenu sebas` builds the
+plain `CMenu`.
 
-Options shows the way in as its footer `$MENU_OK Advanced...` (the string
-`Advanced Options` beside `$MENU_OK ` in CMenuOptions' code); a click on it
-posts `MENU_OK`, the same bit 20. `GET /menu/action?name=ok` posts it while
-Options is up, which is how `tools/scan.py` reaches the real menu.
+Options shows the way in as its footer `$MENU_OK Advanced Options`: its init
+(`FUN_005cb9c0`, `+0x44`) localises `Advanced Options` (`0x006a17fc`) behind
+`$MENU_OK ` and stores it in footer slot 3 (`FUN_005bc6b0` on `menu+0x2f4`,
+`0x005cbbc7`); a click on it posts `MENU_OK`, the same bit 20.
+
+The port removes the way in (`src/native/options_menu_no_advanced.cpp`): the
+update runs its leading part natively (the early return at
+`0x005cbdf3..0x005cbe2d`, then the pressed mask) and resumes retail at
+`0x005cbe73`, past the Start branch; the init runs as retail and then clears
+footer slot 3. Start then reaches the focused item like any menu's, and
+Escape closes Options through `menu_start_override`. CMenuSebas is no longer
+reachable, and what follows describes the retail screen.
 
 `sebas.xmlb` is a copy of the review's package (`x2m_review`, the review's
 tabs and list), and none of those items are what is shown. The screen is a

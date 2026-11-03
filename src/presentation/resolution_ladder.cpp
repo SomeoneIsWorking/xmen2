@@ -32,12 +32,14 @@ static bool offered(unsigned lines, unsigned display_h) {
          lines <= display_h;
 }
 
-unsigned resolution_next_lines(unsigned lines, unsigned display_h) {
+unsigned resolution_step_lines(unsigned lines, unsigned display_h,
+                               int direction) {
   for (size_t i = 0; i < kChoiceCount; i++) {
     if (kChoices[i] != lines)
       continue;
     for (size_t step = 1; step <= kChoiceCount; step++) {
-      unsigned next = kChoices[(i + step) % kChoiceCount];
+      size_t at = direction < 0 ? i + kChoiceCount - step : i + step;
+      unsigned next = kChoices[at % kChoiceCount];
       if (offered(next, display_h))
         return next;
     }

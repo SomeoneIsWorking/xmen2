@@ -41,7 +41,7 @@ another size than predicted) is followed live by
 (`host_window_fills_display`) there is no window mode: `window_settings_apply`
 leaves geometry to the host, and the settings UI has no Window mode row.
 
-The choice is offered in the RmlUi Video tab until stage 2 replaces it.
+The choice is the Resolution row of Options (stage 2).
 
 ## How retail Options is built
 
@@ -126,6 +126,25 @@ footer draws read, row size equal to the main menu's retail row; and the card
 text box from the art's measured inner bounds in `options_touch_layout`.
 First close the gap the RE has: which XMLB attribute selects each item's font
 record (`FUN_005ee590` reads `[box+0x2140c]`).
+
+## Where it stands
+
+Stage 2 items 1-4 and 6 are built: the derived menu
+(`options_menu_derived`), the rows table (`port_option_rows`), the column
+(`options_port_column`, a single column beside the retail panel rather than a
+two-column touch list), all rows of the list above, and Advanced Options
+removed (`options_menu_no_advanced`). The rows share two commands,
+`port_option_next`/`port_option_prev`, which step the focused row: the retail
+registry holds 51 commands. The Display, Gameplay and HUD documents are
+deleted; `settings_document` keeps only the Controls tab (device assignment
+and keyboard bindings), opened by F2 and the pause menu's `port_settings`.
+Remaining: item 5 (Controls and bindings sub-pages) and the rest of item 7.
+
+Stage 3 is built as one rule: every row menu's text (main menu, Options, the
+port column, the PDA's team and list cards) is the font record at scale 1,
+shrunk only to fit (`menu_text::row_scale`); card text is inset by the art's
+slant (`touch_cards::card_text_box`). Popups and conversations keep their
+finger-relative size.
 
 ## Proof per stage
 

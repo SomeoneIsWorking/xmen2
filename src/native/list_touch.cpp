@@ -156,7 +156,6 @@ public:
 
     x2::input::ListTouchInput input;
     input.box = *area;
-    input.line = menu_text::line_height(call, box);
     input.finger = x2::input::menu_finger_units(*plane);
     input.entries = entries;
     input.top = s16(self + list::kTop);
@@ -172,12 +171,11 @@ public:
     }
     if (!stack.cards.empty()) {
       const std::string key = entries_key(call, self, entries);
-      if (key != cards.fitted_for ||
-          cards.layout.text_scale != cards.text_scale_for) {
+      if (key != cards.fitted_for || input.finger != cards.fitted_finger) {
         cards.text_scale = fitted_scale(call, self, box, entries, cards.layout,
                                         stack.cards[0]);
         cards.fitted_for = key;
-        cards.text_scale_for = cards.layout.text_scale;
+        cards.fitted_finger = input.finger;
       }
     }
     WR8(self + list::kVisibleRows, static_cast<std::uint8_t>(stack.rows));
@@ -364,7 +362,7 @@ private:
        for. */
     float text_scale = 1.0F;
     std::string fitted_for;
-    float text_scale_for = 0.0F;
+    float fitted_finger = 0.0F;
     /* Retail's navigation margin, put back when touch leaves. */
     std::uint8_t margin = 0u;
     int accept_on_arrival = -1;
@@ -583,7 +581,7 @@ private:
     return out;
   }
 
-  /* The largest text scale up to the layout's at which every entry's columns
+  /* The row text size (menu_text::row_scale) at which every entry's columns
      stay on one line; retail's cut is left for what will not fit even at
      the smallest. */
   static float fitted_scale(x2::guest::GuestCall &call, std::uint32_t self,
@@ -592,7 +590,7 @@ private:
                             const SceneBox &card) {
     const x2::guest::GuestBlock text(menu_text::kLineBytes);
     if (!text || entries <= 0) {
-      return layout.text_scale;
+      return 1.0F;
     }
     std::vector<std::vector<std::string>> rows;
     for (int e = 0; e < entries; ++e) {
@@ -614,7 +612,7 @@ private:
       }
       return true;
     };
-    return menu_text::fitted_scale(layout.text_scale, fits);
+    return menu_text::row_scale(fits);
   }
 
   std::unordered_map<std::uint32_t, Cards> lists_;

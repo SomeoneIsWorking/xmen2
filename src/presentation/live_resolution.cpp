@@ -20,15 +20,15 @@ bool g_surface_noted;
 
 } // namespace
 
-void live_resolution_select_next(x2::config::Settings *settings,
-                                 struct SDL_Window *window) {
+void live_resolution_select(x2::config::Settings *settings,
+                            struct SDL_Window *window, int direction) {
   unsigned display_w = 0, display_h = 0;
 
   if (!settings)
     return;
   x2::presentation::display_pixel_size(&display_w, &display_h);
-  settings->render_lines = x2::presentation::resolution_next_lines(
-      settings->render_lines, display_h);
+  settings->render_lines = x2::presentation::resolution_step_lines(
+      settings->render_lines, display_h, direction);
   x2::presentation::render_size_resolve(settings, window);
 }
 

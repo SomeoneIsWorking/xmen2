@@ -21,12 +21,13 @@ namespace x2::presentation {
 unsigned resolution_width_for(unsigned height, unsigned display_w,
                               unsigned display_h);
 
-/* The choice after `lines`, wrapping back to Native, skipping presets taller
-   than the display. An unrecognised `lines` -- a legacy stored 900 or 768 --
-   selects Native. 720p is always offered even on a shorter display, because
-   refusing to offer any resolution is worse than offering one the display
-   must scale. */
-unsigned resolution_next_lines(unsigned lines, unsigned display_h);
+/* The choice after `lines` (`direction` > 0) or before it (< 0), wrapping
+   through Native, skipping presets taller than the display. An unrecognised
+   `lines` -- a legacy stored 900 or 768 -- selects Native. 720p is always
+   offered even on a shorter display, because refusing to offer any
+   resolution is worse than offering one the display must scale. */
+unsigned resolution_step_lines(unsigned lines, unsigned display_h,
+                               int direction);
 
 /* "Native" for kRenderNative, "1080p" for 1080. Always NUL-terminates;
    returns the number of characters written, or 0 when `buf` cannot hold the

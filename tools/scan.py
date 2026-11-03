@@ -29,14 +29,10 @@ from live_menu import read_menu
 # its popup stays up over whatever opens after it.
 LOBBY_MENUS = ("online", "campaign_lobby", "game_options", "host", "player_game_options", "games_list",
                "players_list", "join")
-# Advanced Options: `openmenu sebas` builds a plain CMenu, so the scan reaches
-# the real one as retail does, Start on Options (CMenuOptions' update). It
-# goes last in the level: every menu opened over it is built as a plain
-# CMenu, and the front end ends on the join room's popup.
-SEBAS = "options+ok"
+# The front end ends on the join room's popup.
 FRONT_END_MENUS = ("options", "options_controller", *LOBBY_MENUS)
 LEVEL_MENUS = ("pda", "options", "options_controller", "team", "shop", "stash", "codex", "worldmap", "review",
-               "region", "danger_room", "automap", "trivia", "image_viewer", "credits", "personal", SEBAS)
+               "region", "danger_room", "automap", "trivia", "image_viewer", "credits", "personal")
 REPORT_PREFIX = "menu touch gap:"
 IDLE_SECONDS = 3.0
 
@@ -52,12 +48,6 @@ def wait_menu_named(case: Case, name: str, timeout: float) -> bool:
 
 def open_menu(case: Case, name: str) -> str:
     """Open `name` by its route; the menu name it should show."""
-    if name == SEBAS:
-        case.http("/console?command=" + urllib.parse.quote("openmenu options"))
-        if wait_menu_named(case, "options", 15):
-            time.sleep(IDLE_SECONDS)
-            case.http("/menu/action?name=ok")
-        return "sebas"
     case.http("/console?command=" + urllib.parse.quote("openmenu " + name))
     return name
 

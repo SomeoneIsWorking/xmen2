@@ -429,20 +429,26 @@ def case_menu_model(case: Case) -> None:
 
 
 def case_options_back(case: Case) -> None:
-    """Escape leaves Options for the PC Advanced Options screen (sebas), whose
-    text the prompt glyphs must leave alone."""
+    """Escape on Options goes back to the main menu: the way into Advanced
+    Options is gone (plan #203), and the port's rows are Options itself."""
     case.prepare_profile(["boot.mode=normal"])
     case.launch({"X2_FILES": "1"})
     case.wait_control(60)
     case.check("the run reached the main menu",
                keyboard_past_the_intro(case, 300))
     wait_menu(case, "main", 30)
-    case.check("Options opened", open_options(case).get("menu") == "options")
+    options = open_options(case)
+    case.check("Options opened", options.get("menu") == "options")
+    case.check("Options has no Advanced Options footer",
+               not any("advanced" in d.lower()
+                       for d in options.get("desctext", [])),
+               str(options.get("desctext")))
     time.sleep(1.0)
     case.http("/key?name=Escape&hold=0.15")
-    advanced = wait_menu(case, "sebas", 20)
-    case.check("Escape opened Advanced Options", advanced.get("menu") == "sebas",
-               str(advanced.get("menu")))
-    time.sleep(2.0)
-    case.check("the game survived drawing Advanced Options", case.alive())
-    case.shot("advanced")
+    back = wait_menu(case, "main", 20)
+    case.check("Escape went back to the main menu", back.get("menu") == "main",
+               str(back.get("menu")))
+    case.check("Advanced Options never opened",
+               "openmenu sebas" not in case.log_text()
+               and "CMenuSebas" not in case.log_text())
+    case.shot("back")

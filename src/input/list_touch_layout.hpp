@@ -16,8 +16,6 @@ namespace x2::input {
 struct ListTouchInput {
   /* The list's box in the scene. */
   SceneBox box;
-  /* One line of the list's font at scale 1, and a finger. */
-  float line = 0.0F;
   float finger = 0.0F;
   int entries = 0;
   int top = 0;
@@ -30,7 +28,6 @@ struct ListTouchInput {
 
 struct ListTouchLayout {
   CardStack cards;
-  float text_scale = 1.0F;
   /* An icon's size, the inset of icons and text from a card's right edge,
      where icons start and where text starts after a card's left edge. */
   float icon = 0.0F;

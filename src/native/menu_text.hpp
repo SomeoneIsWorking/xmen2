@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <utility>
 
 /* Text drawn by port code with a menu item's own text box and font, as the
    game's items draw theirs (docs/RE/menus.md). */
@@ -60,6 +61,13 @@ template <typename Fits> float fitted_scale(float high, Fits &&fits) {
     (fits(middle) ? low : high) = middle;
   }
   return low;
+}
+
+/* The one size every row, title and footer a menu draws is at: its own
+   font record at scale 1, as retail draws the main menu's rows (they all use
+   the "medium" record), shrunk only as far as `fits` needs. */
+template <typename Fits> float row_scale(Fits &&fits) {
+  return fitted_scale(1.0F, std::forward<Fits>(fits));
 }
 
 /* The text box line (FUN_005eecf0) over `area` in the scene: `item` is the

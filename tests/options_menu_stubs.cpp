@@ -1,5 +1,9 @@
+#include "guest_heap.h"
 #include "guest_memory.h"
 #include "options_menu.h"
+#include "port_option_rows.hpp"
+#include "retail_front_end.hpp"
+#include "retail_menu_model.hpp"
 #include "x86rt_native.h"
 
 #include <stdint.h>
@@ -13,7 +17,8 @@ enum {
   REGISTER_TARGET = 0x52001000u,
   CALLBACK_TARGET = 0x53001000u,
   JOIN_CALLBACK_TARGET = 0x53001010u,
-  MAX_REGISTRATIONS = 4
+  ROW_CALLBACK_TARGET = 0x53001020u,
+  MAX_REGISTRATIONS = 8
 };
 
 static uint32_t mapped_exe = EXE_BASE;
@@ -25,6 +30,12 @@ static char registered_name[MAX_REGISTRATIONS][32];
 static uint32_t registered_callback[MAX_REGISTRATIONS], registered_method;
 static x86_override_fn callback_function;
 static int join_commands;
+static x86_override_fn row_function;
+static void *row_ctx[2];
+static int row_callbacks;
+static void *current_ctx;
+static const x2::native::PortOptionRow *requested_row;
+static int requested_direction;
 static struct {
   const char *module;
   uint32_t ep;
@@ -55,14 +66,47 @@ uint32_t options_menu_stubs_callback(int index) {
 }
 int options_menu_stubs_join_commands(void) { return join_commands; }
 
-/* lan_session.cpp's command, which this test does not link. */
+/* lan_session.cpp's command, port_option_rows.cpp's rows and the live
+   menu reads, which this test does not link: the menu up has the
+   Resolution row focused. */
+static const x2::native::PortOptionRow kStubRow = {"resolution", "Resolution",
+                                                   false};
+static uint32_t stub_menu, stub_focus;
+uint32_t x2::retail::FrontEnd::active_menu_object(const CPU &) {
+  if (!stub_menu) {
+    stub_menu = guest_malloc(0x400u);
+    stub_focus = guest_malloc(0x10u);
+  }
+  WR32(stub_menu + x2::menu::kMenuFocus, stub_focus);
+  return stub_menu;
+}
+std::string x2::menu::read_live_item_name(std::uint32_t item) {
+  return item != 0u && item == stub_focus ? "port_option_resolution" : "";
+}
 namespace x2::native {
+const PortOptionRow *port_option_row_of_item(std::string_view item) {
+  return item == "port_option_resolution" ? &kStubRow : nullptr;
+}
+void port_option_request(const PortOptionRow &row, int direction) {
+  requested_row = &row;
+  requested_direction = direction;
+}
 void lan_join_command(CPU *C) {
   join_commands++;
   C->reg[kX86pEsp] += 4u;
 }
 } // namespace x2::native
 uint32_t options_menu_stubs_method(void) { return registered_method; }
+/* Runs the port row command registered `index`-th (0 next, 1 previous) and
+   reports the step it requested. */
+int options_menu_stubs_run_row(int index, CPU *C) {
+  requested_row = nullptr;
+  current_ctx = row_ctx[index];
+  row_function(C);
+  current_ctx = nullptr;
+  return requested_row == &kStubRow ? requested_direction : 0;
+}
+void *x86_callback_ctx(void) { return current_ctx; }
 x86_override_fn options_menu_stubs_callback_function(void) {
   return callback_function;
 }
@@ -96,6 +140,11 @@ uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
   if (!ctx && !strcmp(owner, "lan_session") && !strcmp(name, "port_lan_join") &&
       fn == x2::native::lan_join_command) {
     return JOIN_CALLBACK_TARGET;
+  }
+  if (ctx && !strcmp(owner, "port_option_rows") && row_callbacks < 2) {
+    row_function = fn;
+    row_ctx[row_callbacks++] = ctx;
+    return ROW_CALLBACK_TARGET;
   }
   fprintf(stderr, "options menu stub: callback identity changed\n");
   abort();

@@ -18,6 +18,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "options_port_column.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
@@ -626,9 +627,7 @@ private:
     if (key == panel.fitted_for) {
       return;
     }
-    const float high =
-        x2::input::kCardText * panel.finger / menu_text::line_height(call, box);
-    panel.scale = menu_text::fitted_scale(high, [&](float scale) {
+    panel.scale = menu_text::row_scale([&](float scale) {
       return std::all_of(texts.begin(), texts.end(), [&](const auto &text) {
         return text.first.empty() ||
                menu_text::wrap(call, box, line, text.first, text.second, scale);
@@ -736,7 +735,10 @@ extern "C" void x2_override_005cb5f0(CPU *cpu) {
       static_cast<float>(static_cast<std::int32_t>(RD32(esp + 4u))),
       static_cast<float>(static_cast<std::int32_t>(RD32(esp + 8u)))};
   if (g_options_touch.pointer(*cpu, cpu->reg[kX86pEcx], point,
-                              RD32(esp + 16u))) {
+                              RD32(esp + 16u)) ||
+      x2::native::options_port_column_pointer(
+          *cpu, cpu->reg[kX86pEcx], point, RD32(esp + 16u),
+          static_cast<std::int32_t>(RD32(esp + 20u)))) {
     cpu->reg[kX86pEax] &= ~0xffu;
     cpu->reg[kX86pEsp] += 4u + 20u;
     return;

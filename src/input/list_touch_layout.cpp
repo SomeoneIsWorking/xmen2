@@ -15,13 +15,11 @@ constexpr float kIconSize = 0.8F;
 
 ListTouchLayout layout_list_touch(const ListTouchInput &input) {
   ListTouchLayout out;
-  if (!(input.line > 0.0F) || !(input.finger > 0.0F) ||
-      !(input.box.height() > 0.0F)) {
+  if (!(input.finger > 0.0F) || !(input.box.height() > 0.0F)) {
     return out;
   }
   out.cards = stack_cards(input.box, input.finger, input.entries, input.top,
                           input.max_rows);
-  out.text_scale = kCardText * input.finger / input.line;
   const float card = kCardHeight * input.finger;
   out.icon = input.icons ? kIconSize * card : 0.0F;
   out.pad = kTextPad * card;

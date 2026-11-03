@@ -30,6 +30,13 @@ const char *window_mode_name(WindowMode mode) {
                                                                 : "invalid";
 }
 
+const char *window_mode_label(WindowMode mode) {
+  static const char *const LABEL[] = {"Windowed", "Borderless", "Fullscreen"};
+  const auto index = static_cast<unsigned>(mode);
+  return index <= static_cast<unsigned>(WindowMode::Fullscreen) ? LABEL[index]
+                                                                : "Invalid";
+}
+
 int window_mode_parse(const char *text, WindowMode *mode) {
   int i;
   for (i = static_cast<int>(WindowMode::Windowed);

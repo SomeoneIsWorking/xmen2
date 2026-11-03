@@ -194,13 +194,13 @@ int main(void) {
   display_h = 1080;
   settings = before;
   settings.render_lines = x2::config::kRenderNative;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == 720 && settings.width == 1280 &&
         settings.height == 720);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == 1080 && settings.width == 1920 &&
         settings.height == 1080);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == x2::config::kRenderNative &&
         settings.width == 1920 && settings.height == 1080);
 
@@ -208,33 +208,33 @@ int main(void) {
   display_w = 3840;
   display_h = 2160;
   settings.render_lines = 720;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 1920 && settings.height == 1080);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 2560 && settings.height == 1440);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 3840 && settings.height == 2160);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == x2::config::kRenderNative);
 
   /* The point of the presets: width follows the PANEL, not a 16:9 table. */
   display_w = 2560; /* 16:10 */
   display_h = 1600;
   settings.render_lines = 720;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 1728 && settings.height == 1080);
 
   display_w = 3440; /* 21:9 */
   display_h = 1440;
   settings.render_lines = 720;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 2580 && settings.height == 1080);
 
   /* A width that cannot be even is rounded down rather than accepted. */
   display_w = 1366;
   display_h = 768;
   settings.render_lines = x2::config::kRenderNative;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 1280 && settings.height == 720);
   CHECK(x2::presentation::resolution_width_for(1080, 1366, 768) == 1920);
 
@@ -242,13 +242,13 @@ int main(void) {
      setting. */
   display_w = display_h = 0;
   settings.render_lines = 720;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 1920 && settings.height == 1080);
 
   /* A height stored by an older build is not on the ladder; it resolves to
      Native. */
   settings.render_lines = 900;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == x2::config::kRenderNative);
 
   /* Borderless: Native is the live surface; a preset takes the surface's
@@ -260,10 +260,10 @@ int main(void) {
   settings = before;
   settings.window_mode = x2::config::WindowMode::Borderless;
   settings.render_lines = 2160;
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.render_lines == x2::config::kRenderNative &&
         settings.width == 2800 && settings.height == 1840);
-  x2::presentation::live_resolution_select_next(&settings, &window);
+  x2::presentation::live_resolution_select(&settings, &window, 1);
   CHECK(settings.width == 1096 && settings.height == 720);
 
   /* A host whose one window is the display: windowed means the display too,

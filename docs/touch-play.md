@@ -439,41 +439,15 @@ players list and the join room by the console; with no session the join
 room closes with its "no longer available" popup, so its rows are judged
 under it), each also `-4x3`, `-tablet` and `-20x9`.
 
-**Advanced Options (CMenuSebas) is a settings screen laid out for a finger**
-(issue #199). Options' footer `Advanced...` opens it (`MENU_OK`,
-CMenuOptions' update). The screen is a second widget GUI
-([menus](RE/menus.md#advanced-options-cmenusebas)), so after each builder
-runs `x2::native::sebas` moves its widgets through their own layout setter
-into the places `x2::input::sebas_touch_place` names, in the game's own art
-and font: the Player tabs, Defaults 1..3, FSAA, Accept, the footer's Back and
-Revert to default are each at least a finger tall, the footer's `Esc Back`
-reads `Back`, and the key table's panel sits below the taller tabs. The way
-out is the game's own: Back runs the root's Escape callback (state 2, or the
-"cancel your changes?" question after a change) and Accept its accept
-callback (state 1, or the restart or no-binding question); Escape and the
-pad's B never reach the GUI (the pad check takes them first).
-
-- The key binding table is read-only on touch. A binding is finished only by
-  a key, which a touch player does not have, so a press on the table never
-  reaches its click: it is a drag, sent to the table as wheel notches, one
-  per row of travel. A tab still shows that player's keys.
-- The Resolution slider's line is 12 layout units tall; a press within half a
-  finger of it is delivered on the line, hover included, since hovering takes
-  the GUI's capture.
-- Each question (CANCEL_WARNING, NEW_RESZ_RESTART, PREVENT_NO_BINDING,
-  REVERT_DEFAULT) puts Yes and No side by side in one finger row, the
-  highlight a finger tall behind the chosen one and its steps aimed at the
-  new places, and its Back reads `Back`.
-
-`GET /menu` reports the window and each dialog as `sebas` and
-`sebas_dialogs` (state, animating, each widget's id, kind, text, client and
-layout rects, `tap`, `edge`, `fingers`, `fingers_wide`) and the table as
-`sebas_table` (player, capture cell, scroll). Prove it with
-`tools/live_case.py touch-advanced-options` (and `-4x3`, `-tablet`,
-`-20x9`): every control a finger target, a tab, a drag and a cell tap on the
-table, the slider's band, Revert's question answered No, a change then Back
-asking, a finger on No moving the highlight onto it, the question's Back
-keeping the screen and its Yes leaving it, Accept and Back each closing it.
+**The port's settings are rows of Options** (plan #203), in a column of the
+option cards right of the retail panel, a finger tall on touch and as tall as
+lets all of them show (at most a finger) on desktop; a drag or the wheel
+scrolls the column, a tap on a card steps its row to the next value, and the
+pad and keys reach the rows through the retail focus chain (Left and Right
+step them). There is no Window Mode row where the window is the display.
+Advanced Options is gone: Options has no `Advanced...` footer and Escape
+closes it ([menus](RE/menus.md#options-port-rows-plan-203)). Prove it with
+`tools/live_case.py options-rows`.
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
 corner, the phone's Escape. The cutscene player offers the skip on every input

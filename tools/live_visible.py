@@ -8,6 +8,8 @@ import subprocess
 import time
 from pathlib import Path
 
+from live_menu import open_options, read_menu, wait_menu
+
 
 def _require_x11_tools() -> None:
     missing = [tool for tool in ("xdotool",) if not shutil.which(tool)]
@@ -103,7 +105,7 @@ def _png_mean_diff(first: Path, second: Path) -> float:
 
 
 def case_live_resolution(case) -> None:
-    """Change resolution in Port Settings and prove the live target changes."""
+    """Change resolution from the Options row and prove the live target changes."""
     _require_x11_tools()
     case.prepare_profile([
         "boot.mode=normal",
@@ -111,11 +113,7 @@ def case_live_resolution(case) -> None:
         "video.height=600",
         "video.mode=windowed",
     ])
-    case.launch({
-        "SDL_VIDEODRIVER": "x11",
-        "X2_FILES": "1",
-        "X2_SETTINGS_OPEN": "1",
-    }, visible=True)
+    case.launch({"SDL_VIDEODRIVER": "x11", "X2_FILES": "1"}, visible=True)
     case.wait_control(60)
     case.check("main-menu lifecycle opened",
                case.wait_log("menus/main.pkgb", 300))
@@ -126,19 +124,25 @@ def case_live_resolution(case) -> None:
     case.check("active render starts at 800x600",
                _png_size(before) == (800, 600), str(_png_size(before)))
 
-    # 800x600 overlay: Video is the second top tab; Resolution is the first
-    # control in its left pane. These coordinates target the authored RmlUi
-    # document, not the retail game's coordinate mapping under test elsewhere.
-    _click(window, 205, 48)
-    time.sleep(0.5)
-    case.shot("video-tab")
-    _click(window, 220, 160)
-    time.sleep(2.0)
+    # The game's own Options, its Resolution row reached and stepped by key.
+    wait_menu(case, "main", 120)
+    open_options(case)
+    for _ in range(30):
+        menu = read_menu(case)
+        rows = menu.get("rows", [])
+        at = menu.get("focused_row", -1)
+        if 0 <= at < len(rows) and rows[at]["label"].lower() == "resolution":
+            break
+        case.http("/key?name=Down&hold=0.15")
+        time.sleep(0.6)
+    case.shot("options")
+    case.http("/key?name=Return&hold=0.15")
+    time.sleep(3.0)
 
     after = case.shot("after")
     window_size = _geometry(window)
     render_size = _png_size(after)
-    case.check("Port Settings resizes the existing window immediately",
+    case.check("the Options Resolution row resizes the existing window immediately",
                window_size == (1280, 720), str(window_size))
     case.check("the active render target changes without restarting",
                render_size == (1280, 720), str(render_size))
@@ -146,7 +150,8 @@ def case_live_resolution(case) -> None:
     case.check("the live resolution is persisted",
                "video.width=1280" in settings and "video.height=720" in settings)
 
-    _click(window, 1150, 96)
+    case.http("/key?name=Escape&hold=0.15")
+    wait_menu(case, "main", 20)
     time.sleep(2.0)
     live_menu = case.shot("live-main-menu")
     case.shutdown()

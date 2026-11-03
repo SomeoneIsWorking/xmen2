@@ -24,6 +24,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "options_port_column.hpp"
 #include "options_touch.hpp"
 #include "retail_menu_model.hpp"
 #include "team_touch.hpp"
@@ -340,9 +341,7 @@ private:
     const SceneBox words{area.left + pad, area.bottom, area.right - pad,
                          area.top};
     if (label != button.fitted_for || finger != button.fitted_finger) {
-      const float high =
-          x2::input::kCardText * finger / menu_text::line_height(call, box);
-      button.scale = menu_text::fitted_scale(high, [&](float scale) {
+      button.scale = menu_text::row_scale([&](float scale) {
         return menu_text::wrap(call, box, line.address(), label, words.width(),
                                scale);
       });
@@ -383,10 +382,8 @@ private:
     const std::uint32_t box = RD32(self + item::kTextBox);
     const x2::guest::GuestBlock line(menu_text::kLineBytes);
     if (box != 0u && line) {
-      const float scale =
-          x2::input::kCardText * finger / menu_text::line_height(call, box);
       const float words =
-          menu_text::width(call, box, line.address(), label, scale);
+          menu_text::width(call, box, line.address(), label, 1.0F);
       text.right =
           std::min(text.right, text.left + words + 2.0F * kTextPad * finger);
     }
@@ -598,6 +595,10 @@ bool x2::native::text_has_touch_button(std::string_view menu_class,
 extern "C" void x2_override_005c61d0(CPU *cpu) {
   const std::uint32_t self = cpu->reg[kX86pEcx];
   x2::native::team_touch_text_draw(*cpu, self, on_touch());
+  if (x2::native::options_port_column_draw(*cpu, self)) {
+    cpu->reg[kX86pEsp] += 4u;
+    return;
+  }
   if (on_touch() && g_text_item_touch.draw(*cpu, self)) {
     cpu->reg[kX86pEsp] += 4u;
     return;
@@ -611,6 +612,7 @@ extern "C" void x2_override_005c6fb0(CPU *cpu) {
   x2::native::team_touch_text_destroy(*cpu, cpu->reg[kX86pEcx]);
   g_text_item_touch.destroy(*cpu, cpu->reg[kX86pEcx]);
   x2::native::options_touch_destroy(*cpu, cpu->reg[kX86pEcx]);
+  x2::native::options_port_column_destroy(*cpu, cpu->reg[kX86pEcx]);
   x86_guest_body(cpu, "XMen2.exe", kTextDestroy);
 }
 

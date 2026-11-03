@@ -551,8 +551,12 @@ always is. Native is the output surface's pixel size where the window is the
 display (Android, desktop borderless/fullscreen) and the window's size in a
 desktop window (`render_size.h`; `tools/live_case.py native-resolution`).
 Where the host's window is the display there is no Window mode row and a
-resolution change never resizes the window. Moving these rows into the
-retail Options screen is plan #203. One
+resolution change never resizes the window. Resolution, window mode,
+shadows, HUD sizes, touch controls, extraction revive and boot mode are rows
+of the retail Options screen on the right of its panel, reached by keyboard,
+pad, mouse and touch; Advanced Options is gone (plan #203,
+`tools/live_case.py options-rows`). The Controls tab, F2 and the pause menu's
+Port Settings still open the RmlUi overlay. One
 owner now answers "display size in pixels" for the ladder, GetDeviceCaps and
 the D3D8 legality pass. The visible
 800x600 -> 1280x720 case passed 8/8 and directly matched the live menu geometry
@@ -2167,7 +2171,7 @@ asks (it decides whether a revive keeps its fraction) is not decoded.
 
 Touch menus drawn with the game's own panels, fonts, colours and focus art from the install,
 laid out for fingers (G008). The menus `tools/scan.py` opens are native on touch, the online
-lobby's and Advanced Options' included: the game draws them, nothing covers them, their rows
-and footers are finger targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host`,
-`touch-advanced-options` and the other `touch-*` cases). The RmlUi touch menu and the menu pad
+lobby's included: the game draws them, nothing covers them, their rows
+and footers are finger targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host`
+and the other `touch-*` cases). The RmlUi touch menu and the menu pad
 are deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` reports no gap. Gap: the join room's Ready and Leave Room were not tapped, a session needing a second game.

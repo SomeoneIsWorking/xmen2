@@ -12,6 +12,10 @@ void k32_open_note(const char *guest_path, int ok, int replaced,
 void k32_file_trace(const char *operation, const char *guest_path,
                     const char *host_path, const char *outcome);
 int k32_file_gate_open(void);
+/* The port's derived files (options_menu_derived.hpp), after X2_ASSETS: the
+   host path to open instead of the install's file, or NULL. */
+typedef const char *(*K32AssetDeriver)(const char *guest_path);
+void k32_set_asset_deriver(K32AssetDeriver deriver);
 /* A second overlay root, after X2_ASSETS, for files the port writes while it
    runs (control-channel scripts). */
 void k32_set_generated_assets(const char *root);

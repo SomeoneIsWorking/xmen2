@@ -2,6 +2,7 @@
 
 #include "../native/menu_action.hpp"
 #include "../native/menu_item_tap.hpp"
+#include "../native/options_port_column.hpp"
 #include "../native/options_touch.hpp"
 #include "../native/text_item_touch.hpp"
 #include "../native/x2_log.h"
@@ -148,7 +149,9 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
       }
     } else if (small(item.rect, plane) &&
                !native::text_has_finger_area(menu.menu_class, item.name) &&
-               !native::options_touch_has_card(menu.menu_class, item.name)) {
+               !native::options_touch_has_card(menu.menu_class, item.name) &&
+               !native::options_port_column_has_card(menu.menu_class,
+                                                     item.name)) {
       gaps.push_back({MenuTouchGapKind::small_target, item.name});
     }
   }

@@ -1873,9 +1873,6 @@ add_library(x2_rmlui_ui STATIC
     src/ui/rmlui_ui.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
-    src/ui/display_settings_document.cpp
-    src/ui/hud_settings_document.cpp
-    src/ui/gameplay_settings_document.cpp
     src/ui/keyboard_bindings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
@@ -2139,10 +2136,9 @@ set(X2_NATIVE_SOURCES
     src/native/text_item_touch.cpp
     src/native/automap_touch.cpp
     src/native/page_touch.cpp
-    src/native/sebas_gui.cpp
-    src/native/sebas_touch.cpp
     src/native/text_entry_input.cpp
     src/native/options_touch.cpp
+    src/native/options_port_column.cpp
     src/native/team_touch.cpp
     src/native/popup_touch_drawn.cpp
     src/native/menu_item_tap.cpp
@@ -2177,7 +2173,6 @@ set(X2_NATIVE_SOURCES
     src/input/text_touch_layout.cpp
     src/input/automap_touch_layout.cpp
     src/input/page_touch_layout.cpp
-    src/input/sebas_touch_layout.cpp
     src/input/options_touch_layout.cpp
     src/input/team_touch_layout.cpp
     src/input/native_touch_menus.cpp
@@ -2273,6 +2268,10 @@ set(X2_NATIVE_SOURCES
     src/native/movie.cpp
     src/native/movie_image_layout.cpp
     src/native/options_menu.cpp
+    src/native/options_menu_derived.cpp
+    src/native/options_menu_no_advanced.cpp
+    src/native/port_option_rows.cpp
+    src/native/xmlb_tree.cpp
     src/native/reportbox.cpp
     src/native/security.cpp
     src/native/conversation.cpp
