@@ -444,6 +444,35 @@ int main() {
     return 1;
   }
 
+  /* A portrait on that next place sends the port menu back to its own. */
+  {
+    x2::presentation::HudRegions crowded = hud;
+    crowded.menu_icons[0] = {380, 10, 412, 42};
+    crowded.menu_icons[1] = {420, 10, 452, 42};
+    controls.set_hud(crowded);
+    const auto clear_next =
+        controls.route({{{12, {476, 26}, lucent::touch::Phase::began}}});
+    controls.route({{{12, {476, 26}, lucent::touch::Phase::ended}}});
+    crowded.portraits[0] = {465, 10, 515, 60};
+    crowded.portrait_mask |= 1u;
+    controls.set_hud(crowded);
+    const auto back =
+        controls.route({{{13, centre(x2::presentation::kSlotPortMenu),
+                          lucent::touch::Phase::began}}});
+    controls.route({{{13, centre(x2::presentation::kSlotPortMenu),
+                      lucent::touch::Phase::ended}}});
+    const auto covered =
+        controls.route({{{14, {476, 26}, lucent::touch::Phase::began}}});
+    controls.route({{{14, {476, 26}, lucent::touch::Phase::ended}}});
+    if (!has_value(clear_next, x2::input::TouchAction::PortMenu, 1.0F) ||
+        !has_value(back, x2::input::TouchAction::PortMenu, 1.0F) ||
+        has_value(covered, x2::input::TouchAction::PortMenu, 1.0F)) {
+      std::cerr << "the port menu took a place on a portrait\n";
+      return 1;
+    }
+    controls.set_hud(hud);
+  }
+
   /* The game's use prompt is a Use button anywhere inside its drawn button,
      and the overlay draws nothing over it. */
   hud.use_prompt = {400, 500, 600, 560};

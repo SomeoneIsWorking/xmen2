@@ -4,6 +4,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
+#include <vector>
 
 union SDL_Event;
 struct SDL_Window;
@@ -90,6 +92,21 @@ struct TouchVisual {
 int touch_runtime_viewport(x2::presentation::LayoutViewport *out);
 
 size_t touch_runtime_visuals(TouchVisual *out, size_t capacity);
+
+/* What the overlay put on screen in its last rendered frame, and the use
+   prompt button as it routed then. Readers off the frame (GET /controls) take
+   this, not the gate evaluated whenever they happen to ask. */
+struct DrawnControls {
+  std::vector<TouchVisual> visuals;
+  bool prompt = false;
+  x2::presentation::Rect prompt_rect{};
+  bool prompt_held = false;
+};
+
+/* The UI renderer, once per rendered frame: the visuals it drew, empty when
+   it drew no overlay. */
+void touch_runtime_note_drawn(std::span<const TouchVisual> visuals);
+DrawnControls touch_runtime_drawn(void);
 
 /* The name of a visual's `action`, for the control channel's listing. */
 const char *touch_runtime_action_name(int action);

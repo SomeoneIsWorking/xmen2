@@ -132,6 +132,12 @@ int main(void) {
     CHECK("hud slot is the HUD owner's potion row",
           same_rect(slots[(int)x2::presentation::kSlotPotions],
                     bounds(hud.potions, x2::presentation::kHudPotions)));
+    CHECK("hud slot is the HUD owner's minimap",
+          same_rect(slots[(int)x2::presentation::kSlotMinimap], hud.minimap));
+    CHECK("the minimap is under the portraits at the right",
+          hud.minimap.top >= hud.portraits[3].bottom &&
+              hud.minimap.right >= hud.portraits[3].right - 0.5f &&
+              hud.minimap.right - hud.minimap.left > 0.0f);
     CHECK("hud slot is the HUD owner's portrait row",
           same_rect(slots[(int)x2::presentation::kSlotPortraits],
                     bounds(hud.portraits, 4)));
@@ -171,16 +177,52 @@ int main(void) {
               slots[slot].bottom > viewport.height * 0.5f);
       }
     }
-    /* The powers belong to the right thumb with the abilities they chord:
-       inboard of the diamond, never under the left thumb's stick. */
+    /* The powers belong to the right thumb with the abilities they chord,
+       never under the left thumb's stick, below the portraits and the
+       minimap. */
     for (i = (int)x2::presentation::kSlotPower1;
          i <= (int)x2::presentation::kSlotPower4; ++i) {
       CHECK(x2::presentation::layout_slot_name(i),
             slots[i].left > slots[x2::presentation::kSlotStick].right);
       CHECK(x2::presentation::layout_slot_name(i),
-            slots[i].right <= slots[x2::presentation::kSlotHeavyAttack].left);
-      CHECK(x2::presentation::layout_slot_name(i),
             slots[i].top > slots[x2::presentation::kSlotPortraits].bottom);
+      CHECK(x2::presentation::layout_slot_name(i),
+            slots[i].top > slots[x2::presentation::kSlotMinimap].bottom);
+    }
+    /* Attack is in the corner and the other actions sit on two arcs around
+       it: every seat on one arc is one distance from Attack's centre. */
+    {
+      const x2::presentation::Rect attack =
+          slots[x2::presentation::kSlotLightAttack];
+      const float ax = (attack.left + attack.right) * 0.5f;
+      const float ay = (attack.top + attack.bottom) * 0.5f;
+      const int inner[] = {(int)x2::presentation::kSlotHeavyAttack,
+                           (int)x2::presentation::kSlotJump,
+                           (int)x2::presentation::kSlotPower1};
+      const int outer[] = {(int)x2::presentation::kSlotPower2,
+                           (int)x2::presentation::kSlotPower3,
+                           (int)x2::presentation::kSlotPower4,
+                           (int)x2::presentation::kSlotUse};
+      const auto distance = [&](int slot) {
+        const float x = (slots[slot].left + slots[slot].right) * 0.5f;
+        const float y = (slots[slot].top + slots[slot].bottom) * 0.5f;
+        return hypotf(x - ax, y - ay);
+      };
+      for (int seat : inner)
+        CHECK("an inner-arc seat is the inner radius from Attack",
+              fabsf(distance(seat) - distance(inner[0])) < 0.5f);
+      for (int seat : outer)
+        CHECK("an outer-arc seat is the outer radius from Attack",
+              fabsf(distance(seat) - distance(outer[0])) < 0.5f);
+      CHECK("the outer arc is outside the inner one",
+            distance(outer[0]) > distance(inner[0]));
+      for (int seat : inner)
+        CHECK("Attack is right of and below the arcs",
+              (slots[seat].left + slots[seat].right) * 0.5f <= ax + 0.5f &&
+                  (slots[seat].top + slots[seat].bottom) * 0.5f <= ay + 0.5f);
+      CHECK("Attack is in the bottom-right corner",
+            attack.right > viewport.width * 0.75f &&
+                attack.bottom > viewport.height * 0.75f);
     }
     /* The stick's reach holds the ring, stays left of the centreline and of
        every action and power, below the potions, inside the safe region. */
@@ -215,14 +257,26 @@ int main(void) {
                       slots[x2::presentation::kSlotLightAttack].right -
                           slots[x2::presentation::kSlotLightAttack].left);
     }
-    /* Every round button is one size: the actions are not larger than the
-       powers beside them. */
-    for (i = (int)x2::presentation::kSlotHeavyAttack;
-         i <= (int)x2::presentation::kSlotPower4; ++i)
-      CHECK("every action and power is one size",
-            fabsf((slots[i].right - slots[i].left) -
-                  (slots[x2::presentation::kSlotLightAttack].right -
-                   slots[x2::presentation::kSlotLightAttack].left)) < 0.01f);
+    /* Attack is the largest button; every other action is one size and at
+       least a finger, a tenth of the short edge. */
+    {
+      const float shortest =
+          fminf(viewport.width - viewport.safe_left - viewport.safe_right,
+                viewport.height - viewport.safe_top - viewport.safe_bottom);
+      const float side = slots[x2::presentation::kSlotHeavyAttack].right -
+                         slots[x2::presentation::kSlotHeavyAttack].left;
+      for (i = (int)x2::presentation::kSlotHeavyAttack;
+           i <= (int)x2::presentation::kSlotPower4; ++i) {
+        CHECK("every other action and power is one size",
+              fabsf((slots[i].right - slots[i].left) - side) < 0.01f);
+        CHECK("every action is at least a finger",
+              slots[i].right - slots[i].left >= 0.1f * shortest - 0.01f);
+      }
+      CHECK("Attack is the largest",
+            slots[x2::presentation::kSlotLightAttack].right -
+                    slots[x2::presentation::kSlotLightAttack].left >
+                side);
+    }
     /* The stick and the action cluster must not be reachable by one hand
        only because they are close: they belong to opposite thumbs. */
     CHECK(name, slots[x2::presentation::kSlotStick].right <
@@ -230,10 +284,6 @@ int main(void) {
     /* A resting left thumb can move while the right thumb jumps. */
     CHECK(name, slots[x2::presentation::kSlotJump].right <=
                     slots[x2::presentation::kSlotLightAttack].left);
-    for (i = (int)x2::presentation::kSlotLightAttack;
-         i <= (int)x2::presentation::kSlotPower4; ++i)
-      CHECK("face/power target at least 48 output pixels on tested devices",
-            slots[i].right - slots[i].left >= 48.0f);
   }
 
   /* The controls clear the HUD at every size the player can choose. */
@@ -247,7 +297,7 @@ int main(void) {
     for (s = 0; s < sizeof kHudScales / sizeof kHudScales[0]; s++) {
       x2::presentation::HudPlacement hud;
       x2::presentation::Rect slots[x2::presentation::kSlotCount];
-      x2::presentation::Rect bands[x2::presentation::kHudPotions + 5];
+      x2::presentation::Rect bands[x2::presentation::kHudPotions + 6];
       int i, j;
       unsigned n = 0;
 
@@ -261,6 +311,7 @@ int main(void) {
         bands[n++] = hud.potions[i];
       for (i = 0; i < 4; ++i)
         bands[n++] = hud.portraits[i];
+      bands[n++] = hud.minimap;
       for (i = (int)x2::presentation::kSlotStick;
            i < (int)x2::presentation::kSlotCount; i++)
         for (j = 0; j < (int)n; j++)

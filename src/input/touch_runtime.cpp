@@ -20,8 +20,10 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <mutex>
 #include <set>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace x2::input {
@@ -88,6 +90,8 @@ public:
   // drawn: touch play, a window, and a skip offered.
   bool skip_button(x2::presentation::Rect &rect, bool &held) const;
   bool use_prompt(x2::presentation::Rect &rect, bool &held) const;
+  void note_drawn(std::span<const TouchVisual> visuals);
+  DrawnControls drawn() const;
   bool clear_of_controls(x2::presentation::Rect natural,
                          x2::presentation::Rect &placed) const;
 
@@ -130,6 +134,9 @@ private:
      where the screen is. */
   x2::presentation::LayoutViewport viewport_{};
   bool menu_requested_ = false;
+  // Written on the render thread, read by the control channel.
+  mutable std::mutex drawn_lock_;
+  DrawnControls drawn_;
 };
 
 namespace {
@@ -461,6 +468,22 @@ bool TouchRuntime::use_prompt(x2::presentation::Rect &rect, bool &held) const {
   return true;
 }
 
+void TouchRuntime::note_drawn(std::span<const TouchVisual> visuals) {
+  DrawnControls next;
+  next.visuals.assign(visuals.begin(), visuals.end());
+  // The prompt routes while the overlay draws; it is no visual of its own.
+  if (!visuals.empty()) {
+    next.prompt = use_prompt(next.prompt_rect, next.prompt_held);
+  }
+  const std::lock_guard<std::mutex> lock(drawn_lock_);
+  drawn_ = std::move(next);
+}
+
+DrawnControls TouchRuntime::drawn() const {
+  const std::lock_guard<std::mutex> lock(drawn_lock_);
+  return drawn_;
+}
+
 bool TouchRuntime::clear_of_controls(x2::presentation::Rect natural,
                                      x2::presentation::Rect &placed) const {
   if (!overlay_visible()) {
@@ -539,6 +562,12 @@ int touch_runtime_take_pointer(TouchPointer *pointer) {
 size_t touch_runtime_visuals(TouchVisual *out, size_t capacity) {
   return runtime.visuals(out, capacity);
 }
+
+void touch_runtime_note_drawn(std::span<const TouchVisual> visuals) {
+  runtime.note_drawn(visuals);
+}
+
+DrawnControls touch_runtime_drawn(void) { return runtime.drawn(); }
 
 const char *touch_runtime_action_name(int action) {
   return touch_action_name(static_cast<TouchAction>(action));

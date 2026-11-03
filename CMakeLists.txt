@@ -2154,6 +2154,7 @@ set(X2_NATIVE_SOURCES
     src/input/gameplay_control.cpp
     src/native/touch_hud_runtime.cpp
     src/native/hud_draw_runtime.cpp
+    src/native/hud_minimap.cpp
     src/native/power_slots_runtime.cpp
     src/native/guest_teb.cpp
     src/native/hud_portrait_position.cpp

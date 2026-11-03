@@ -50,6 +50,8 @@ static HudScope g_scope;
 static x2::presentation::LayoutViewport g_viewport;
 static x2::presentation::HudSpace g_space, g_retail_space;
 static x2::presentation::HudPlacement g_layout;
+/* The last frame's prepare() chose the mobile layout. */
+static int g_mobile;
 /* What was drawn since the last publication, published whole each frame. */
 static x2::presentation::HudRegions g_regions;
 /* Where the game's mouse overlay last drew its menu-icon row, in output
@@ -116,6 +118,7 @@ static int prepare(void) {
                      x2::presentation::hud_layout_build(
                          g_viewport, &settings->hud, g_menu_row_top, &g_layout);
   x2::input::touch_runtime_hud_placement(mobile ? &g_layout : NULL);
+  g_mobile = mobile;
   return mobile;
 }
 
@@ -718,6 +721,19 @@ static void scene_matrix(CPU *cpu) {
 }
 
 namespace x2::native {
+
+bool hud_minimap_target(HudDisc *out) {
+  const x2::presentation::Rect box = g_layout.minimap;
+  if (!g_mobile || !(box.right > box.left))
+    return false;
+  const float unit_x = g_space.width / g_viewport.width;
+  const float unit_z = g_space.height / g_viewport.height;
+  out->x = g_space.left + (box.left + box.right) * 0.5f * unit_x;
+  out->z = g_space.top - (box.top + box.bottom) * 0.5f * unit_z;
+  out->radius = (box.right - box.left) * 0.5f * unit_z;
+  out->box = box;
+  return true;
+}
 
 bool hud_message_band(x2::presentation::Rect *out) {
   const std::lock_guard<std::mutex> lock(g_band_lock);

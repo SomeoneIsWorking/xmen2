@@ -20,26 +20,40 @@ namespace x2::presentation {
  */
 namespace {
 const float kStickDiameter = 0.38F; /* of the short edge */
-/* Every round button -- the four actions and the four powers -- is this one
-   size, so no control reads as more important than its neighbours. */
-const float kButtonDiameter = 0.165F;
-const float kButtonGap = 0.025F;
 const float kEdgeInset = 0.06F;
-/* The powers ring the action diamond on its open side, inboard and up, where
-   the right thumb reaches from the attacks without crossing them. Degrees
-   from the cluster's right, counter-clockwise, in slot order. The angles are
-   not evenly spread: each neighbouring pair -- and each power beside Jump or
-   Use -- differs by a full diameter on one axis, so no two touch squares
-   overlap, and the highest stays clear of the party portraits. */
-const float kPowerAngles[4] = {208.0F, 179.0F, 146.0F, 109.0F};
+/* The action cluster, in fingers (a tenth of the short edge, the touch-target
+   floor). Attack is the largest, in the corner; every other action is a
+   finger and a tenth. */
+const float kFinger = 0.1F;
+const float kPrimaryFingers = 1.4F;
+const float kSecondaryFingers = 1.1F;
+const float kClusterGapFingers = 0.15F;
+/* Attack's centre from the safe corner, on both axes. */
+const float kCornerFingers = 1.25F;
+/* Degrees around Attack, counter-clockwise from its right: 180 is straight
+   left along the bottom, 90 straight up the right edge. The hit zones are
+   squares, so a diagonal neighbour has to clear Attack's square on one axis;
+   the ring radii are derived from that below. */
+struct ArcSeat {
+  LayoutSlot slot;
+  int arc;
+  float degrees;
+};
+/* By use: Smash and Jump on the inner arc beside Attack, then the powers in
+   slot order, then Use, which the use prompt also offers when in range. */
+const ArcSeat kArcSeats[] = {
+    {kSlotHeavyAttack, 0, 180.0F}, {kSlotJump, 0, 135.0F},
+    {kSlotPower1, 0, 90.0F},       {kSlotPower2, 1, 180.0F},
+    {kSlotPower3, 1, 150.0F},      {kSlotPower4, 1, 120.0F},
+    {kSlotUse, 1, 90.0F}};
 /* The game's own menu icons are 32 units of its 384-unit screen height; the
    port menu that waits for them is that size. */
 const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
 
 const char *const kSlotNames[] = {
-    "vitals",       "potions", "portraits", "stick",   "light-attack",
-    "heavy-attack", "use",     "jump",      "power-1", "power-2",
-    "power-3",      "power-4", "port-menu"};
+    "vitals",       "potions",      "portraits", "minimap",  "stick",
+    "light-attack", "heavy-attack", "use",       "jump",     "power-1",
+    "power-2",      "power-3",      "power-4",   "port-menu"};
 
 static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                   (int)kSlotCount,
@@ -54,7 +68,7 @@ const char *layout_slot_name(int slot) {
 }
 
 int layout_slot_is_hud(int slot) {
-  return slot >= (int)kSlotVitals && slot <= (int)kSlotPortraits;
+  return slot >= (int)kSlotVitals && slot <= (int)kSlotMinimap;
 }
 
 int layout_rects_overlap(Rect a, Rect b) {
@@ -88,11 +102,79 @@ Rect bounds(const Rect *rects, unsigned count) {
   }
   return r;
 }
+
+/* The action cluster in fingers, Attack's centre at the origin, y up. */
+struct ArcCluster {
+  float radius[2];
+  /* How far the cluster reaches left of and above Attack's centre, to the
+     outer edge of its furthest button. */
+  float reach_left;
+  float reach_up;
+};
+
+struct Point {
+  float x;
+  float y;
+};
+
+Point seat_centre(const ArcCluster &cluster, const ArcSeat &seat) {
+  const float angle = seat.degrees * 3.14159265F / 180.0F;
+  return {cosf(angle) * cluster.radius[seat.arc],
+          sinf(angle) * cluster.radius[seat.arc]};
+}
+
+/* Two squares, by centre and side, at least `gap` apart on one axis. */
+bool squares_clear(Point a, float side_a, Point b, float side_b, float gap) {
+  const float apart = (side_a + side_b) * 0.5F + gap - 1e-4F;
+  return fabsf(a.x - b.x) >= apart || fabsf(a.y - b.y) >= apart;
+}
+
+/* Each arc at the smallest radius whose seats clear Attack, the inner arc and
+   each other: hit zones are squares, so a diagonal seat sits further out
+   than a seat straight left or up. */
+ArcCluster arc_cluster() {
+  ArcCluster cluster{};
+  const Point attack{0.0F, 0.0F};
+  const float step = 0.01F;
+  for (int arc = 0; arc < 2; ++arc) {
+    float radius =
+        arc == 0
+            ? (kPrimaryFingers + kSecondaryFingers) * 0.5F + kClusterGapFingers
+            : cluster.radius[0] + kSecondaryFingers + kClusterGapFingers;
+    for (bool clear = false; !clear; radius += step) {
+      cluster.radius[arc] = radius;
+      clear = true;
+      for (const ArcSeat &seat : kArcSeats) {
+        if (seat.arc != arc) {
+          continue;
+        }
+        const Point at = seat_centre(cluster, seat);
+        clear = clear && squares_clear(at, kSecondaryFingers, attack,
+                                       kPrimaryFingers, kClusterGapFingers);
+        for (const ArcSeat &other : kArcSeats) {
+          if (other.arc > arc || &other == &seat) {
+            continue;
+          }
+          clear = clear && squares_clear(at, kSecondaryFingers,
+                                         seat_centre(cluster, other),
+                                         kSecondaryFingers, kClusterGapFingers);
+        }
+      }
+    }
+  }
+  for (const ArcSeat &seat : kArcSeats) {
+    const Point at = seat_centre(cluster, seat);
+    cluster.reach_left =
+        fmaxf(cluster.reach_left, -at.x + kSecondaryFingers * 0.5F);
+    cluster.reach_up = fmaxf(cluster.reach_up, at.y + kSecondaryFingers * 0.5F);
+  }
+  return cluster;
+}
 } // namespace
 
 int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
   float left, top, right, bottom, width, height, shortest;
-  float inset, stick, button, gap, cluster_x, cluster_y;
+  float inset, stick, gap, finger;
 
   if (!out || !finite_viewport(v))
     return 0;
@@ -109,8 +191,8 @@ int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
 
   inset = shortest * kEdgeInset;
   stick = shortest * kStickDiameter;
-  button = shortest * kButtonDiameter;
-  gap = shortest * kButtonGap;
+  gap = shortest * kLayoutGap;
+  finger = shortest * kFinger;
 
   /* --- The retail HUD: copied from its owner, never re-guessed ------- */
   /* No placement means empty bands: the controls lay out as if the HUD were
@@ -120,81 +202,46 @@ int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
       hud ? bounds(hud->potions, kHudPotions) : Rect{0.0F, 0.0F, 0.0F, 0.0F};
   out[kSlotPortraits] =
       hud ? bounds(hud->portraits, 4) : Rect{0.0F, 0.0F, 0.0F, 0.0F};
+  out[kSlotMinimap] = hud ? hud->minimap : Rect{0.0F, 0.0F, 0.0F, 0.0F};
 
   /*
-   * THE TWO THUMB CLUSTERS SHARE ONE BAND, so their natural sizes are only a
-   * request. On a wide phone they fit with room to spare; on a square or
-   * portrait viewport the short edge is large relative to the width and they
-   * collide -- measured: at 1000x1000 the stick's right edge landed 55 px past
-   * Powers' left one. Sizing from the short edge alone cannot see that,
-   * because the collision is along the LONG one.
-   *
-   * So the natural sizes are scaled by whatever single factor makes them fit.
-   * Shrinking only the offender would change the proportions the arrangement
-   * was designed in.
+   * The two thumb clusters share one band and the right one sits under the
+   * portraits and the minimap, so their natural sizes are only a request: one
+   * factor scales both until they fit. The action buttons never go below a
+   * finger; on a viewport too narrow for that the stick gives up the width.
    */
   {
-    const float reach = button + gap * 0.5F;
-    const float extent = reach + button * 0.5F;
-    const float separation = button * 0.5F;
-    /* The powers' arc reaches further inboard than the diamond does. */
-    const float power = button;
-    const float arc = reach + button * 0.5F + power * 0.5F + gap;
-    const float inboard = arc + power * 0.5F;
-    const float needed = inset * 2.0F + stick + separation + extent + inboard;
-    /* The right cluster also has to fit UNDER the portraits: its height is
-       the diamond's lower half plus whichever rises higher, Use or the arc's
-       top power. A short landscape phone runs out of height first. */
-    float arc_rise = 0.0F;
-    for (int i = 0; i < 4; ++i) {
-      const float angle = kPowerAngles[i] * 3.14159265F / 180.0F;
-      arc_rise = fmaxf(arc_rise, sinf(angle) * arc + power * 0.5F);
-    }
-    const float needed_h = inset + extent + fmaxf(extent, arc_rise) + gap;
-    const float room_h = bottom - out[kSlotPortraits].bottom;
+    const ArcCluster cluster = arc_cluster();
+    const float reach_left = (kCornerFingers + cluster.reach_left) * finger;
+    const float reach_up = (kCornerFingers + cluster.reach_up) * finger;
+    const float needed = inset + stick + gap * 2.0F + reach_left;
+    const float room_h =
+        bottom - fmaxf(out[kSlotPortraits].bottom, out[kSlotMinimap].bottom);
     /* The stick sits under the potions, so it must fit the room left there. */
     const float room_stick = bottom - out[kSlotPotions].bottom;
     const float fit =
-        fminf(1.0F, fminf(fminf(width / needed, room_h / needed_h),
+        fminf(1.0F, fminf(fminf(width / needed, room_h / (reach_up + gap)),
                           room_stick / (inset + stick)));
-    const float s_stick = stick * fit;
-    const float s_button = button * fit;
+    const float action_fit = fmaxf(fit, 1.0F / kSecondaryFingers);
+    const float unit = finger * action_fit;
     const float s_inset = inset * fit;
-    const float s_reach = s_button + gap * fit * 0.5F;
-    const float s_extent = s_reach + s_button * 0.5F;
+    const float s_stick = fminf(stick * fit, width - s_inset - gap * 2.0F -
+                                                 reach_left * action_fit);
 
     /* --- Movement, bottom left ---------------------------------------- */
     out[kSlotStick] = centred(left + s_inset + s_stick * 0.5F,
                               bottom - s_inset - s_stick * 0.5F, s_stick);
 
     /* --- Actions, bottom right ---------------------------------------- */
-    /*
-     * A diamond in the arrangement a right thumb reaches: the attacks on the
-     * outer and lower positions where it rests, Use above them, Jump
-     * inboard so movement and jumping use opposite thumbs. Placed by the
-     * cluster's CENTRE with each button at an offset, so the whole group moves
-     * as one. The centre is inset by the full `extent`, not by one button --
-     * reserving one button put Heavy past the right safe edge and Light past
-     * the bottom one on every viewport.
-     */
-    cluster_x = right - s_inset - s_extent;
-    cluster_y = bottom - s_inset - s_extent;
-    out[kSlotLightAttack] = centred(cluster_x, cluster_y + s_reach, s_button);
-    out[kSlotHeavyAttack] = centred(cluster_x + s_reach, cluster_y, s_button);
-    out[kSlotUse] = centred(cluster_x, cluster_y - s_reach, s_button);
-    out[kSlotJump] = centred(cluster_x - s_reach, cluster_y, s_button);
-
-    /* Four power slots on an arc outside the diamond, centred as far out as
-     * the diamond's reach plus both radii and a gap, so no power touches an
-     * action button whatever the fit. */
     {
-      const float s_power = power * fit;
-      const float radius = arc * fit;
-      for (int i = 0; i < 4; ++i) {
-        const float angle = kPowerAngles[i] * 3.14159265F / 180.0F;
-        out[kSlotPower1 + i] =
-            centred(cluster_x + cosf(angle) * radius,
-                    cluster_y - sinf(angle) * radius, s_power);
+      const float attack_x = right - kCornerFingers * unit;
+      const float attack_y = bottom - kCornerFingers * unit;
+      out[kSlotLightAttack] =
+          centred(attack_x, attack_y, kPrimaryFingers * unit);
+      for (const ArcSeat &seat : kArcSeats) {
+        const Point at = seat_centre(cluster, seat);
+        out[seat.slot] = centred(attack_x + at.x * unit, attack_y - at.y * unit,
+                                 kSecondaryFingers * unit);
       }
     }
 
@@ -205,7 +252,6 @@ int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
     {
       const float icon = shortest * kMenuIconSize;
       const float mid = (left + right) * 0.5F;
-      const float y = top + gap + icon * 0.5F;
       /* Right of the game's icon pair, shrunk to fit short of the portraits;
          under the portraits when the HUD leaves no room there. */
       const float menu_left = mid + icon + gap * 0.25F;
@@ -246,7 +292,7 @@ Rect layout_clear_of(LayoutViewport v, Rect natural, const Rect *drawn,
   const float bottom = v.height - v.safe_bottom;
   const float width = natural.right - natural.left;
   const float height = natural.bottom - natural.top;
-  const float gap = fminf(right - left, bottom - top) * kButtonGap;
+  const float gap = fminf(right - left, bottom - top) * kLayoutGap;
   /* Flush against an obstacle at the gap; the margin is a hair under it so
      that flush placement counts as clear. */
   const float margin = gap * 0.99F;

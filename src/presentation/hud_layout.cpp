@@ -45,6 +45,18 @@ int hud_layout_build(LayoutViewport v, const X2HudSettings *s, float row_top,
     float x = right - face * (float)(4 - i);
     layout.portraits[i] = (Rect){x, top, x + face, top + face};
   }
+  /* The minimap under the portraits, at the right inset, sized to stop a gap
+     above the action cluster. */
+  {
+    float cluster_top = v.height;
+    for (int slot = kSlotLightAttack; slot <= kSlotPower4; ++slot)
+      cluster_top = fminf(cluster_top, validated[slot].top);
+    float map_top = layout.portraits[0].bottom + gap;
+    float size = fminf(short_edge * kHudMinimapSize,
+                       cluster_top - short_edge * kLayoutGap - map_top);
+    size = fmaxf(size, 0.0f);
+    layout.minimap = Rect{right - size, map_top, right, map_top + size};
+  }
   /* The console D-pad selector cross is moved offscreen in mobile layout:
      hero selection routes directly through portrait tapping, and its
      directional beams point away from the horizontal portrait row. */

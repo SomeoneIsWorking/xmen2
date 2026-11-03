@@ -522,8 +522,9 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Zone | Action mapping |
 |---|---|
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`layout_stick_reach`) takes it |
-| Bottom-right action diamond | Attack (A) below, Smash (B) outside, Use (X) above, Jump (Y) inside |
-| Arc inboard of the diamond | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
+| Bottom-right action cluster | Attack (A) in the corner; Smash (B), Jump (Y) and power 1 on the inner arc around it; powers 2-4 and Use (X) on the outer arc (see [The action cluster](#the-action-cluster)) |
+| Power buttons on the arcs | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
+| Retail minimap, under the portraits | The round minimap (MapToggle mode 1), moved and shrunk into the HUD owner's minimap square (`hud_minimap.cpp`, docs/RE/hud.md); `GET /controls` lists it as `minimap`. The full-screen modes are retail's |
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
@@ -556,18 +557,62 @@ the landing point. Travel is still one ring radius.
 The movement stick is smaller than the original overlay to leave more of the
 playfield visible. Jump is on the opposite hand from movement, so a player can
 move and jump with two thumbs. Controls remain anchored to safe edges on wide screens; one shared fit
-factor, the smaller of what the width and the height below the portraits
-allow, keeps the groups separate on narrow, short and portrait screens. Every
-round button, action or power, is one size. The port menu button joins the
+factor, the smaller of what the width and the height below the portraits and
+the minimap allow, keeps the groups separate on narrow, short and portrait
+screens; it never takes an action button below a finger, and on a screen too
+narrow for that the stick gives up the width. The port menu button joins the
 row of menu icons the game's mouse overlay draws at the top centre: once the
 game reports where it drew them, the button takes the next place along that
-row at their size (`TouchControls::port_menu_rect`), and until then it waits
-just right of the centreline. The vitals and party portraits start at that
+row at their size (`TouchControls::port_menu_rect`), unless that place
+would cover a drawn portrait (at 4:3 it would cover the first), and then, as
+before the game reports, it keeps the layout's own place: just right of the
+centreline, or under the portraits when there is no room there. The vitals and party portraits start at that
 row's top too (`x2::presentation::hud_layout_build`'s `row_top`), so the top band is one
 line even on a phone whose reported safe area starts lower than where the
 game draws its own icons.
 
-The HUD's three slots in the touch layout are the HUD owner's own placement:
+### The action cluster
+
+Sizes are in fingers: a tenth of the safe area's short edge, the touch-target
+floor (`menu_finger_target` is the same tenth). At 2000x927 a finger is
+92.7 px.
+
+| Part | Fingers | px at 2000x927 |
+|---|---|---|
+| Attack, the largest | 1.4 | 130 |
+| Every other action and power | 1.1 | 102 |
+| Gap between buttons | 0.15 | 14 |
+| Attack's centre from the right and bottom safe edges | 1.25 | 116 |
+| Inner arc radius, from Attack's centre | 1.98 | 184 |
+| Outer arc radius | 3.42 | 317 |
+| Cluster reach left of and above the corner | 5.22 | 484 |
+
+Angles are counter-clockwise from Attack's right: 180 is straight left along
+the bottom, 90 straight up the right edge.
+
+| Arc | 180 | 150 | 135 | 120 | 90 |
+|---|---|---|---|---|---|
+| Inner | Smash (B) | | Jump (Y) | | Power 1 |
+| Outer | Power 2 | Power 3 | | Power 4 | Use (X) |
+
+The order is by use. Attack takes the corner, where the right thumb rests.
+Smash is beside it along the bottom, where the thumb rolls for the retail
+A-A-B combos, and Jump is on the diagonal between. Then come the powers in
+the game's slot order, so a hero's icons keep their places. Use is last, at
+the top of the outer arc: the use prompt is its own Use button whenever the
+hero is in range of something. A slot without a power is empty, and the
+other buttons stay where they are.
+
+The hit zones are squares, so a seat clears its neighbours and Attack on one
+axis. `layout_build` derives each arc's radius as the smallest that does
+that, which puts the inner arc's diagonal seat at 1.98 fingers rather than the
+1.4 a circle would need. The HUD owner sizes the minimap: 0.27 of the short
+edge at most, under the portraits at the right inset, and stopping a layout
+gap above the cluster (`hud_layout_build`). The cluster fits under it at
+every shape the unit test sweeps and at the live cases' 16:9, 20:9, 21:9,
+4:3, tablet and 2000x927 windows. There is no left-handed or mirrored layout.
+
+The HUD's slots in the touch layout are the HUD owner's own placement:
 `hud_draw_runtime.cpp` publishes `x2::presentation::hud_layout_build`'s result to the touch
 runtime, and `layout_build` copies it rather than computing rectangles of
 its own. The controls then fit around it: the stick shrinks to fit under the
@@ -648,7 +693,7 @@ already chose keeps player one.
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
 | `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, the use prompt as an undrawn Use zone, cancellation on layout change |
 | `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, power buttons drawn only for published slots and chording RT with their own face button, a button shared by two held controls staying down until both lift, a vanished power releasing, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |
-| `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD/control bounds, and at least 48 output-pixel action targets in those cases |
+| `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD, minimap and control bounds, Attack the largest in the corner with the other actions on two arcs, and every action at least a finger |
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
@@ -721,10 +766,16 @@ It goes through `x2::input::touch_inject`, which takes the same note-source and
 routing calls the host event pump takes — a second copy of that sequence
 could only agree with the shipping one by luck.
 
-`/controls` lists what the overlay draws right now, one control per line with
-its rectangle and action name (`jump`, `use`, ...), and the viewport those
-rectangles are in, so a run driving itself taps what the game is drawing
-rather than a coordinate chosen before the run started.
+`/controls` lists what the overlay drew in its last rendered frame, one
+control per line with its rectangle and action name (`jump`, `use`, ...), and
+the viewport those rectangles are in, so a run driving itself taps what the
+game is drawing rather than a coordinate chosen before the run started. The UI
+renderer records that list once per frame (`touch_runtime_note_drawn`, from
+`ui_render`; empty on a frame that drew no overlay), with the use prompt as
+it routed then. The gameplay gate is a 0.25 s HUD heartbeat, so a request
+evaluated against it in the middle of a long frame would list nothing while
+the screen shows every control. Every drawn control is listed; HUD taps
+(portraits, potions, menu icons) are not cut off by the layout's slot count.
 
 A phone's screen keyboard sends text as SDL text events, so `/ui/text?text=`
 pushes one, and `/ui/key?name=` a host key (Backspace, Return); both reach the

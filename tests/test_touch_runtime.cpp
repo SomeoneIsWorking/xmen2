@@ -707,6 +707,28 @@ int main() {
               std::to_string(dinput_pad_pov(slot)));
   }
 
+  /* What the overlay drew is what a reader off the frame is told, even once
+     the heartbeat has gone stale between frames. */
+  {
+    x2_gameplay_control_hud_drawn(guest_clock_now_s());
+    const auto frame = visuals();
+    x2::input::touch_runtime_note_drawn(frame);
+    const double stale =
+        guest_clock_now_s() + X2_GAMEPLAY_HUD_GRACE_SECONDS + 0.05;
+    while (guest_clock_now_s() < stale) {
+    }
+    const x2::input::DrawnControls kept = x2::input::touch_runtime_drawn();
+    check(visuals().empty() && !frame.empty() &&
+              kept.visuals.size() == frame.size() &&
+              find_action(kept.visuals, TouchAction::Use) != nullptr,
+          "a stale gate between frames keeps the last drawn list",
+          std::to_string(kept.visuals.size()) + " drawn, " +
+              std::to_string(visuals().size()) + " gated now");
+    x2::input::touch_runtime_note_drawn({});
+    check(x2::input::touch_runtime_drawn().visuals.empty(),
+          "a frame that drew no overlay lists nothing", "noted empty");
+  }
+
   /* Runs it for real: a report that throws or prints nothing is not an
      instrument, and nothing else in the suite calls it. */
   x2::input::touch_runtime_report("");

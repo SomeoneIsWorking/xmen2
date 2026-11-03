@@ -296,7 +296,7 @@ TouchControls::port_menu_rect(x2::presentation::Rect waiting) const {
   if (hud_.menu_icon_mask != all_icons)
     return waiting;
   // One more step along the row the game spaced its own icons on, at their
-  // size, kept on screen.
+  // size, kept on screen and off the portraits.
   const x2::presentation::Rect &last =
       hud_.menu_icons[x2::presentation::kHudMenuIcons - 1];
   const float step =
@@ -305,6 +305,12 @@ TouchControls::port_menu_rect(x2::presentation::Rect waiting) const {
                                     last.right + step, last.bottom};
   if (step <= 0.0F || next.right > viewport_.width - viewport_.safe_area.right)
     return waiting;
+  for (unsigned i = 0; i < 4; ++i) {
+    if ((hud_.portrait_mask & (1u << i)) &&
+        x2::presentation::layout_rects_overlap(next, hud_.portraits[i])) {
+      return waiting;
+    }
+  }
   return next;
 }
 

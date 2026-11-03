@@ -77,7 +77,8 @@ class Case:
         shutil.copy2(src, self.profile / "Activision" / "X-Men Legends 2"
                      / "Save" / leaf)
 
-    def launch(self, env_extra: dict[str, str], *, visible: bool = False) -> None:
+    def launch(self, env_extra: dict[str, str], *, visible: bool = False,
+               args: tuple[str, ...] = ()) -> None:
         binary = self.options.binary
         if not binary.is_file():
             refuse("%s does not exist; build x2native first" % binary)
@@ -85,7 +86,7 @@ class Case:
         env["X2_SAVE_DIR"] = str(self.profile)
         env["X2_LOG_DIR"] = str(self.profile / "logs")
         env["SDL_AUDIODRIVER"] = "dummy"
-        cmd = [str(binary), "--d3d8", "--control=%d" % self.port]
+        cmd = [str(binary), "--d3d8", "--control=%d" % self.port, *args]
         # --set is the binary's highest-precedence cvar source, above
         # x2native-runtime.conf and the X2_* environment. It is NOT the same
         # file as the profile's x2native.conf, which is the player settings

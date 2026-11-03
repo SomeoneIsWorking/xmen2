@@ -266,10 +266,11 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
       x2::ui::AutosaveNoticeDocument::wanted() && !settings_visible;
   if ((!settings_visible && !touch_visible && !skip_visible &&
        !revive_visible && !autosave_visible) ||
-      !device || !command_buffer || !swapchain || !window)
+      !device || !command_buffer || !swapchain || !window ||
+      !initialize(device, window, width, height)) {
+    x2::input::touch_runtime_note_drawn({});
     return;
-  if (!initialize(device, window, width, height))
-    return;
+  }
   x2::ui::settings_document_set_visible(settings_visible);
   x2::ui::touch_document_set_visible(touch_visible);
   /* The overlay may have been hidden while the window moved to a display
@@ -289,6 +290,7 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   context->Update();
   context->Render();
   render_interface->EndFrame();
+  x2::input::touch_runtime_note_drawn(x2::ui::touch_document_drawn());
 }
 
 void ui_gpu_shutdown(void) {

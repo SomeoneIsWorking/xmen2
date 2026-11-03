@@ -12,4 +12,15 @@ void hud_draw_report();
    output pixels, while it is drawn. */
 bool hud_message_band(x2::presentation::Rect *out);
 
+/* Where the mobile layout puts the round minimap: its centre and radius in
+   HUD units (z up), and its square in output pixels. */
+struct HudDisc {
+  float x;
+  float z;
+  float radius;
+  x2::presentation::Rect box;
+};
+/* False unless the last HUD frame used the mobile layout. Guest thread. */
+bool hud_minimap_target(HudDisc *out);
+
 } // namespace x2::native

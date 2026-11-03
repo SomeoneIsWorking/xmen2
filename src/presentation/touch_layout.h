@@ -56,6 +56,9 @@ struct HudRegions {
   unsigned use_prompt_mask;
 };
 
+/* The gap the layout keeps between controls and the HUD, of the short edge. */
+inline constexpr float kLayoutGap = 0.025F;
+
 /* The output, and the region of it a player can actually reach: a phone's
    cutout and gesture bar are not drawable, and a control placed under one is
    invisible or steals the system gesture. */
@@ -76,6 +79,8 @@ struct HudPlacement {
      button's circle is inscribed in it. */
   Rect potions[kHudPotions];
   Rect portraits[4], selector;
+  /* The square the round minimap (CHudAutoMap mode 1) is drawn in. */
+  Rect minimap;
 };
 
 /*
@@ -89,11 +94,13 @@ struct HudPlacement {
  */
 enum LayoutSlot : int {
   /* Retail HUD, relocated. Vitals and potions to the top left, the party
-     portraits to the top right, per the requested layout. */
+     portraits to the top right and the minimap under them. */
   kSlotVitals = 0,
   kSlotPotions,
   kSlotPortraits,
-  /* Port-drawn touch controls: movement bottom left, actions bottom right. */
+  kSlotMinimap,
+  /* Port-drawn touch controls: movement bottom left; bottom right, Attack in
+     the corner and the other actions on two arcs around it. */
   kSlotStick,
   kSlotLightAttack,
   kSlotHeavyAttack,

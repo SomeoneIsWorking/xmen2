@@ -199,6 +199,13 @@ void touch_document_shutdown() {
   icon_sources.clear();
 }
 
+std::span<const x2::input::TouchVisual> touch_document_drawn() {
+  if (!document || !document_visible) {
+    return {};
+  }
+  return visuals;
+}
+
 void touch_document_set_visible(bool visible) {
   if (!document || visible == document_visible)
     return;

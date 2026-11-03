@@ -13,6 +13,10 @@ struct HudTransform {
   float scale, x, z;
 };
 
+/* The mobile minimap's largest diameter, of the short edge; retail's mode-1
+   disc is 184 of 384 units, nearly half the height. */
+inline constexpr float kHudMinimapSize = 0.27f;
+
 /* Inside a potion ring: where its icon is drawn, and the badge its count is
    drawn in at the ring's lower right. */
 Rect hud_potion_icon(Rect ring);

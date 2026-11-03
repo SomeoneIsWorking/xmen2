@@ -18,6 +18,8 @@ scratch/run/live.json.
     tools/live_case.py touch-use-prompt       # a tap on the use prompt uses
                                               # (-4x3, -16x9, -20x9: other shapes;
                                               # -xp-16x9, -xp-20x9: an XP notice shares it)
+    tools/live_case.py touch-cluster          # the action cluster laid out and tapped
+                                              # (-16x9, -20x9, -21x9, -4x3, -tablet)
     tools/live_case.py touch-game-tip        # a Game Tip on touch, closed by a tap
     tools/live_case.py touch-conversation     # a conversation's responses tapped
                                               # (-4x3, -16x9, -20x9: other shapes)
@@ -116,6 +118,7 @@ from live_cases_conversation import (BRIEFING_SHAPES, case_touch_briefing,
 from live_cases_game_tip import case_touch_game_tip
 from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
+from live_cases_touch_cluster import SHAPES as CLUSTER_SHAPES, case_touch_cluster
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
 CASES = {
@@ -188,6 +191,7 @@ CASES.update({
     name + suffix: CASES[name] for name in ASPECT_CASES for suffix in WINDOWS
 })
 CASES.update({name: case_touch_automap for name in AUTOMAP_SHAPES})
+CASES.update({name: case_touch_cluster for name in CLUSTER_SHAPES})
 CASES.update({name: case_touch_text_entry for name in TEXT_SHAPES})
 CASES.update({name: case_touch_hero_list for name in HERO_SHAPES})
 CASES.update(PAGE_CASES)

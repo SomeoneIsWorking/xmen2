@@ -25,16 +25,13 @@
 #include "gpu_device.h"
 #include "guest_clock.h"
 #include "hud_draw_runtime.h"
+#include "hud_minimap.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 enum { REASON_BYTES = 192 };
-/* Every zone the layout can draw. The cap bounds the reply buffer; it is not a
-   filter, and a longer overlay would be a layout change, not a reason to hide
-   controls. */
-#define X2_TOUCH_CONTROLS_MAX_LISTED x2::presentation::kSlotCount
 
 /*
  * One shape of answer for every route here.
@@ -252,15 +249,17 @@ void control_route_assignment(x2::native::Socket fd, const char *query) {
  * The stick's deflection is here for the same reason: it is the only control
  * with a value rather than a state, and without it "the thumb is down" and
  * "the thumb is pushing" cannot be told apart from outside.
+ *
+ * The list is the overlay's last rendered frame, not the gate asked now: a
+ * request landing in a long frame would otherwise find the HUD heartbeat
+ * stale and report nothing while the screen shows every control.
  */
 void control_route_controls(x2::native::Socket fd) {
-  x2::input::TouchVisual visuals[X2_TOUCH_CONTROLS_MAX_LISTED];
-  size_t count = touch_runtime_visuals(visuals, X2_TOUCH_CONTROLS_MAX_LISTED);
-  size_t listed = count < X2_TOUCH_CONTROLS_MAX_LISTED
-                      ? count
-                      : X2_TOUCH_CONTROLS_MAX_LISTED;
+  const x2::input::DrawnControls drawn = x2::input::touch_runtime_drawn();
+  const x2::input::TouchVisual *visuals = drawn.visuals.data();
+  const size_t count = drawn.visuals.size();
   x2::presentation::LayoutViewport viewport;
-  char body[2048];
+  char body[4096];
   size_t i;
   int at = 0;
 
@@ -280,7 +279,7 @@ void control_route_controls(x2::native::Socket fd) {
   }
   if (!count) {
     control_reply_text(fd, 200, "OK",
-                       "the overlay is drawing no control at this moment.\n"
+                       "the overlay drew no control in its last frame.\n"
                        "  touch play: %s\n"
                        "  gameplay controls: %s\n"
                        "  overlay: %s\n"
@@ -300,7 +299,7 @@ void control_route_controls(x2::native::Socket fd) {
     at += snprintf(body + at, sizeof body - (size_t)at, "viewport %gx%g\n",
                    viewport.width, viewport.height);
   }
-  for (i = 0; i < listed && at < (int)sizeof body; i++) {
+  for (i = 0; i < count && at < (int)sizeof body; i++) {
     const x2::input::TouchVisual *visual = &visuals[i];
     at += snprintf(
         body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g %s", visual->id,
@@ -319,15 +318,13 @@ void control_route_controls(x2::native::Socket fd) {
     }
   }
   /* The game draws the use prompt button itself, so it is no visual. */
-  x2::presentation::Rect prompt;
-  int prompt_held = 0;
-  if (at < (int)sizeof body &&
-      x2::input::touch_runtime_use_prompt(&prompt, &prompt_held)) {
+  if (at < (int)sizeof body && drawn.prompt) {
+    const x2::presentation::Rect &prompt = drawn.prompt_rect;
     at += snprintf(body + at, sizeof body - (size_t)at,
                    "use-prompt %g,%g %gx%g%s\n", (double)prompt.left,
                    (double)prompt.top, (double)(prompt.right - prompt.left),
                    (double)(prompt.bottom - prompt.top),
-                   prompt_held ? " held" : "");
+                   drawn.prompt_held ? " held" : "");
   }
   /* The game's band of the lines kept out of that button: no control. */
   x2::presentation::Rect band;
@@ -336,6 +333,14 @@ void control_route_controls(x2::native::Socket fd) {
                    "message-band %g,%g %gx%g\n", (double)band.left,
                    (double)band.top, (double)(band.right - band.left),
                    (double)(band.bottom - band.top));
+  }
+  /* The game's round minimap while the mobile layout has moved it. */
+  x2::presentation::Rect map;
+  if (at < (int)sizeof body && x2::native::hud_minimap_placed(&map)) {
+    at += snprintf(body + at, sizeof body - (size_t)at, "minimap %g,%g %gx%g\n",
+                   (double)map.left, (double)map.top,
+                   (double)(map.right - map.left),
+                   (double)(map.bottom - map.top));
   }
   control_reply_text(fd, 200, "OK", "%s", body);
 }

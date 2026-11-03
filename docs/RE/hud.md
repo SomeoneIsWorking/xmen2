@@ -140,6 +140,46 @@ prompt clear of the touch controls, the wrap shifts the type-0 anchor for the
 draw and restores it after, and frames the band round the line where `+10`
 has got to.
 
+## Minimap
+
+`CHudAutoMap` (RTTI `006e45cc`, vtable `0069db8c`) draws the map the
+MapToggle action (right-stick click) cycles. Its state is static:
+
+| address | meaning |
+| --- | --- |
+| `008a61c4` | mode: 0 off, 1 round minimap, 2/3 full-screen overlay |
+| `008a61c8` | scale, HUD units per world unit |
+| `008a61cc` | radius in map cells of 240 world units (`0069ddf4`) |
+| `008a61d0` | marker alpha |
+| `008a61dc`, `e0`, `e4` | centre in HUD space (x, depth, z) |
+| `008a61f8`, `fc` | marker size, HUD units |
+
+Vtable `+0` `005a0690` (init) sets mode 1 directly; `005a04f0` (MapToggle)
+steps the mode and calls `005a0150(mode)`, which writes the rest. Mode 1:
+scale 0.05, 8 cells, 16-unit markers, centre x = the viewport's right inset
+(`+44`, width × 0.035 in) less 48, z = height × 0.5. Modes 2 and 3: scale
+0.175 (0.15 when viewport `+50` is false), 10 cells, 24-unit markers, centred
+on the viewport. Nothing else writes the centre or scale, so a resize keeps
+the old frame until the mode changes.
+
+`+8` `005a09d0` is the per-frame update: it finds player one's hero, keeps
+its position at `008a61e8` and positions the map geometry node (`this+1c`)
+at the centre. The geometry builder (vertices at `0059fc48`) writes each map
+vertex as (world − hero) × scale, and in mode 1 fades its alpha out between
+two world radii, the outer one 7 cells (1680 units): the line art follows
+the scale and is clipped to the disc. `+c` `005a0bb0` draws the markers
+through GUI `+4c`: positions are (world − hero) × scale about the centre;
+in mode 1 an entity beyond 1680 world units is dropped and an objective
+(types `0x13`, `0xe`, `0xf`) is clamped to that radius. So mode 1 is a disc
+of 1680 × scale + half a marker: 92 of 384 units, nearly half the height.
+
+On touch, `hud_minimap.cpp` wraps the update. While the mobile layout is in
+use and the mode is 1 it writes the layout's minimap square into the centre
+and sets the scale to (radius − half a marker) / 1680, so the art, the fade
+and the markers shrink together; it puts retail's values back when the
+layout goes. A centre or scale retail rewrote since (a mode change) is
+retail's new frame. Modes 0, 2 and 3 are left alone.
+
 ## Portrait position and pointer selection
 
 `005a1650` is CHudCharacter's position getter, called through virtual `+18`.
