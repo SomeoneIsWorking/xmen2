@@ -160,6 +160,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Where the dead flag lives on the stats object (actor[0xd7]+0xc0 vslot 0x28) and the extraction-to-roster team menu hop are not decompiled end to end.
 - notes: Retail revive is not free, so auto-revive is on hold pending a user decision.
 
+### pickup-models — Dropped items: the drop path, setItem and setModel, and every way a pickup keeps no model
+- status: re-partial
+- deps: console-script-spawn
+- evidence: pickup-models: killed Rangers' money drops listed loaded with scene vtable 0x0069c1a4 and drawn; pickup-models-unloadable: every money drop listed loaded=false and logged by setItem 0x00479cc0 as 'the model file did not load'
+- where: src/native/model_attach_report.cpp; src/native/retail_pickups.cpp; src/native/control_pickups_route.cpp; docs/RE/pickups.md
+- gap: draw-time loss of an attached model (culling, a later release) is observed through /pickups only; the phone occurrence (issue #202) is not yet explained
+- notes: drop FUN_0046bd90; setItem FUN_00479cc0 ignores setModel FUN_004730f0; load FUN_00472f00 -> FUN_00577c70 -> model cache FUN_0056ebe0/FUN_0056ed00
+
 ## graphics
 
 ### vk-substitute — Vulkan renderer substituted into the engine through ARK

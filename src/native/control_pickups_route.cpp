@@ -21,21 +21,23 @@ struct PickupsRequest {
 };
 
 std::string pickup_json(const native::PickupView &pickup) {
-  std::array<char, 512> numbers{};
+  std::array<char, 640> numbers{};
   std::snprintf(
       numbers.data(), numbers.size(),
       "\"handle\":%u,\"address\":\"0x%08x\",\"x\":%.1f,\"y\":%.1f,"
       "\"z\":%.1f,\"flags\":\"0x%08x\",\"quality\":%u,\"count\":%u,"
       "\"model\":{\"instance\":\"0x%08x\",\"transform\":\"0x%08x\","
-      "\"bounds\":\"0x%08x\",\"scene\":\"0x%08x\",\"scene_vtable\":\"0x%08x\"},"
+      "\"bounds\":\"0x%08x\",\"scene\":\"0x%08x\",\"scene_vtable\":\"0x%08x\","
+      "\"scene_model\":\"0x%08x\",\"scene_root\":\"0x%08x\",\"loaded\":%s},"
       "\"loop_fx\":{\"id\":%u,\"on\":%s,\"level\":%u}",
       pickup.entity.handle, pickup.entity.address,
       static_cast<double>(pickup.entity.at.x),
       static_cast<double>(pickup.entity.at.y),
       static_cast<double>(pickup.entity.at.z), pickup.flags, pickup.quality,
       pickup.count, pickup.model, pickup.transform, pickup.bounds, pickup.scene,
-      pickup.scene_vtable, pickup.loop_fx, pickup.loop_fx_on ? "true" : "false",
-      pickup.fx_level);
+      pickup.scene_vtable, pickup.scene_model, pickup.scene_root,
+      pickup.model_loaded() ? "true" : "false", pickup.loop_fx,
+      pickup.loop_fx_on ? "true" : "false", pickup.fx_level);
   return "{\"definition\":" + native::json_string(pickup.entity.definition) +
          ",\"label\":" + native::json_string(pickup.label) + "," +
          numbers.data() + "}";
@@ -58,15 +60,17 @@ void read_pickups(void *context) {
   }
   body += "],\"pickups\":[";
   first = true;
+  unsigned without_model = 0;
   for (const native::PickupView &pickup : native::all_pickups(memory, tables)) {
     if (request.handle != 0 && pickup.entity.handle != request.handle) {
       continue;
     }
+    without_model += pickup.model_loaded() ? 0u : 1u;
     body += first ? "" : ",";
     body += pickup_json(pickup);
     first = false;
   }
-  body += "]}\n";
+  body += "],\"without_model\":" + std::to_string(without_model) + "}\n";
 }
 
 } // namespace

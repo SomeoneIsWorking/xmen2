@@ -23,24 +23,39 @@ constexpr std::uint32_t kModelSlots = 0x08u;
    FUN_005756e0 checks before FUN_00575c90 hands out an instance. */
 constexpr std::uint32_t kModelManager = 0x007bf6d0u;
 constexpr std::uint32_t kInstancePoolUsed = 0x007d200cu + 0x8280u;
+/* The model file cache (FUN_0056f9f0); its load FUN_0056ed00 refuses a file
+   not yet cached once 200 are. */
+constexpr std::uint32_t kModelCacheUsed = 0x007b7fb0u + 0x73ecu;
+/* The resource name table (FUN_0055af80 returns *0x7ac244); FUN_0055a6a0
+   refuses the same load once it holds more than 0x1c1 names. */
+constexpr std::uint32_t kNameTable = 0x007ac244u;
+constexpr std::uint32_t kNameTableUsed = 0x9404u;
+/* The scene component's cached model (FUN_00577c70 stores it; FUN_005723a0
+   reports it as loaded) and its root node. */
+constexpr std::uint32_t kSceneModel = 0x08u;
+constexpr std::uint32_t kSceneRoot = 0x04u;
 
 struct PoolLayout {
   const char *name;
+  /* Non-zero: the pool's object is *holder and `used` is an offset in it. */
+  std::uint32_t holder;
   std::uint32_t used;
   std::uint32_t capacity;
   bool set_model;
 };
 
 constexpr std::array<PoolLayout, kModelPoolCount> kPools = {{
-    {"instances", kInstancePoolUsed, 0x2b4u, true},
-    {"component0", kModelManager + 0x2c00u, 0x2b4u, true},
-    {"component1", kModelManager + 0x67f4u, 0x104u, false},
-    {"component2", kModelManager + 0x80d0u, 0x1b0u, true},
-    {"component3", kModelManager + 0xe5d4u, 400u, true},
-    {"component4", kModelManager + 0x103b8u, 0x20u, false},
-    {"component5", kModelManager + 0x115bcu, 0xdcu, false},
-    {"component6", kModelManager + 0x12858u, 0x28u, false},
-    {"component7", kModelManager + 0x12928u, 1u, false},
+    {"instances", 0u, kInstancePoolUsed, 0x2b4u, true},
+    {"component0", 0u, kModelManager + 0x2c00u, 0x2b4u, true},
+    {"component1", 0u, kModelManager + 0x67f4u, 0x104u, false},
+    {"component2", 0u, kModelManager + 0x80d0u, 0x1b0u, true},
+    {"component3", 0u, kModelManager + 0xe5d4u, 400u, true},
+    {"component4", 0u, kModelManager + 0x103b8u, 0x20u, false},
+    {"component5", 0u, kModelManager + 0x115bcu, 0xdcu, false},
+    {"component6", 0u, kModelManager + 0x12858u, 0x28u, false},
+    {"component7", 0u, kModelManager + 0x12928u, 1u, false},
+    {"model_files", 0u, kModelCacheUsed, 200u, true},
+    {"resource_names", kNameTable, kNameTableUsed, 0x1c2u, true},
 }};
 
 } // namespace
@@ -52,7 +67,15 @@ ModelPools model_pools(const GuestMemoryView &memory,
     pools[i].name = kPools[i].name;
     pools[i].capacity = kPools[i].capacity;
     pools[i].set_model = kPools[i].set_model;
-    if (!memory.read_u32(kPools[i].used + tables.slide, &pools[i].used)) {
+    std::uint32_t used = kPools[i].used + tables.slide;
+    if (kPools[i].holder != 0) {
+      std::uint32_t holder = 0;
+      used = memory.read_u32(kPools[i].holder + tables.slide, &holder) &&
+                     holder != 0
+                 ? holder + kPools[i].used
+                 : 0u;
+    }
+    if (used == 0 || !memory.read_u32(used, &pools[i].used)) {
       pools[i].used = 0;
     }
   }
@@ -90,7 +113,9 @@ std::optional<PickupView> pickup_view(const GuestMemoryView &memory,
       memory.read_u32(view.model + kModelSlots, &view.transform) &&
       memory.read_u32(view.model + kModelSlots + 4u, &view.bounds) &&
       memory.read_u32(view.model + kModelSlots + 8u, &view.scene) &&
-      view.scene != 0 && memory.read_u32(view.scene, &view.scene_vtable)) {
+      view.scene != 0 && memory.read_u32(view.scene, &view.scene_vtable) &&
+      memory.read_u32(view.scene + kSceneModel, &view.scene_model) &&
+      memory.read_u32(view.scene + kSceneRoot, &view.scene_root)) {
     view.scene_vtable -= tables.slide;
   }
   return view;

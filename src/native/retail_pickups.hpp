@@ -15,19 +15,19 @@
 
 namespace x2::native {
 
-/* The model manager's pools: the instance pool and the component pools a
-   model descriptor draws from. A model is refused while any pool it needs is
-   full. */
+/* What setModel draws from: the model manager's instance and component
+   pools, the model file cache and the resource name table. A model is
+   refused while any it needs is full; the last two only refuse a file not
+   cached yet. */
 struct ModelPool {
   const char *name = "";
   std::uint32_t used = 0;
   std::uint32_t capacity = 0;
-  /* Drawn from by setModel's descriptor (0x0069c4d0), so a full one refuses
-     every entity model. */
+  /* Gates CPhysicalEntity::setModel, so a full one refuses entity models. */
   bool set_model = false;
 };
 
-inline constexpr std::size_t kModelPoolCount = 9u;
+inline constexpr std::size_t kModelPoolCount = 11u;
 using ModelPools = std::array<ModelPool, kModelPoolCount>;
 
 struct PickupView {
@@ -43,9 +43,18 @@ struct PickupView {
   std::uint32_t bounds = 0;
   std::uint32_t scene = 0;
   std::uint32_t scene_vtable = 0;
+  /* The cached model the scene component draws; zero means not loaded. */
+  std::uint32_t scene_model = 0;
+  std::uint32_t scene_root = 0;
   std::uint32_t loop_fx = 0;
   bool loop_fx_on = false;
   std::uint8_t fx_level = 0;
+
+  /* An instance is attached and its scene component holds a loaded model
+     under a root node: what setModel leaves on success. */
+  bool model_loaded() const {
+    return model != 0 && scene != 0 && scene_model != 0 && scene_root != 0;
+  }
 };
 
 /* Where the tables are in the running image: `slide` is the module's load

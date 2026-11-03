@@ -38,6 +38,8 @@ scratch/run/live.json.
     tools/live_case.py touch-lobby-join       # the join path, games and players lists
                                               # (-4x3, -tablet, -20x9: other shapes)
     tools/live_case.py combat-bench          # boss fight frame times, no JIT flush
+    tools/live_case.py pickup-models         # drops listed with their model state
+                                              # (-unloadable: money models fail)
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -105,6 +107,7 @@ from live_cases_touch_team import (
     case_touch_team_stats,
 )
 from live_cases_combat import case_combat_bench
+from live_cases_pickups import case_pickup_models, case_pickup_models_unloadable
 from live_cases_extraction import (
     case_extract_keyboard_back,
     case_extraction_free,
@@ -169,6 +172,8 @@ CASES = {
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,
     "combat-bench": case_combat_bench,
+    "pickup-models": case_pickup_models,
+    "pickup-models-unloadable": case_pickup_models_unloadable,
     "script-lines": case_script_lines,
     "deadzone-render": case_deadzone_render,
     "ranger-render": case_ranger_render,

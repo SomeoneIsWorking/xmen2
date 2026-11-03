@@ -467,7 +467,7 @@ static void serve(x2::native::Socket fd) {
         "  GET /party        money and each hero's health and energy, as JSON\n"
         "  GET /entities[?match=TEXT]  every entity's definition and "
         "position, as JSON\n"
-        "  GET /pickups[?handle=N]  every dropped item's model instance and "
+        "  GET /pickups[?handle=N]  every dropped item's model state and "
         "loop effect, and the model pools, as JSON\n"
         "  GET /performance/reset  start a fresh frame-time window\n"
         "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "
