@@ -10,6 +10,7 @@
 #include "text_item_touch.hpp"
 #include "../input/menu_touch_gaps.hpp"
 #include "../input/native_touch_menus.hpp"
+#include "../input/retail_text.hpp"
 #include "../input/text_touch_layout.hpp"
 #include "../input/touch_runtime.h"
 #include "../input/touch_targets.hpp"
@@ -272,7 +273,7 @@ public:
       x2::native::automap_touch_turn(turn);
       return true;
     }
-    const std::string label = x2::native::menu_token_label(text);
+    const std::string label = x2::input::retail_shown_text(text);
     const SceneBox area = prompt_host
                               ? prompt_area(call, self, label, finger)
                               : footer_area(call, self, menu_class, finger);
@@ -506,8 +507,8 @@ private:
   struct Button {
     std::uint32_t plain = 0u;
     std::uint32_t held = 0u;
-    SceneBox plain_art;
-    SceneBox held_art;
+    menu_scene::Art plain_art;
+    menu_scene::Art held_art;
     std::uint32_t attached = 0u;
     /* The text scale the label fits at, and the label and finger it was
        found for. */
@@ -550,14 +551,11 @@ private:
   }
 
   /* The turn pair's two buttons' words: the prompt's words without its
-     tokens, an arrow toward each side, after any style escape before the
-     tokens. */
+     tokens, an arrow toward each side. */
   static std::array<std::string, 2> turn_labels(std::string_view text) {
-    const std::size_t at = std::min(text.find(kTurnPair), text.size());
-    const std::string style(text.substr(0, at));
     const std::string words =
-        x2::native::prompt_label(text.substr(at), kTurnPair);
-    return {style + "< " + words, style + words + " >"};
+        x2::input::retail_shown_text(x2::native::prompt_label(text, kTurnPair));
+    return {"< " + words, words + " >"};
   }
 
   /* A menu's footer items, found while its vtable was this. */

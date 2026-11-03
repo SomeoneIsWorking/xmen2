@@ -98,7 +98,7 @@ constexpr float kPi = 3.14159265F;
    extents about its origin; measured from a 1280x720 frame. The dialog's art
    runs on below the frame to z 56 (its bounds), a strip for the prompts. */
 constexpr SceneBox kFrameArt{77.0F, 91.0F, 437.0F, 321.0F};
-constexpr SceneBox kBarArt{-3.7F, -16.6F, 339.7F, 1.8F};
+constexpr menu_scene::Art kBarArt{{-3.7F, -16.6F, 339.7F, 1.8F}};
 /* A drag starts after this share of a card pitch. */
 constexpr float kDragStart = 0.25F;
 /* Card and button text sits this far in from the left of its bar. */

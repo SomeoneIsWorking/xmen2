@@ -38,14 +38,18 @@ void detach(guest::GuestCall &call, std::uint32_t entity);
 void place(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
            presentation::ScenePoint at, float depth, float sx, float sz,
            float turn = 0.0F);
-/* Art whose extents are `art` at scale 1 stretched over `box`; an empty box
+/* Art's extents about its origin at scale 1: across and up, and the depth
+   of its nearest face (the option art's reaches 8 or 9 units in front). */
+struct Art {
+  input::SceneBox box;
+  float front = 0.0F;
+};
+/* Art stretched over `box` with its nearest face at `depth`; an empty box
    parks it off screen. */
 void stretch(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
-             const input::SceneBox &art, const input::SceneBox &box,
-             float depth);
-/* The entity's extents about its origin, placed there at scale 1. */
-input::SceneBox bounds(guest::GuestCall &call, Vectors &vectors,
-                       std::uint32_t entity);
+             const Art &art, const input::SceneBox &box, float depth);
+/* The entity's extents, placed at its origin at scale 1. */
+Art bounds(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity);
 
 /* The entity's animation shown at `phase` of its length, 0 to 1; art
    without one is left alone. */

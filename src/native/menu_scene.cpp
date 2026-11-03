@@ -96,21 +96,21 @@ void place(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
 }
 
 void stretch(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
-             const input::SceneBox &art, const input::SceneBox &box,
-             float depth) {
-  if (!(box.width() > 0.0F) || !(art.width() > 0.0F) ||
-      !(art.height() > 0.0F)) {
+             const Art &art, const input::SceneBox &box, float depth) {
+  const input::SceneBox &extent = art.box;
+  if (!(box.width() > 0.0F) || !(extent.width() > 0.0F) ||
+      !(extent.height() > 0.0F)) {
     place(call, vectors, entity, {kHidden, kHidden}, depth, 1.0F, 1.0F);
     return;
   }
-  const float sx = box.width() / art.width();
-  const float sz = box.height() / art.height();
+  const float sx = box.width() / extent.width();
+  const float sz = box.height() / extent.height();
   place(call, vectors, entity,
-        {box.left - art.left * sx, box.top - art.top * sz}, depth, sx, sz);
+        {box.left - extent.left * sx, box.top - extent.top * sz},
+        depth - art.front, sx, sz);
 }
 
-input::SceneBox bounds(guest::GuestCall &call, Vectors &vectors,
-                       std::uint32_t entity) {
+Art bounds(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity) {
   if (entity == 0u) {
     return {};
   }
@@ -118,8 +118,9 @@ input::SceneBox bounds(guest::GuestCall &call, Vectors &vectors,
   const std::uint32_t min = vectors.put(2, 0.0F, 0.0F, 0.0F);
   const std::uint32_t max = vectors.put(3, 0.0F, 0.0F, 0.0F);
   call.virtual_call(entity, kEntityBounds, {min, max});
-  return {static_cast<float>(RDF32(min)), static_cast<float>(RDF32(min + 8u)),
-          static_cast<float>(RDF32(max)), static_cast<float>(RDF32(max + 8u))};
+  return {{static_cast<float>(RDF32(min)), static_cast<float>(RDF32(min + 8u)),
+           static_cast<float>(RDF32(max)), static_cast<float>(RDF32(max + 8u))},
+          static_cast<float>(RDF32(min + 4u))};
 }
 
 std::uint32_t animation(guest::GuestCall &call, std::uint32_t entity) {

@@ -203,7 +203,8 @@ public:
       const bool chosen = lit && entry == selected;
       if (fade > kFadeShown) {
         const std::uint32_t art = chosen ? cards.selected : cards.plain[i];
-        const SceneBox &extent = chosen ? cards.selected_art : cards.plain_art;
+        const menu_scene::Art &extent =
+            chosen ? cards.selected_art : cards.plain_art;
         menu_scene::stretch(call, vectors, art, extent, card,
                             depth + kCardDepth);
         menu_scene::show_phase(call, art, kSettled);
@@ -354,8 +355,8 @@ private:
   struct Cards {
     std::array<std::uint32_t, kMaxCards> plain{};
     std::uint32_t selected = 0u;
-    SceneBox plain_art;
-    SceneBox selected_art;
+    menu_scene::Art plain_art;
+    menu_scene::Art selected_art;
     std::vector<std::uint32_t> attached;
     x2::input::ListTouchLayout layout;
     SceneBox box;

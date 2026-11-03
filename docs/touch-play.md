@@ -66,6 +66,13 @@ this frame's held-button check, which is what the difficulty popup needs to
 accept a tap or a long press ([Menus](RE/menus.md#the-popup)). Alchemy's own
 move handling is skipped with it; its listener (`sink+0xc`) is null.
 
+While touch is the input (`touch_runtime_active`) the game's arrow is not
+drawn: the same file skips its draw `FUN_005f5b00`
+([Menus](RE/menus.md#the-arrow)), so no arrow sits where the last finger
+lifted or at 0,0 before the first. With a mouse, or with touch controls Off,
+the game draws it as ever. Check it on the PDA's frame: the top-left corner
+has no arrow pixels on touch and has them with `input.touch_controls=0`.
+
 Contacts there used to be counted and discarded, which is the whole of what a
 phone player met: an intro no tap could skip and a menu no tap could press
 (issue #179). They had no second route either, deliberately — `x2native.cpp`
@@ -205,8 +212,12 @@ units from Add's), every button of that row takes an equal share of the
 row's span a tenth of a finger apart (`x2::input::footer_buttons`, over the
 menu's `desctext1..9` drawn as buttons). They are of the
 same option art as the list cards, lit while held, with the prompt's words
-and none of its keycap in the item's font at up to 0.42 of a finger, shrunk
-to fit. A `$DPAD_*` hint (the codex's `Down Scroll`) is not drawn on touch
+as a player reads them (`x2::input::retail_shown_text`: no keycap and no
+`~05` footer style, which is the dim text retail lays on its strip) in the
+item's font and the button's colour at up to 0.42 of a finger, shrunk to fit.
+Port-placed art is put by its nearest face (`menu_scene::Art::front`; the
+option art reaches 8 or 9 units in front of its origin), so a button, card or
+track said to sit behind its text does and does not dim it. A `$DPAD_*` hint (the codex's `Down Scroll`) is not drawn on touch
 (`x2::native::text_is_pad_hint`). The tabs of the shop, stash, review, danger room and world map and the world
 map's point rows, which their menu's `onMouse` finds by name
 (`x2::native::text_has_finger_area`), keep their retail draw and, while

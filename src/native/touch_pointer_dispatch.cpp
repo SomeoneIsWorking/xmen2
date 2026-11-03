@@ -6,7 +6,9 @@
  * frame's held-button check (docs/touch-play.md). A press that starts on a
  * touch button drawn over a small item is the pointer at that item until it
  * lifts (x2::input::TouchTargets), with the left button, the right one, no
- * button, or nothing at all for a button the port acts on itself.
+ * button, or nothing at all for a button the port acts on itself. While
+ * touch is the input the game's arrow (0x005f5b00) is not drawn: the finger
+ * is the pointer.
  */
 #include "../input/touch_runtime.h"
 #include "../input/touch_targets.hpp"
@@ -26,6 +28,8 @@
 namespace {
 
 constexpr std::uint32_t kFrameUpdate = 0x00401d70u;
+/* Draws the arrow at the pointer while 0x00a0a090 is set. */
+constexpr std::uint32_t kCursorDraw = 0x005f5b00u;
 
 class TouchPointerDispatch {
 public:
@@ -159,6 +163,15 @@ extern "C" void x2_override_00401d70(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", kFrameUpdate);
 }
 
+extern "C" void x2_override_005f5b00(CPU *cpu) {
+  if (x2::input::touch_runtime_active() != 0) {
+    cpu->reg[kX86pEsp] += 4u;
+    return;
+  }
+  x86_guest_body(cpu, "XMen2.exe", kCursorDraw);
+}
+
 __attribute__((constructor)) static void x2_touch_pointer_register(void) {
   x86_register_override("XMen2.exe", kFrameUpdate, x2_override_00401d70);
+  x86_register_override("XMen2.exe", kCursorDraw, x2_override_005f5b00);
 }

@@ -409,8 +409,8 @@ private:
     std::uint32_t title = 0u;
     std::uint32_t title_bar = 0u;
     std::uint32_t accept = 0u;
-    SceneBox plain_art;
-    SceneBox lit_art;
+    menu_scene::Art plain_art;
+    menu_scene::Art lit_art;
     /* Retail items touch hid, shown again when retail draws. */
     std::vector<std::uint32_t> hidden;
     x2::input::CardStack stack;

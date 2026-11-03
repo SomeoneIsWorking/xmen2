@@ -784,7 +784,7 @@ private:
       Art art;
       art.plain = menu_scene::load_model(call, kButtonArt);
       art.lit = menu_scene::load_model(call, kLitArt);
-      if (plain_art_.width() <= 0.0F) {
+      if (plain_art_.box.width() <= 0.0F) {
         plain_art_ = menu_scene::bounds(call, vectors, art.plain);
         lit_art_ = menu_scene::bounds(call, vectors, art.lit);
       }
@@ -803,8 +803,8 @@ private:
   }
 
   std::unordered_map<std::uint32_t, Owner> owners_;
-  SceneBox plain_art_;
-  SceneBox lit_art_;
+  menu_scene::Art plain_art_;
+  menu_scene::Art lit_art_;
   Column stats_;
   Column ai_;
   Column skill_;

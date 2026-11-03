@@ -374,6 +374,19 @@ plane and then branches, in this order:
 So a mouse already reaches a menu row through exactly one call —
 `CMenu::onMouse` — and that is the whole of what touch has to satisfy.
 
+## The arrow
+
+The arrow is the game's own draw, not a hardware cursor. `FUN_005f5b00`
+(called from the scene draw `FUN_00585810`, vtable entry at `0069c9b0`) draws
+one XYZRHW quad at the pointer (`FUN_005f53d0(DAT_00a0a004, &x, &z)`) with the
+texture `DAT_00a0a070[DAT_00a0a080[player]]`, the `texs\cursor%i.png` set
+`FUN_005f7050` loads, while the device `DAT_00a0a098` exists and the byte
+`DAT_00a0a090` is set. That byte's one reader is this draw. The frame update
+`FUN_00401d70` sets it every frame through `FUN_005f5990`, to 1 unless
+`CMenuMgr+0x1b4()` says otherwise; the mouse handler clears it on its
+early-out paths. On touch `src/native/touch_pointer_dispatch.cpp` skips the
+draw (the finger is the pointer); the byte is left as the game sets it.
+
 ## The scene plane, and the two mappings into it
 
 The scene plane is the viewport singleton `FUN_005f6df0` at `00a0a138`, vtable

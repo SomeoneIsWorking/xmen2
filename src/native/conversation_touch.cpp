@@ -185,8 +185,9 @@ public:
 
     x2::input::ConversationTouchInput input;
     input.plane = *plane;
-    input.panel = {kPanelAt.x + panel_art_.left, kPanelAt.z + panel_art_.bottom,
-                   kPanelAt.x + panel_art_.right, kPanelAt.z + panel_art_.top};
+    input.panel = {
+        kPanelAt.x + panel_art_.box.left, kPanelAt.z + panel_art_.box.bottom,
+        kPanelAt.x + panel_art_.box.right, kPanelAt.z + panel_art_.box.top};
     input.text_left = static_cast<float>(
         static_cast<std::int32_t>(RD32(line_box + box::kBoxLeft)));
     input.text_width = static_cast<float>(
@@ -470,9 +471,9 @@ private:
   std::optional<std::string> composed_line_;
   std::vector<Response> responses_;
   std::array<std::uint32_t, kCards> bars_{};
-  SceneBox bar_art_;
+  menu_scene::Art bar_art_;
   std::uint32_t panel_entity_ = 0u;
-  SceneBox panel_art_;
+  menu_scene::Art panel_art_;
   x2::input::ConversationTouchLayout layout_;
   x2::native::ConversationTouchDrawn drawn_;
   Press press_;
