@@ -78,6 +78,9 @@ struct HudPlacement {
   /* One ring per potion, side by side under the vitals: square, so a touch
      button's circle is inscribed in it. */
   Rect potions[kHudPotions];
+  /* The money notice retail shows for a while after money changes: its icon
+     and running total, beside the potion rings. */
+  Rect money;
   Rect portraits[4], selector;
   /* The square the round minimap (CHudAutoMap mode 1) is drawn in. */
   Rect minimap;

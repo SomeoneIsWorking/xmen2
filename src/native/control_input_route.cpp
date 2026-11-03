@@ -334,6 +334,14 @@ void control_route_controls(x2::native::Socket fd) {
                    (double)band.top, (double)(band.right - band.left),
                    (double)(band.bottom - band.top));
   }
+  /* The game's money notice while the mobile layout draws it. */
+  x2::presentation::Rect money;
+  if (at < (int)sizeof body && x2::native::hud_money_notice(&money)) {
+    at += snprintf(body + at, sizeof body - (size_t)at, "money %g,%g %gx%g\n",
+                   (double)money.left, (double)money.top,
+                   (double)(money.right - money.left),
+                   (double)(money.bottom - money.top));
+  }
   /* The game's round minimap while the mobile layout has moved it. */
   x2::presentation::Rect map;
   if (at < (int)sizeof body && x2::native::hud_minimap_placed(&map)) {

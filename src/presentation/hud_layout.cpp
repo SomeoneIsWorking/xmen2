@@ -41,6 +41,13 @@ int hud_layout_build(LayoutViewport v, const X2HudSettings *s, float row_top,
     layout.potions[i] =
         (Rect){x, potion_top, x + potion_size, potion_top + potion_size};
   }
+  {
+    const Rect &ring = layout.potions[kHudPotions - 1];
+    float size = potion_size * 0.5f;
+    float money_top = ring.top + (potion_size - size) * 0.5f;
+    layout.money = Rect{ring.right + gap, money_top,
+                        ring.right + gap + size * 6.0f, money_top + size};
+  }
   for (unsigned i = 0; i < 4; ++i) {
     float x = right - face * (float)(4 - i);
     layout.portraits[i] = (Rect){x, top, x + face, top + face};
@@ -74,6 +81,17 @@ Rect hud_potion_icon(Rect ring) {
 Rect hud_potion_count(Rect ring) {
   float size = (ring.right - ring.left) * 0.36f;
   return (Rect){ring.right - size, ring.bottom - size, ring.right, ring.bottom};
+}
+
+Rect hud_money_icon(Rect box) {
+  return Rect{box.left, box.top, box.left + (box.bottom - box.top), box.bottom};
+}
+
+Rect hud_money_total(Rect box) {
+  float size = box.bottom - box.top;
+  float inset = size * 0.1f;
+  return Rect{box.left + size * 1.15f, box.top + inset, box.right,
+              box.bottom - inset};
 }
 
 HudSpace hud_space(float aspect, float scale_x, float scale_z) {

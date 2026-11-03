@@ -21,6 +21,9 @@ inline constexpr float kHudMinimapSize = 0.27f;
    drawn in at the ring's lower right. */
 Rect hud_potion_icon(Rect ring);
 Rect hud_potion_count(Rect ring);
+/* Inside the money notice's box: its icon at the left, its total beside it. */
+Rect hud_money_icon(Rect box);
+Rect hud_money_total(Rect box);
 
 int hud_layout_mobile(const X2HudSettings *settings, int touch_enabled);
 /* The mobile placement for this viewport. `row_top` is the top edge, in

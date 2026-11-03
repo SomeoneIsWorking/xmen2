@@ -200,31 +200,44 @@ static void vitals_draw(CPU *cpu) {
 }
 
 /*
- * CHud stacks the potions: a 20x20 icon with its top at Z=202 (health) or
- * Z=182 (energy), and its count as text to the icon's right, at Z=192 or
- * Z=172. Each potion goes into its own ring, the icon filling it and the
- * count as a badge at its lower right, so the two are separate touch buttons.
- * Every element is fitted from its OWN source coordinates, so nothing here
- * assumes where the retail viewport put the column.
+ * CHud (005a5170) stacks three rows 20 units apart: money, drawn only for a
+ * while after it changes, then health and energy. Each is a 20x20 icon (tops
+ * at Z=222, 202, 182) with its count as text to the right (Z=212, 192, 172).
+ * Each potion goes into its own ring, the icon filling it and the count as a
+ * badge at its lower right, so the two are separate touch buttons; money goes
+ * into its own box beside the rings. Every element is fitted from its OWN
+ * source coordinates, so nothing here assumes where the viewport put the
+ * column.
  */
-enum { POTION_ENERGY_ICON_TOP = 182, POTION_ENERGY_COUNT_Z = 172 };
+enum InventoryRow { ROW_MONEY, ROW_HEALTH, ROW_ENERGY };
+
+static InventoryRow row_of_icon(float top) {
+  if (top > 212.0f)
+    return ROW_MONEY;
+  return top > 192.0f ? ROW_HEALTH : ROW_ENERGY;
+}
+
+static InventoryRow row_of_count(float z) {
+  if (z > 202.0f)
+    return ROW_MONEY;
+  return z > 182.0f ? ROW_HEALTH : ROW_ENERGY;
+}
+
+static unsigned potion_of(InventoryRow row) {
+  return row == ROW_HEALTH ? x2::presentation::kHudPotionHealth
+                           : x2::presentation::kHudPotionEnergy;
+}
+
+/* The money notice's box in output pixels while it is drawn. */
+static std::mutex g_money_lock;
+static x2::presentation::Rect g_money;
+static std::atomic<int> g_money_mask;
+static int g_money_drawn;
 
 static x2::presentation::HudTransform
 potion_fit(x2::presentation::HudSpace source, x2::presentation::Rect target) {
   return x2::presentation::hud_fit(g_space, g_viewport.width, g_viewport.height,
                                    source, target);
-}
-
-static unsigned potion_of_icon(float top) {
-  return top > (float)POTION_ENERGY_ICON_TOP + 0.5f
-             ? x2::presentation::kHudPotionHealth
-             : x2::presentation::kHudPotionEnergy;
-}
-
-static unsigned potion_of_count(float z) {
-  return z > (float)POTION_ENERGY_COUNT_Z + 0.5f
-             ? x2::presentation::kHudPotionHealth
-             : x2::presentation::kHudPotionEnergy;
 }
 
 static void inventory_draw(CPU *cpu) {
@@ -243,7 +256,13 @@ static void inventory_draw(CPU *cpu) {
   }
   ++g_total[2];
   g_groups[2] += (unsigned)g_scope.active;
+  g_money_drawn = 0;
   x86_guest_body(cpu, "XMen2.exe", INVENTORY_DRAW);
+  {
+    const std::lock_guard<std::mutex> lock(g_money_lock);
+    g_money = g_layout.money;
+    g_money_mask = g_scope.active && g_money_drawn;
+  }
   if (g_scope.active) {
     float xyz[3];
     const uint32_t centers[] = {POTION_CENTER, 0x00a0a118u};
@@ -648,14 +667,20 @@ static void sprite_submit(CPU *cpu) {
   read_floats(position, old_position, 3);
   read_floats(size, old_size, 2);
   memcpy(point, old_position, sizeof point);
-  const x2::presentation::HudTransform transform =
-      g_scope.group == 2
-          ? potion_fit(x2::presentation::HudSpace{old_position[0],
-                                                  old_position[2], old_size[0],
-                                                  old_size[1]},
-                       x2::presentation::hud_potion_icon(
-                           g_layout.potions[potion_of_icon(old_position[2])]))
-          : g_scope.transform;
+  x2::presentation::HudTransform transform = g_scope.transform;
+  if (g_scope.group == 2) {
+    const InventoryRow row = row_of_icon(old_position[2]);
+    const x2::presentation::HudSpace source{old_position[0], old_position[2],
+                                            old_size[0], old_size[1]};
+    if (row == ROW_MONEY) {
+      g_money_drawn = 1;
+      transform =
+          potion_fit(source, x2::presentation::hud_money_icon(g_layout.money));
+    } else {
+      transform = potion_fit(source, x2::presentation::hud_potion_icon(
+                                         g_layout.potions[potion_of(row)]));
+    }
+  }
   x2::presentation::hud_transform_point(transform, point);
   for (unsigned i = 0; i < 2; ++i)
     dimensions[i] = old_size[i] * transform.scale;
@@ -683,13 +708,19 @@ static void text_submit(CPU *cpu) {
   for (unsigned i = 0; i < 5; ++i)
     original[i] = RD32(args + i * 4u);
   float xyz[3] = {(float)(int32_t)original[0], 0, (float)(int32_t)original[1]};
-  /* A potion's count: its own 16-unit line, fitted into the ring's badge. */
-  const x2::presentation::HudTransform transform =
-      g_scope.group == 2
-          ? potion_fit(x2::presentation::HudSpace{xyz[0], xyz[2], 16.0f, 16.0f},
-                       x2::presentation::hud_potion_count(
-                           g_layout.potions[potion_of_count(xyz[2])]))
-          : g_scope.transform;
+  /* A count: its own 16-unit line, fitted into the ring's badge, or for
+     money the total beside its icon. */
+  x2::presentation::HudTransform transform = g_scope.transform;
+  if (g_scope.group == 2) {
+    const InventoryRow row = row_of_count(xyz[2]);
+    const x2::presentation::HudSpace source{xyz[0], xyz[2], 16.0f, 16.0f};
+    transform =
+        row == ROW_MONEY
+            ? potion_fit(source,
+                         x2::presentation::hud_money_total(g_layout.money))
+            : potion_fit(source, x2::presentation::hud_potion_count(
+                                     g_layout.potions[potion_of(row)]));
+  }
   x2::presentation::hud_transform_point(transform, xyz);
   WR32(args, (uint32_t)(int32_t)lroundf(xyz[0]));
   WR32(args + 4u, (uint32_t)(int32_t)lroundf(xyz[2]));
@@ -732,6 +763,14 @@ bool hud_minimap_target(HudDisc *out) {
   out->z = g_space.top - (box.top + box.bottom) * 0.5f * unit_z;
   out->radius = (box.right - box.left) * 0.5f * unit_z;
   out->box = box;
+  return true;
+}
+
+bool hud_money_notice(x2::presentation::Rect *out) {
+  const std::lock_guard<std::mutex> lock(g_money_lock);
+  if (!g_money_mask)
+    return false;
+  *out = g_money;
   return true;
 }
 

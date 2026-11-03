@@ -16,6 +16,7 @@ scratch/run/live.json.
     tools/live_case.py extraction-paid        # near a pad, a request pays the total
     tools/live_case.py menu-model             # GET /menu matches the drawn menus
     tools/live_case.py touch-use-prompt       # a tap on the use prompt uses
+    tools/live_case.py touch-money            # the money notice clears the potions
                                               # (-4x3, -16x9, -20x9: other shapes;
                                               # -xp-16x9, -xp-20x9: an XP notice shares it)
     tools/live_case.py touch-cluster          # the action cluster laid out and tapped
@@ -121,6 +122,7 @@ from live_cases_conversation import (BRIEFING_SHAPES, case_touch_briefing,
 from live_cases_game_tip import case_touch_game_tip
 from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
+from live_cases_touch_money import case_touch_money
 from live_cases_touch_cluster import SHAPES as CLUSTER_SHAPES, case_touch_cluster
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
@@ -136,6 +138,8 @@ CASES = {
     "touch-use-prompt-20x9": case_touch_use_prompt,
     "touch-use-prompt-xp-16x9": case_touch_use_prompt,
     "touch-use-prompt-xp-20x9": case_touch_use_prompt,
+    "touch-money": case_touch_money,
+    "touch-money-20x9": case_touch_money,
     "touch-game-tip": case_touch_game_tip,
     "touch-game-tip-720": case_touch_game_tip,
     "touch-conversation": case_touch_conversation,

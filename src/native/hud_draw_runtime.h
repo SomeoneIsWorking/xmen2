@@ -11,6 +11,8 @@ void hud_draw_report();
 /* The band of the HUD lines drawn apart from the use prompt's button, in
    output pixels, while it is drawn. */
 bool hud_message_band(x2::presentation::Rect *out);
+/* The money notice's box in output pixels, while the mobile layout draws it. */
+bool hud_money_notice(x2::presentation::Rect *out);
 
 /* Where the mobile layout puts the round minimap: its centre and radius in
    HUD units (z up), and its square in output pixels. */

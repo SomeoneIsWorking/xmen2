@@ -42,7 +42,7 @@ and invokes `005a43d0`, `005a5170`, `005a2c60`, `005a25b0`, `005a2850`,
 | --- | --- |
 | `005a43d0` | Party selector scene object at `CHud+1c`; per-hero panel calls |
 | `005a3320` | Hero vitals/XP panel, frame object `CHud+24+slot*4` |
-| `005a5170` | Inventory counters/icons including health and energy potions |
+| `005a5170` | Inventory rows 20 units apart: money (icon `0xc`, total and "total + picked up" in yellow, drawn only for a few seconds after a pickup, timer `CHud+74`), then health (`0xa`) and energy (`0xb`) potions; icon tops Z=222, 202, 182, counts at Z=212, 192, 172 |
 | `005a2c60` | Xtreme pips and scene object `CHud+20` |
 | `005a25b0` | 100×10 fill meter; distinct from potion icons |
 | `005a2850` | Separate 84×10 meter and icon presentation |
