@@ -1,11 +1,14 @@
 #include "resolution_ladder.h"
 
+#include "settings.h"
+
 #include <stdio.h>
 
 namespace x2::presentation {
 
-static const unsigned kHeights[] = {720u, 1080u, 1440u, 2160u};
-static const size_t kHeightCount = sizeof kHeights / sizeof kHeights[0];
+static const unsigned kChoices[] = {x2::config::kRenderNative, 720u, 1080u,
+                                    1440u, 2160u};
+static const size_t kChoiceCount = sizeof kChoices / sizeof kChoices[0];
 
 unsigned resolution_width_for(unsigned height, unsigned display_w,
                               unsigned display_h) {
@@ -24,27 +27,32 @@ unsigned resolution_width_for(unsigned height, unsigned display_w,
   return width & ~1u;
 }
 
-unsigned resolution_next_height(unsigned height, unsigned display_h) {
-  size_t i;
-  for (i = 0; i < kHeightCount; i++) {
-    if (kHeights[i] != height)
+static bool offered(unsigned lines, unsigned display_h) {
+  return lines == x2::config::kRenderNative || lines == 720u || !display_h ||
+         lines <= display_h;
+}
+
+unsigned resolution_next_lines(unsigned lines, unsigned display_h) {
+  for (size_t i = 0; i < kChoiceCount; i++) {
+    if (kChoices[i] != lines)
       continue;
-    /* Found the current preset: walk forward to the next one the display can
-       show, wrapping. The first entry always qualifies, so this terminates. */
-    for (size_t step = 1; step <= kHeightCount; step++) {
-      unsigned next = kHeights[(i + step) % kHeightCount];
-      if (next == kHeights[0] || !display_h || next <= display_h)
+    for (size_t step = 1; step <= kChoiceCount; step++) {
+      unsigned next = kChoices[(i + step) % kChoiceCount];
+      if (offered(next, display_h))
         return next;
     }
   }
-  return kHeights[0];
+  return x2::config::kRenderNative;
 }
 
-size_t resolution_label(unsigned height, char *buf, size_t size) {
+size_t resolution_label(unsigned lines, char *buf, size_t size) {
   int n;
   if (!buf || !size)
     return 0;
-  n = snprintf(buf, size, "%up", height);
+  if (lines == x2::config::kRenderNative)
+    n = snprintf(buf, size, "Native");
+  else
+    n = snprintf(buf, size, "%up", lines);
   if (n < 0 || (size_t)n >= size) {
     buf[0] = '\0';
     return 0;

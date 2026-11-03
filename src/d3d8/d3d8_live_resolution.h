@@ -18,6 +18,12 @@ void d3d8_live_resolution_bind(D3DPRESENT_PARAMETERS *parameters,
                                D3D8State *state);
 void d3d8_live_resolution_unbind(void);
 
+/* Whether a device is bound, so a resize can be applied. */
+bool d3d8_live_resolution_active(void);
+
+/* The bound backbuffer's size; false when no device is bound. */
+bool d3d8_live_resolution_size(uint32_t *width, uint32_t *height);
+
 /*
  * Resize the active logical backbuffer without replacing its guest-visible
  * COM objects. GetDisplayMode and the existing backbuffer/depth GetDesc calls

@@ -4,30 +4,66 @@
 #include "d3d8_live_resolution.h"
 #include "display_geometry.h"
 #include "display_mode_runtime.h"
+#include "render_size.h"
 #include "resolution_ladder.h"
 #include "settings_store.h"
 #include "window_settings.h"
+#include "x2_log.h"
 
 #include <stdio.h>
 
 namespace x2::presentation {
 
-void live_resolution_select_next(x2::config::Settings *settings) {
+namespace {
+
+bool g_surface_noted;
+
+} // namespace
+
+void live_resolution_select_next(x2::config::Settings *settings,
+                                 struct SDL_Window *window) {
   unsigned display_w = 0, display_h = 0;
-  unsigned height;
 
   if (!settings)
     return;
-  /* An unavailable display is not a failure here: the ladder assumes 16:9,
-     which is what the game shipped with and what the stored default already
-     is. Refusing to change resolution because SDL has no display would strand
-     the setting. */
   x2::presentation::display_pixel_size(&display_w, &display_h);
-  height =
-      x2::presentation::resolution_next_height(settings->height, display_h);
-  settings->width = (uint16_t)x2::presentation::resolution_width_for(
-      height, display_w, display_h);
-  settings->height = (uint16_t)height;
+  settings->render_lines = x2::presentation::resolution_next_lines(
+      settings->render_lines, display_h);
+  x2::presentation::render_size_resolve(settings, window);
+}
+
+void live_resolution_note_surface() { g_surface_noted = true; }
+
+void live_resolution_rendered(const x2::config::Settings *settings,
+                              unsigned *width, unsigned *height) {
+  uint32_t w = 0, h = 0;
+
+  if (x2::d3d8::d3d8_live_resolution_size(&w, &h)) {
+    *width = w;
+    *height = h;
+    return;
+  }
+  *width = settings->width;
+  *height = settings->height;
+}
+
+void live_resolution_follow_surface(struct SDL_Window *window) {
+  x2::config::Settings *settings = x2::config::settings_store();
+  x2::config::Settings before;
+  char why[256];
+
+  if (!g_surface_noted || !window || !x2::d3d8::d3d8_live_resolution_active())
+    return;
+  g_surface_noted = false;
+  before = *settings;
+  if (!x2::presentation::render_size_resolve(settings, window))
+    return;
+  if (live_resolution_apply(window, settings, &before, why, (int)sizeof why))
+    x2_log_info("RESOLUTION: the output surface changed; %s.\n", why);
+  else
+    x2_log_error("RESOLUTION: could not follow the output surface to "
+                 "its new size: %s.\n",
+                 why);
 }
 
 static void report_rollback(char *why, int whyn, const char *failure,

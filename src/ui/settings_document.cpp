@@ -24,11 +24,12 @@
 
 #include "dinput_pad.h"
 #include "dinput_system.h"
+#include "display_geometry.h"
 #include "gpu_shadow.h"
 #include "live_resolution.h"
+#include "render_size.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
-#include "window_settings.h"
 #include "x2_log.h"
 
 namespace x2::ui {
@@ -245,32 +246,28 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
     x2::config::Settings *settings = x2::config::settings_store();
     x2::config::Settings before = *settings;
     char why[256];
-    x2::presentation::live_resolution_select_next(settings);
+    x2::presentation::live_resolution_select_next(settings, host_window);
     bool applied = x2::presentation::live_resolution_apply(
         host_window, settings, &before, why, sizeof why);
     rebuild();
     set_status(why);
     if (!applied)
       return;
-  } else if (id == "window-mode") {
+  } else if (id == "window-mode" &&
+             !x2::presentation::host_window_fills_display()) {
     x2::config::Settings *settings = x2::config::settings_store();
     x2::config::Settings before = *settings;
     char why[256];
     settings->window_mode =
         (x2::config::WindowMode)(((unsigned)settings->window_mode + 1u) % 3u);
-    if (!x2::presentation::window_settings_apply(host_window, settings, why,
-                                                 sizeof why)) {
-      char rollback_why[256];
-      *settings = before;
-      if (!x2::presentation::window_settings_apply(
-              host_window, &before, rollback_why, sizeof rollback_why))
-        x2_log_error("RMLUI: display rollback also failed: %s\n", rollback_why);
-      set_status(why);
-    } else {
-      std::string status = save_settings();
-      rebuild();
-      set_status(status);
-    }
+    /* Native means another surface in the new mode. */
+    x2::presentation::render_size_resolve(settings, host_window);
+    bool applied = x2::presentation::live_resolution_apply(
+        host_window, settings, &before, why, sizeof why);
+    rebuild();
+    set_status(why);
+    if (!applied)
+      return;
   } else if (id == "close") {
     close_requested = true;
   } else if (id.rfind("tab-", 0) == 0) {

@@ -44,6 +44,18 @@ void d3d8_live_resolution_bind(D3DPRESENT_PARAMETERS *parameters,
 
 void d3d8_live_resolution_unbind(void) { g_active = (ActivePresentation){0}; }
 
+bool d3d8_live_resolution_active(void) {
+  return g_active.parameters && g_active.backbuffer && g_active.state;
+}
+
+bool d3d8_live_resolution_size(uint32_t *width, uint32_t *height) {
+  if (!d3d8_live_resolution_active() || !width || !height)
+    return false;
+  *width = g_active.backbuffer->width;
+  *height = g_active.backbuffer->height;
+  return true;
+}
+
 int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
                                int whyn) {
   D3DPRESENT_PARAMETERS *parameters = g_active.parameters;

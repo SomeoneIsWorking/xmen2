@@ -678,6 +678,7 @@ add_test(NAME settings_overlay COMMAND test_settings_overlay)
 add_executable(test_display_mode_seed tests/test_display_mode_seed.cpp
                 src/presentation/display_mode_seed.cpp
                 src/presentation/display_geometry.cpp
+                src/presentation/render_size.cpp
                 src/presentation/resolution_ladder.cpp)
 target_include_directories(test_display_mode_seed PRIVATE src/presentation
                           src/native src/config)
@@ -804,6 +805,7 @@ set_tests_properties(selector_probe_schema PROPERTIES
 
 add_executable(test_live_resolution tests/test_live_resolution.cpp
                src/presentation/live_resolution.cpp
+               src/presentation/render_size.cpp
                src/presentation/resolution_ladder.cpp)
 target_include_directories(test_live_resolution PRIVATE
                            src/presentation src/config src/d3d8 src/native)
@@ -2000,6 +2002,7 @@ set(X2_NATIVE_SOURCES
     src/presentation/display_mode_seed.cpp
     src/presentation/live_resolution.cpp
     src/presentation/resolution_ladder.cpp
+    src/presentation/render_size.cpp
     src/presentation/display_geometry.cpp
     src/native/display_mode_runtime.cpp
     src/native/ui_text_scale.cpp

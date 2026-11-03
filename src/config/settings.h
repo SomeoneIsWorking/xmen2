@@ -16,6 +16,10 @@ inline constexpr int kSettingsUnassigned = -1;
 
 enum class WindowMode : int { Windowed = 0, Borderless, Fullscreen };
 
+/* video.resolution: render at the output's own pixel size
+   (src/presentation/render_size.h), or a height in lines. */
+inline constexpr unsigned kRenderNative = 0u;
+
 struct ControllerAssignment {
   char id[kSettingsDeviceId];
   int8_t player;
@@ -46,8 +50,11 @@ void keyboard_profile_restore_row(KeyboardProfile *profile, unsigned row);
 void keyboard_profile_restore_all(KeyboardProfile *profile);
 
 struct Settings {
+  /* The game's render size, resolved from render_lines at boot and on every
+     live change; in a windowed native run it is also the window's size. */
   unsigned width;
   unsigned height;
+  unsigned render_lines;
   WindowMode window_mode;
   uint8_t dynamic_shadows;
   uint16_t shadow_resolution;

@@ -43,6 +43,8 @@
 #include "../gpu/gpu_device.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "live_resolution.h"
+#include "render_size.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include "win32_events.h"
@@ -555,6 +557,7 @@ void imp_USER32_UnregisterClassA(CPU *C) {
 void imp_USER32_CreateWindowExA(CPU *C) {
   uint32_t name = A(2);
   int32_t w = (int32_t)A(6), h = (int32_t)A(7);
+  unsigned window_w, window_h;
   x2::config::Settings *settings = x2::config::settings_store();
   SDL_WindowFlags window_flags;
   char why[256];
@@ -563,8 +566,9 @@ void imp_USER32_CreateWindowExA(CPU *C) {
                  "backs the guest's HWNDs with exactly one\n");
     abort();
   }
-  w = (int32_t)settings->width;
-  h = (int32_t)settings->height;
+  x2::presentation::render_size_window(settings, &window_w, &window_h);
+  w = (int32_t)window_w;
+  h = (int32_t)window_h;
   window_flags = g_hide_windows ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
   /*
    * Landscape, stated rather than inferred.
@@ -587,6 +591,7 @@ void imp_USER32_CreateWindowExA(CPU *C) {
     return;
   }
   g_win_live = 1;
+  x2::presentation::live_resolution_note_surface();
   x2::ui::WindowIcon().apply(g_win);
   g_gwl[1] = x2::native::win32_events_registered_wndproc();
   x2::native::win32_events_set_wndproc(g_gwl[1]);

@@ -10,6 +10,7 @@
 #include "../input/revive_prompt.hpp"
 #include "../input/touch_runtime.h"
 #include "d3d8_drawcall.h"
+#include "live_resolution.h"
 #include "rmlui_ui.h"
 #include "touch_menu_source.hpp"
 
@@ -253,6 +254,8 @@ static void pump_sdl(void) {
     } else if (event.type == SDL_EVENT_WINDOW_MOUSE_LEAVE) {
       x2::native::win32_mouse_window_state(&g_mouse, g_hidden,
                                            g_mouse.window_focused, 0);
+    } else if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+      x2::presentation::live_resolution_note_surface();
     }
     /* Before the overlay's own gate and before the UI can consume the
        event: which device the player is using is a fact about every event,
@@ -300,6 +303,7 @@ static void pump_sdl(void) {
 
   x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
+  x2::presentation::live_resolution_follow_surface(g_window);
 }
 
 } // namespace

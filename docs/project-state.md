@@ -543,10 +543,16 @@ targets, updates the D3D8 backbuffer/depth descriptions and viewport, applies
 the title's retained display dimensions/aspect/pixel scales and window
 geometry, and persists only after all live presentation owners accept the
 change; focused tests prove success and each rollback path. The resolution
-control is a height preset -- 720p, 1080p, 1440p, 2160p -- whose width is
-derived from the primary display's measured pixel aspect ratio rather than
-picked from a fixed 16:9 table, so a 16:10 or 21:9 panel gets a mode that fills
-it; presets taller than the display are not offered, and 720p always is. One
+control is Native (the default) or a height preset -- 720p, 1080p, 1440p,
+2160p -- whose width is derived from the screen's measured pixel aspect ratio
+rather than picked from a fixed 16:9 table, so a 16:10 or 21:9 panel gets a
+mode that fills it; presets taller than the display are not offered, and 720p
+always is. Native is the output surface's pixel size where the window is the
+display (Android, desktop borderless/fullscreen) and the window's size in a
+desktop window (`render_size.h`; `tools/live_case.py native-resolution`).
+Where the host's window is the display there is no Window mode row and a
+resolution change never resizes the window. Moving these rows into the
+retail Options screen is plan #203. One
 owner now answers "display size in pixels" for the ladder, GetDeviceCaps and
 the D3D8 legality pass. The visible
 800x600 -> 1280x720 case passed 8/8 and directly matched the live menu geometry

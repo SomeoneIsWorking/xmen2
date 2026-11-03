@@ -220,6 +220,11 @@ lucent::cvar::Var<long> g_hotep{"hotep", 0};
  * or X2_PRESENT_LUMA=N on a host that has an environment. */
 lucent::cvar::Var<long> g_present_luma{"present_luma", 0};
 
+/* WxH: the display is this many pixels and the window fills it, as on a
+ * phone, so a desktop run exercises the window-is-the-display presentation
+ * (render_size.h). A diagnostic; --set display.emulate=2728x1264. */
+lucent::cvar::Var<std::string> g_display_emulate{"display.emulate", ""};
+
 /* on: compare shared Alchemy input snapshots with the retained DirectInput
  * publication while the first shared-engine adapter is being qualified. */
 lucent::cvar::Var<bool> g_alchemy_input_verify{"alchemy.input.verify", true};
@@ -338,6 +343,7 @@ void runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);
   lucent::cvar::register_var(g_present_luma);
+  lucent::cvar::register_var(g_display_emulate);
   lucent::cvar::register_var(g_x86_import_fastpath);
   lucent::cvar::register_var(g_alchemy_input_verify);
   lucent::cvar::register_var(g_audio_adpcm_verify);

@@ -7,11 +7,25 @@ struct SDL_Window;
 namespace x2::presentation {
 
 /*
- * Advance the configured resolution to the next height preset -- 720p, 1080p,
- * 1440p, 2160p -- and derive its width from the display's aspect ratio. See
- * resolution_ladder.h for the policy and display_geometry.h for the query.
+ * Advance the render-resolution choice -- Native, 720p, 1080p, 1440p, 2160p
+ * -- and resolve the size it means for `window` (render_size.h).
  */
-void live_resolution_select_next(x2::config::Settings *settings);
+void live_resolution_select_next(x2::config::Settings *settings,
+                                 struct SDL_Window *window);
+
+/*
+ * The output surface may have changed size (rotation, resize, the window
+ * created at another size than predicted). Once a D3D8 device exists,
+ * re-resolve the render size and apply it live when it differs; until then
+ * the note is kept. Called from the event pump, between frames.
+ */
+void live_resolution_note_surface();
+
+/* The size the game renders at now: the live backbuffer once a device
+   exists, else the resolved settings. */
+void live_resolution_rendered(const x2::config::Settings *settings,
+                              unsigned *width, unsigned *height);
+void live_resolution_follow_surface(struct SDL_Window *window);
 
 /*
  * Apply and persist one Port Settings resolution change as a transaction.

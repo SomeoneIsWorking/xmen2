@@ -1,5 +1,7 @@
 #include "window_settings.h"
 
+#include "display_geometry.h"
+
 #include <SDL3/SDL.h>
 #include <stdio.h>
 
@@ -40,6 +42,12 @@ int window_settings_apply(SDL_Window *window,
     if (why && whyn > 0)
       snprintf(why, (size_t)whyn, "window and settings are required");
     return 0;
+  }
+  if (host_window_fills_display()) {
+    g_owns_geometry = 1;
+    if (why && whyn > 0)
+      snprintf(why, (size_t)whyn, "the host's window fills the display");
+    return 1;
   }
   if (settings->window_mode == x2::config::WindowMode::Windowed) {
     if (!SDL_SetWindowFullscreen(window, false))
@@ -87,6 +95,8 @@ int window_settings_apply(SDL_Window *window,
   return 1;
 }
 
-int window_settings_owns_geometry() { return g_owns_geometry; }
+int window_settings_owns_geometry() {
+  return g_owns_geometry || host_window_fills_display();
+}
 
 } // namespace x2::presentation

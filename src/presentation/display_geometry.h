@@ -1,5 +1,7 @@
 #pragma once
 
+struct SDL_Window;
+
 namespace x2::presentation {
 
 /*
@@ -24,7 +26,21 @@ namespace x2::presentation {
  * points -- because the rects it returns for the game's own window come from
  * SDL_GetWindowSize in the same space, and a desktop rect in pixels beside a
  * window rect in points is a comparison the guest would get wrong.
+ *
+ * Video is started here when nothing has started it yet, so the answer is
+ * the same in a --no-window run as in a shown one.
+ *
+ * `display.emulate=WxH` replaces the measurement and makes the host window
+ * fill the display, so a desktop run presents as a phone does.
  */
 int display_pixel_size(unsigned *width, unsigned *height);
+
+/* Whether the host gives the game one window that always fills the display:
+   Android's and iOS's video drivers, or display.emulate. Window geometry is
+   then the host's, not a setting. */
+bool host_window_fills_display();
+
+/* The output surface's size in pixels, from the live window. */
+int window_pixel_size(SDL_Window *window, unsigned *width, unsigned *height);
 
 } // namespace x2::presentation

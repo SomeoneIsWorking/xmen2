@@ -41,6 +41,7 @@ scratch/run/live.json.
     tools/live_case.py combat-bench          # boss fight frame times, no JIT flush
     tools/live_case.py pickup-models         # drops listed with their model state
                                               # (-unloadable: money models fail)
+    tools/live_case.py native-resolution      # Native is the output size; 720p is not
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -124,6 +125,7 @@ from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
 from live_cases_touch_money import case_touch_money
 from live_cases_touch_cluster import SHAPES as CLUSTER_SHAPES, case_touch_cluster
+from live_cases_resolution import case_native_resolution
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
 
 CASES = {
@@ -207,6 +209,7 @@ CASES.update(PAGE_CASES)
 CASES.update(LOBBY_CASES)
 CASES.update({
     "live-resolution": case_live_resolution,
+    "native-resolution": case_native_resolution,
     "mouse-click": case_mouse_click,
 })
 

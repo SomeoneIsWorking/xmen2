@@ -14,7 +14,7 @@
 #include <string.h>
 
 #include "advapi32.h"
-#include "display_geometry.h"
+#include "render_size.h"
 #include "resolution_ladder.h"
 #include "settings_store.h"
 
@@ -89,29 +89,14 @@ int display_mode_seed_publish() {
   return 1;
 }
 
-/* The setting IS a height; the stored width is the one derived on the
-   display where it was last chosen. A default or a moved profile carries a
-   width for another shape -- the 1280x720 default pillarboxed on a 2728x1264
-   phone -- so the width is re-derived from the display this run has before
-   the mode is published. An unknown display (a headless run) keeps it. */
-namespace {
-
-void fit_display(x2::config::Settings *settings) {
-  unsigned display_w = 0, display_h = 0;
-
-  if (!x2::presentation::display_pixel_size(&display_w, &display_h))
-    return;
-  settings->width = (uint16_t)x2::presentation::resolution_width_for(
-      settings->height, display_w, display_h);
-}
-
-} // namespace
-
 void display_mode_seed_boot() {
   x2::config::Settings *settings = x2::config::settings_store();
   int acted, current;
 
-  fit_display(settings);
+  char choice[16];
+
+  render_size_resolve(settings, nullptr);
+  resolution_label(settings->render_lines, choice, sizeof choice);
   acted = display_mode_seed_publish();
   current = display_mode_seed_is_current();
 
@@ -119,11 +104,11 @@ void display_mode_seed_boot() {
      initialization may install its own 800x600 default afterwards;
      display_mode_runtime.cpp reconciles that exact settings-load boundary. */
   if (current) {
-    x2_log_error("DISPLAY SEED: %s video %ux%u against retail "
+    x2_log_error("DISPLAY SEED: %s video %ux%u (%s) against retail "
                  "Display\\Resolution; the runtime settings-load "
                  "bridge will verify the parsed value.\n",
                  acted ? "published" : "no change needed for", settings->width,
-                 settings->height);
+                 settings->height, choice);
   } else {
     x2_log_error("DISPLAY SEED: REFUSED video %ux%u; retail "
                  "Display\\Resolution does not contain the configured "

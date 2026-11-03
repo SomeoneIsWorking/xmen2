@@ -1,7 +1,10 @@
 #include "live_resolution.h"
 
 #include "display_geometry.h"
+#include "render_size.h"
 #include "resolution_ladder.h"
+#include "settings_store.h"
+#include "x2_log.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,7 +54,34 @@ int x2::presentation::display_pixel_size(unsigned *width, unsigned *height) {
   return 1;
 }
 
+static bool host_fills_display;
+static unsigned surface_w, surface_h;
+
+bool x2::presentation::host_window_fills_display() {
+  return host_fills_display;
+}
+
+int x2::presentation::window_pixel_size(SDL_Window *window, unsigned *width,
+                                        unsigned *height) {
+  if (!window || !surface_w || !surface_h)
+    return 0;
+  *width = surface_w;
+  *height = surface_h;
+  return 1;
+}
+
+void x2_log_error(const char *format, ...) { (void)format; }
+void x2_log_info(const char *format, ...) { (void)format; }
+
 namespace x2::d3d8 {
+
+bool d3d8_live_resolution_active(void) { return true; }
+
+bool d3d8_live_resolution_size(uint32_t *width, uint32_t *height) {
+  (void)width;
+  (void)height;
+  return false;
+}
 
 int d3d8_live_resolution_apply(uint32_t width, uint32_t height, char *why,
                                int whyn) {
@@ -114,7 +144,10 @@ int ui_text_scale_reapply(void) {
 }
 } // namespace x2::native
 
+static x2::config::Settings g_store;
+
 namespace x2::config {
+Settings *settings_store(void) { return &g_store; }
 int settings_store_save(char *why, int whyn) {
   steps[step_count++] = STEP_SAVE;
   save_calls++;
@@ -155,71 +188,118 @@ int main(void) {
   before.height = 720;
   before.window_mode = x2::config::WindowMode::Windowed;
 
-  /* 1080p display: the ladder offers only what the panel can show, so it is
-     720p <-> 1080p and never climbs to 1440p. */
+  /* Windowed, 1080p display: Native keeps the window's size, and the ladder
+     offers only what the panel can show. */
   display_w = 1920;
   display_h = 1080;
   settings = before;
-  x2::presentation::live_resolution_select_next(&settings);
-  CHECK(settings.width == 1920 && settings.height == 1080);
-  x2::presentation::live_resolution_select_next(&settings);
-  CHECK(settings.width == 1280 && settings.height == 720);
+  settings.render_lines = x2::config::kRenderNative;
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == 720 && settings.width == 1280 &&
+        settings.height == 720);
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == 1080 && settings.width == 1920 &&
+        settings.height == 1080);
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == x2::config::kRenderNative &&
+        settings.width == 1920 && settings.height == 1080);
 
   /* 4K: the full ladder, each width derived from the same 16:9 ratio. */
   display_w = 3840;
   display_h = 2160;
-  settings.height = 720;
-  x2::presentation::live_resolution_select_next(&settings);
+  settings.render_lines = 720;
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 1920 && settings.height == 1080);
-  x2::presentation::live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 2560 && settings.height == 1440);
-  x2::presentation::live_resolution_select_next(&settings);
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 3840 && settings.height == 2160);
-  x2::presentation::live_resolution_select_next(&settings);
-  CHECK(settings.width == 1280 && settings.height == 720);
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == x2::config::kRenderNative);
 
-  /* The point of the change: width follows the PANEL, not a 16:9 table. */
+  /* The point of the presets: width follows the PANEL, not a 16:9 table. */
   display_w = 2560; /* 16:10 */
   display_h = 1600;
-  settings.height = 720;
-  x2::presentation::live_resolution_select_next(&settings);
+  settings.render_lines = 720;
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 1728 && settings.height == 1080);
 
   display_w = 3440; /* 21:9 */
   display_h = 1440;
-  settings.height = 720;
-  x2::presentation::live_resolution_select_next(&settings);
+  settings.render_lines = 720;
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 2580 && settings.height == 1080);
 
-  /* A width that cannot be even is rounded down rather than accepted: 1080p
-     on this 683:384 panel is 1921.something. */
+  /* A width that cannot be even is rounded down rather than accepted. */
   display_w = 1366;
   display_h = 768;
-  settings.height = 720;
-  x2::presentation::live_resolution_select_next(&settings);
+  settings.render_lines = x2::config::kRenderNative;
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 1280 && settings.height == 720);
   CHECK(x2::presentation::resolution_width_for(1080, 1366, 768) == 1920);
 
   /* No display: 16:9, because refusing to change resolution would strand the
      setting. */
   display_w = display_h = 0;
-  settings.height = 720;
-  x2::presentation::live_resolution_select_next(&settings);
+  settings.render_lines = 720;
+  x2::presentation::live_resolution_select_next(&settings, &window);
   CHECK(settings.width == 1920 && settings.height == 1080);
 
   /* A height stored by an older build is not on the ladder; it resolves to
-     the first preset instead of being kept. */
-  display_w = 1920;
-  display_h = 1080;
-  settings.width = 1600;
-  settings.height = 900;
-  x2::presentation::live_resolution_select_next(&settings);
-  CHECK(settings.width == 1280 && settings.height == 720);
+     Native. */
+  settings.render_lines = 900;
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == x2::config::kRenderNative);
+
+  /* Borderless: Native is the live surface; a preset takes the surface's
+     shape. */
+  display_w = 2800;
+  display_h = 1840;
+  surface_w = 2800;
+  surface_h = 1840;
+  settings = before;
+  settings.window_mode = x2::config::WindowMode::Borderless;
+  settings.render_lines = 2160;
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.render_lines == x2::config::kRenderNative &&
+        settings.width == 2800 && settings.height == 1840);
+  x2::presentation::live_resolution_select_next(&settings, &window);
+  CHECK(settings.width == 1096 && settings.height == 720);
+
+  /* A host whose one window is the display: windowed means the display too,
+     and before the window exists the display is the prediction. */
+  host_fills_display = true;
+  display_w = 2728;
+  display_h = 1264;
+  settings = before;
+  CHECK(x2::presentation::render_size_resolve(&settings, nullptr) == 1 &&
+        settings.width == 2728 && settings.height == 1264);
+  CHECK(x2::presentation::render_size_resolve(&settings, nullptr) == 0);
+
+  /* The surface the host actually gave differs from the prediction: the
+     pump's note is followed live, once. */
+  surface_w = 2680;
+  surface_h = 1264;
+  g_store = settings;
+  reset_calls();
+  x2::presentation::live_resolution_follow_surface(&window);
+  CHECK(d3d_calls == 0);
+  x2::presentation::live_resolution_note_surface();
+  x2::presentation::live_resolution_follow_surface(&window);
+  CHECK(d3d_calls == 1 && d3d_width[0] == 2680 && d3d_height[0] == 1264);
+  CHECK(g_store.width == 2680 && g_store.height == 1264);
+  x2::presentation::live_resolution_follow_surface(&window);
+  CHECK(d3d_calls == 1);
+  host_fills_display = false;
+  surface_w = surface_h = 0;
 
   {
     char label[16];
     CHECK(x2::presentation::resolution_label(1080, label, sizeof label) == 5 &&
           strcmp(label, "1080p") == 0);
+    CHECK(x2::presentation::resolution_label(x2::config::kRenderNative, label,
+                                             sizeof label) == 6 &&
+          strcmp(label, "Native") == 0);
     CHECK(x2::presentation::resolution_label(1080, label, 4) == 0 &&
           label[0] == '\0');
   }

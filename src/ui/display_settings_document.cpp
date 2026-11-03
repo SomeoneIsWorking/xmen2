@@ -7,6 +7,8 @@
 
 #include <sstream>
 
+#include "display_geometry.h"
+#include "live_resolution.h"
 #include "resolution_ladder.h"
 
 namespace x2::ui {
@@ -22,28 +24,33 @@ display_settings_document_rml(const x2::config::Settings &settings) {
   std::ostringstream rml;
   char resolution_label[16];
 
-  x2::presentation::resolution_label(settings.height, resolution_label,
+  unsigned rendered_w, rendered_h;
+
+  x2::presentation::resolution_label(settings.render_lines, resolution_label,
                                      sizeof resolution_label);
-  /* The preset is the height; the width beside it is what the display's own
-     aspect ratio made of it, and is shown because it is the number the player
-     will recognise in a screenshot or a bug report. */
+  x2::presentation::live_resolution_rendered(&settings, &rendered_w,
+                                             &rendered_h);
+  /* The size beside the choice is the one the game renders at, the number
+     the player will recognise in a screenshot or a bug report. */
   rml << "<pane><div class='section-heading'>Display</div>"
       << "<select-button id='resolution'><key>Resolution</key><value>"
-      << resolution_label << " (" << settings.width << "x" << settings.height
-      << ")</value></select-button>"
-      << "<select-button id='window-mode'><key>Window mode</key><value>"
-      << escape_rml(window_mode_name(settings.window_mode))
-      << "</value></select-button>"
-      << "<select-button id='dynamic-shadows'><key>Dynamic "
+      << resolution_label << " (" << rendered_w << "x" << rendered_h
+      << ")</value></select-button>";
+  /* Where the host's one window is the display there is no window mode. */
+  if (!x2::presentation::host_window_fills_display())
+    rml << "<select-button id='window-mode'><key>Window mode</key><value>"
+        << escape_rml(window_mode_name(settings.window_mode))
+        << "</value></select-button>";
+  rml << "<select-button id='dynamic-shadows'><key>Dynamic "
          "shadows</key><value>"
       << (settings.dynamic_shadows ? "On" : "Off") << "</value></select-button>"
       << "<select-button id='shadow-resolution'><key>Shadow "
          "quality</key><value>"
       << settings.shadow_resolution << "</value></select-button>"
-      << "<div class='help'>The resolution setting is a height; the width "
-         "follows your display's shape. Windowed uses the selected client "
-         "size. Borderless uses the desktop mode. Exclusive fullscreen "
-         "switches the display to the selected resolution.</div>"
+      << "<div class='help'>Native renders at the screen's own pixel size; "
+         "in a window it is the window's size. A preset is a height whose "
+         "width follows the screen's shape. Exclusive fullscreen switches "
+         "the display to the resolved size.</div>"
       << "<p id='status' class='status'></p><spacer></spacer></pane>"
       << hud_settings_document_rml(settings.hud);
   return rml.str();

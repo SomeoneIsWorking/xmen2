@@ -105,6 +105,7 @@ void settings_defaults(Settings *settings) {
   memset(settings, 0, sizeof *settings);
   settings->width = 1280;
   settings->height = 720;
+  settings->render_lines = kRenderNative;
   settings->window_mode = WindowMode::Windowed;
   settings->dynamic_shadows = 1;
   settings->shadow_resolution = 2048;
@@ -223,6 +224,13 @@ int parse_line(ParseState *state, char *line) {
     return number(value, X2_MIN_WIDTH, X2_MAX_WIDTH, &settings->width);
   if (strcmp(key, "video.height") == 0)
     return number(value, X2_MIN_HEIGHT, X2_MAX_HEIGHT, &settings->height);
+  if (strcmp(key, "video.resolution") == 0) {
+    if (strcmp(value, "native") == 0) {
+      settings->render_lines = kRenderNative;
+      return 1;
+    }
+    return number(value, X2_MIN_HEIGHT, X2_MAX_HEIGHT, &settings->render_lines);
+  }
   if (strcmp(key, "video.mode") == 0)
     return window_mode_parse(value, &settings->window_mode);
   if (strcmp(key, "video.dynamic_shadows") == 0) {
@@ -484,6 +492,10 @@ int settings_save(const Settings *settings, const char *path, char *why,
   fprintf(file, "video.width=%u\nvideo.height=%u\nvideo.mode=%s\n",
           settings->width, settings->height,
           window_mode_name(settings->window_mode));
+  if (settings->render_lines == kRenderNative)
+    fprintf(file, "video.resolution=native\n");
+  else
+    fprintf(file, "video.resolution=%u\n", settings->render_lines);
   fprintf(file, "video.dynamic_shadows=%u\nvideo.shadow_resolution=%u\n",
           settings->dynamic_shadows, settings->shadow_resolution);
   fprintf(file, "ui.text_scale=%g\n", (double)settings->text_scale);
