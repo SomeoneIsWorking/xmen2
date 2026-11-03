@@ -200,7 +200,7 @@ def caller(label, chain, ranges, names, host):
 def inclusive(ips, chains, ranges, host):
     """Samples beneath each profiled-library symbol, each counted once per sample."""
     total = collections.Counter()
-    for ip, chain in zip(ips, chains):
+    for ip, chain in zip(ips, chains, strict=True):
         seen = set()
         for address in (ip, *chain):
             if ranges.guest_at(address) is not None:
@@ -214,7 +214,7 @@ def inclusive(ips, chains, ranges, host):
 def callers_of(target, ips, chains, ranges, names, host):
     """For samples with `target` on their stack, the frame that called it."""
     found = collections.Counter()
-    for ip, chain in zip(ips, chains):
+    for ip, chain in zip(ips, chains, strict=True):
         frames = (ip, *chain)
         for i, address in enumerate(frames):
             if ranges.guest_at(address) is None and host.name(address) == target:
@@ -252,7 +252,7 @@ def report(ips, ranges, names, top, blocks, host=None, chains=None):
         rank[names.name(guest) if not blocks else f"{guest:#010x} {names.name(guest)}"] += count
     if host:
         callers = collections.Counter()
-        for ip, chain in zip(ips, chains):
+        for ip, chain in zip(ips, chains, strict=True):
             if ranges.guest_at(ip) is None:
                 label = host.name(ip)
                 rank[label] += 1
