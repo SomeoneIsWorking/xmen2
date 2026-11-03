@@ -2273,6 +2273,7 @@ set(X2_NATIVE_SOURCES
     src/native/entity_spawn_probe.cpp
     src/native/model_attach_report.cpp
     src/native/heartbeat.cpp
+    src/native/heartbeat_render_report.cpp
     src/native/heartbeat_reports.cpp
     src/native/heartbeat_stall.cpp
     src/native/host_touch.cpp

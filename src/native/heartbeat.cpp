@@ -2,6 +2,7 @@
 #include "x2_log.h"
 /* See heartbeat.h. */
 #include "heartbeat.h"
+#include "heartbeat_render_report.h"
 #include "heartbeat_reports.h"
 #include "heartbeat_stall.h"
 #include "kernel32_handles.h"
@@ -10,9 +11,6 @@
 #include "threads_yield.h"
 
 #include "d3d8_device.h"
-#include "d3d8_drawcall.h"
-#include "d3d8_resource.h"
-#include "d3d8_vertex_shader.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing_report.h"
@@ -74,6 +72,7 @@ static void *heartbeat_thread(void *arg) {
   unsigned long p_cross = 0, p_scenes = 0, p_presents = 0, p_clears = 0,
                 p_draws = 0, p_gpu = 0, p_ref = 0;
   int first = 1;
+  HeartbeatRenderReport render;
   (void)arg;
   for (;;) {
     struct timespec req;
@@ -287,39 +286,6 @@ static void *heartbeat_thread(void *arg) {
          black screen with both rising is a shading problem; a black
          screen with the second flat is a backend that refused every
          draw, and only these two numbers side by side say which. */
-      {
-        static unsigned long p_ms;
-        unsigned long ms;
-        int most;
-        d3d8_drawcall_multistage(&ms, &most);
-        /* Printed even at ZERO, next to the draw total. "No draw
-           wanted a second stage" is a real finding about this route and
-           is worth as much as a large number; a line that appears only
-           when non-zero cannot be told from a check nobody ran. */
-        x2_log_error("[HB]           %lu of %lu draw(s) (+%lu) "
-                     "wanted a texture stage beyond 0 (up to %d "
-                     "extra); stage 1 is implemented and stage 2+ "
-                     "is refused\n",
-                     ms, draws, ms - p_ms, most);
-        p_ms = ms;
-      }
-      {
-        unsigned long dflt, other;
-        uint32_t f[4];
-        d3d8_drawcall_combiner_args(&dflt, &other, f);
-        /* Printed at zero as well: the shader ASSUMES the default
-           arguments, and "no draw disagreed" is the measurement that
-           licenses the assumption. */
-        x2_log_error("[HB]           combiner args: %lu default, "
-                     "%lu other%s\n",
-                     dflt, other,
-                     other ? "" : " -- the shader's assumption holds");
-        if (other)
-          x2_log_error("[HB]             first non-default: "
-                       "COLORARG1 %u COLORARG2 %u ALPHAARG1 %u "
-                       "ALPHAARG2 %u\n",
-                       f[0], f[1], f[2], f[3]);
-      }
       x2_log_error("[HB]           gpu draws %lu (+%lu)  refused %lu "
                    "(+%lu)%s\n",
                    gpu_draws, gpu_draws - p_gpu, gpu_refused,
@@ -328,47 +294,7 @@ static void *heartbeat_thread(void *arg) {
                        ? "  -- the engine asked and the BACKEND drew none"
                        : "");
       x2::gpu::gpu_frame_timing_report_interval();
-      /*
-       * Dynamic buffers, live, including the write-after-draw case that
-       * requires SDL_GPU to cycle to a new backing generation. The
-       * first counter (relocked in one frame) does NOT answer this: a
-       * buffer may be drawn once and rewritten once without two
-       * unlocks. Printed at zero so the path's denominator is visible.
-       */
-      {
-        char vsl[256];
-        d3d8_vertex_shader_binding_line(vsl, sizeof vsl);
-        x2_log_error("[HB]           %s\n", vsl);
-      }
-      /* The oracle probes. Live, and printed whether armed or not: a
-         capture that recorded nothing must be visible DURING the run,
-         not discovered afterwards when the stream is compared and its
-         emptiness reads as agreement. */
-      {
-        char pl[192];
-        d3d8_vsconst_caller_line(pl, sizeof pl);
-        x2_log_error("[HB]           %s\n", pl);
-      }
-      {
-        static unsigned long p_unl, p_byt, p_rel, p_gen;
-        unsigned long lk, dis, noov, unl, byt, rel, gen;
-        d3d8_buffer_lock_counts(&lk, &dis, &noov, &unl, &byt, &rel, &gen);
-        x2_log_error("[HB]           buffer locks %lu (%lu DISCARD, "
-                     "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
-                     "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
-                     "frame\n",
-                     lk, dis, noov, unl, unl - p_unl, byt >> 20,
-                     (byt - p_byt) >> 20, rel, rel - p_rel);
-        x2_log_error("[HB]           of those unlocks, %lu (+%lu) "
-                     "needed a NEW BUFFER GENERATION after an "
-                     "earlier draw -- SDL_GPU cycling preserves "
-                     "both\n",
-                     gen, gen - p_gen);
-        p_unl = unl;
-        p_byt = byt;
-        p_rel = rel;
-        p_gen = gen;
-      }
+      render.report(draws);
     }
 
     p_cross = cross;
