@@ -560,12 +560,12 @@ private:
     const bool enabled =
         (RD8(self + item::kFlags) & x2::menu::kItemEnabled) != 0u;
     const float lit = focused ? 1.0F : 0.0F;
+    const SceneBox inner = x2::input::card_text_box(card, pad);
     const SceneBox label_area =
-        setting.volume ? x2::input::volume_label(card, pad)
-                       : SceneBox{card.left + pad, card.bottom,
-                                  card.left + pad +
-                                      kLabelShare * (card.width() - 2.0F * pad),
-                                  card.top};
+        setting.volume
+            ? x2::input::volume_label(card, pad)
+            : SceneBox{inner.left, inner.bottom,
+                       inner.left + kLabelShare * inner.width(), inner.top};
     put_line(call, self, box, line.address(), label, label_area, panel.scale,
              menu_text::kAlignMiddle,
              menu_scene::style_color(call, vectors, RD32(self + item::kStyle),
@@ -573,8 +573,8 @@ private:
     if (setting.volume || row.value == 0u) {
       return;
     }
-    const SceneBox value_area{label_area.right, card.bottom, card.right - pad,
-                              card.top};
+    const SceneBox value_area{label_area.right, inner.bottom, inner.right,
+                              inner.top};
     put_line(
         call, self, box, line.address(), item_text(call, row.value), value_area,
         panel.scale, menu_text::kAlignRight | menu_text::kAlignMiddle,
@@ -601,9 +601,13 @@ private:
   static void fit(x2::guest::GuestCall &call, Panel &panel, std::uint32_t box,
                   std::uint32_t line) {
     const float pad = kTextPad * panel.finger;
-    const float width = panel.stack.cards.empty()
-                            ? 0.0F
-                            : panel.stack.cards[0].width() - 2.0F * pad;
+    const float card_width = panel.stack.cards.empty()
+                                 ? 0.0F
+                                 : panel.stack.cards[0].width() - 2.0F * pad;
+    const float width =
+        panel.stack.cards.empty()
+            ? 0.0F
+            : x2::input::card_text_box(panel.stack.cards[0], pad).width();
     std::vector<std::pair<std::string, float>> texts;
     std::string key;
     for (std::size_t i = 0; i < panel.rows.size(); ++i) {
@@ -613,7 +617,7 @@ private:
       }
       const bool volume = kSettings[i].volume;
       texts.emplace_back(item_text(call, row.label),
-                         volume ? width : kLabelShare * width);
+                         volume ? card_width : kLabelShare * width);
       if (!volume && row.value != 0u) {
         texts.emplace_back(item_text(call, row.value),
                            (1.0F - kLabelShare) * width);
