@@ -93,8 +93,6 @@ constexpr std::uint32_t kEntryText = 0x005bfcd0u;
    while held. */
 constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kLitArt = "ui/models/m_pda_option_focus";
-/* The art's animations play it in; it is shown done. */
-constexpr float kSettled = 0.999F;
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
 /* The space text keeps from a card's ends and between a name and its value,
@@ -299,12 +297,13 @@ public:
         }
       }
       const bool lit = part.lit || targets.pressed(part.box);
-      const std::uint32_t entity = lit ? art.lit : art.plain;
-      menu_scene::stretch(call, vectors, entity, lit ? lit_art_ : plain_art_,
-                          part.box, depth + kButtonDepth);
-      menu_scene::show_phase(call, entity, kSettled);
-      menu_scene::attach(call, entity);
-      owner.attached.push_back(entity);
+      menu_scene::option_card(call, vectors, art.plain, plain_art_,
+                              lit ? art.lit : 0u, part.box,
+                              depth + kButtonDepth);
+      owner.attached.push_back(art.plain);
+      if (lit) {
+        owner.attached.push_back(art.lit);
+      }
       words(call, vectors, self, box, line.address(), part, text.spans, lit);
     }
   }
@@ -786,7 +785,6 @@ private:
       art.lit = menu_scene::load_model(call, kLitArt);
       if (plain_art_.box.width() <= 0.0F) {
         plain_art_ = menu_scene::bounds(call, vectors, art.plain);
-        lit_art_ = menu_scene::bounds(call, vectors, art.lit);
       }
       menu_scene::stretch(call, vectors, art.plain, {}, {}, 0.0F);
       menu_scene::stretch(call, vectors, art.lit, {}, {}, 0.0F);
@@ -804,7 +802,6 @@ private:
 
   std::unordered_map<std::uint32_t, Owner> owners_;
   menu_scene::Art plain_art_;
-  menu_scene::Art lit_art_;
   Column stats_;
   Column ai_;
   Column skill_;

@@ -144,8 +144,6 @@ const FingerItems *listed(const std::array<FingerItems, N> &items,
 /* The game's option art: dark for a button, lit while it is held. */
 constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kHeldArt = "ui/models/m_pda_option_focus";
-/* The art's animations play it in; it is shown done. */
-constexpr float kSettled = 0.999F;
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
 /* Text inset from a button's ends, in fingers. */
@@ -324,13 +322,11 @@ private:
                    std::uint32_t self, std::size_t index, const SceneBox &area,
                    const std::string &label, bool held, float finger) {
     Button &button = button_for(call, vectors, self, index);
-    const std::uint32_t art = held ? button.held : button.plain;
-    menu_scene::stretch(
-        call, vectors, art, held ? button.held_art : button.plain_art, area,
-        static_cast<float>(s16(self + item::kDepth)) + kButtonDepth);
-    menu_scene::show_phase(call, art, kSettled);
-    menu_scene::attach(call, art);
-    button.attached = art;
+    menu_scene::option_card(
+        call, vectors, button.plain, button.plain_art, held ? button.held : 0u,
+        area, static_cast<float>(s16(self + item::kDepth)) + kButtonDepth);
+    button.attached = button.plain;
+    button.held_attached = held;
 
     const std::uint32_t box = RD32(self + item::kTextBox);
     const x2::guest::GuestBlock line(menu_text::kLineBytes);
@@ -505,8 +501,8 @@ private:
     std::uint32_t plain = 0u;
     std::uint32_t held = 0u;
     menu_scene::Art plain_art;
-    menu_scene::Art held_art;
     std::uint32_t attached = 0u;
+    bool held_attached = false;
     /* The text scale the label fits at, and the label and finger it was
        found for. */
     float scale = 1.0F;
@@ -524,7 +520,6 @@ private:
     button.plain = menu_scene::load_model(call, kButtonArt);
     button.held = menu_scene::load_model(call, kHeldArt);
     button.plain_art = menu_scene::bounds(call, vectors, button.plain);
-    button.held_art = menu_scene::bounds(call, vectors, button.held);
     menu_scene::stretch(call, vectors, button.plain, {}, {}, 0.0F);
     menu_scene::stretch(call, vectors, button.held, {}, {}, 0.0F);
     return button;
@@ -534,6 +529,10 @@ private:
     if (button.attached != 0u) {
       menu_scene::detach(call, button.attached);
       button.attached = 0u;
+    }
+    if (button.held_attached) {
+      menu_scene::detach(call, button.held);
+      button.held_attached = false;
     }
   }
 

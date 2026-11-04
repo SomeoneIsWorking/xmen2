@@ -89,8 +89,6 @@ constexpr std::string_view kAccept = "label_accept";
 /* The game's option art: dark for a setting, lit for the focused one. */
 constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
-/* The art's animations play it in; it is shown done. */
-constexpr float kSettled = 0.999F;
 /* Cards sit this much behind the text, a volume's empty track this much
    behind its fill, grey at this share of the fill's brightest channel. */
 constexpr float kCardDepth = 5.0F;
@@ -212,13 +210,11 @@ public:
     row.card = panel.stack.cards[static_cast<std::size_t>(shown)];
     const bool focused = RD32(menu + x2::menu::kMenuFocus) == self;
     const float depth = static_cast<float>(s16(self + item::kDepth));
-    const std::uint32_t art = focused ? row.lit : row.plain;
-    menu_scene::stretch(call, vectors, art,
-                        focused ? panel.lit_art : panel.plain_art, row.card,
-                        depth + kCardDepth);
-    menu_scene::show_phase(call, art, kSettled);
-    menu_scene::attach(call, art);
-    row.attached = art;
+    menu_scene::option_card(call, vectors, row.plain, panel.plain_art,
+                            focused ? row.lit : 0u, row.card,
+                            depth + kCardDepth);
+    row.attached = row.plain;
+    row.lit_attached = focused;
     if (kSettings[index].volume && row.value != 0u) {
       row.bar = x2::input::volume_bar(row.card, kTextPad * finger);
     }
@@ -408,6 +404,7 @@ private:
     std::uint32_t plain = 0u;
     std::uint32_t lit = 0u;
     std::uint32_t attached = 0u;
+    bool lit_attached = false;
     SceneBox card;
     /* A volume card's bar, and the bar's own box retail hit-tests. */
     SceneBox bar;
@@ -427,7 +424,6 @@ private:
     std::uint32_t title_bar = 0u;
     std::uint32_t accept = 0u;
     menu_scene::Art plain_art;
-    menu_scene::Art lit_art;
     /* Retail items touch hid, shown again when retail draws. */
     std::vector<std::uint32_t> hidden;
     x2::input::CardStack stack;
@@ -497,7 +493,6 @@ private:
     menu_scene::Vectors vectors;
     if (vectors) {
       panel.plain_art = menu_scene::bounds(call, vectors, panel.rows[0].plain);
-      panel.lit_art = menu_scene::bounds(call, vectors, panel.rows[0].lit);
       for (const Row &row : panel.rows) {
         menu_scene::stretch(call, vectors, row.plain, {}, {}, 0.0F);
         menu_scene::stretch(call, vectors, row.lit, {}, {}, 0.0F);
@@ -546,6 +541,10 @@ private:
     if (row.attached != 0u) {
       menu_scene::detach(call, row.attached);
       row.attached = 0u;
+    }
+    if (row.lit_attached) {
+      menu_scene::detach(call, row.lit);
+      row.lit_attached = false;
     }
   }
 

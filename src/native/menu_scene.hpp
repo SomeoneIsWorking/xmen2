@@ -48,6 +48,14 @@ struct Art {
    parks it off screen. */
 void stretch(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
              const Art &art, const input::SceneBox &box, float depth);
+/* A card of the PDA option art: `frame` stretched over `box` with its
+   nearest face at `depth`, and, unless `focus` is 0, the focus art placed by
+   the frame's own transform, where it is the panel inside the frame. Both
+   are shown settled and attached; the caller detaches them. */
+void option_card(guest::GuestCall &call, Vectors &vectors, std::uint32_t frame,
+                 const Art &frame_art, std::uint32_t focus,
+                 const input::SceneBox &box, float depth);
+
 /* The entity's extents, placed at its origin at scale 1. */
 Art bounds(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity);
 

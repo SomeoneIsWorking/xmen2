@@ -74,8 +74,6 @@ constexpr std::uint32_t kPointerMove = 0x200u;
 constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kSelectedArt = "ui/models/m_pda_option_focus";
 constexpr int kMaxCards = 10;
-/* The art's animations play it in; it is shown done. */
-constexpr float kSettled = 0.999F;
 /* The dark art's frame along its left edge, a share of its width. */
 constexpr float kCardArtFrame = 0.05F;
 /* Cards sit this much behind the list's text and icons. */
@@ -200,14 +198,13 @@ public:
       const SceneBox &card = stack.cards[i];
       const bool chosen = lit && entry == selected;
       if (fade > kFadeShown) {
-        const std::uint32_t art = chosen ? cards.selected : cards.plain[i];
-        const menu_scene::Art &extent =
-            chosen ? cards.selected_art : cards.plain_art;
-        menu_scene::stretch(call, vectors, art, extent, card,
-                            depth + kCardDepth);
-        menu_scene::show_phase(call, art, kSettled);
-        menu_scene::attach(call, art);
-        cards.attached.push_back(art);
+        menu_scene::option_card(call, vectors, cards.plain[i], cards.plain_art,
+                                chosen ? cards.selected : 0u, card,
+                                depth + kCardDepth);
+        cards.attached.push_back(cards.plain[i]);
+        if (chosen) {
+          cards.attached.push_back(cards.selected);
+        }
       }
       draw_row(call, vectors, self, box, entry, card, cards.layout,
                cards.text_scale, depth, fade, flags, selected, english);
@@ -354,7 +351,6 @@ private:
     std::array<std::uint32_t, kMaxCards> plain{};
     std::uint32_t selected = 0u;
     menu_scene::Art plain_art;
-    menu_scene::Art selected_art;
     std::vector<std::uint32_t> attached;
     x2::input::ListTouchLayout layout;
     SceneBox box;
@@ -429,7 +425,6 @@ private:
     }
     cards.selected = menu_scene::load_model(call, kSelectedArt);
     cards.plain_art = menu_scene::bounds(call, vectors, cards.plain[0]);
-    cards.selected_art = menu_scene::bounds(call, vectors, cards.selected);
     for (const std::uint32_t card : cards.plain) {
       menu_scene::stretch(call, vectors, card, {}, {}, 0.0F);
     }
