@@ -30,6 +30,11 @@ constexpr std::uint32_t kAnimationPhase = 0x30u;
 /* The style colour (selected, out, enabled, item, custom) and FUN_0040be00,
    the vec4 to packed colour. */
 constexpr std::uint32_t kStyleColor = 0x005d8ae0u;
+/* CMenuMgr's style colour (style) and sprite queue, and the queue's add
+   (pos, size, rgba, 0, 1.0, 0, sheet). */
+constexpr std::uint32_t kStyleRgba = 0x224u;
+constexpr std::uint32_t kSpriteQueue = 0x220u;
+constexpr std::uint32_t kQueueSprite = 0x005ee180u;
 constexpr std::uint32_t kPackColor = 0x0040be00u;
 
 std::uint32_t manager(guest::GuestCall &call) {
@@ -146,6 +151,25 @@ std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
       exe_linked(kStyleColor), style,
       {x2::guest::float_bits(lit), out, enabled ? 1u : 0u, item, custom});
   return pack_color(call, out);
+}
+
+void style_rgba(guest::GuestCall &call, std::uint8_t style, float rgba[4]) {
+  const std::uint32_t at =
+      call.virtual_call(manager(call), kStyleRgba, {std::uint32_t{style}});
+  for (std::uint32_t i = 0; i < 4u; ++i) {
+    rgba[i] = static_cast<float>(RDF32(at + i * 4u));
+  }
+}
+
+void queue_sprite(guest::GuestCall &call, Vectors &vectors,
+                  const input::SceneBox &box, float depth, const float rgba[4],
+                  std::uint8_t texture) {
+  const std::uint32_t queue = call.virtual_call(manager(call), kSpriteQueue);
+  call.thiscall(exe_linked(kQueueSprite), queue,
+                {vectors.put(0, box.left, depth, box.top),
+                 vectors.put(1, box.width(), box.height(), 0.0F),
+                 vectors.put(2, rgba[0], rgba[1], rgba[2], rgba[3]), 0u,
+                 x2::guest::float_bits(1.0F), 0u, std::uint32_t{texture}});
 }
 
 std::uint32_t pack_color(guest::GuestCall &call, std::uint32_t rgba) {

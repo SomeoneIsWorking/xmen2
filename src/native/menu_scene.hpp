@@ -61,6 +61,17 @@ std::uint32_t style_color(guest::GuestCall &call, Vectors &vectors,
                           std::uint32_t style, float lit, bool enabled,
                           std::uint32_t item = 0u, std::uint32_t custom = 0u);
 
+/* A menu style's igVec4f colour as CMenuItemBar reads it (CMenuMgr
+   vt+0x224), into `rgba`. */
+void style_rgba(guest::GuestCall &call, std::uint8_t style, float rgba[4]);
+
+/* One quad of the menu sprite sheet `texture` queued as CMenuItemBar's draw
+   queues its fill (FUN_005ee180 on CMenuMgr vt+0x220): `box` in scene units
+   at `depth`, tinted `rgba`. */
+void queue_sprite(guest::GuestCall &call, Vectors &vectors,
+                  const input::SceneBox &box, float depth, const float rgba[4],
+                  std::uint8_t texture);
+
 /* The igVec4f colour at `rgba` packed as the text calls take it. */
 std::uint32_t pack_color(guest::GuestCall &call, std::uint32_t rgba);
 

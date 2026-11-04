@@ -50,8 +50,12 @@ constexpr std::uint32_t kOnMouse = 0x005cb5f0u;
 
 /* Options' page 0 is the settings, 1 and 2 the controls. */
 constexpr std::uint32_t kPage = x2::menu::kMenuPage;
-/* CMenuItemBar+0x40, its level from 0 to 1. */
+/* CMenuItemBar+0x40, its level from 0 to 1; its sprite sheet and style, and
+   its fade (vt+0x0c, on x87). */
 constexpr std::uint32_t kBarFill = 0x40u;
+constexpr std::uint32_t kBarSheet = 0xacu;
+constexpr std::uint32_t kBarStyle = 0xadu;
+constexpr std::uint32_t kSlotFade = 0x0cu;
 
 constexpr std::uint32_t kButtonDown = 0x201u;
 constexpr std::uint32_t kButtonUp = 0x202u;
@@ -87,8 +91,11 @@ constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
 /* The art's animations play it in; it is shown done. */
 constexpr float kSettled = 0.999F;
-/* Cards sit this much behind the text. */
+/* Cards sit this much behind the text, a volume's empty track this much
+   behind its fill, in this share of the fill's colour. */
 constexpr float kCardDepth = 5.0F;
+constexpr float kTrackDepth = 1.0F;
+constexpr float kTrackShade = 0.3F;
 /* Text inset from a card's ends, and the label's share of a setting card,
    in fingers and of the text width. */
 constexpr float kTextPad = 0.25F;
@@ -276,10 +283,33 @@ public:
     WR16(self + item::kBoxTop, static_cast<std::uint16_t>(word(row.bar.top)));
     WR16(self + item::kBoxWidth,
          static_cast<std::uint16_t>(word(row.bar.width())));
+    queue_track(*cpu, self, row.bar);
     x86_guest_body(cpu, "XMen2.exe", kBarDraw);
     WR16(self + item::kBoxLeft, left);
     WR16(self + item::kBoxTop, top);
     WR16(self + item::kBoxWidth, width);
+  }
+
+  /* The bar's whole length in a shade of its own colour, the same quad of
+     its sheet, under the fill retail draws next. */
+  static void queue_track(const CPU &cpu, std::uint32_t self,
+                          const SceneBox &bar) {
+    x2::guest::GuestCall call(cpu);
+    menu_scene::Vectors vectors;
+    if (!vectors) {
+      return;
+    }
+    float rgba[4] = {};
+    menu_scene::style_rgba(call, RD8(self + kBarStyle), rgba);
+    call.virtual_call(self, kSlotFade);
+    rgba[3] = static_cast<float>(call.x87_result());
+    for (int i = 0; i < 3; ++i) {
+      rgba[i] *= kTrackShade;
+    }
+    menu_scene::queue_sprite(call, vectors, bar,
+                             static_cast<float>(s16(self + item::kDepth)) +
+                                 kTrackDepth,
+                             rgba, RD8(self + kBarSheet));
   }
 
   /* The finger on CMenuOptions: true when touch took the message. */
