@@ -24,10 +24,10 @@ struct OptionsTouchInput {
    cards. */
 CardStack layout_options_touch(const OptionsTouchInput &input);
 
-/* A volume card's label line (its upper part) and its bar of `height`
-   (along its lower part), inset `pad` from its ends, clear of the slant. */
+/* A volume card's label line (its upper part) and its bar (along its lower
+   part), inset `pad` from its ends, clear of the slant and the art's frame. */
 SceneBox volume_label(const SceneBox &card, float pad);
-SceneBox volume_bar(const SceneBox &card, float pad, float height);
+SceneBox volume_bar(const SceneBox &card, float pad);
 
 /* The share of `bar` from its left at `x`, 0 to 1. */
 float bar_share(const SceneBox &bar, float x);

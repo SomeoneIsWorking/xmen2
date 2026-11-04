@@ -92,10 +92,10 @@ constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
 /* The art's animations play it in; it is shown done. */
 constexpr float kSettled = 0.999F;
 /* Cards sit this much behind the text, a volume's empty track this much
-   behind its fill, in this share of the fill's colour. */
+   behind its fill, grey at this share of the fill's brightest channel. */
 constexpr float kCardDepth = 5.0F;
 constexpr float kTrackDepth = 1.0F;
-constexpr float kTrackShade = 0.3F;
+constexpr float kTrackShade = 0.45F;
 /* Text inset from a card's ends, and the label's share of a setting card,
    in fingers and of the text width. */
 constexpr float kTextPad = 0.25F;
@@ -220,9 +220,7 @@ public:
     menu_scene::attach(call, art);
     row.attached = art;
     if (kSettings[index].volume && row.value != 0u) {
-      row.bar = x2::input::volume_bar(
-          row.card, kTextPad * finger,
-          static_cast<float>(s16(row.value + item::kBoxHeight)));
+      row.bar = x2::input::volume_bar(row.card, kTextPad * finger);
     }
     draw_text(call, vectors, panel, row, self, kSettings[index], focused);
     return true;
@@ -279,19 +277,23 @@ public:
     const std::uint16_t left = RD16(self + item::kBoxLeft);
     const std::uint16_t top = RD16(self + item::kBoxTop);
     const std::uint16_t width = RD16(self + item::kBoxWidth);
+    const std::uint16_t height = RD16(self + item::kBoxHeight);
     WR16(self + item::kBoxLeft, static_cast<std::uint16_t>(word(row.bar.left)));
     WR16(self + item::kBoxTop, static_cast<std::uint16_t>(word(row.bar.top)));
     WR16(self + item::kBoxWidth,
          static_cast<std::uint16_t>(word(row.bar.width())));
-    queue_track(*cpu, self, row.bar);
+    WR16(self + item::kBoxHeight,
+         static_cast<std::uint16_t>(word(row.bar.height())));
+    queue_track(*cpu, self, text_box(self));
     x86_guest_body(cpu, "XMen2.exe", kBarDraw);
     WR16(self + item::kBoxLeft, left);
     WR16(self + item::kBoxTop, top);
     WR16(self + item::kBoxWidth, width);
+    WR16(self + item::kBoxHeight, height);
   }
 
-  /* The bar's whole length in a shade of its own colour, the same quad of
-     its sheet, under the fill retail draws next. */
+  /* The bar's whole length in a grey of its own colour's brightness, the
+     same quad of its sheet, under the fill retail draws next. */
   static void queue_track(const CPU &cpu, std::uint32_t self,
                           const SceneBox &bar) {
     x2::guest::GuestCall call(cpu);
@@ -299,12 +301,14 @@ public:
     if (!vectors) {
       return;
     }
+    /* `bar` is the item's own box, so the track covers exactly the fill. */
     float rgba[4] = {};
     menu_scene::style_rgba(call, RD8(self + kBarStyle), rgba);
     call.virtual_call(self, kSlotFade);
     rgba[3] = static_cast<float>(call.x87_result());
+    const float grey = kTrackShade * std::max({rgba[0], rgba[1], rgba[2]});
     for (int i = 0; i < 3; ++i) {
-      rgba[i] *= kTrackShade;
+      rgba[i] = grey;
     }
     menu_scene::queue_sprite(call, vectors, bar,
                              static_cast<float>(s16(self + item::kDepth)) +

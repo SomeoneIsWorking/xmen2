@@ -5,11 +5,14 @@
 namespace x2::input {
 namespace {
 
-/* A volume card's label line spans these shares of its height from the
-   bottom, clear of the art's top frame; its bar sits about this far up. */
+/* A volume card's label line and its bar span these shares of its height
+   from the bottom, both clear of the art's frame; the bar's ends sit this
+   much further in than the text. */
 constexpr float kVolumeLabelBottom = 0.42F;
 constexpr float kVolumeLabelTop = 0.9F;
-constexpr float kVolumeBarMiddle = 0.27F;
+constexpr float kVolumeBarBottom = 0.25F;
+constexpr float kVolumeBarTop = 0.39F;
+constexpr float kVolumeBarInset = 0.5F;
 
 } // namespace
 
@@ -26,11 +29,10 @@ SceneBox volume_label(const SceneBox &card, float pad) {
           inner.right, card.bottom + kVolumeLabelTop * card.height()};
 }
 
-SceneBox volume_bar(const SceneBox &card, float pad, float height) {
-  const float middle = card.bottom + kVolumeBarMiddle * card.height();
-  const SceneBox inner = card_text_box(card, pad);
-  return {inner.left, middle - 0.5F * height, inner.right,
-          middle + 0.5F * height};
+SceneBox volume_bar(const SceneBox &card, float pad) {
+  const SceneBox inner = card_text_box(card, pad * (1.0F + kVolumeBarInset));
+  return {inner.left, card.bottom + kVolumeBarBottom * card.height(),
+          inner.right, card.bottom + kVolumeBarTop * card.height()};
 }
 
 float bar_share(const SceneBox &bar, float x) {
