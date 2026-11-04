@@ -179,7 +179,8 @@ The entries fill the list's own box as finger-tall cards a finger apart
 (`x2::input::stack_cards`, shared with the popup): each a stretched copy of the
 PDA's option screen `ui/models/m_pda_option_screen`, the selected one with
 `m_pda_option_focus`, the panel inside that frame, placed by the frame's own
-transform (`menu_scene::option_card`), both shown at the end of their play-in animation, with
+transform offset as the PDA's `option01_focus` sits on `option01`
+(`menu_scene::option_card`), both shown at the end of their play-in animation, with
 the entry's icons a card tall and its columns in the list's font at up to 0.42
 of a finger, shrunk together until every entry fits on one line. The
 controller's selection cursor is not drawn. A tap on a card queues the walk

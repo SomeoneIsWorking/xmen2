@@ -28,9 +28,13 @@ constexpr std::uint32_t kEntityAnimation = 0x10u;
 constexpr std::uint32_t kAnimation = 0x14u;
 constexpr std::uint32_t kAnimationPhase = 0x30u;
 /* Option art is shown at the end of its play-in; the focus panel sits this
-   much in front of the frame's own panel. */
+   much in front of the frame's own panel, its origin this far across and up
+   from the frame's in art units (pda.xmlb's option01 and option01_focus
+   boxes in the PDA's scene). */
 constexpr float kSettledPhase = 0.999F;
 constexpr float kFocusFront = 12.0F;
+constexpr float kFocusAcross = -5.0F;
+constexpr float kFocusUp = -5.0F;
 /* The style colour (selected, out, enabled, item, custom) and FUN_0040be00,
    the vec4 to packed colour. */
 constexpr std::uint32_t kStyleColor = 0x005d8ae0u;
@@ -128,7 +132,12 @@ void option_card(guest::GuestCall &call, Vectors &vectors, std::uint32_t frame,
   if (focus == 0u) {
     return;
   }
-  stretch(call, vectors, focus, frame_art, box, depth - kFocusFront);
+  Art placed = frame_art;
+  placed.box.left -= kFocusAcross;
+  placed.box.right -= kFocusAcross;
+  placed.box.bottom -= kFocusUp;
+  placed.box.top -= kFocusUp;
+  stretch(call, vectors, focus, placed, box, depth - kFocusFront);
   show_phase(call, focus, kSettledPhase);
   attach(call, focus);
 }
