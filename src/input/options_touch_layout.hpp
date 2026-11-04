@@ -25,7 +25,7 @@ struct OptionsTouchInput {
 CardStack layout_options_touch(const OptionsTouchInput &input);
 
 /* A volume card's label line (its upper part) and its bar of `height`
-   (along its lower part), inset `pad` from the card's ends. */
+   (along its lower part), inset `pad` from its ends, clear of the slant. */
 SceneBox volume_label(const SceneBox &card, float pad);
 SceneBox volume_bar(const SceneBox &card, float pad, float height);
 

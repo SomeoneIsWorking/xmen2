@@ -21,13 +21,15 @@ CardStack layout_options_touch(const OptionsTouchInput &input) {
 }
 
 SceneBox volume_label(const SceneBox &card, float pad) {
-  return {card.left + pad, card.bottom + kVolumeLabelBottom * card.height(),
-          card.right - pad, card.bottom + kVolumeLabelTop * card.height()};
+  const SceneBox inner = card_text_box(card, pad);
+  return {inner.left, card.bottom + kVolumeLabelBottom * card.height(),
+          inner.right, card.bottom + kVolumeLabelTop * card.height()};
 }
 
 SceneBox volume_bar(const SceneBox &card, float pad, float height) {
   const float middle = card.bottom + kVolumeBarMiddle * card.height();
-  return {card.left + pad, middle - 0.5F * height, card.right - pad,
+  const SceneBox inner = card_text_box(card, pad);
+  return {inner.left, middle - 0.5F * height, inner.right,
           middle + 0.5F * height};
 }
 

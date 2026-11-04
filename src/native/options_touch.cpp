@@ -601,9 +601,6 @@ private:
   static void fit(x2::guest::GuestCall &call, Panel &panel, std::uint32_t box,
                   std::uint32_t line) {
     const float pad = kTextPad * panel.finger;
-    const float card_width = panel.stack.cards.empty()
-                                 ? 0.0F
-                                 : panel.stack.cards[0].width() - 2.0F * pad;
     const float width =
         panel.stack.cards.empty()
             ? 0.0F
@@ -617,7 +614,7 @@ private:
       }
       const bool volume = kSettings[i].volume;
       texts.emplace_back(item_text(call, row.label),
-                         volume ? card_width : kLabelShare * width);
+                         volume ? width : kLabelShare * width);
       if (!volume && row.value != 0u) {
         texts.emplace_back(item_text(call, row.value),
                            (1.0F - kLabelShare) * width);
