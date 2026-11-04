@@ -2132,6 +2132,7 @@ set(X2_NATIVE_SOURCES
     src/native/conversation_touch.cpp
     src/native/list_touch.cpp
     src/native/menu_scene.cpp
+    src/native/option_card.cpp
     src/native/menu_text.cpp
     src/native/text_item_touch.cpp
     src/native/automap_touch.cpp

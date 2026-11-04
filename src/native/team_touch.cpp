@@ -28,6 +28,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "option_card.hpp"
 #include "retail_menu_model.hpp"
 #include "text_item_touch.hpp"
 #include "touch_menu_source.hpp"
@@ -89,10 +90,6 @@ constexpr std::uint32_t kSlotHidden = 0x04u;
 constexpr std::uint32_t kSlotText = 0x7cu;
 constexpr std::uint32_t kEntryText = 0x005bfcd0u;
 
-/* The game's option art: dark for a button, lit for the current row and
-   while held. */
-constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
-constexpr std::string_view kLitArt = "ui/models/m_pda_option_focus";
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
 /* The space text keeps from a card's ends and between a name and its value,
@@ -297,13 +294,7 @@ public:
         }
       }
       const bool lit = part.lit || targets.pressed(part.box);
-      menu_scene::option_card(call, vectors, art.plain, plain_art_,
-                              lit ? art.lit : 0u, part.box,
-                              depth + kButtonDepth);
-      owner.attached.push_back(art.plain);
-      if (lit) {
-        owner.attached.push_back(art.lit);
-      }
+      art.card.show(call, vectors, part.box, depth + kButtonDepth, lit);
       words(call, vectors, self, box, line.address(), part, text.spans, lit);
     }
   }
@@ -314,10 +305,8 @@ public:
       return;
     }
     x2::guest::GuestCall call(cpu);
-    detach(call, found->second);
-    for (const Art &art : found->second.art) {
-      menu_scene::release(call, art.plain);
-      menu_scene::release(call, art.lit);
+    for (Art &art : found->second.art) {
+      art.card.release(call);
     }
     owners_.erase(found);
   }
@@ -400,8 +389,7 @@ private:
   }
 
   struct Art {
-    std::uint32_t plain = 0u;
-    std::uint32_t lit = 0u;
+    x2::native::OptionCard card;
     /* A lone part's text scale, and what it was found for. */
     float scale = 1.0F;
     std::string fitted_for;
@@ -410,7 +398,6 @@ private:
   struct Owner {
     std::string name;
     std::vector<Art> art;
-    std::vector<std::uint32_t> attached;
   };
   /* The rows of one tab's column fit one text scale: each row's text as
      its own draw last read it. */
@@ -781,27 +768,19 @@ private:
                Owner &owner, std::size_t index) {
     while (owner.art.size() <= index) {
       Art art;
-      art.plain = menu_scene::load_model(call, kButtonArt);
-      art.lit = menu_scene::load_model(call, kLitArt);
-      if (plain_art_.box.width() <= 0.0F) {
-        plain_art_ = menu_scene::bounds(call, vectors, art.plain);
-      }
-      menu_scene::stretch(call, vectors, art.plain, {}, {}, 0.0F);
-      menu_scene::stretch(call, vectors, art.lit, {}, {}, 0.0F);
+      art.card.load(call, vectors, false);
       owner.art.push_back(std::move(art));
     }
     return owner.art[index];
   }
 
   static void detach(x2::guest::GuestCall &call, Owner &owner) {
-    for (const std::uint32_t entity : owner.attached) {
-      menu_scene::detach(call, entity);
+    for (Art &art : owner.art) {
+      art.card.hide(call);
     }
-    owner.attached.clear();
   }
 
   std::unordered_map<std::uint32_t, Owner> owners_;
-  menu_scene::Art plain_art_;
   Column stats_;
   Column ai_;
   Column skill_;

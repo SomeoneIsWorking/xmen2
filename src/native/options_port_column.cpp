@@ -21,6 +21,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "option_card.hpp"
 #include "port_option_rows.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
@@ -56,8 +57,6 @@ constexpr std::string_view kTitleBar = "title";
 constexpr std::string_view kTitleLabel = "label_options";
 /* The text item whose box and depth the rows' text and cards use. */
 constexpr std::string_view kTextHost = "label_accept";
-constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
-constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
 constexpr float kCardDepth = 5.0F;
 /* The gap between the retail panel and the column, and the column's margin
    from the plane's right edge, as shares of the panel's width. */
@@ -142,11 +141,7 @@ public:
       row.card = column.stack.cards[static_cast<std::size_t>(shown)];
       set_item_box(row.item, row.card);
       const bool focused = focus == row.item;
-      menu_scene::option_card(call, vectors, row.plain, column.plain_art,
-                              focused ? row.lit : 0u, row.card,
-                              depth + kCardDepth);
-      row.attached = row.plain;
-      row.lit_attached = focused;
+      row.art.show(call, vectors, row.card, depth + kCardDepth, focused);
       draw_text(call, vectors, self, row.item, row, *row.option, focused);
     }
     return false;
@@ -160,9 +155,7 @@ public:
       }
       x2::guest::GuestCall call(cpu);
       for (Row &row : column.rows) {
-        detach(call, row);
-        menu_scene::release(call, row.plain);
-        menu_scene::release(call, row.lit);
+        row.art.release(call);
       }
       columns_.erase(at);
       return;
@@ -231,10 +224,7 @@ public:
 private:
   struct Row {
     std::uint32_t item = 0u;
-    std::uint32_t plain = 0u;
-    std::uint32_t lit = 0u;
-    std::uint32_t attached = 0u;
-    bool lit_attached = false;
+    x2::native::OptionCard art;
     SceneBox card;
     bool shown = false;
     const x2::native::PortOptionRow *option = nullptr;
@@ -245,7 +235,6 @@ private:
     std::uint32_t title_bar = 0u;
     std::uint32_t title_label = 0u;
     std::uint32_t text_host = 0u;
-    menu_scene::Art plain_art;
     SceneBox area;
     x2::input::CardStack stack;
     int first = 0;
@@ -286,8 +275,6 @@ private:
       if (row.item == 0u) {
         continue;
       }
-      row.plain = menu_scene::load_model(call, kCardArt);
-      row.lit = menu_scene::load_model(call, kFocusArt);
       column.rows.push_back(row);
     }
     column.title_bar = item_named(call, menu, kTitleBar);
@@ -295,11 +282,8 @@ private:
     column.text_host = item_named(call, menu, kTextHost);
     menu_scene::Vectors vectors;
     if (vectors && !column.rows.empty()) {
-      column.plain_art =
-          menu_scene::bounds(call, vectors, column.rows.front().plain);
-      for (const Row &row : column.rows) {
-        menu_scene::stretch(call, vectors, row.plain, {}, {}, 0.0F);
-        menu_scene::stretch(call, vectors, row.lit, {}, {}, 0.0F);
+      for (Row &row : column.rows) {
+        row.art.load(call, vectors, false);
       }
     }
     return column;
@@ -383,14 +367,7 @@ private:
   }
 
   static void detach(x2::guest::GuestCall &call, Row &row) {
-    if (row.attached != 0u) {
-      menu_scene::detach(call, row.attached);
-      row.attached = 0u;
-    }
-    if (row.lit_attached) {
-      menu_scene::detach(call, row.lit);
-      row.lit_attached = false;
-    }
+    row.art.hide(call);
   }
 
   static void focus(const CPU &cpu, std::uint32_t menu, const Row &row) {

@@ -24,6 +24,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "option_card.hpp"
 #include "options_port_column.hpp"
 #include "options_touch.hpp"
 #include "retail_menu_model.hpp"
@@ -141,9 +142,6 @@ const FingerItems *listed(const std::array<FingerItems, N> &items,
       });
   return found == items.end() ? nullptr : &*found;
 }
-/* The game's option art: dark for a button, lit while it is held. */
-constexpr std::string_view kButtonArt = "ui/models/m_pda_option_screen";
-constexpr std::string_view kHeldArt = "ui/models/m_pda_option_focus";
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
 /* Text inset from a button's ends, in fingers. */
@@ -308,9 +306,7 @@ public:
     }
     x2::guest::GuestCall call(cpu);
     for (Button &button : found->second) {
-      detach(call, button);
-      menu_scene::release(call, button.plain);
-      menu_scene::release(call, button.held);
+      button.art.release(call);
     }
     buttons_.erase(found);
   }
@@ -322,11 +318,9 @@ private:
                    std::uint32_t self, std::size_t index, const SceneBox &area,
                    const std::string &label, bool held, float finger) {
     Button &button = button_for(call, vectors, self, index);
-    menu_scene::option_card(
-        call, vectors, button.plain, button.plain_art, held ? button.held : 0u,
-        area, static_cast<float>(s16(self + item::kDepth)) + kButtonDepth);
-    button.attached = button.plain;
-    button.held_attached = held;
+    button.art.show(call, vectors, area,
+                    static_cast<float>(s16(self + item::kDepth)) + kButtonDepth,
+                    held);
 
     const std::uint32_t box = RD32(self + item::kTextBox);
     const x2::guest::GuestBlock line(menu_text::kLineBytes);
@@ -498,11 +492,8 @@ private:
   }
 
   struct Button {
-    std::uint32_t plain = 0u;
-    std::uint32_t held = 0u;
-    menu_scene::Art plain_art;
-    std::uint32_t attached = 0u;
-    bool held_attached = false;
+    x2::native::OptionCard art;
+    bool loaded = false;
     /* The text scale the label fits at, and the label and finger it was
        found for. */
     float scale = 1.0F;
@@ -514,26 +505,15 @@ private:
   Button &button_for(x2::guest::GuestCall &call, menu_scene::Vectors &vectors,
                      std::uint32_t self, std::size_t index) {
     Button &button = buttons_[self][index];
-    if (button.plain != 0u) {
-      return button;
+    if (!button.loaded) {
+      button.art.load(call, vectors, false);
+      button.loaded = true;
     }
-    button.plain = menu_scene::load_model(call, kButtonArt);
-    button.held = menu_scene::load_model(call, kHeldArt);
-    button.plain_art = menu_scene::bounds(call, vectors, button.plain);
-    menu_scene::stretch(call, vectors, button.plain, {}, {}, 0.0F);
-    menu_scene::stretch(call, vectors, button.held, {}, {}, 0.0F);
     return button;
   }
 
   static void detach(x2::guest::GuestCall &call, Button &button) {
-    if (button.attached != 0u) {
-      menu_scene::detach(call, button.attached);
-      button.attached = 0u;
-    }
-    if (button.held_attached) {
-      menu_scene::detach(call, button.held);
-      button.held_attached = false;
-    }
+    button.art.hide(call);
   }
 
   void detach_all(x2::guest::GuestCall &call, std::uint32_t self) {

@@ -17,6 +17,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "option_card.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
@@ -70,9 +71,6 @@ constexpr std::uint32_t kButtonDown = 0x201u;
 constexpr std::uint32_t kButtonUp = 0x202u;
 constexpr std::uint32_t kPointerMove = 0x200u;
 
-/* The game's option art: dark for an entry, lit for the selected one. */
-constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
-constexpr std::string_view kSelectedArt = "ui/models/m_pda_option_focus";
 constexpr int kMaxCards = 10;
 /* The dark art's frame along its left edge, a share of its width. */
 constexpr float kCardArtFrame = 0.05F;
@@ -198,13 +196,7 @@ public:
       const SceneBox &card = stack.cards[i];
       const bool chosen = lit && entry == selected;
       if (fade > kFadeShown) {
-        menu_scene::option_card(call, vectors, cards.plain[i], cards.plain_art,
-                                chosen ? cards.selected : 0u, card,
-                                depth + kCardDepth);
-        cards.attached.push_back(cards.plain[i]);
-        if (chosen) {
-          cards.attached.push_back(cards.selected);
-        }
+        cards.art[i].show(call, vectors, card, depth + kCardDepth, chosen);
       }
       draw_row(call, vectors, self, box, entry, card, cards.layout,
                cards.text_scale, depth, fade, flags, selected, english);
@@ -274,11 +266,9 @@ public:
       return;
     }
     x2::guest::GuestCall call(cpu);
-    detach_all(call, found->second);
-    for (const std::uint32_t card : found->second.plain) {
-      menu_scene::release(call, card);
+    for (x2::native::OptionCard &card : found->second.art) {
+      card.release(call);
     }
-    menu_scene::release(call, found->second.selected);
     lists_.erase(found);
   }
 
@@ -348,10 +338,7 @@ public:
 
 private:
   struct Cards {
-    std::array<std::uint32_t, kMaxCards> plain{};
-    std::uint32_t selected = 0u;
-    menu_scene::Art plain_art;
-    std::vector<std::uint32_t> attached;
+    std::array<x2::native::OptionCard, kMaxCards> art{};
     x2::input::ListTouchLayout layout;
     SceneBox box;
     /* The text scale every entry fits at, and the entries it was found
@@ -420,23 +407,16 @@ private:
     }
     Cards &cards = lists_[self];
     cards.margin = RD8(self + list::kMargin);
-    for (std::uint32_t &card : cards.plain) {
-      card = menu_scene::load_model(call, kCardArt);
+    for (x2::native::OptionCard &card : cards.art) {
+      card.load(call, vectors, false);
     }
-    cards.selected = menu_scene::load_model(call, kSelectedArt);
-    cards.plain_art = menu_scene::bounds(call, vectors, cards.plain[0]);
-    for (const std::uint32_t card : cards.plain) {
-      menu_scene::stretch(call, vectors, card, {}, {}, 0.0F);
-    }
-    menu_scene::stretch(call, vectors, cards.selected, {}, {}, 0.0F);
     return cards;
   }
 
   static void detach_all(x2::guest::GuestCall &call, Cards &cards) {
-    for (const std::uint32_t card : cards.attached) {
-      menu_scene::detach(call, card);
+    for (x2::native::OptionCard &card : cards.art) {
+      card.hide(call);
     }
-    cards.attached.clear();
   }
 
   /* The controller's cursor is not drawn on touch. */

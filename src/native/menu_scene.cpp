@@ -27,14 +27,6 @@ constexpr std::uint32_t kPlaceScaled = 0x14u;
 constexpr std::uint32_t kEntityAnimation = 0x10u;
 constexpr std::uint32_t kAnimation = 0x14u;
 constexpr std::uint32_t kAnimationPhase = 0x30u;
-/* Option art is shown at the end of its play-in; the focus panel sits this
-   much in front of the frame's own panel, its origin this far across and up
-   from the frame's in art units (pda.xmlb's option01 and option01_focus
-   boxes in the PDA's scene). */
-constexpr float kSettledPhase = 0.999F;
-constexpr float kFocusFront = 12.0F;
-constexpr float kFocusAcross = -5.0F;
-constexpr float kFocusUp = -5.0F;
 /* The style colour (selected, out, enabled, item, custom) and FUN_0040be00,
    the vec4 to packed colour. */
 constexpr std::uint32_t kStyleColor = 0x005d8ae0u;
@@ -121,25 +113,6 @@ void stretch(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity,
   place(call, vectors, entity,
         {box.left - extent.left * sx, box.top - extent.top * sz},
         depth - art.front, sx, sz);
-}
-
-void option_card(guest::GuestCall &call, Vectors &vectors, std::uint32_t frame,
-                 const Art &frame_art, std::uint32_t focus,
-                 const input::SceneBox &box, float depth) {
-  stretch(call, vectors, frame, frame_art, box, depth);
-  show_phase(call, frame, kSettledPhase);
-  attach(call, frame);
-  if (focus == 0u) {
-    return;
-  }
-  Art placed = frame_art;
-  placed.box.left -= kFocusAcross;
-  placed.box.right -= kFocusAcross;
-  placed.box.bottom -= kFocusUp;
-  placed.box.top -= kFocusUp;
-  stretch(call, vectors, focus, placed, box, depth - kFocusFront);
-  show_phase(call, focus, kSettledPhase);
-  attach(call, focus);
 }
 
 Art bounds(guest::GuestCall &call, Vectors &vectors, std::uint32_t entity) {

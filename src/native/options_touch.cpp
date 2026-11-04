@@ -18,6 +18,7 @@
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
+#include "option_card.hpp"
 #include "options_port_column.hpp"
 #include "retail_menu_model.hpp"
 #include "touch_menu_source.hpp"
@@ -82,13 +83,11 @@ constexpr std::array<Setting, 9> kSettings{{
     {"label_vibration", "vibration", "options_vibration_focus", false},
 }};
 constexpr std::string_view kPanelArt = "options_screen";
+constexpr std::string_view kPanelBracket = "options_bracket_top";
 constexpr std::string_view kTitle = "label_options";
 constexpr std::string_view kTitleBar = "title";
 constexpr std::string_view kAccept = "label_accept";
 
-/* The game's option art: dark for a setting, lit for the focused one. */
-constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
-constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
 /* Cards sit this much behind the text, a volume's empty track this much
    behind its fill, grey at this share of the fill's brightest channel. */
 constexpr float kCardDepth = 5.0F;
@@ -210,11 +209,7 @@ public:
     row.card = panel.stack.cards[static_cast<std::size_t>(shown)];
     const bool focused = RD32(menu + x2::menu::kMenuFocus) == self;
     const float depth = static_cast<float>(s16(self + item::kDepth));
-    menu_scene::option_card(call, vectors, row.plain, panel.plain_art,
-                            focused ? row.lit : 0u, row.card,
-                            depth + kCardDepth);
-    row.attached = row.plain;
-    row.lit_attached = focused;
+    row.art.show(call, vectors, row.card, depth + kCardDepth, focused);
     if (kSettings[index].volume && row.value != 0u) {
       row.bar = x2::input::volume_bar(row.card, kTextPad * finger);
     }
@@ -245,9 +240,7 @@ public:
       }
       x2::guest::GuestCall call(cpu);
       for (Row &row : panel.rows) {
-        detach(call, row);
-        menu_scene::release(call, row.plain);
-        menu_scene::release(call, row.lit);
+        row.art.release(call);
       }
       panels_.erase(at);
       return;
@@ -401,10 +394,7 @@ private:
     std::uint32_t label = 0u;
     std::uint32_t value = 0u;
     std::uint32_t focus = 0u;
-    std::uint32_t plain = 0u;
-    std::uint32_t lit = 0u;
-    std::uint32_t attached = 0u;
-    bool lit_attached = false;
+    x2::native::OptionCard art;
     SceneBox card;
     /* A volume card's bar, and the bar's own box retail hit-tests. */
     SceneBox bar;
@@ -420,10 +410,10 @@ private:
   struct Panel {
     std::array<Row, kSettings.size()> rows{};
     std::uint32_t panel_art = 0u;
+    std::uint32_t panel_bracket = 0u;
     std::uint32_t title = 0u;
     std::uint32_t title_bar = 0u;
     std::uint32_t accept = 0u;
-    menu_scene::Art plain_art;
     /* Retail items touch hid, shown again when retail draws. */
     std::vector<std::uint32_t> hidden;
     x2::input::CardStack stack;
@@ -483,19 +473,16 @@ private:
       row.label = item_named(call, menu, kSettings[i].label);
       row.value = item_named(call, menu, kSettings[i].value);
       row.focus = item_named(call, menu, kSettings[i].focus);
-      row.plain = menu_scene::load_model(call, kCardArt);
-      row.lit = menu_scene::load_model(call, kFocusArt);
     }
     panel.panel_art = item_named(call, menu, kPanelArt);
+    panel.panel_bracket = item_named(call, menu, kPanelBracket);
     panel.title = item_named(call, menu, kTitle);
     panel.title_bar = item_named(call, menu, kTitleBar);
     panel.accept = item_named(call, menu, kAccept);
     menu_scene::Vectors vectors;
     if (vectors) {
-      panel.plain_art = menu_scene::bounds(call, vectors, panel.rows[0].plain);
-      for (const Row &row : panel.rows) {
-        menu_scene::stretch(call, vectors, row.plain, {}, {}, 0.0F);
-        menu_scene::stretch(call, vectors, row.lit, {}, {}, 0.0F);
+      for (Row &row : panel.rows) {
+        row.art.load(call, vectors, true);
       }
     }
     return panel;
@@ -515,6 +502,7 @@ private:
       }
     };
     hide(panel.panel_art);
+    hide(panel.panel_bracket);
     for (const Row &row : panel.rows) {
       hide(row.focus);
     }
@@ -538,14 +526,7 @@ private:
   }
 
   static void detach(x2::guest::GuestCall &call, Row &row) {
-    if (row.attached != 0u) {
-      menu_scene::detach(call, row.attached);
-      row.attached = 0u;
-    }
-    if (row.lit_attached) {
-      menu_scene::detach(call, row.lit);
-      row.lit_attached = false;
-    }
+    row.art.hide(call);
   }
 
   /* A setting's label, and its value or its volume bar, on its card. */
