@@ -54,9 +54,11 @@ int box_hit(const std::vector<SceneBox> &boxes,
 }
 
 SceneBox card_text_box(const SceneBox &card, float pad) {
-  /* The share of the art's width its slanted right end takes. */
+  /* The shares of the art's width left of the PDA's label margin and taken
+     by its slanted right end. */
+  constexpr float kArtLeft = 0.025F;
   constexpr float kArtSlant = 0.12F;
-  return {card.left + pad, card.bottom,
+  return {card.left + kArtLeft * card.width() + pad, card.bottom,
           card.right - kArtSlant * card.width() - pad, card.top};
 }
 

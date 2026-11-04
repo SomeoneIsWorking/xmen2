@@ -333,11 +333,15 @@ its scene box from the item fields `+0x70..0x74` at draw time.
 A PDA row is four items in the scene, not one model: `option01`
 (`m_pda_option_screen`, the frame), `option01_focus` (`m_pda_option_focus` or
 `m_pda_option_nofocus`, the panel), `option01_light` (`m_pda_option_light_on` or
-`_off`) and `pause_bracket_01` (`m_pda_side_hinge`). Each is placed by its origin at
-scale 1, not by a box: from the frame's origin the panel is at (-5, 0), the light at
-(70, 4) and the hinge at (-105, 12). `GET /menu` boxes the focused panel 5 lower;
-the drawn row centres it, so the panel's height comes from the screenshot. The light's two models differ in size on one
-origin. `x2::native::OptionCard` draws a touch card this way.
+`_off`) and `pause_bracket_01` (`m_pda_side_hinge`). Each is placed by its
+origin at scale 1, not by a box: from the frame's origin the panel is at (-4.3,
+-1.8), the light at (70, 4) and the hinge at (-105, 12). `GET /menu`'s box for
+the panel is not where it draws, so the panel's place is measured off the drawn
+row: it sits inside the frame's dark ring with that ring showing on every side.
+The panel's mesh has a seam along its origin that draws a bright line when it
+crosses a pixel centre, so `OptionCard` puts that origin on a pixel edge. The
+light's two models differ in size on one origin. `x2::native::OptionCard` draws
+a touch card this way.
 
 `CMenuPDA::onMouse` is `0x005cc1f0`. On the rows page (`menu+0x18d8` 0) it tests
 the raw boxes of `label_option01..09` that are shown and enabled: `0x200` or

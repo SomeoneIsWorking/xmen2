@@ -1,5 +1,8 @@
 #include "option_card.hpp"
 
+#include "touch_menu_source.hpp"
+
+#include <cmath>
 #include <string_view>
 
 namespace x2::native {
@@ -7,9 +10,9 @@ namespace {
 
 /* A layer's model and where the PDA's scene puts its origin beside
    option01's frame origin, in art units at the frame's scale (pda.xmlb's
-   option01, option01_focus, option01_light and pause_bracket_01: GET /menu
-   boxes less each model's own bounds; the panel is centred as the PDA draws
-   it). */
+   option01, option01_light and pause_bracket_01: GET /menu boxes less each
+   model's own bounds; option01_focus's box is not where it draws, so the
+   panel is measured off the drawn row). */
 struct LayerArt {
   std::string_view model;
   float across;
@@ -18,8 +21,8 @@ struct LayerArt {
 
 constexpr std::array<LayerArt, 6> kLayerArt = {{
     {"ui/models/m_pda_option_screen", 0.0F, 0.0F},
-    {"ui/models/m_pda_option_focus", -5.0F, 0.0F},
-    {"ui/models/m_pda_option_nofocus", -5.0F, 0.0F},
+    {"ui/models/m_pda_option_focus", -4.3F, -1.8F},
+    {"ui/models/m_pda_option_nofocus", -4.3F, -1.8F},
     {"ui/models/m_pda_option_light_on", 70.0F, 4.0F},
     {"ui/models/m_pda_option_light_off", 70.0F, 4.0F},
     {"ui/models/m_pda_side_hinge", -105.0F, 12.0F},
@@ -29,6 +32,18 @@ constexpr std::array<LayerArt, 6> kLayerArt = {{
    much in front of it. */
 constexpr float kSettled = 0.999F;
 constexpr float kOverFrame = 12.0F;
+
+/* The panel's mesh has a seam along its origin that draws a bright line when
+   it crosses a pixel centre, so the origin sits on a pixel edge. */
+float on_pixel_edge(float z) {
+  const auto plane = live_scene_plane();
+  if (!plane) {
+    return z;
+  }
+  const float pixels =
+      static_cast<float>(plane->client_height()) / plane->height();
+  return std::round(z * pixels) / pixels;
+}
 
 } // namespace
 
@@ -67,8 +82,10 @@ void OptionCard::show(guest::GuestCall &call, menu_scene::Vectors &vectors,
                                         frame.top - art.box.top * sz};
   const float back = depth - art.front;
   put(call, vectors, kFrame, origin, back, sx, sz);
-  put(call, vectors, focused ? kFocus : kNoFocus, origin, back - kOverFrame, sx,
-      sz);
+  const float panel_z = origin.z + kLayerArt[kFocus].up * sz;
+  put(call, vectors, focused ? kFocus : kNoFocus,
+      {origin.x, origin.z + on_pixel_edge(panel_z) - panel_z},
+      back - kOverFrame, sx, sz);
   put(call, vectors, focused ? kLightOn : kLightOff, origin, back - kOverFrame,
       sx, sz);
   put(call, vectors, kHinge, origin, back - kOverFrame, sx, sz);
