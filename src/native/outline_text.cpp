@@ -126,8 +126,8 @@ public:
       slot->caps_scale = 0.0f;
       return;
     }
-    x2_log_error("OUTLINE TEXT: font %s at 0x%08x drawn in face %u, %.4f "
-                 "units per pixel (small capitals %.4f), width %.3f.\n",
+    x2_log_error("OUTLINE TEXT: font %s at 0x%08x drawn in face %u, %.3f "
+                 "units per cap height (small capitals %.3f), width %.3f.\n",
                  name, record, (unsigned)face, (double)slot->caps_scale,
                  (double)slot->small_scale, (double)slot->width_scale);
   }
@@ -184,27 +184,28 @@ private:
     if (!caps) {
       return false;
     }
-    font->caps_scale = (float)caps * fill / kOutlineCapPx;
+    font->caps_scale = (float)caps * fill;
     /* Small capitals: an ascender sits no higher than an x-height letter. */
     const Glyph b = read_glyph(font->record, 'b');
     const Glyph x = read_glyph(font->record, 'x');
     font->small_scale = 0.0f;
     if (drawn(b) && drawn(x) && b.baseline == x.baseline) {
-      font->small_scale =
-          (float)modal_baseline(font->record, 'a', 'z') * fill / kOutlineCapPx;
+      font->small_scale = (float)modal_baseline(font->record, 'a', 'z') * fill;
     }
     float retail = 0.0f, outline = 0.0f;
     for (unsigned c = 0x21u; c <= 0x7eu; c++) {
       const Glyph g = read_glyph(font->record, (std::uint16_t)c);
       const bool small =
           font->small_scale > 0.0f && lowercase((std::uint16_t)c);
-      const OutlineCell *cell = outline_glyph_cell(
-          font->face, small ? (std::uint16_t)(c - 0x20u) : (std::uint16_t)c);
-      if (!drawn(g) || !cell || !std::isalnum((int)c)) {
+      float advance = 0.0f;
+      if (!drawn(g) || !std::isalnum((int)c) ||
+          !outline_glyph_advance(
+              font->face, small ? (std::uint16_t)(c - 0x20u) : (std::uint16_t)c,
+              &advance)) {
         continue;
       }
       retail += (float)g.advance;
-      outline += cell->advance * (small ? font->small_scale : font->caps_scale);
+      outline += advance * (small ? font->small_scale : font->caps_scale);
     }
     if (outline <= 0.0f) {
       return false;
@@ -229,28 +230,27 @@ std::uint16_t drawn_code(const OutlineFont &font, std::uint16_t c) {
   return c;
 }
 
-/* The face's cell for `c` and the record units per atlas pixel it is drawn
-   at; nullptr when `c` stays retail. */
-const OutlineCell *face_cell(const OutlineFont &font, std::uint16_t c,
-                             float *units) {
+/* The face's advance for `c` in cap heights and the record units per cap
+   height it is drawn at; false when `c` stays retail. */
+bool face_glyph(const OutlineFont &font, std::uint16_t c, float *units,
+                float *advance) {
   if (!text_codepoint(c) || !drawn(read_glyph(font.record, c))) {
-    return nullptr;
+    return false;
   }
   const std::uint16_t code = drawn_code(font, c);
   *units = code != c ? font.small_scale : font.caps_scale;
-  return outline_glyph_cell(font.face, code);
+  return outline_glyph_advance(font.face, code, advance);
 }
 
 /* The face's pen step from `c` to `next` in record units: its advance and
    the pair's kerning, or the advance alone when `next` stays retail. */
 float face_step(const OutlineFont &font, std::uint16_t c, std::uint16_t next) {
-  float units = 0.0f, next_units = 0.0f;
-  const OutlineCell *cell = face_cell(font, c, &units);
-  if (!cell) {
+  float units = 0.0f, next_units = 0.0f, advance = 0.0f, next_advance = 0.0f;
+  if (!face_glyph(font, c, &units, &advance)) {
     return 0.0f;
   }
-  float step = cell->advance * units;
-  if (face_cell(font, next, &next_units)) {
+  float step = advance * units;
+  if (face_glyph(font, next, &next_units, &next_advance)) {
     step += outline_glyph_kerning(font.face, drawn_code(font, c),
                                   drawn_code(font, next)) *
             std::min(units, next_units);
@@ -280,8 +280,8 @@ const OutlineFont *outline_text_string_font(std::uint32_t owner) {
 }
 
 bool outline_text_replaces(const OutlineFont &font, std::uint16_t c) {
-  float units = 0.0f;
-  return face_cell(font, c, &units) != nullptr;
+  float units = 0.0f, advance = 0.0f;
+  return face_glyph(font, c, &units, &advance);
 }
 
 void OutlinePen::begin(std::uint32_t string) {
@@ -306,9 +306,8 @@ bool OutlinePen::add(const OutlineFont &font, unsigned index,
                      const float box[4], OutlinePlaneScale scale,
                      PromptVertexKey key, std::uint32_t color) {
   const std::uint16_t c = RD16(string_ + index * 2u);
-  float units = 0.0f;
-  const OutlineCell *cell = face_cell(font, c, &units);
-  if (!cell) {
+  float units = 0.0f, advance = 0.0f;
+  if (!face_glyph(font, c, &units, &advance)) {
     close();
     return false;
   }
@@ -327,21 +326,17 @@ bool OutlinePen::add(const OutlineFont &font, unsigned index,
   Pending p{};
   p.placed.key = key;
   PromptQuad &q = p.placed.quad;
-  q.y0 = line - cell->top * units * scale.y;
-  q.y1 = q.y0 + cell->height * units * scale.y;
-  q.x1 = cell->width * across * scale.x; /* the width until close() */
-  q.u0 = cell->u0;
-  q.v0 = cell->v0;
-  q.u1 = cell->u1;
-  q.v1 = cell->v1;
+  q.y0 = line;
+  q.y1 = line - units * scale.y;
+  q.x1 = across * scale.x; /* the cap width until close() */
   q.color = color;
-  q.codepoint = c;
+  q.codepoint = drawn_code(font, c);
   q.sheet = kOutlineTextSheet;
+  q.face = (std::uint8_t)font.face;
   p.pen = box[0] - (float)g.offset * scale.x;
   p.advance = (float)g.advance * scale.x;
   p.travelled = travelled_;
-  p.left = cell->left * across;
-  p.step = cell->advance * across;
+  p.step = advance * across;
   p.scale = scale.x;
   open_.push_back(p);
   travelled_ += face_step(font, c, RD16(string_ + (index + 1u) * 2u));
@@ -361,7 +356,7 @@ void OutlinePen::close() {
   for (Pending &p : open_) {
     PromptQuad &q = p.placed.quad;
     const float width = q.x1;
-    q.x0 = first.pen + (p.travelled * fit + p.left) * p.scale;
+    q.x0 = first.pen + p.travelled * fit * p.scale;
     q.x1 = q.x0 + width;
     placed_.push_back(p.placed);
   }

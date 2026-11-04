@@ -1,5 +1,6 @@
-/* The outline typefaces that replace the retail font atlases' pixels, and the
- * one RGBA atlas they are rasterised into. See docs/RE/text.md. */
+/* The outline typefaces that replace the retail font atlases' pixels: their
+ * size-free layout metrics, and the glyph cache that rasterises each glyph at
+ * the pixel size it is drawn at. See docs/RE/text.md. */
 #pragma once
 
 #include <cstdint>
@@ -14,37 +15,61 @@ enum class OutlineFace : std::uint8_t {
 };
 inline constexpr unsigned kOutlineFaces = 3u;
 
-/* A rasterised glyph. UVs are bottom-origin like every PromptQuad; the rest
-   is in atlas pixels relative to the pen on the baseline, at kOutlineCapPx. */
-struct OutlineCell {
-  float u0, v0, u1, v1;
-  float left, top, width, height, advance;
-};
+/* Layout metrics are unhinted and in cap heights: the height of the face's
+   reference glyph ('H', or '0' for digits), stroke excluded. */
 
-/* Height of the face's reference glyph ('H', or '0' for digits), stroke
-   excluded. */
-inline constexpr float kOutlineCapPx = 48.0f;
-inline constexpr unsigned kOutlineAtlasW = 2048u;
-inline constexpr unsigned kOutlineAtlasH = 2048u;
-inline constexpr unsigned kOutlineAtlasLevels = 5u;
+/* The face's advance for `codepoint`; false when the face has no such glyph
+   or its file cannot be read. */
+bool outline_glyph_advance(OutlineFace face, std::uint16_t codepoint,
+                           float *advance);
 
-/* The cell for `codepoint` in `face`, rasterising the whole atlas on first
-   use; nullptr when the face has no such glyph or its file cannot be read. */
-const OutlineCell *outline_glyph_cell(OutlineFace face,
-                                      std::uint16_t codepoint);
-
-/* The face's kerning of `right` after `left`, in atlas pixels (negative
-   draws them closer); 0 for an unkerned pair or a face without kerning. */
+/* The face's kerning of `right` after `left` (negative draws them closer);
+   0 for an unkerned pair or a face without kerning. */
 float outline_glyph_kerning(OutlineFace face, std::uint16_t left,
                             std::uint16_t right);
 
-/* The face's word-space advance in atlas pixels; 0 when it has none. */
+/* The face's word-space advance; 0 when it has none. */
 float outline_glyph_space(OutlineFace face);
 
-/* Mip level `level` of the atlas (RGBA8, level 0 is kOutlineAtlasW wide), or
-   nullptr when the atlas could not be built. */
-const std::uint8_t *outline_glyph_atlas_level(unsigned level, unsigned *width,
-                                              unsigned *height);
+/* The pixel size a glyph is rasterised at: its cap height in quarter
+   pixels, its horizontal stretch in 64ths, and the pen's position within its
+   pixel in quarters. */
+struct OutlineRasterSize {
+  std::uint16_t cap_quarters;
+  std::uint16_t stretch_64ths;
+  std::uint8_t phase;
+};
+inline constexpr unsigned kOutlinePhases = 4u;
+inline constexpr unsigned kOutlineCapQuartersMax = 4u * 400u;
+
+/* A glyph rasterised at one size: its texels in an atlas page, placed from
+   the pen's whole pixel on the baseline (left: columns to its right, top:
+   rows above it). A glyph without ink has no texels. */
+struct OutlineRaster {
+  std::uint16_t page, x, y, width, height;
+  std::int16_t left, top;
+};
+inline constexpr unsigned kOutlinePageW = 1024u;
+inline constexpr unsigned kOutlinePageH = 1024u;
+inline constexpr unsigned kOutlinePagesMax = 8u;
+
+/* `codepoint` of `face` at `size`, rasterised on first use; nullptr when the
+   face has no such glyph or the pages have no room left this frame. */
+const OutlineRaster *outline_glyph_raster(OutlineFace face,
+                                          std::uint16_t codepoint,
+                                          OutlineRasterSize size);
+
+/* Pages in use, each kOutlinePageW x kOutlinePageH RGBA8. */
+unsigned outline_glyph_pages();
+const std::uint8_t *outline_glyph_page(unsigned page);
+
+/* The rows of `page` written since the last call; false when none. */
+bool outline_glyph_page_take_dirty(unsigned page, unsigned *first_row,
+                                   unsigned *rows);
+
+/* A new frame: pages that ran out of room in the last one start again
+   empty, which no draw of this frame has sampled yet. */
+void outline_glyph_frame_begin();
 
 void outline_glyph_atlas_report();
 

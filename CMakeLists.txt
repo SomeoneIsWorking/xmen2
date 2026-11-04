@@ -2354,6 +2354,8 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_present.cpp
     src/gpu/gpu_present_selftest.cpp
     src/gpu/gpu_prompt_glyphs.cpp
+    src/gpu/gpu_outline_text.cpp
+    src/gpu/gpu_viewport.cpp
     src/gpu/gpu_host_selftest.cpp
     src/gpu/gpu_multistage_selftest.cpp
     src/gpu/gpu_matrix.cpp

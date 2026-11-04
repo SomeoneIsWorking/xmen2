@@ -12,7 +12,7 @@
 namespace x2::native {
 
 /* A loaded retail font and how its outline glyphs are sized, in the record's
-   (already text-scaled) units per atlas pixel. */
+   (already text-scaled) units per cap height. */
 struct OutlineFont {
   std::uint32_t record = 0;
   OutlineFace face = OutlineFace::Italic;
@@ -50,7 +50,8 @@ struct OutlinePlaced {
   PromptQuad quad;
 };
 
-/* Places one string's outline glyphs a run at a time. A run is a stretch of
+/* Places one string's outline glyphs a run at a time, as pens and cap
+   heights in the plane (PromptQuad). A run is a stretch of
    outline glyphs and word spaces on one line; a keycap, a colour token, a
    glyph the face does not draw or a new line ends it. The run starts at its
    first glyph's retail pen, steps by the face's advances, kerning and space,
@@ -77,7 +78,6 @@ private:
     float pen;       /* the glyph's retail pen, in plane units */
     float advance;   /* its retail advance, in plane units */
     float travelled; /* face steps before it in the run, in record units */
-    float left;      /* the cell's left edge from the pen, in record units */
     float step;      /* its own face advance, in record units */
     float scale;     /* plane units per record unit along x */
   };

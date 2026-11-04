@@ -313,8 +313,16 @@ void gpu_texture_request_format_support_report(void);
    captured black scene can establish whether colour generation or occlusion
    is at fault. Production callers must leave it disabled. */
 void gpu_draw_diagnostic_disable_depth(int enabled);
-int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
-                       uint32_t bytes);
+/* Rows first_row..first_row+rows of one face and level, every column; data
+   holds just those rows, and 0 rows is the whole level. Earlier draws this
+   frame see the new rows too, so only rows no draw has sampled may change. */
+int gpu_texture_upload_region(GpuTexture t, uint32_t face, uint32_t level,
+                              uint32_t first_row, uint32_t rows,
+                              const void *data, uint32_t bytes);
+static inline int gpu_texture_upload(GpuTexture t, uint32_t level,
+                                     const void *data, uint32_t bytes) {
+  return gpu_texture_upload_region(t, 0, level, 0, 0, data, bytes);
+}
 void gpu_texture_destroy(GpuTexture t);
 
 /*
@@ -329,8 +337,11 @@ void gpu_texture_destroy(GpuTexture t);
  */
 GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
                                    uint32_t levels);
-int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
-                            const void *data, uint32_t bytes);
+static inline int gpu_texture_upload_face(GpuTexture t, uint32_t face,
+                                          uint32_t level, const void *data,
+                                          uint32_t bytes) {
+  return gpu_texture_upload_region(t, face, level, 0, 0, data, bytes);
+}
 /* 1 if this handle is a cube texture; 0 for a 2D one OR for a handle that is
    not a live texture at all -- callers use it to choose a message, never to
    decide the handle is valid. */

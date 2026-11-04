@@ -8,13 +8,18 @@ namespace x2::native {
 /* One prompt glyph in the ENGINE text plane. The stock sink stores each
    corner as (x, 0, y), and the owning text batch supplies the transform.
    u0..v1 are the port atlas's bottom-origin UVs; color is the D3DCOLOR
-   captured from the engine's text batch. */
+   captured from the engine's text batch.
+   An outline glyph (kOutlineTextSheet) is not rasterised yet: (x0, y0) is
+   its pen on the baseline, (x1, y1) the corner one cap height to the right
+   and up, `face` its OutlineFace and `codepoint` the face's glyph; the GPU
+   owner picks the raster and its UVs once the batch matrix is known. */
 struct PromptQuad {
   float x0, y0, x1, y1;
   float u0, v0, u1, v1;
   std::uint32_t color;
   std::uint16_t codepoint;
   std::uint8_t sheet; /* X2_KEYCAP_SHEET_*, or kOutlineTextSheet */
+  std::uint8_t face;
 };
 
 /* Where the engine wrote the collapsed glyph a quad replaces: the text
@@ -25,8 +30,8 @@ struct PromptVertexKey {
   std::uint32_t vertex;
 };
 
-/* The outline text atlas (outline_glyph_atlas.hpp), after the generated
-   prompt atlas and the key label sheet. */
+/* Outline text (outline_glyph_atlas.hpp), after the generated prompt atlas
+   and the key label sheet. */
 inline constexpr std::uint8_t kOutlineTextSheet = 2u;
 
 /* Every glyph of a dense frame's text, prompts included. */

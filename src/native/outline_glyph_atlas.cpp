@@ -8,6 +8,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_GLYPH_H
+#include FT_OUTLINE_H
 #include FT_STROKER_H
 #include FT_TRUETYPE_TABLES_H
 #include FT_TRUETYPE_TAGS_H
@@ -17,6 +18,8 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 
 namespace x2::native {
@@ -26,9 +29,7 @@ namespace {
 constexpr std::uint16_t kFirstCode = 0x21u;
 constexpr std::uint16_t kLastCode = 0xffu;
 constexpr unsigned kCodes = kLastCode - kFirstCode + 1u;
-/* Wide enough that level kOutlineAtlasLevels-1 still keeps cells apart. */
-constexpr unsigned kGap = 16u;
-/* A clear texel around each cell so linear filtering never cuts an edge. */
+/* A clear texel round each cell, so a filtered edge never reads a neighbour. */
 constexpr int kMargin = 1;
 
 struct FaceFile {
@@ -87,206 +88,312 @@ Bitmap render(FT_Glyph source, FT_Stroker stroker) {
   return out;
 }
 
-class Atlas {
-public:
-  const OutlineCell *cell(OutlineFace face, std::uint16_t code) {
-    build();
-    if (code < kFirstCode || code > kLastCode) {
-      return nullptr;
+/* One atlas page, filled shelf by shelf. */
+struct Page {
+  std::vector<std::uint8_t> pixels = std::vector<std::uint8_t>(
+      (std::size_t)kOutlinePageW * kOutlinePageH * 4u);
+  unsigned pen_x = 0, pen_y = 0, shelf = 0;
+  unsigned dirty_first = UINT_MAX, dirty_end = 0;
+
+  bool place(unsigned width, unsigned height, unsigned *x, unsigned *y) {
+    if (pen_x + width > kOutlinePageW) {
+      pen_x = 0;
+      pen_y += shelf;
+      shelf = 0;
     }
-    const Slot &slot = slots_[(unsigned)face][code - kFirstCode];
-    return slot.present ? &slot.cell : nullptr;
+    if (width > kOutlinePageW || pen_y + height > kOutlinePageH) {
+      return false;
+    }
+    *x = pen_x;
+    *y = pen_y;
+    pen_x += width;
+    shelf = std::max(shelf, height);
+    dirty_first = std::min(dirty_first, *y);
+    dirty_end = std::max(dirty_end, *y + height);
+    return true;
+  }
+
+  void clear() {
+    std::fill(pixels.begin(), pixels.end(), 0u);
+    pen_x = pen_y = shelf = 0;
+    dirty_first = 0;
+    dirty_end = kOutlinePageH;
+  }
+};
+
+class Cache {
+public:
+  ~Cache() {
+    for (Face &face : faces_) {
+      if (face.stroker) {
+        FT_Stroker_Done(face.stroker);
+      }
+      if (face.face) {
+        FT_Done_Face(face.face);
+      }
+    }
+    if (library_) {
+      FT_Done_FreeType(library_);
+    }
+  }
+
+  bool advance(OutlineFace face, std::uint16_t code, float *out) {
+    open();
+    const Face &f = faces_[(unsigned)face];
+    if (!f.face || code < kFirstCode || code > kLastCode ||
+        !f.glyph[code - kFirstCode]) {
+      return false;
+    }
+    *out = f.advance[code - kFirstCode];
+    return true;
   }
 
   float kerning(OutlineFace face, std::uint16_t left, std::uint16_t right) {
-    build();
-    const std::vector<std::int16_t> &pairs = kerning_[(unsigned)face];
-    if (pairs.empty() || left < kFirstCode || left > kLastCode ||
+    open();
+    const Face &f = faces_[(unsigned)face];
+    if (f.kerning.empty() || left < kFirstCode || left > kLastCode ||
         right < kFirstCode || right > kLastCode) {
       return 0.0f;
     }
-    return (float)pairs[(std::size_t)(left - kFirstCode) * kCodes +
-                        (right - kFirstCode)] /
-           64.0f;
+    return (float)f.kerning[(std::size_t)(left - kFirstCode) * kCodes +
+                            (right - kFirstCode)] /
+           f.reference_units;
   }
 
   float space(OutlineFace face) {
-    build();
-    return space_[(unsigned)face];
+    open();
+    return faces_[(unsigned)face].space;
   }
 
-  const std::uint8_t *level(unsigned index, unsigned *width, unsigned *height) {
-    build();
-    if (index >= levels_.size()) {
+  const OutlineRaster *raster(OutlineFace face, std::uint16_t code,
+                              OutlineRasterSize size) {
+    open();
+    Face &f = faces_[(unsigned)face];
+    if (!f.face || code < kFirstCode || code > kLastCode ||
+        !f.glyph[code - kFirstCode] || !size.cap_quarters ||
+        size.cap_quarters > kOutlineCapQuartersMax || !size.stretch_64ths ||
+        size.phase >= kOutlinePhases) {
       return nullptr;
     }
-    *width = std::max(1u, kOutlineAtlasW >> index);
-    *height = std::max(1u, kOutlineAtlasH >> index);
-    return levels_[index].data();
+    const std::uint64_t key =
+        (std::uint64_t)face << 56 | (std::uint64_t)code << 40 |
+        (std::uint64_t)size.cap_quarters << 24 |
+        (std::uint64_t)size.stretch_64ths << 8 | size.phase;
+    const auto found = rasters_.find(key);
+    if (found != rasters_.end()) {
+      return &found->second;
+    }
+    OutlineRaster out{};
+    if (!rasterise(f, code, size, &out)) {
+      return nullptr;
+    }
+    return &rasters_.emplace(key, out).first->second;
+  }
+
+  unsigned pages() const { return (unsigned)pages_.size(); }
+
+  const std::uint8_t *page(unsigned index) const {
+    return index < pages_.size() ? pages_[index]->pixels.data() : nullptr;
+  }
+
+  bool take_dirty(unsigned index, unsigned *first, unsigned *rows) {
+    if (index >= pages_.size()) {
+      return false;
+    }
+    Page &p = *pages_[index];
+    if (p.dirty_first >= p.dirty_end) {
+      return false;
+    }
+    *first = p.dirty_first;
+    *rows = p.dirty_end - p.dirty_first;
+    p.dirty_first = UINT_MAX;
+    p.dirty_end = 0;
+    return true;
+  }
+
+  void frame_begin() {
+    if (!full_) {
+      return;
+    }
+    full_ = false;
+    rasters_.clear();
+    for (std::unique_ptr<Page> &p : pages_) {
+      p->clear();
+    }
+    current_ = 0;
+    resets_++;
   }
 
   void report() const {
-    x2_log_info("  Outline glyphs: %u glyph(s) rasterised over %u face(s); "
-                "%u face file(s) unreadable, %u glyph(s) past the atlas; "
-                "%u kerned pair(s)\n",
-                glyphs_, faces_, unreadable_, overflow_, kerned_);
+    x2_log_info("  Outline glyphs: %u face(s) open, %u unreadable; %zu "
+                "glyph size(s) cached on %zu page(s), %lu rasterised, %lu "
+                "refused for want of room, %lu reset(s); %u kerned pair(s)\n",
+                opened_, unreadable_, rasters_.size(), pages_.size(),
+                rasterised_, refused_, resets_, kerned_);
   }
 
 private:
-  struct Slot {
-    bool present = false;
-    OutlineCell cell{};
+  struct Face {
+    FT_Face face = nullptr;
+    FT_Stroker stroker = nullptr;
+    float stroke_ratio = 0.0f;
+    float reference_units = 0.0f; /* the reference glyph's height */
+    float space = 0.0f;
+    std::array<FT_UInt, kCodes> glyph{};
+    std::array<float, kCodes> advance{};
+    std::vector<std::int16_t> kerning; /* font units */
+    OutlineRasterSize size{};          /* the size FreeType is set to */
   };
 
-  void build() {
-    if (built_) {
+  void open() {
+    if (opened_any_) {
       return;
     }
-    built_ = true;
-    FT_Library library = nullptr;
-    if (FT_Init_FreeType(&library)) {
+    opened_any_ = true;
+    if (FT_Init_FreeType(&library_)) {
+      library_ = nullptr;
       x2_log_error("OUTLINE TEXT: FreeType could not start; text keeps the "
                    "retail glyphs.\n");
       return;
     }
-    std::vector<std::uint8_t> pixels((std::size_t)kOutlineAtlasW *
-                                     kOutlineAtlasH * 4u);
-    for (unsigned face = 0; face < kOutlineFaces; face++) {
-      rasterise_face(library, face, pixels);
+    for (unsigned index = 0; index < kOutlineFaces; index++) {
+      open_face(index);
     }
-    FT_Done_FreeType(library);
-    if (!glyphs_) {
-      return;
-    }
-    levels_.push_back(std::move(pixels));
-    for (unsigned index = 1; index < kOutlineAtlasLevels; index++) {
-      levels_.push_back(downsample(levels_.back(),
-                                   kOutlineAtlasW >> (index - 1),
-                                   kOutlineAtlasH >> (index - 1)));
-    }
-    x2_log_error("OUTLINE TEXT: %u glyph(s) of %u face(s) rasterised into a "
-                 "%ux%u atlas with %u level(s).\n",
-                 glyphs_, faces_, kOutlineAtlasW, kOutlineAtlasH,
-                 kOutlineAtlasLevels);
+    x2_log_error("OUTLINE TEXT: %u of %u face(s) open; glyphs are rasterised "
+                 "at their drawn size into %ux%u page(s).\n",
+                 opened_, kOutlineFaces, kOutlinePageW, kOutlinePageH);
   }
 
-  static float reference_height(FT_Face face, std::uint16_t reference) {
-    FT_BBox box;
-    FT_Glyph glyph = nullptr;
-    if (FT_Load_Char(face, reference, FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP) ||
-        FT_Get_Glyph(face->glyph, &glyph)) {
-      return 0.0f;
-    }
-    FT_Glyph_Get_CBox(glyph, FT_GLYPH_BBOX_UNSCALED, &box);
-    FT_Done_Glyph(glyph);
-    return (float)(box.yMax - box.yMin) / 64.0f;
-  }
-
-  void rasterise_face(FT_Library library, unsigned index,
-                      std::vector<std::uint8_t> &pixels) {
+  void open_face(unsigned index) {
     const FaceFile &file = kFaceFiles[index];
     const char *path = x2::ui::ui_resource_path(file.file);
-    FT_Face face = nullptr;
-    FT_Stroker stroker = nullptr;
-    constexpr float kProbePx = 100.0f;
-    if (FT_New_Face(library, path, 0, &face) ||
-        FT_Set_Char_Size(face, 0, (FT_F26Dot6)(kProbePx * 64.0f), 72, 72)) {
+    Face &f = faces_[index];
+    FT_BBox box;
+    FT_Glyph reference = nullptr;
+    if (FT_New_Face(library_, path, 0, &f.face)) {
+      f.face = nullptr;
       x2_log_error("OUTLINE TEXT: typeface %s could not be opened; its fonts "
                    "keep the retail glyphs.\n",
                    path);
       unreadable_++;
-      if (face) {
-        FT_Done_Face(face);
-      }
       return;
     }
-    const float probe = reference_height(face, file.reference);
-    if (probe <= 0.0f ||
-        FT_Set_Char_Size(
-            face, 0,
-            (FT_F26Dot6)std::lround(kProbePx * kOutlineCapPx / probe * 64.0f),
-            72, 72)) {
+    if (FT_Load_Char(f.face, file.reference, FT_LOAD_NO_SCALE) ||
+        FT_Get_Glyph(f.face->glyph, &reference)) {
       x2_log_error("OUTLINE TEXT: typeface %s has no reference glyph U+%04X; "
                    "its fonts keep the retail glyphs.\n",
                    path, file.reference);
+      FT_Done_Face(f.face);
+      f.face = nullptr;
       unreadable_++;
-      FT_Done_Face(face);
       return;
     }
-    if (file.stroke_ratio > 0.0f && !FT_Stroker_New(library, &stroker)) {
-      FT_Stroker_Set(
-          stroker,
-          (FT_Fixed)std::lround(kOutlineCapPx * file.stroke_ratio * 64.0f),
-          FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0);
+    FT_Glyph_Get_CBox(reference, FT_GLYPH_BBOX_UNSCALED, &box);
+    FT_Done_Glyph(reference);
+    f.reference_units = (float)(box.yMax - box.yMin);
+    if (f.reference_units <= 0.0f) {
+      FT_Done_Face(f.face);
+      f.face = nullptr;
+      unreadable_++;
+      return;
     }
-    faces_++;
     for (unsigned code = kFirstCode; code <= kLastCode; code++) {
-      rasterise_glyph(face, stroker, index, (std::uint16_t)code, pixels);
+      const FT_UInt glyph = FT_Get_Char_Index(f.face, code);
+      if (glyph && !FT_Load_Glyph(f.face, glyph, FT_LOAD_NO_SCALE)) {
+        f.glyph[code - kFirstCode] = glyph;
+        f.advance[code - kFirstCode] =
+            (float)f.face->glyph->advance.x / f.reference_units;
+      }
     }
-    if (stroker) {
-      FT_Stroker_Done(stroker);
+    if (!FT_Load_Char(f.face, ' ', FT_LOAD_NO_SCALE)) {
+      f.space = (float)f.face->glyph->advance.x / f.reference_units;
     }
-    measure_spacing(face, index);
-    FT_Done_Face(face);
+    f.stroke_ratio = file.stroke_ratio;
+    if (f.stroke_ratio > 0.0f && FT_Stroker_New(library_, &f.stroker)) {
+      f.stroker = nullptr;
+    }
+    read_kerning(f);
+    opened_++;
   }
 
-  /* The space advance and the kern feature's pairs, at the atlas size. */
-  void measure_spacing(FT_Face face, unsigned index) {
-    if (!FT_Load_Char(face, ' ', FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP)) {
-      space_[index] = (float)face->glyph->advance.x / 64.0f;
-    }
+  /* The kern feature's pairs, in font units. */
+  void read_kerning(Face &f) {
     FT_ULong length = 0;
-    if (FT_Load_Sfnt_Table(face, TTAG_GPOS, 0, nullptr, &length) || !length) {
+    if (FT_Load_Sfnt_Table(f.face, TTAG_GPOS, 0, nullptr, &length) || !length) {
       return;
     }
     std::vector<std::uint8_t> table(length);
-    if (FT_Load_Sfnt_Table(face, TTAG_GPOS, 0, table.data(), &length)) {
+    if (FT_Load_Sfnt_Table(f.face, TTAG_GPOS, 0, table.data(), &length)) {
       return;
     }
     const GposKerning gpos(std::move(table));
     if (gpos.empty()) {
       return;
     }
-    std::array<std::uint16_t, kCodes> glyphs{};
-    for (unsigned code = kFirstCode; code <= kLastCode; code++) {
-      glyphs[code - kFirstCode] = (std::uint16_t)FT_Get_Char_Index(face, code);
-    }
-    std::vector<std::int16_t> &pairs = kerning_[index];
-    pairs.assign((std::size_t)kCodes * kCodes, 0);
+    f.kerning.assign((std::size_t)kCodes * kCodes, 0);
     for (unsigned a = 0; a < kCodes; a++) {
       for (unsigned b = 0; b < kCodes; b++) {
-        if (!glyphs[a] || !glyphs[b]) {
+        if (!f.glyph[a] || !f.glyph[b]) {
           continue;
         }
-        const int units = gpos.adjustment(glyphs[a], glyphs[b]);
+        const int units = gpos.adjustment((std::uint16_t)f.glyph[a],
+                                          (std::uint16_t)f.glyph[b]);
         if (units) {
-          pairs[(std::size_t)a * kCodes + b] = (std::int16_t)std::clamp<long>(
-              FT_MulFix(units, face->size->metrics.x_scale), INT16_MIN,
-              INT16_MAX);
+          f.kerning[(std::size_t)a * kCodes + b] =
+              (std::int16_t)std::clamp(units, INT16_MIN, INT16_MAX);
           kerned_++;
         }
       }
     }
   }
 
-  void rasterise_glyph(FT_Face face, FT_Stroker stroker, unsigned index,
-                       std::uint16_t code, std::vector<std::uint8_t> &pixels) {
-    const FT_UInt glyph_index = FT_Get_Char_Index(face, code);
-    FT_Glyph glyph = nullptr;
-    if (!glyph_index ||
-        FT_Load_Glyph(face, glyph_index,
-                      FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP) ||
-        FT_Get_Glyph(face->glyph, &glyph)) {
-      return;
+  /* FreeType's size for `size`: the reference glyph `cap` pixels tall. */
+  bool set_size(Face &f, OutlineRasterSize size) {
+    if (f.size.cap_quarters == size.cap_quarters &&
+        f.size.stretch_64ths == size.stretch_64ths) {
+      return true;
     }
-    const float advance = (float)face->glyph->advance.x / 64.0f;
+    const float cap = (float)size.cap_quarters / 4.0f;
+    const float em = cap * (float)f.face->units_per_EM / f.reference_units;
+    const float wide = em * (float)size.stretch_64ths / 64.0f;
+    if (FT_Set_Char_Size(f.face, (FT_F26Dot6)std::lround(wide * 64.0f),
+                         (FT_F26Dot6)std::lround(em * 64.0f), 72, 72)) {
+      f.size = OutlineRasterSize{};
+      return false;
+    }
+    if (f.stroker) {
+      FT_Stroker_Set(f.stroker,
+                     (FT_Fixed)std::lround(cap * f.stroke_ratio * 64.0f),
+                     FT_STROKER_LINECAP_ROUND, FT_STROKER_LINEJOIN_ROUND, 0);
+    }
+    f.size = size;
+    f.size.phase = 0;
+    return true;
+  }
+
+  bool rasterise(Face &f, std::uint16_t code, OutlineRasterSize size,
+                 OutlineRaster *out) {
+    FT_Glyph glyph = nullptr;
+    if (!set_size(f, size) ||
+        FT_Load_Glyph(f.face, f.glyph[code - kFirstCode],
+                      FT_LOAD_TARGET_LIGHT | FT_LOAD_NO_BITMAP) ||
+        f.face->glyph->format != FT_GLYPH_FORMAT_OUTLINE) {
+      return false;
+    }
+    FT_Outline_Translate(&f.face->glyph->outline,
+                         (FT_Pos)(size.phase * 64u / kOutlinePhases), 0);
+    if (FT_Get_Glyph(f.face->glyph, &glyph)) {
+      return false;
+    }
     const Bitmap fill = render(glyph, nullptr);
-    const Bitmap rim = stroker ? render(glyph, stroker) : Bitmap{};
+    const Bitmap rim = f.stroker ? render(glyph, f.stroker) : Bitmap{};
     FT_Done_Glyph(glyph);
+    rasterised_++;
 
     const Bitmap &outer = rim.width ? rim : fill;
     if (!outer.width || !outer.rows) {
-      return;
+      *out = OutlineRaster{};
+      return true;
     }
     const int left = std::min(outer.left, fill.left) - kMargin;
     const int top = std::max(outer.top, fill.top) + kMargin;
@@ -299,115 +406,103 @@ private:
     const unsigned width = (unsigned)(right - left);
     const unsigned height = (unsigned)(top - bottom);
     unsigned x = 0, y = 0;
-    if (!place(width, height, &x, &y)) {
-      overflow_++;
-      return;
+    Page *page = place(width, height, &x, &y);
+    if (!page) {
+      refused_++;
+      return false;
     }
     for (unsigned row = 0; row < height; row++) {
       for (unsigned col = 0; col < width; col++) {
         const int gx = left + (int)col, gy = top - (int)row;
-        const float f = fill.at(gx, gy) / 255.0f;
+        const float a = fill.at(gx, gy) / 255.0f;
         const float r = rim.width ? rim.at(gx, gy) / 255.0f : 0.0f;
         /* White fill over a black rim. */
-        const float alpha = f + (1.0f - f) * r;
-        std::uint8_t *out =
-            &pixels[(((std::size_t)(y + row)) * kOutlineAtlasW + x + col) * 4u];
+        const float alpha = a + (1.0f - a) * r;
+        std::uint8_t *texel =
+            &page->pixels[(((std::size_t)(y + row)) * kOutlinePageW + x + col) *
+                          4u];
         const std::uint8_t white =
-            alpha > 0.0f ? (std::uint8_t)std::lround(255.0f * f / alpha) : 0u;
-        out[0] = white;
-        out[1] = white;
-        out[2] = white;
-        out[3] = (std::uint8_t)std::lround(255.0f * alpha);
+            alpha > 0.0f ? (std::uint8_t)std::lround(255.0f * a / alpha) : 0u;
+        texel[0] = white;
+        texel[1] = white;
+        texel[2] = white;
+        texel[3] = (std::uint8_t)std::lround(255.0f * alpha);
       }
     }
-    Slot &slot = slots_[index][code - kFirstCode];
-    slot.present = true;
-    slot.cell.u0 = (float)x / (float)kOutlineAtlasW;
-    slot.cell.u1 = (float)(x + width) / (float)kOutlineAtlasW;
-    slot.cell.v1 = 1.0f - (float)y / (float)kOutlineAtlasH;
-    slot.cell.v0 = 1.0f - (float)(y + height) / (float)kOutlineAtlasH;
-    slot.cell.left = (float)left;
-    slot.cell.top = (float)top;
-    slot.cell.width = (float)width;
-    slot.cell.height = (float)height;
-    slot.cell.advance = advance;
-    glyphs_++;
-  }
-
-  bool place(unsigned width, unsigned height, unsigned *x, unsigned *y) {
-    if (pen_x_ + width > kOutlineAtlasW) {
-      pen_x_ = 0;
-      pen_y_ += shelf_ + kGap;
-      shelf_ = 0;
-    }
-    if (width > kOutlineAtlasW || pen_y_ + height > kOutlineAtlasH) {
-      return false;
-    }
-    *x = pen_x_;
-    *y = pen_y_;
-    pen_x_ += width + kGap;
-    shelf_ = std::max(shelf_, height);
+    out->page = (std::uint16_t)current_;
+    out->x = (std::uint16_t)x;
+    out->y = (std::uint16_t)y;
+    out->width = (std::uint16_t)width;
+    out->height = (std::uint16_t)height;
+    out->left = (std::int16_t)left;
+    out->top = (std::int16_t)top;
     return true;
   }
 
-  /* Alpha-weighted 2x2 box filter, so clear texels do not darken the ink. */
-  static std::vector<std::uint8_t>
-  downsample(const std::vector<std::uint8_t> &source, unsigned width,
-             unsigned height) {
-    const unsigned w = std::max(1u, width / 2u), h = std::max(1u, height / 2u);
-    std::vector<std::uint8_t> out((std::size_t)w * h * 4u);
-    for (unsigned y = 0; y < h; y++) {
-      for (unsigned x = 0; x < w; x++) {
-        unsigned alpha = 0, color = 0;
-        for (unsigned k = 0; k < 4u; k++) {
-          const unsigned sx = std::min(width - 1u, x * 2u + (k & 1u));
-          const unsigned sy = std::min(height - 1u, y * 2u + (k >> 1));
-          const std::uint8_t *p = &source[((std::size_t)sy * width + sx) * 4u];
-          alpha += p[3];
-          color += (unsigned)p[0] * p[3];
+  /* Room for a cell on the current page or a new one; nullptr when every
+     page is full, which empties the cache at the next frame. */
+  Page *place(unsigned width, unsigned height, unsigned *x, unsigned *y) {
+    while (true) {
+      if (current_ >= pages_.size()) {
+        if (pages_.size() >= kOutlinePagesMax) {
+          full_ = true;
+          return nullptr;
         }
-        std::uint8_t *o = &out[((std::size_t)y * w + x) * 4u];
-        const std::uint8_t c = alpha ? (std::uint8_t)(color / alpha) : 0u;
-        o[0] = c;
-        o[1] = c;
-        o[2] = c;
-        o[3] = (std::uint8_t)(alpha / 4u);
+        pages_.push_back(std::make_unique<Page>());
       }
+      if (pages_[current_]->place(width, height, x, y)) {
+        return pages_[current_].get();
+      }
+      current_++;
     }
-    return out;
   }
 
-  bool built_ = false;
-  std::array<std::array<Slot, kCodes>, kOutlineFaces> slots_{};
-  std::array<std::vector<std::int16_t>, kOutlineFaces> kerning_{};
-  std::array<float, kOutlineFaces> space_{};
-  std::vector<std::vector<std::uint8_t>> levels_;
-  unsigned pen_x_ = 0, pen_y_ = 0, shelf_ = 0;
-  unsigned glyphs_ = 0, faces_ = 0, unreadable_ = 0, overflow_ = 0;
-  unsigned kerned_ = 0;
+  FT_Library library_ = nullptr;
+  bool opened_any_ = false;
+  std::array<Face, kOutlineFaces> faces_{};
+  std::unordered_map<std::uint64_t, OutlineRaster> rasters_;
+  std::vector<std::unique_ptr<Page>> pages_;
+  std::size_t current_ = 0;
+  bool full_ = false;
+  unsigned opened_ = 0, unreadable_ = 0, kerned_ = 0;
+  unsigned long rasterised_ = 0, refused_ = 0, resets_ = 0;
 };
 
-Atlas g_atlas;
+Cache g_cache;
 
 } // namespace
 
-const OutlineCell *outline_glyph_cell(OutlineFace face,
-                                      std::uint16_t codepoint) {
-  return g_atlas.cell(face, codepoint);
+bool outline_glyph_advance(OutlineFace face, std::uint16_t codepoint,
+                           float *advance) {
+  return g_cache.advance(face, codepoint, advance);
 }
 
 float outline_glyph_kerning(OutlineFace face, std::uint16_t left,
                             std::uint16_t right) {
-  return g_atlas.kerning(face, left, right);
+  return g_cache.kerning(face, left, right);
 }
 
-float outline_glyph_space(OutlineFace face) { return g_atlas.space(face); }
+float outline_glyph_space(OutlineFace face) { return g_cache.space(face); }
 
-const std::uint8_t *outline_glyph_atlas_level(unsigned level, unsigned *width,
-                                              unsigned *height) {
-  return g_atlas.level(level, width, height);
+const OutlineRaster *outline_glyph_raster(OutlineFace face,
+                                          std::uint16_t codepoint,
+                                          OutlineRasterSize size) {
+  return g_cache.raster(face, codepoint, size);
 }
 
-void outline_glyph_atlas_report() { g_atlas.report(); }
+unsigned outline_glyph_pages() { return g_cache.pages(); }
+
+const std::uint8_t *outline_glyph_page(unsigned page) {
+  return g_cache.page(page);
+}
+
+bool outline_glyph_page_take_dirty(unsigned page, unsigned *first_row,
+                                   unsigned *rows) {
+  return g_cache.take_dirty(page, first_row, rows);
+}
+
+void outline_glyph_frame_begin() { g_cache.frame_begin(); }
+
+void outline_glyph_atlas_report() { g_cache.report(); }
 
 } // namespace x2::native

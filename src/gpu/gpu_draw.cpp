@@ -56,13 +56,6 @@ void gpu_texture_request_format_support_report(void) {
 }
 void gpu_texture_flush_format_support_report(void) {}
 void gpu_draw_diagnostic_disable_depth(int enabled) { (void)enabled; }
-int gpu_texture_upload(GpuTexture t, uint32_t l, const void *d, uint32_t n) {
-  (void)t;
-  (void)l;
-  (void)d;
-  (void)n;
-  return no_sdl("texture upload");
-}
 void gpu_texture_destroy(GpuTexture t) { (void)t; }
 GpuTexture gpu_texture_create_cube(uint32_t s, GpuFormat f, uint32_t l) {
   (void)s;
@@ -70,14 +63,17 @@ GpuTexture gpu_texture_create_cube(uint32_t s, GpuFormat f, uint32_t l) {
   (void)l;
   return (GpuTexture)no_sdl("cube texture create");
 }
-int gpu_texture_upload_face(GpuTexture t, uint32_t fc, uint32_t l,
-                            const void *d, uint32_t n) {
+int gpu_texture_upload_region(GpuTexture t, uint32_t fc, uint32_t l,
+                              uint32_t first, uint32_t rows, const void *d,
+                              uint32_t n) {
   (void)t;
   (void)fc;
   (void)l;
+  (void)first;
+  (void)rows;
   (void)d;
   (void)n;
-  return no_sdl("cube texture upload");
+  return no_sdl("texture upload");
 }
 int gpu_texture_is_cube(GpuTexture t) {
   (void)t;
@@ -401,8 +397,9 @@ int gpu_texture_is_cube(GpuTexture t) {
   return g_res[t - 1].live && g_res[t - 1].tex && g_res[t - 1].faces == 6;
 }
 
-int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
-                            const void *data, uint32_t bytes) {
+int gpu_texture_upload_region(GpuTexture t, uint32_t face, uint32_t level,
+                              uint32_t first_row, uint32_t rows,
+                              const void *data, uint32_t bytes) {
   x2::gpu::GpuStagingWrite staged;
   SDL_GPUCopyPass *cp;
   SDL_GPUTextureTransferInfo src;
@@ -432,6 +429,14 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   lh = r->h >> level;
   if (!lh)
     lh = 1;
+  if (!rows)
+    rows = lh;
+  if (first_row >= lh || rows > lh - first_row) {
+    x2_log_error("gpu: upload of rows %u..%u past a %u-row level.\n", first_row,
+                 first_row + rows, lh);
+    return 0;
+  }
+  lh = rows;
   if (r->fmt == GPU_FMT_BGR8) {
     uint32_t source_bytes = lw * lh * 3u;
     upload_bytes = lw * lh * 4u;
@@ -466,6 +471,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   dr.texture = r->tex;
   dr.mip_level = level;
   dr.layer = face;
+  dr.y = first_row;
   dr.w = lw;
   dr.h = lh;
   dr.d = 1;
@@ -473,11 +479,6 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   x2::gpu::gpu_host_timer_upload(t0, t1);
   g_uploads++;
   return 1;
-}
-
-int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
-                       uint32_t bytes) {
-  return gpu_texture_upload_face(t, 0, level, data, bytes);
 }
 
 void gpu_texture_destroy(GpuTexture t) {

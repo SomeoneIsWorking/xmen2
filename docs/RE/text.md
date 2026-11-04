@@ -371,11 +371,17 @@ What the glyph loop provides, read from `FUN_005ee780`:
 
 The owners:
 
-1. `outline_glyph_atlas.cpp` rasterises each face with FreeType at a 48-pixel
-   reference height (`H`, or `0` for the digits), with a stroked dark rim of
-   1/14 of that height, into one 2048x2048 RGBA atlas with five mip levels,
-   and keeps each face's space advance and its pair kerning for codes
-   0x21..0xff. Barlow kerns only in GPOS, which FreeType does not apply, so
+1. `outline_glyph_atlas.cpp` owns the faces. Layout metrics are unhinted and
+   in cap heights (the height of `H`, or `0` for the digits): each glyph's
+   advance, the space advance and the pair kerning for codes 0x21..0xff, so
+   layout never depends on a raster size. It is also the glyph cache: a
+   glyph is rasterised on first use at a key of face, cap height in quarter
+   pixels, horizontal stretch in 64ths and the pen's quarter-pixel phase,
+   with FreeType's light (vertical-only) hinting and a stroked dark rim of
+   1/14 of the cap height, into 1024x1024 RGBA pages filled shelf by shelf.
+   A page keeps the rows written since its last upload; when all eight pages
+   are full the glyph is refused (counted) and the cache starts again empty
+   at the next frame. Barlow kerns only in GPOS, which FreeType does not apply, so
    `outline_kerning.cpp` reads the `kern` feature's PairPos lookups itself
    (`hb-shape` gives the same values: `TA` is -100 units, `AW` and `AV` are
    unkerned in Barlow Black Italic).
@@ -392,15 +398,29 @@ The owners:
    steps by the face's advances, kerning and space, and is stretched once to
    end where retail's advances end it, so letter and word spacing are the
    face's while keycaps, colour runs, wraps and the measured width stay
-   retail's.
+   retail's. Each glyph leaves as its pen on the baseline and one cap height
+   across and up, in plane units; no raster size is known yet.
 3. `prompt_glyph_draw.cpp` arms its cursor for any string in a registered
    font, counts the replaced glyphs into the whole-string capacity check, and
    collapses each one as it does a prompt. It retains a run's quads when the
    pen closes it (before a prompt glyph or keycap, and at the string's end),
    each at its own glyph's vertex key; a text pass lays out all its strings
    before it draws any, so no draw takes a range while a run is open.
-4. `gpu_prompt_glyphs.cpp` draws the outline atlas as a third sheet, before
-   the prompt art and key labels, with trilinear sampling.
+4. `gpu_outline_text.cpp` is the one place a raster size is chosen. With
+   the text batch's final matrix and the engine's viewport clamped to the
+   target (`gpu_viewport.cpp`, the same rectangle the pass uses) it maps the pen and
+   the cap corners to target pixels, takes the cap height and stretch from
+   that, snaps the baseline to a whole row and the pen to a quarter column,
+   and returns the cache's raster as a quad of exactly one texel per pixel.
+   It uploads the pages' new rows before the draw. `gpu_prompt_glyphs.cpp`
+   draws those quads page by page, before the prompt art and key labels,
+   without mipmaps. A glyph added mid-frame lands in rows no earlier draw
+   sampled, so the upload batch running ahead of the frame is safe.
+
+Check it in the product: a 1280x720 touch Options shot (`touch-menu`) has
+row text about 9 pixels tall with one-pixel stems and a dark rim, and the
+`Outline glyphs` / `Outline text GPU` report lines count sizes cached, pages,
+refusals and resets.
 
 A string longer than `kPromptWalkMax` (2048) wide characters, a font without a
 face, or a string whose plane scale cannot be read stays retail, each counted

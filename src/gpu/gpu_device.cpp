@@ -39,6 +39,7 @@
 #include "gpu_shader_data.h"
 #include "gpu_shadow.h"
 #include "gpu_upload_batch.h"
+#include "gpu_viewport.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdlib.h>
@@ -61,12 +62,6 @@ static SDL_Window *(*g_window_provider)(void);
 
 /* What the next render pass must clear with. */
 static x2::gpu::GpuPassClear g_clear;
-
-static struct {
-  int x, y, w, h;
-  float minz, maxz;
-  int set;
-} g_viewport;
 
 /* Counters. A black screen is ambiguous; these disambiguate it. */
 /* Set when X2_MAX_FRAMES is reached. READ by the host's heartbeat thread,
@@ -269,67 +264,31 @@ int gpu_device_attach_window(struct SDL_Window *w) {
 
 #ifdef X2_WITH_SDL
 /*
- * Set the viewport, clamped to the swapchain.
- *
- * The engine clamps too -- against its current render destination -- but the
- * clamped rectangle only ever exists in its stack frame, so the slot hands us
- * the REQUEST and the clamp is redone here against the thing actually being
- * drawn into. Vulkan rejects a viewport outside the attachment, so this is a
- * requirement and not a nicety.
- *
- * Nothing to clamp against before the swapchain texture is acquired, so this
- * is called from pass_begin rather than from the setter.
+ * Give the open pass the engine's viewport, clamped to the target. Vulkan
+ * rejects a viewport outside the attachment, so the clamp is required; there
+ * is nothing to clamp against before the swapchain texture is acquired, so
+ * pass_begin calls this rather than the setter alone.
  */
 static void apply_viewport(void) {
+  x2::gpu::GpuViewportRect r;
   SDL_GPUViewport vp;
-  int x, y, w, h;
+  static int told;
 
   if (!g_pass)
     return;
-  if (!g_viewport.set) {
-    /* No setViewport yet: the whole target, which is what a freshly
-       created D3D device would also have. */
-    vp.x = 0.0f;
-    vp.y = 0.0f;
-    vp.w = (float)g_swap_w;
-    vp.h = (float)g_swap_h;
-    vp.min_depth = 0.0f;
-    vp.max_depth = 1.0f;
-    SDL_SetGPUViewport(g_pass, &vp);
-    return;
-  }
-  x = g_viewport.x < 0 ? 0 : g_viewport.x;
-  y = g_viewport.y < 0 ? 0 : g_viewport.y;
-  if (x > (int)g_swap_w)
-    x = (int)g_swap_w;
-  if (y > (int)g_swap_h)
-    y = (int)g_swap_h;
-  w = g_viewport.w;
-  h = g_viewport.h;
-  if (w < 1)
-    w = 1;
-  if (h < 1)
-    h = 1;
-  if (x + w > (int)g_swap_w)
-    w = (int)g_swap_w - x;
-  if (y + h > (int)g_swap_h)
-    h = (int)g_swap_h - y;
-  if (w < 1 || h < 1) {
-    static int told;
+  if (!x2::gpu::gpu_viewport_resolve(g_swap_w, g_swap_h, &r)) {
     if (!told++)
-      x2_log_error("gpu: the requested viewport %dx%d at (%d,%d) "
-                   "does not intersect the %ux%u target; leaving the "
-                   "previous one.\n",
-                   g_viewport.w, g_viewport.h, g_viewport.x, g_viewport.y,
+      x2_log_error("gpu: the requested viewport does not intersect the %ux%u "
+                   "target; leaving the previous one.\n",
                    g_swap_w, g_swap_h);
     return;
   }
-  vp.x = (float)x;
-  vp.y = (float)y;
-  vp.w = (float)w;
-  vp.h = (float)h;
-  vp.min_depth = g_viewport.minz;
-  vp.max_depth = g_viewport.maxz;
+  vp.x = r.x;
+  vp.y = r.y;
+  vp.w = r.w;
+  vp.h = r.h;
+  vp.min_depth = r.minz;
+  vp.max_depth = r.maxz;
   SDL_SetGPUViewport(g_pass, &vp);
 }
 
@@ -689,13 +648,7 @@ void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz) {
   (void)minz;
   (void)maxz;
 #else
-  g_viewport.x = x;
-  g_viewport.y = y;
-  g_viewport.w = w;
-  g_viewport.h = h;
-  g_viewport.minz = minz;
-  g_viewport.maxz = maxz;
-  g_viewport.set = 1;
+  x2::gpu::gpu_viewport_request(x, y, w, h, minz, maxz);
   apply_viewport(); /* no-op until a pass is open */
 #endif
 }

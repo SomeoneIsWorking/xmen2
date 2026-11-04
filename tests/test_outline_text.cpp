@@ -92,8 +92,18 @@ int main() {
         "a glyph the record leaves empty stays retail");
 
   /* Scales the loader derived: capitals fill 14 of 16 rows. */
-  const float caps = 16.0f * 14.0f / 16.0f / x2::native::kOutlineCapPx;
-  const float smalls = 13.0f * 14.0f / 16.0f / x2::native::kOutlineCapPx;
+  const float caps = 16.0f * 14.0f / 16.0f;
+  const float smalls = 13.0f * 14.0f / 16.0f;
+  const auto advance = [](char c) {
+    float a = 0.0f;
+    x2::native::outline_glyph_advance(x2::native::OutlineFace::Italic,
+                                      (std::uint16_t)c, &a);
+    return a;
+  };
+  const auto kerning = [](char l, char r) {
+    return x2::native::outline_glyph_kerning(
+        x2::native::OutlineFace::Italic, (std::uint16_t)l, (std::uint16_t)r);
+  };
   const x2::native::OutlineFont med{font, x2::native::OutlineFace::Italic, caps,
                                     smalls, 1.0f};
   const x2::native::PromptVertexKey key{0x1000u, 0u};
@@ -112,16 +122,17 @@ int main() {
   const x2::native::PromptQuad cap = pen.placed()[0].quad;
   const x2::native::PromptQuad small = pen.placed()[1].quad;
   pen.clear_placed();
-  check(cap.sheet == x2::native::kOutlineTextSheet && cap.color == 0xff00ff00u,
-        "the quad samples the outline atlas in the glyph's colour");
-  check(small.u0 == cap.u0 && small.v0 == cap.v0,
+  check(cap.sheet == x2::native::kOutlineTextSheet &&
+            cap.color == 0xff00ff00u &&
+            cap.face == (std::uint8_t)x2::native::OutlineFace::Italic,
+        "the quad is an outline glyph of the font's face in its colour");
+  check(small.codepoint == 'H' && cap.codepoint == 'H',
         "a small capital is the capital's own glyph");
-  /* Baseline at box top + 16; the capital's rim reaches one row past it. */
+  /* Baseline at box top + 16; the cap height is 14 of those rows. */
   const float line = box[1] + 16.0f;
-  check(cap.y1 > line && cap.y1 < line + 1.5f && cap.y0 < line - 13.0f &&
-            cap.y0 > line - 18.0f,
+  check(cap.y0 == line && std::fabs(cap.y0 - cap.y1 - caps) < 0.01f,
         "the capital stands on the record's baseline at its height");
-  check(small.y1 - small.y0 < cap.y1 - cap.y0, "a small capital is smaller");
+  check(small.y0 - small.y1 < cap.y0 - cap.y1, "a small capital is smaller");
 
   /* One line, "HH HH HH": retail capitals 16 apart, an 8-unit space. */
   put_string(kStringAt, "HH HH HH");
@@ -138,18 +149,22 @@ int main() {
   pen.close();
   const std::vector<x2::native::OutlinePlaced> &line1 = pen.placed();
   check(line1.size() == 6u, "glyphs and spaces on one line make one run");
-  const float letter_gap = line1[1].quad.x0 - line1[0].quad.x1;
-  const float space1 = line1[2].quad.x0 - line1[1].quad.x1;
-  const float space2 = line1[4].quad.x0 - line1[3].quad.x1;
-  check(std::fabs(line1[0].quad.x0 - 200.0f) < 3.0f,
+  const float letter_step = line1[1].quad.x0 - line1[0].quad.x0;
+  const float space1 = line1[2].quad.x0 - line1[1].quad.x0;
+  const float space2 = line1[4].quad.x0 - line1[3].quad.x0;
+  check(std::fabs(line1[0].quad.x0 - 200.0f) < 0.01f,
         "the run starts at its first glyph's retail pen");
-  check(std::fabs(space1 - space2) < 0.01f &&
-            std::fabs(line1[4].quad.x0 - line1[3].quad.x1 - space1) < 0.01f,
-        "spaces within a run are equal");
-  check(space1 > 2.0f * letter_gap,
-        "a narrow retail space still reads wider than a letter gap");
-  check(line1[5].quad.x1 < retail_end + 0.5f &&
-            retail_end - line1[5].quad.x1 < 0.25f * 16.0f,
+  check(std::fabs(space1 - space2) < 0.01f, "spaces within a run are equal");
+  check(space1 > letter_step + 1.0f,
+        "a narrow retail space still reads wider than a letter step");
+  const float face_line =
+      (6.0f * advance('H') +
+       2.0f * x2::native::outline_glyph_space(x2::native::OutlineFace::Italic) +
+       3.0f * kerning('H', 'H')) *
+      caps;
+  const float line_fit = (retail_end - 200.0f) / face_line;
+  check(std::fabs(line1[5].quad.x0 + advance('H') * caps * line_fit -
+                  retail_end) < 0.01f,
         "the run ends where retail's advances end it");
   pen.clear_placed();
 
@@ -162,15 +177,16 @@ int main() {
   box_at(216.0f, 50.0f, at);
   pen.add(med, 1, at, plane, key, 0u);
   pen.close();
-  const float before_key = pen.placed()[1].quad.x1;
+  const float before_key = pen.placed()[1].quad.x0;
   pen.clear_placed();
   box_at(280.0f, 50.0f, at);
   pen.add(med, 5, at, plane, key, 0u);
   box_at(296.0f, 50.0f, at);
   pen.add(med, 6, at, plane, key, 0u);
   pen.close();
-  check(before_key < 232.5f, "the run before the key ends at retail's end");
-  check(std::fabs(pen.placed()[0].quad.x0 - 280.0f) < 3.0f,
+  check(before_key > 200.0f && before_key < 232.0f,
+        "the run before the key stays inside retail's span");
+  check(std::fabs(pen.placed()[0].quad.x0 - 280.0f) < 0.01f,
         "the run after the key starts at its retail pen, not the face's");
   pen.clear_placed();
 
@@ -184,15 +200,15 @@ int main() {
   box_at(600.0f, 90.0f, at);
   pen.add(med, 4, at, plane, key, 0u);
   pen.close();
-  check(std::fabs(pen.placed()[1].quad.x0 - 500.0f) < 3.0f &&
-            std::fabs(pen.placed()[2].quad.x0 - 600.0f) < 3.0f,
+  check(std::fabs(pen.placed()[1].quad.x0 - 500.0f) < 0.01f &&
+            std::fabs(pen.placed()[2].quad.x0 - 600.0f) < 0.01f,
         "a skipped glyph or a new line starts a new run");
   pen.clear_placed();
 
   /* Kerning: the face tucks A under T's bar. */
   const float kern = x2::native::outline_glyph_kerning(
       x2::native::OutlineFace::Italic, 'T', 'A');
-  check(kern < -1.0f, "the face's GPOS kerns T before A");
+  check(kern < -0.05f, "the face's GPOS kerns T before A");
   put_string(kStringAt, "HTAH");
   pen.begin(kStringAt);
   for (unsigned i = 0; i < 4; i++) {
@@ -201,24 +217,13 @@ int main() {
   }
   pen.close();
   const std::vector<x2::native::OutlinePlaced> &hta = pen.placed();
-  const x2::native::OutlineCell *h =
-      x2::native::outline_glyph_cell(x2::native::OutlineFace::Italic, 'H');
-  const x2::native::OutlineCell *t =
-      x2::native::outline_glyph_cell(x2::native::OutlineFace::Italic, 'T');
-  const x2::native::OutlineCell *a =
-      x2::native::outline_glyph_cell(x2::native::OutlineFace::Italic, 'A');
-  const auto kerning = [](char l, char r) {
-    return x2::native::outline_glyph_kerning(
-        x2::native::OutlineFace::Italic, (std::uint16_t)l, (std::uint16_t)r);
-  };
   /* The run's face length against retail's 64 units gives its stretch. */
-  const float run = (2.0f * h->advance + t->advance + a->advance +
+  const float run = (2.0f * advance('H') + advance('T') + advance('A') +
                      kerning('H', 'T') + kern + kerning('A', 'H')) *
                     caps;
   const float fit = 64.0f / run;
-  const float step =
-      hta[2].quad.x0 - hta[1].quad.x0 - (a->left - t->left) * caps;
-  check(std::fabs(step - (t->advance + kern) * caps * fit) < 0.05f,
+  const float step = hta[2].quad.x0 - hta[1].quad.x0;
+  check(std::fabs(step - (advance('T') + kern) * caps * fit) < 0.01f,
         "the pen steps from T to A by the kerned advance");
   pen.clear_placed();
 
@@ -229,7 +234,9 @@ int main() {
   pen.add(med, 0, up, flipped, key, 0u);
   pen.close();
   const x2::native::PromptQuad scaled = pen.placed()[0].quad;
-  check(scaled.y1 < scaled.y0 &&
+  check(scaled.y1 > scaled.y0 &&
+            std::fabs(scaled.y1 - scaled.y0 - 2.0f * (cap.y0 - cap.y1)) <
+                0.01f &&
             std::fabs(scaled.x1 - scaled.x0 - 2.0f * (cap.x1 - cap.x0)) < 0.01f,
         "the plane scale and its direction carry through");
 

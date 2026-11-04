@@ -2,10 +2,10 @@
  * Native prompt glyph drawing, independent of the guest D3D8 objects.
  *
  * The text engine still owns layout. prompt_glyph_draw.cpp captures its local
- * rectangle and batch colour; this owner retains the port's RGBA SVG atlas,
- * the runtime key label sheet (keycap_labels.h) and the mipmapped outline
- * text atlas (outline_glyph_atlas.hpp),
- * turns each rectangle into two triangles in the stock (x, 0, y) text plane,
+ * rectangle and batch colour; this owner retains the port's RGBA SVG atlas
+ * and the runtime key label sheet (keycap_labels.h), has gpu_outline_text
+ * place outline glyphs at their drawn size, turns each rectangle into two
+ * triangles in the stock (x, 0, y) text plane,
  * and submits them through the host GPU. The engine draw bridge supplies the
  * text batch's finalized matrix when it calls this module, so this owner
  * contains no guest addresses or CPU state.
@@ -15,6 +15,7 @@
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "gpu_outline_text.h"
 #include "keycap_labels.h"
 #include "outline_glyph_atlas.hpp"
 #include "prompt_glyph_atlas.h"
@@ -36,8 +37,11 @@ static_assert(x2::native::kOutlineTextSheet > X2_KEYCAP_SHEET_LABELS);
 
 static GpuTexture g_atlas;
 static GpuTexture g_labels;
-static GpuTexture g_outline; /* 0 when the outline atlas could not be built */
 static std::array<PromptVertex, x2::native::kPromptQuadsMax * 6u> g_staged;
+/* Each quad's sheet, outline glyphs resolved to their page. */
+static std::array<x2::native::PromptQuad, x2::native::kPromptQuadsMax>
+    g_resolved;
+static std::array<uint8_t, x2::native::kPromptQuadsMax> g_group;
 static uint64_t g_labels_uploaded; /* the sheet generation g_labels holds */
 static GpuBuffer g_vertices;
 static unsigned long g_frames_ready, g_render_calls, g_drawn, g_refused;
@@ -49,33 +53,11 @@ static void release_resources(void) {
     gpu_texture_destroy(g_labels);
   if (g_atlas)
     gpu_texture_destroy(g_atlas);
-  if (g_outline)
-    gpu_texture_destroy(g_outline);
-  g_outline = 0;
+  gpu_outline_text_shutdown();
   g_vertices = 0;
   g_labels = 0;
   g_atlas = 0;
   g_labels_uploaded = 0;
-}
-
-/* The outline atlas and its mip chain, built from the CPU raster. */
-static GpuTexture create_outline(void) {
-  GpuTexture texture =
-      gpu_texture_create(x2::native::kOutlineAtlasW, x2::native::kOutlineAtlasH,
-                         GPU_FMT_RGBA8, x2::native::kOutlineAtlasLevels);
-  for (unsigned level = 0; texture && level < x2::native::kOutlineAtlasLevels;
-       level++) {
-    unsigned w = 0, h = 0;
-    const uint8_t *pixels =
-        x2::native::outline_glyph_atlas_level(level, &w, &h);
-    if (!pixels || !gpu_texture_upload(texture, level, pixels, w * h * 4u)) {
-      gpu_texture_destroy(texture);
-      x2_log_error("prompt GPU: the outline text atlas could not be "
-                   "uploaded; outline text draws will be refused.\n");
-      return 0;
-    }
-  }
-  return texture;
 }
 
 static int ensure_resources(void) {
@@ -96,7 +78,6 @@ static int ensure_resources(void) {
   g_vertices = gpu_buffer_create(GPU_BUF_VERTEX,
                                  x2::native::kPromptQuadsMax * 6u *
                                      (uint32_t)sizeof(struct PromptVertex));
-  g_outline = create_outline();
   if (!g_atlas || !g_labels || !g_vertices) {
     release_resources();
     x2_log_error("prompt GPU: atlas, label sheet or vertex-buffer creation "
@@ -122,7 +103,7 @@ static int labels_current(void) {
 
 /* One draw of `count` quads from quad `first`, sampling `texture`. */
 static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
-                      const float mvp[16], int mipmapped) {
+                      const float mvp[16]) {
   GpuDraw draw;
   if (!count)
     return 1;
@@ -141,7 +122,7 @@ static int draw_sheet(GpuTexture texture, unsigned first, unsigned count,
   draw.texop = GPU_TEXOP_MODULATE;
   draw.alpha_op = GPU_TEXOP_MODULATE;
   draw.texture_clamp = 1;
-  draw.texture_mip = mipmapped ? 2 : 0;
+  draw.texture_mip = 0;
   draw.blend_enable = 1;
   draw.src_blend = GPU_BLEND_SRCALPHA;
   draw.dst_blend = GPU_BLEND_INVSRCALPHA;
@@ -175,18 +156,20 @@ static void write_quad(struct PromptVertex *v,
 
 void gpu_prompt_glyphs_frame_begin(void) {
   x2::native::prompt_quads_reset();
+  gpu_outline_text_frame_begin();
   if (ensure_resources())
     g_frames_ready++;
 }
 
 int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
                              unsigned count, const float mvp[16]) {
-  /* Outline text first, then prompt art, then key letters over their caps. */
-  constexpr std::array<uint8_t, 3> kOrder = {x2::native::kOutlineTextSheet,
-                                             X2_KEYCAP_SHEET_ATLAS,
-                                             X2_KEYCAP_SHEET_LABELS};
-  std::array<unsigned, kOrder.size()> first{}, counts{};
-  unsigned i, labels = 0;
+  /* Outline text first, page by page, then prompt art, then key letters
+     over their caps. */
+  constexpr unsigned kAtlasGroup = x2::native::kOutlinePagesMax;
+  constexpr unsigned kLabelGroup = kAtlasGroup + 1u;
+  constexpr unsigned kGroups = kLabelGroup + 1u;
+  std::array<unsigned, kGroups> first{}, counts{};
+  unsigned i, kept = 0, labels = 0;
 
   g_render_calls++;
   if (!count)
@@ -197,35 +180,49 @@ int gpu_prompt_glyphs_render(const struct x2::native::PromptQuad *quads,
     return 0;
   }
   for (i = 0; i < count; i++) {
-    for (unsigned k = 0; k < kOrder.size(); k++)
-      counts[k] += (unsigned)(quads[i].sheet == kOrder[k]);
-    labels += (unsigned)(quads[i].sheet == X2_KEYCAP_SHEET_LABELS);
+    unsigned group;
+    if (quads[i].sheet == x2::native::kOutlineTextSheet) {
+      if (!gpu_outline_text_place(quads[i], mvp, &g_resolved[kept], &group))
+        continue;
+    } else {
+      g_resolved[kept] = quads[i];
+      group =
+          quads[i].sheet == X2_KEYCAP_SHEET_LABELS ? kLabelGroup : kAtlasGroup;
+    }
+    labels += (unsigned)(group == kLabelGroup);
+    g_group[kept++] = (uint8_t)group;
+    counts[group]++;
   }
-  for (unsigned k = 1; k < kOrder.size(); k++)
+  for (unsigned k = 1; k < kGroups; k++)
     first[k] = first[k - 1] + counts[k - 1];
   {
-    std::array<unsigned, kOrder.size()> at = first;
-    for (i = 0; i < count; i++)
-      for (unsigned k = 0; k < kOrder.size(); k++)
-        if (quads[i].sheet == kOrder[k])
-          write_quad(&g_staged[at[k]++ * 6u], &quads[i]);
+    std::array<unsigned, kGroups> at = first;
+    for (i = 0; i < kept; i++)
+      write_quad(&g_staged[at[g_group[i]]++ * 6u], &g_resolved[i]);
   }
-  if ((labels && !labels_current()) ||
-      !gpu_buffer_upload(g_vertices, 0, g_staged.data(),
-                         count * 6u * (uint32_t)sizeof g_staged[0]) ||
-      !draw_sheet(g_outline, first[0], counts[0], mvp, 1) ||
-      !draw_sheet(g_atlas, first[1], counts[1], mvp, 0) ||
-      !draw_sheet(g_labels, first[2], counts[2], mvp, 0)) {
+  if (!gpu_outline_text_upload() || (labels && !labels_current()) ||
+      (kept && !gpu_buffer_upload(g_vertices, 0, g_staged.data(),
+                                  kept * 6u * (uint32_t)sizeof g_staged[0]))) {
     g_refused += count;
     return 0;
   }
-  g_drawn += count;
+  for (unsigned k = 0; k < kGroups; k++) {
+    const GpuTexture texture = k == kAtlasGroup   ? g_atlas
+                               : k == kLabelGroup ? g_labels
+                                                  : gpu_outline_text_page(k);
+    if (!draw_sheet(texture, first[k], counts[k], mvp)) {
+      g_refused += count;
+      return 0;
+    }
+  }
+  g_drawn += kept;
   return 1;
 }
 
 void gpu_prompt_glyphs_shutdown(void) { release_resources(); }
 
 void gpu_prompt_glyphs_report(void) {
+  gpu_outline_text_report();
   x2_log_info("  Prompt GPU: %lu text-boundary call(s), %lu glyph quad(s) "
               "submitted, "
               "%lu refused; resources ready at %lu frame begin(s)\n",
