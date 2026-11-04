@@ -112,7 +112,7 @@ Accept, a card per 1.15 fingers, five shown at once, scrolled by a drag. Each
 card shows its label at the left and the game's own value text right-aligned,
 both by the items' own draws moved into the card at one fitted scale. A volume
 card has the label in its upper half and the retail bar, moved into the card,
-over a track of the card art in its lower half. A tap on a toggle card is a
+in its lower half. A tap on a toggle card is a
 retail click on its row (`CMenuOptions::onMouse` `0x005cb5f0`: focus, then
 `0x201` changes it); a tap or a slide along a volume card sets a target level
 and the port clicks retail's bar toward it, a tenth per click as retail steps,

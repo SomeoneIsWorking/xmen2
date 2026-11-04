@@ -87,11 +87,8 @@ constexpr std::string_view kCardArt = "ui/models/m_pda_option_screen";
 constexpr std::string_view kFocusArt = "ui/models/m_pda_option_focus";
 /* The art's animations play it in; it is shown done. */
 constexpr float kSettled = 0.999F;
-/* Cards sit this much behind the text, a volume's slot this much behind its
-   bar and this much past it. */
+/* Cards sit this much behind the text. */
 constexpr float kCardDepth = 5.0F;
-constexpr float kTrackDepth = 2.0F;
-constexpr float kTrackFrame = 2.0F;
 /* Text inset from a card's ends, and the label's share of a setting card,
    in fingers and of the text width. */
 constexpr float kTextPad = 0.25F;
@@ -215,19 +212,10 @@ public:
     menu_scene::show_phase(call, art, kSettled);
     menu_scene::attach(call, art);
     row.attached = art;
-    if (kSettings[index].volume && row.value != 0u && row.track != 0u) {
+    if (kSettings[index].volume && row.value != 0u) {
       row.bar = x2::input::volume_bar(
           row.card, kTextPad * finger,
           static_cast<float>(s16(row.value + item::kBoxHeight)));
-      const SceneBox slot{
-          row.bar.left - kTrackFrame, row.bar.bottom - kTrackFrame,
-          row.bar.right + kTrackFrame, row.bar.top + kTrackFrame};
-      menu_scene::stretch(call, vectors, row.track, panel.plain_art, slot,
-                          static_cast<float>(s16(row.value + item::kDepth)) +
-                              kTrackDepth);
-      menu_scene::show_phase(call, row.track, kSettled);
-      menu_scene::attach(call, row.track);
-      row.track_attached = true;
     }
     draw_text(call, vectors, panel, row, self, kSettings[index], focused);
     return true;
@@ -259,9 +247,6 @@ public:
         detach(call, row);
         menu_scene::release(call, row.plain);
         menu_scene::release(call, row.lit);
-        if (row.track != 0u) {
-          menu_scene::release(call, row.track);
-        }
       }
       panels_.erase(at);
       return;
@@ -388,10 +373,7 @@ private:
     std::uint32_t focus = 0u;
     std::uint32_t plain = 0u;
     std::uint32_t lit = 0u;
-    /* A volume's slot under its bar. */
-    std::uint32_t track = 0u;
     std::uint32_t attached = 0u;
-    bool track_attached = false;
     SceneBox card;
     /* A volume card's bar, and the bar's own box retail hit-tests. */
     SceneBox bar;
@@ -473,9 +455,6 @@ private:
       row.focus = item_named(call, menu, kSettings[i].focus);
       row.plain = menu_scene::load_model(call, kCardArt);
       row.lit = menu_scene::load_model(call, kFocusArt);
-      if (kSettings[i].volume) {
-        row.track = menu_scene::load_model(call, kCardArt);
-      }
     }
     panel.panel_art = item_named(call, menu, kPanelArt);
     panel.title = item_named(call, menu, kTitle);
@@ -488,9 +467,6 @@ private:
       for (const Row &row : panel.rows) {
         menu_scene::stretch(call, vectors, row.plain, {}, {}, 0.0F);
         menu_scene::stretch(call, vectors, row.lit, {}, {}, 0.0F);
-        if (row.track != 0u) {
-          menu_scene::stretch(call, vectors, row.track, {}, {}, 0.0F);
-        }
       }
     }
     return panel;
@@ -536,10 +512,6 @@ private:
     if (row.attached != 0u) {
       menu_scene::detach(call, row.attached);
       row.attached = 0u;
-    }
-    if (row.track_attached) {
-      menu_scene::detach(call, row.track);
-      row.track_attached = false;
     }
   }
 
