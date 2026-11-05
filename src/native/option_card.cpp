@@ -21,10 +21,10 @@ struct LayerArt {
 
 constexpr std::array<LayerArt, 6> kLayerArt = {{
     {"ui/models/m_pda_option_screen", 0.0F, 0.0F},
-    {"ui/models/m_pda_option_focus", -4.3F, -1.8F},
-    {"ui/models/m_pda_option_nofocus", -4.3F, -1.8F},
-    {"ui/models/m_pda_option_light_on", 70.0F, -3.6F},
-    {"ui/models/m_pda_option_light_off", 70.0F, -3.6F},
+    {"ui/models/m_pda_option_focus", -4.3F, -1.5F},
+    {"ui/models/m_pda_option_nofocus", -4.3F, -1.5F},
+    {"ui/models/m_pda_option_light_on", 70.5F, -2.5F},
+    {"ui/models/m_pda_option_light_off", 70.5F, -2.5F},
     {"ui/models/m_pda_side_hinge", -105.0F, 12.0F},
 }};
 
@@ -78,8 +78,9 @@ void OptionCard::show(guest::GuestCall &call, menu_scene::Vectors &vectors,
   }
   const float sx = frame.width() / art.box.width();
   const float sz = frame.height() / art.box.height();
-  const presentation::ScenePoint origin{frame.left - art.box.left * sx,
-                                        frame.top - art.box.top * sz};
+  const presentation::ScenePoint origin{
+      frame.left - art.box.left * sx,
+      on_pixel_edge(frame.top - art.box.top * sz)};
   const float back = depth - art.front;
   put(call, vectors, kFrame, origin, back, sx, sz);
   const float panel_z = origin.z + kLayerArt[kFocus].up * sz;

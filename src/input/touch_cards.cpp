@@ -56,10 +56,18 @@ int box_hit(const std::vector<SceneBox> &boxes,
 SceneBox card_text_box(const SceneBox &card, float pad) {
   /* The shares of the art's width left of the PDA's label margin and taken
      by its slanted right end. */
-  constexpr float kArtLeft = 0.025F;
+  constexpr float kArtLeft = 0.0145F;
   constexpr float kArtSlant = 0.12F;
   return {card.left + kArtLeft * card.width() + pad, card.bottom,
           card.right - kArtSlant * card.width() - pad, card.top};
+}
+
+SceneBox pda_row_box(const SceneBox &card) {
+  constexpr float kArtAspect = 5.0F;
+  const float height = std::min(card.height(), card.width() / kArtAspect);
+  const float middle = 0.5F * (card.bottom + card.top);
+  return {card.left, middle - 0.5F * height, card.right,
+          middle + 0.5F * height};
 }
 
 } // namespace x2::input

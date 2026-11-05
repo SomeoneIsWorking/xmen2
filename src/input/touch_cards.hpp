@@ -53,6 +53,10 @@ int cards_scrolled(const CardStack &stack, int start_first, float dz);
    may use: `pad` in from its left end and from its slanted right end. */
 SceneBox card_text_box(const SceneBox &card, float pad);
 
+/* The PDA row's frame inside : the card's width at the art's own
+   proportions, centred, so the art keeps its slants. */
+SceneBox pda_row_box(const SceneBox &card);
+
 /* The index of the box holding `point`, or -1. */
 int box_hit(const std::vector<SceneBox> &boxes, presentation::ScenePoint point);
 

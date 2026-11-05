@@ -6,12 +6,12 @@ namespace x2::input {
 namespace {
 
 /* A volume card's label line and its bar span these shares of its height
-   from the bottom, both inside the panel's ring (0.22 to 0.78); the bar's
+   from the bottom, both inside the panel's ring (0.25 to 0.75); the bar's
    ends sit this much further in than the text. */
 constexpr float kVolumeLabelBottom = 0.47F;
-constexpr float kVolumeLabelTop = 0.75F;
-constexpr float kVolumeBarBottom = 0.29F;
-constexpr float kVolumeBarTop = 0.42F;
+constexpr float kVolumeLabelTop = 0.71F;
+constexpr float kVolumeBarBottom = 0.3F;
+constexpr float kVolumeBarTop = 0.4F;
 constexpr float kVolumeBarInset = 0.5F;
 
 } // namespace

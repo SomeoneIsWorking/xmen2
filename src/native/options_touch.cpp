@@ -33,6 +33,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -96,7 +97,17 @@ constexpr float kTrackShade = 0.45F;
 /* The dark ring around a bar, the panel's own ring colour as shares of the
    bar's brightest channel, and its width in scene units. */
 constexpr std::array<float, 3> kTrackRing = {0.18F, 0.04F, 0.0F};
-constexpr float kTrackEdge = 1.5F;
+constexpr float kTrackEdge = 1.2F;
+/* The share of a bar's width its slanted ends take; copies stepped along
+   that slant and to each side make the ring. */
+constexpr float kBarSlant = 0.028F;
+constexpr std::array<std::pair<float, float>, 6> kTrackRingSteps = {
+    {{-1.0F, -1.0F},
+     {1.0F, -1.0F},
+     {-1.0F, 0.0F},
+     {1.0F, 0.0F},
+     {-1.0F, 1.0F},
+     {1.0F, 1.0F}}};
 /* Text inset from a card's ends, and the label's share of a setting card,
    in fingers and of the text width. */
 constexpr float kTextPad = 0.25F;
@@ -213,7 +224,8 @@ public:
     row.card = panel.stack.cards[static_cast<std::size_t>(shown)];
     const bool focused = RD32(menu + x2::menu::kMenuFocus) == self;
     const float depth = static_cast<float>(s16(self + item::kDepth));
-    row.art.show(call, vectors, row.card, depth + kCardDepth, focused);
+    row.art.show(call, vectors, x2::input::pda_row_box(row.card),
+                 depth + kCardDepth, focused);
     if (kSettings[index].volume && row.value != 0u) {
       row.bar = x2::input::volume_bar(row.card, kTextPad * finger);
     }
@@ -303,12 +315,16 @@ public:
     const float grey = kTrackShade * bright;
     float ring_rgba[4] = {kTrackRing[0] * bright, kTrackRing[1] * bright,
                           kTrackRing[2] * bright, rgba[3]};
-    menu_scene::queue_sprite(call, vectors,
-                             {bar.left - kTrackEdge, bar.bottom - kTrackEdge,
-                              bar.right + kTrackEdge, bar.top + kTrackEdge},
-                             static_cast<float>(s16(self + item::kDepth)) +
-                                 2.0F * kTrackDepth,
-                             ring_rgba, RD8(self + kBarSheet));
+    const float slope = kBarSlant * bar.width() / bar.height();
+    for (const auto &[side, up] : kTrackRingSteps) {
+      const float dx = (side + up * slope) * kTrackEdge;
+      const float dz = up * kTrackEdge;
+      menu_scene::queue_sprite(
+          call, vectors,
+          {bar.left + dx, bar.bottom + dz, bar.right + dx, bar.top + dz},
+          static_cast<float>(s16(self + item::kDepth)) + 2.0F * kTrackDepth,
+          ring_rgba, RD8(self + kBarSheet));
+    }
     for (int i = 0; i < 3; ++i) {
       rgba[i] = grey;
     }
