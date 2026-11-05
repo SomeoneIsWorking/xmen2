@@ -93,6 +93,10 @@ constexpr std::string_view kAccept = "label_accept";
 constexpr float kCardDepth = 5.0F;
 constexpr float kTrackDepth = 1.0F;
 constexpr float kTrackShade = 0.45F;
+/* The dark ring around a bar, the panel's own ring colour as shares of the
+   bar's brightest channel, and its width in scene units. */
+constexpr std::array<float, 3> kTrackRing = {0.18F, 0.04F, 0.0F};
+constexpr float kTrackEdge = 1.5F;
 /* Text inset from a card's ends, and the label's share of a setting card,
    in fingers and of the text width. */
 constexpr float kTextPad = 0.25F;
@@ -295,7 +299,16 @@ public:
     menu_scene::style_rgba(call, RD8(self + kBarStyle), rgba);
     call.virtual_call(self, kSlotFade);
     rgba[3] = static_cast<float>(call.x87_result());
-    const float grey = kTrackShade * std::max({rgba[0], rgba[1], rgba[2]});
+    const float bright = std::max({rgba[0], rgba[1], rgba[2]});
+    const float grey = kTrackShade * bright;
+    float ring_rgba[4] = {kTrackRing[0] * bright, kTrackRing[1] * bright,
+                          kTrackRing[2] * bright, rgba[3]};
+    menu_scene::queue_sprite(call, vectors,
+                             {bar.left - kTrackEdge, bar.bottom - kTrackEdge,
+                              bar.right + kTrackEdge, bar.top + kTrackEdge},
+                             static_cast<float>(s16(self + item::kDepth)) +
+                                 2.0F * kTrackDepth,
+                             ring_rgba, RD8(self + kBarSheet));
     for (int i = 0; i < 3; ++i) {
       rgba[i] = grey;
     }
