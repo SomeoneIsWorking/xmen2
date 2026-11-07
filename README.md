@@ -321,3 +321,5 @@ Earlier facts established during RE (see the durable claims under `docs/info/`):
   medium-font codepoints. This port rasterises shared SVG equivalents into its
   own GPU atlas and inserts them at the RE'd Alchemy text-batch boundary; the
   shipped font assets remain untouched.
+
+Built with AI assistance (Claude and other LLMs).
