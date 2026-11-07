@@ -34,7 +34,7 @@ CMAKE_PACKAGES = (
 )
 
 # shaderc and the third_party trees it builds glslc from.
-SHADERC = github_commit("SomeoneIsWorking", "shaderc", "50f71a748725b3df267128e519ef6c59881fc33e",
+SHADERC = github_commit("SomeoneIsWorking", "shaderc", "29be627ca0564fd96cbfcb6d3fcfe2c098c70105",
                         "b269580b3df0220173925f313369eb735dc30787f52b1a2d9fa60e1dfc776bbf")
 SHADERC_THIRD_PARTY = (
     ("glslang", github_commit("KhronosGroup", "glslang",

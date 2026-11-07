@@ -33,16 +33,16 @@ class SharedRepo:
 
 SHARED_REPOS = (
     SharedRepo("alchemy", "https://github.com/SomeoneIsWorking/alchemy.git",
-               "a59a9a00747d0ebccf5c4fdffa00563a4d599004",
+               "135ffb7d5169b4380c044f4015ba6a8b78b382e2",
                "include/alchemy/input/controller.hpp"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
-               "9bb391e1ddfb3a878ac8350e3d28c484e9ecc4a6", "sets"),
+               "9a8020d35f0d99a26f48127cf5a83df62178bb94", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "2a91b4d97a0664e8c5ed9a78870a7d351ce9ac96", "tools/android_port.py"),
+               "9b48caa4ee3da8ac8b47fa1e5c625b8b1455143d", "tools/android_port.py"),
     SharedRepo("setup-ui", "https://github.com/SomeoneIsWorking/setup-ui.git",
-               "d4ca35e501733966229b49d49716e00a31e2ad69", "include/setup_ui/setup_ui.h"),
+               "70474ea3f4f2732f3f0bf6d951c2d88f681ebe94", "include/setup_ui/setup_ui.h"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
-               "8c73beefc8f268c2b52686ab13c59982987fd946", "tools/web_port.py"),
+               "dd91568da099232fd052be4a9311a8f0727b7a90", "tools/web_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while
@@ -52,10 +52,10 @@ SHARED_REPOS = (
     # because x86port CONSUMES it and refuses to configure without it. Both are
     # this port's inputs, so both are this port's pins.
     SharedRepo("jit-common", "https://github.com/SomeoneIsWorking/jit-common.git",
-               "8a0e9534d9a1345a53d991fc35fdb5043547a156",
+               "b2218bb51d3f5b877015d06ea8ca6187fc4f2a11",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "ff72f97c5c1b576fab060d4b5f6196edafdd7332",
+               "cb10114927ac340d192d7bd03e4290dd9ebe2b08",
                "src/x86port/jit_engine.h"),
 )
 

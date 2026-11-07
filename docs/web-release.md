@@ -58,7 +58,7 @@ imports it under `public/xmen2/` and owns the GitHub Pages deployment, including
 
 ### W1 — Execute emitted guest blocks
 
-Pinned x86port `5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e` provides the real
+Pinned x86port `c59eb3127fffb6a9fe6d41dde699252f8b0f3dd5` provides the real
 WebAssembly module host, indirect-table publication, dispatcher, imports,
 cache release, sparse permissions, integer-tail, x87 and SIMD lowering. Eight
 synthetic suites passed in standalone and application-worker Emscripten

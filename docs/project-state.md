@@ -74,7 +74,7 @@ maintainer-only `re-harness` is not a player bootstrap dependency.
 
 The resolver was freshly reprovisioned against published immutable revisions
 for `x86port`, `jit-common`, and Alchemy, including x86port
-`ca52e377040d83534f9cd9f5a976526078fa2343`; each resulting checkout matched
+`1e46b0e51a5a8ba594a00e72e40ead618552a132`; each resulting checkout matched
 its required revision and was clean.
 
 Gap: C182 predates the current runtime-JIT bootstrap and therefore does not
@@ -372,7 +372,7 @@ silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.
 
 The combined Clang/Ninja build links the published x86port revision
-`4c23c0b86e09ba6ac47fd57c418f080c1ff6ed76` (the pinned successor `742fd04`
+`4ec644916439c3e52b08cbba6da169430484391a` (the pinned successor `742fd04`
 changes only hardware-oracle tests and their classification); source and linked-binary checks
 prove that `x2native` requires `x86port_runtime` and exposes no explicit CPU
 interpreter selector or verification mode. The earlier Linux startup refusal
@@ -1834,8 +1834,8 @@ structurally different frame path from the shipping one. With the renderer
 cleared, the draw dump above named the real cause.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
-  Pinned x86port `035e2f7f72938699299685a269394f0aed791e83` and jit-common
-  `329d066cf0de17d47bae74a47880e4170c2ef39b` instantiate emitted modules, publish
+  Pinned x86port `40c667a83d8b0033690420ad960cc6b1168823c6` and jit-common
+  `a0c0c16c048719976e440e737ffad8ab4d5f473f` instantiate emitted modules, publish
   indirect-table entries, dispatch guest blocks and reclaim cache entries.
   The pinned suite passed 43 native tests (including the lowering oracle, 1097
   checks with 38 of 38 lowered blocks executed in a real WebAssembly engine and

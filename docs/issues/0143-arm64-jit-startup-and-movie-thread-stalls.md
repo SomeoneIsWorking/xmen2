@@ -76,8 +76,8 @@ shared-runtime integration and are not fresh tests of that combined tree.
 ## Published integration
 
 The exact Mac snapshot is integrated into shared `main`: x86port
-`742fd0469508c7cdda1e93522592a61dbc147fda` and jit-common
-`03ac795cbc39843e795cb8091fb96bff2b1c9017`, both pinned in `bootstrap.py`.
+`0c23e7a8eadf583a75792ac2c1c77230df4957d0` and jit-common
+`06d8d66312265b14553f7da2878fcde0b4d02a3e`, both pinned in `bootstrap.py`.
 The merge preserves the Mac startup/store/copy optimizations and the independent
 Fedora/Windows ABI and CI contracts. Apple ARM64 keeps the user-approved
 binary64 execution behavior while precision metadata still reports its
