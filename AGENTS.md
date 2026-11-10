@@ -13,12 +13,7 @@ hand-written native code while the rest keeps working.
 factual capability coverage, and `docs/strategy.md` states why the guest is run
 at runtime and why the PC build is the conformance target.
 
-## Start here, before touching anything
-
-```sh
-rg -i '<words>' docs
-codemap.py find '<concept>'
-```
+## Docs
 
 `docs/project-goals.md`, `docs/project-state.md`, `docs/codemap.md`,
 `docs/issues/`, and `docs/re-frontier.md` hold the corresponding project
@@ -42,11 +37,10 @@ title validates the loader and content sentinels, and the shared framework
 copies the extracted game into that folder, where saves and settings also live,
 so both survive an uninstall. SDL starts only after the native bridge has
 mounted the folder and supplied the user-data root.
-The remaining mobile release gate is measured device performance; see
-`docs/android-release.md`.
+Android release status: `docs/android-release.md`.
 
 **Touch play is not an Android feature.** The on-screen pad and the mobile HUD
-placement are decided by the device the player is touching RIGHT NOW, never by
+placement are decided by the device the player is touching now, never by
 the platform the binary was built for: an Android player holding a controller
 wants neither, and a desktop player on a touchscreen wants both. The answer is
 observed from the host event stream (`src/input/touch_source.cpp`) and forced at
@@ -60,12 +54,14 @@ as belonging to a package.
 
 ## Build and run
 
-`build/native/` is the one native build tree. `./run.sh` maintains it, and
+Release, signing and Android rules: the `release`, `port-release` and `android`
+skills.
+
+`build/native/` is the native build tree. `./run.sh` maintains it, and
 the live harnesses (`tools/live_case.py`, `tools/x2ctl.py`) use its binary.
-Do not configure a second native tree by hand.
 
 ```sh
-./run.sh                         # provision, build and launch the one default product
+./run.sh                         # player path: provision, build and launch the default product
 cmake --build build/native -j$(nproc)          # build without launching
 ctest --test-dir build/native --output-on-failure
 ctest --test-dir build/native -R controller    # one test
@@ -116,14 +112,13 @@ and the release workflow owns publication. Local `build_android.py` builds are
 debug builds. `publish_apk` refuses a certificate that differs from
 `android/published-release.json`, preserving update compatibility.
 
-**Drive a run instead of scripting it.** The default product opens an HTTP
-channel on loopback, records the exact post-merge DirectInput states returned to
+**Control channel.** The default product opens an HTTP channel on loopback,
+records the exact post-merge DirectInput states returned to
 the game, and publishes its PID, port and recording in `scratch/run/live.json`.
 Commands are applied on the guest's own input poll, never from the server
 thread:
 
 ```sh
-./run.sh
 tools/x2ctl.py probe                  # status + input + frame when capturable
 tools/x2ctl.py status                 # frames, guest time, frame timing
 tools/x2ctl.py key Return --hold 0.4  # press keys, in order
@@ -143,20 +138,17 @@ The browser build has no environment and cannot bind that socket, so its
 command line is the page's repeated `?arg=` query: `?arg=--set&arg=hotep=4096`
 reaches the same option parser these flags do.
 
-JIT diagnostics must report translated blocks, native hand-backs, refusals,
-and denominators while the product runs.
+JIT diagnostics report translated blocks, native hand-backs, refusals, and
+denominators live in the heartbeat, including zero: runs end by timeout, so a
+counter that only prints at shutdown cannot measure this program and the
+signal-handler shutdown report is not reliable.
 
 **Wine oracle.** The unmodified PC release under Wine remains an independent
 behavioral control and may be instrumented to observe the retail boundary.
 
-**Ask the control for independent evidence, not only a similar-looking
-picture.** The retained stock-oracle path currently owns cached driven frames
-and proxy observations. A CPU, memory, timing, or device comparison is not
-available merely because an older probe once existed; add a bounded instrument
-with image identity, denominators, and both-answer controls before making that
-claim. Bisecting frames by eye is not representative conformance evidence.
-
-**Reuse the stock-oracle cache for identical driven captures:**
+**Stock-oracle cache.** The stock-oracle path owns cached driven frames and
+proxy observations; it has no CPU, memory, timing, or device comparison.
+Identical driven captures reuse its cache:
 
 ```sh
 X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
@@ -205,15 +197,13 @@ demand into host instructions by `shared/x86port`'s JIT:
 
 ### Project-owned host composition
 
-The host is governed by this repository's cohesive-owner boundaries and
-`docs/codemap.md`. `src/config/` owns persistent data and storage location;
+`src/config/` owns persistent data and storage location;
 `src/presentation/` owns window-mode transitions; `src/input/` resolves player
 assignments and publishes them into guest binding sets; `src/ui/` owns only the
 RmlUi lifetime and documents. `win32_sdl.cpp` and `gpu_device.cpp` compose those
 owners at the SDL event and render boundaries; they do not absorb their policy.
-New behavior goes to the smallest existing owner, or establishes a narrow new
-owner and updates the codemap in the same change. External projects may provide
-attributed provenance, but never substitute for a local contract or regression.
+External projects may provide attributed provenance, but never substitute for a
+local contract or regression.
 
 Save paths keep the same split: `shell32.cpp` owns the writable profile root used
 by config and registry storage, while `src/save/save_directory.{c,h}` owns the
@@ -309,39 +299,27 @@ opaque window and dimmed backdrop because the SDL_GPU backend renders its
 compositor-only blur and shadow effects incorrectly. Keyboard mappings belong
 to four reusable profiles; players reference profiles, while controllers are
 assigned by persistent identity and always use the canonical Xbox/PS2 layout.
-This paragraph records source provenance only; the local UI/config/input owners
-and their tests define the current architecture.
 
 `tools/check_structure.py` is the normal mechanical boundary: new host source
 files are capped at 1,200 lines and the listed legacy files are frozen at their
 measured size. Extract a cohesive owner and lower a legacy limit; never raise
-one to land a feature. New host code is C++: focused classes in `x2::`
-namespaces, with an `extern "C"` shim only where a C translation unit calls in.
+one to land a feature. New host code is C++ in `x2::` namespaces.
 
-## Required repository guardrails
+## Repository constraints
 
-- **Product configuration cannot choose the execution architecture.** The
-  gameplay target always uses the x86port JIT. `lucent::cvar` owns layered
-  optional diagnostics and title tuning; it must not expose an interpreter,
-  backend/fallback selector, or required product component as a mutable CVar.
+- **Product configuration cannot choose the execution architecture.**
+  `lucent::cvar` owns layered optional diagnostics and title tuning; it must
+  not expose an interpreter, backend/fallback selector, or required product
+  component as a mutable CVar.
   Test-oracle controls belong to a separately built test target.
-- **An override must reproduce the original's RETURN VALUE, not just its stack
-  effect.** Check the call site, not only the decompiler's signature: the
-  DirectX check was typed `void`, but its caller tests `AL` (issue #54, C158).
-- **A counter that only prints at shutdown cannot measure this program.**
-  Runs end by timeout, so report live values in the heartbeat, including zero
-  and a denominator; the signal-handler shutdown report is not reliable.
 - **Overrides are registered beside their subsystem implementation** with
   `x86_register_override("<module>.dll", 0x…, fn)`; `x86_guest_body` scopes a
   call to the original through the JIT. Module identity is required because
   `libIG*.dll` images reuse linked base `0x10000000` (C212).
-- **Automated and agent-driven runs are silent and fast by default.** Use the
-  timed silent device for `--no-window`, or SDL's dummy audio backend when a
-  real window is required for presentation/capture verification. Pass
-  `--unbounded` and `X2_UNPACED=1` unless real-time pacing is the subject of the
-  test. Never open the host playback device or run paced just because a test
-  needs a window. Where silence would change behaviour -- the game advances
-  cutscenes off DirectSound play cursors -- preserve advancing play cursors;
-  do not merely disable audio (`dsound.cpp`).
+- **Silent, unpaced tool runs.** `--no-window` uses the timed silent device;
+  a run that needs a real window uses SDL's dummy audio backend. `--unbounded`
+  and `X2_UNPACED=1` apply unless real-time pacing is the subject. The game
+  advances cutscenes off DirectSound play cursors, so silence keeps play
+  cursors advancing rather than disabling audio (`dsound.cpp`).
 - **One clock the guest can see** (`guest_clock.cpp`). `--unbounded` skips only
   scheduler idle waits; it never scales guest time.
