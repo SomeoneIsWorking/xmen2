@@ -2105,8 +2105,17 @@ has. Broadcasts go to every interface's directed broadcast
 (`x2::net::lan_broadcast_destinations` on `lucent::net::lan_broadcasts`). B
 heard A, A re-formed for two and started, and both loaded the tutorial scene.
 
+Friends added by code reach each other with no shared broadcast domain
+(plan [204](plans/0204-lan-play-with-friends-by-code.md)). On 2026-11-11, A at
+10.77.0.1/24 and B at 10.88.0.2/24 were joined only by routed unicast. A asked
+for an invite (`/lan?invite=1`) from the tutorial and B pasted its code
+(`/lan?code=`). The meeting connected over direct UDP, and each side saw the
+other as 10.254.0.2 (`lucent::p2p::VirtualLan`). B's menu offered "Join fedora",
+A re-formed for two, and both loaded the tutorial scene.
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
-is the retail "dropped" path); and no run has crossed two physical machines,
+is the retail "dropped" path); codes have no menu UI yet, and no path through
+ZeroTier when direct UDP fails; and no run has crossed two physical machines,
 real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 

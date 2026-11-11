@@ -22,6 +22,7 @@
  * script the quit dialog runs, and such a player stays at the main menu.
  */
 
+#include "friends.hpp"
 #include "lan_nat_negotiation.hpp"
 #include "lan_presence.hpp"
 
@@ -60,6 +61,9 @@ public:
   /* Any thread. */
   std::string status() const;
 
+  /* The control thread: friends over the internet, by code (friends.hpp). */
+  net::Friends &friends() { return friends_; }
+
   /* The guest thread: GameSpy's NAT negotiation, answered on the LAN. */
   NatNegotiation &nat_negotiation() { return nat_; }
 
@@ -80,6 +84,7 @@ private:
            const std::optional<net::presence::Announce> &local) const;
   void set_status(std::string text);
 
+  net::Friends friends_;
   net::presence::Presence presence_;
   NatNegotiation nat_;
   std::string name_;

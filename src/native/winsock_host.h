@@ -23,6 +23,10 @@
 #include <cstddef>
 #include <cstdint>
 
+namespace x2::net {
+class FriendRoute;
+}
+
 namespace x2::native {
 
 inline constexpr unsigned WINSOCK_SOCKET_ERROR = 0xffffffffu;
@@ -147,6 +151,10 @@ struct WinsockFdSet {
 };
 int winsock_select(WinsockFdSet *read, WinsockFdSet *write,
                    WinsockFdSet *except, int64_t timeout_us, uint32_t *error);
+
+/* The friends a datagram may be addressed to, as machines on the guest's LAN;
+   none leaves every datagram on the host's network. Not owned. */
+void winsock_set_friends(x2::net::FriendRoute *friends);
 
 /* How many sockets are open, for the shutdown report. */
 unsigned winsock_open_count(void);

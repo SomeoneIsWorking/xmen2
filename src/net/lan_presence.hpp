@@ -49,6 +49,9 @@ public:
   /* Broadcast one side of a pairing. False when the send failed. */
   bool send_rendezvous(const Rendezvous &message);
 
+  /* Friends over the internet hear the announcements too. Not owned. */
+  void set_friends(FriendRoute *friends) { socket_.set_friends(friends); }
+
   const PeerTable &peers() const { return peers_; }
   uint64_t instance() const { return instance_; }
 

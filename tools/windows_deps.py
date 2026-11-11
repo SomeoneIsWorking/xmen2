@@ -19,7 +19,7 @@ import sys
 
 from dependency_archives import (
     FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_FEATURES, FFMPEG_LIBRARIES, FREETYPE,
-    FREETYPE_OPTIONS, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
+    FREETYPE_OPTIONS, OPENSSL, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
     fetch, refuse, run, sha256_of, unpack)
 
 
@@ -126,11 +126,28 @@ def ffmpeg_package(toolchain: Path, prefix: Path, work: Path, jobs: int) -> None
     run([make, "install"], cwd=build)
 
 
+def openssl_package(toolchain: Path, prefix: Path, work: Path, jobs: int) -> None:
+    perl = shutil.which("perl")
+    make = shutil.which("make")
+    if not perl or not make:
+        refuse("OpenSSL's Configure needs perl and make; on Windows put MSYS2's usr/bin on "
+               "PATH after `pacman -S perl make`")
+    source = unpack(fetch(OPENSSL, work.parent / "sources"), work / "src")
+    environment = {**os.environ,
+                   "PATH": os.pathsep.join([str(toolchain / "bin"), os.environ["PATH"]])}
+    run([perl, (source / "Configure").as_posix(), "mingw64",
+         f"--cross-compile-prefix={TRIPLE}-", "no-shared", "no-module", "no-tests", "no-docs", "no-apps",
+         f"--prefix={prefix.as_posix()}", "--libdir=lib"],
+        cwd=source, env=environment)
+    run([make, f"-j{jobs}", "build_libs"], cwd=source, env=environment)
+    run([make, "install_dev"], cwd=source, env=environment)
+
+
 def contract(toolchain: Path) -> str:
     return json.dumps({
         "llvm_mingw": str(toolchain),
         "archives": {archive.name: archive.sha256
-                     for archive in (*(pkg for pkg, _ in CMAKE_PACKAGES), FFMPEG)},
+                     for archive in (*(pkg for pkg, _ in CMAKE_PACKAGES), OPENSSL, FFMPEG)},
         "cmake_options": {pkg.name: list(options) for pkg, options in CMAKE_PACKAGES},
         "ffmpeg": list(FFMPEG_FEATURES),
         "toolchain_file": sha256_of(TOOLCHAIN_FILE),
@@ -143,6 +160,9 @@ def required_files(prefix: Path) -> list[Path]:
             prefix / "lib/cmake/SDL3/SDL3Config.cmake",
             prefix / "lib/cmake/SDL3_image/SDL3_imageConfig.cmake",
             prefix / "lib/cmake/freetype/freetype-config.cmake",
+            prefix / "include/openssl/ssl.h",
+            prefix / "lib/libssl.a",
+            prefix / "lib/libcrypto.a",
             *(prefix / f"lib/lib{name}.a" for name in FFMPEG_LIBRARIES),
             prefix / "lib/pkgconfig/libavcodec.pc"]
 
@@ -161,6 +181,7 @@ def provision(deps_root: Path, jobs: int) -> WindowsDependencies:
     work = deps_root / "work"
     for archive, options in CMAKE_PACKAGES:
         cmake_package(archive, options, toolchain, prefix, work, jobs)
+    openssl_package(toolchain, prefix, work, jobs)
     ffmpeg_package(toolchain, prefix, work, jobs)
     missing = [str(path) for path in required_files(prefix) if not path.is_file()]
     if missing:

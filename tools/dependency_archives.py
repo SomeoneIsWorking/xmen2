@@ -42,7 +42,7 @@ ZLIB = Archive(
     "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16")
 # release-3.4.16 plus an ICCCM WM_NAME, fork branch xmen2/release-3.4.16
 SDL3 = github_commit("SomeoneIsWorking", "SDL", "7fbba8cfddf828e8020ddb4d21180ba539670c3b",
-                     "8a49f23f43788791b6cdbbbda18cc57688bc9ccb4261411dbdd173a6b8f98cf5")
+                     "f5e10dcc2ef46479a3ad68dc9a82aa9259ba4183535e243d78a4fe35988322b0")
 SDL3_IMAGE = Archive(
     "SDL3_image", "3.4.6",
     "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.6/"
@@ -52,6 +52,11 @@ FREETYPE = Archive(
     "freetype", "2.14.1",
     "https://github.com/freetype/freetype/archive/refs/tags/VER-2-14-1.tar.gz",
     "44bd69d1f0750603410cfd4f26f1c5523c5a3a087a2dfa8639b757dc7c6677be")
+# The version shared/android-port builds for its "tls" feature.
+OPENSSL = Archive(
+    "openssl", "3.5.9",
+    "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
+    "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a")
 FFMPEG = Archive(
     "ffmpeg", "n7.1.1",
     "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.1.tar.gz",

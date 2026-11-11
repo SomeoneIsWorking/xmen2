@@ -40,16 +40,6 @@ if(MINGW)
     add_compile_definitions(_POSIX_THREAD_SAFE_FUNCTIONS=200112L)
 endif()
 
-# Shared port infrastructure: the desktop picker uses Lucent's safe, tested
-# archive extraction rather than carrying a second ZIP implementation here.
-include(FetchContent)
-set(LUCENT_BUILD_ZIP ON)
-FetchContent_Declare(lucent
-    GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 8adbf7ddc81dd4f13431a159d7429d46775e074f
-    GIT_SHALLOW FALSE)
-FetchContent_MakeAvailable(lucent)
-
 # The Windows halves of the src/native/platform_* boundaries; POSIX hosts
 # implement them inline in the headers.
 if(WIN32)
@@ -59,46 +49,6 @@ if(WIN32)
     target_include_directories(x2_platform PUBLIC src/native)
     target_link_libraries(x2_platform PUBLIC ws2_32 iphlpapi)
 endif()
-
-# Unit executables compile shipping subsystem sources directly, so they must
-# use the same config/logger owners as the product rather than gaining test
-# replacements. This directory default is cleared before external shared
-# projects are added below.
-
-add_library(x2_runtime_services STATIC
-    src/config/environment.cpp
-    src/diagnostics/crash_report.cpp
-    src/diagnostics/diagnostics_startup.cpp
-    src/diagnostics/host_code_location.cpp
-    src/diagnostics/run_log.cpp
-    src/native/host_dir_cache.cpp
-    src/native/host_files.cpp
-    src/native/x2_log.cpp)
-set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(x2_runtime_services PUBLIC src/config src/diagnostics
-                           src/native)
-target_link_libraries(x2_runtime_services PUBLIC lucent::lucent)
-if(WIN32)
-    target_link_libraries(x2_runtime_services PUBLIC x2_platform)
-endif()
-link_libraries(x2_runtime_services)
-
-add_library(x2_runtime_config STATIC
-    src/config/config_directory.cpp
-    src/config/runtime_cvars.cpp)
-set_target_properties(x2_runtime_config PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(x2_runtime_config PUBLIC src/config)
-target_link_libraries(x2_runtime_config PUBLIC x2_runtime_services
-                                               lucent::lucent)
-
-add_executable(test_x2_log tests/test_x2_log.cpp)
-target_link_libraries(test_x2_log PRIVATE x2_runtime_services)
-add_test(NAME x2_log COMMAND test_x2_log)
-
-add_executable(test_run_log tests/test_run_log.cpp)
-target_link_libraries(test_run_log PRIVATE x2_runtime_services)
-add_test(NAME run_log
-         COMMAND test_run_log ${CMAKE_CURRENT_BINARY_DIR}/test-run-log)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -265,6 +215,63 @@ else()
     endif()
 endif()
 
+# Shared port infrastructure: the desktop picker uses Lucent's safe, tested
+# archive extraction rather than carrying a second ZIP implementation here.
+include(FetchContent)
+set(LUCENT_BUILD_ZIP ON)
+# Friends over the internet: lucent::online's code-to-connection transport, which
+# finds OpenSSL in the platform prefix above; a browser page has no friends.
+if(NOT EMSCRIPTEN)
+    set(LUCENT_BUILD_ONLINE ON)
+endif()
+FetchContent_Declare(lucent
+    GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
+    GIT_TAG dc640345282e3c56e931b4f43eb0eca99e5037e2
+    GIT_SHALLOW FALSE)
+FetchContent_MakeAvailable(lucent)
+
+# Unit executables compile shipping subsystem sources directly, so they must
+# use the same config/logger owners as the product rather than gaining test
+# replacements. This directory default is cleared before external shared
+# projects are added below.
+
+add_library(x2_runtime_services STATIC
+    src/config/environment.cpp
+    src/diagnostics/crash_report.cpp
+    src/diagnostics/diagnostics_startup.cpp
+    src/diagnostics/host_code_location.cpp
+    src/diagnostics/run_log.cpp
+    src/native/host_dir_cache.cpp
+    src/native/host_files.cpp
+    src/native/x2_log.cpp)
+set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(x2_runtime_services PUBLIC src/config src/diagnostics
+                           src/native)
+target_link_libraries(x2_runtime_services PUBLIC lucent::lucent)
+if(WIN32)
+    target_link_libraries(x2_runtime_services PUBLIC x2_platform)
+endif()
+link_libraries(x2_runtime_services)
+
+add_library(x2_runtime_config STATIC
+    src/config/config_directory.cpp
+    src/config/runtime_cvars.cpp)
+set_target_properties(x2_runtime_config PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(x2_runtime_config PUBLIC src/config)
+target_link_libraries(x2_runtime_config PUBLIC x2_runtime_services
+                                               lucent::lucent)
+
+add_executable(test_x2_log tests/test_x2_log.cpp)
+target_link_libraries(test_x2_log PRIVATE x2_runtime_services)
+add_test(NAME x2_log COMMAND test_x2_log)
+
+add_executable(test_run_log tests/test_run_log.cpp)
+target_link_libraries(test_run_log PRIVATE x2_runtime_services)
+add_test(NAME run_log
+         COMMAND test_run_log ${CMAKE_CURRENT_BINARY_DIR}/test-run-log)
+
+
+
 # The Alchemy engine layer -- the IGB readers, the XMLB container, the ARK
 # tooling and the `ig` controller abstraction -- is NOT part of this port. It
 # belongs to the engine X-Men Legends II shares with Marvel Ultimate Alliance,
@@ -352,6 +359,7 @@ add_test(NAME lan_presence_policy COMMAND test_lan_presence_policy)
 add_executable(test_lan_rendezvous tests/test_lan_rendezvous.cpp
                src/net/lan_rendezvous.cpp)
 add_test(NAME lan_rendezvous COMMAND test_lan_rendezvous)
+
 
 add_executable(test_touch_controls tests/test_touch_controls.cpp
                src/input/touch_controls.cpp
@@ -2225,6 +2233,7 @@ set(X2_NATIVE_SOURCES
     src/native/lan_session_director.cpp
     src/native/lan_coordinator.cpp
     src/native/retail_net_session.cpp
+    src/net/friends.cpp
     src/net/lan_broadcast.cpp
     src/net/lan_presence.cpp
     src/net/lan_presence_policy.cpp
@@ -2517,6 +2526,9 @@ target_include_directories(x2native PRIVATE src/runtime/x86_abi src/native src/v
                                             src/media src/gpu src/d3d8 src/gen
                                             ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(x2native PRIVATE lucent::online)
+endif()
 target_link_libraries(x2native PRIVATE Freetype::Freetype)
 target_link_libraries(x2native PRIVATE x86port_runtime)
 target_link_libraries(x2native PRIVATE alchemy::input)

@@ -6,6 +6,7 @@
 #include "retail_net_session.hpp"
 
 #include "continue_runtime.h"
+#include "winsock_host.h"
 #include "winsock_resolve.h"
 #include "x2_log.h"
 #include <lucent/cvar_c.h>
@@ -69,6 +70,8 @@ void Coordinator::map_loaded(uint32_t map, bool succeeded) {
 
 void Coordinator::start_presence() {
   started_ = true;
+  native::winsock_set_friends(friends_.route());
+  presence_.set_friends(friends_.route());
   if (lucent_cvar_flag("lan.presence", 1) == 0) {
     x2_log_info("lan: presence is off: lan.presence=0");
     set_status("presence off: lan.presence=0");
@@ -262,6 +265,7 @@ void Coordinator::poll(const CPU &cpu, double now) {
   if (!started_) {
     start_presence();
   }
+  friends_.poll();
   session_director().poll(cpu, now);
   presence::LocalFacts facts = read_facts(cpu);
   follow_lost_host(facts, now);

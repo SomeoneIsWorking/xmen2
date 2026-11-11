@@ -1,5 +1,6 @@
 #include "winsock_host.h"
 
+#include "../net/friend_route.hpp"
 #include "../net/lan_broadcast.hpp"
 #include "platform_socket.h"
 #include "winsock_resolve.h"
@@ -33,6 +34,7 @@ unsigned g_open;
 thread_local uint32_t g_last_error;
 std::once_flag g_host_start;
 bool g_host_started;
+x2::net::FriendRoute *g_friends;
 
 /* The WSA code for the host call that just failed. */
 uint32_t host_error() {
@@ -514,6 +516,33 @@ int64_t winsock_recv(uint32_t handle, void *data, size_t size, int flags,
       x2::native::socket_recv_flags(slot->host, data, size, flags), error);
 }
 
+namespace {
+
+/* The socket's local port, binding it first as Windows does on a first
+   sendto, so a friend can answer it. */
+int local_port(const Slot *slot, uint16_t *port, uint32_t *error) {
+  struct sockaddr_in at;
+  if (x2::native::socket_name(slot->host, &at) != 0) {
+    return fail(error, host_error());
+  }
+  if (at.sin_port == 0) {
+    memset(&at, 0, sizeof at);
+    at.sin_family = AF_INET;
+    if (x2::native::socket_bind(slot->host,
+                                reinterpret_cast<const struct sockaddr *>(&at),
+                                sizeof at) != 0 ||
+        x2::native::socket_name(slot->host, &at) != 0) {
+      return fail(error, host_error());
+    }
+  }
+  *port = ntohs(at.sin_port);
+  return 1;
+}
+
+} // namespace
+
+void winsock_set_friends(x2::net::FriendRoute *friends) { g_friends = friends; }
+
 int64_t winsock_sendto(uint32_t handle, const void *data, size_t size,
                        int flags, const void *host_sockaddr_in,
                        uint32_t *error) {
@@ -524,7 +553,25 @@ int64_t winsock_sendto(uint32_t handle, const void *data, size_t size,
   }
   struct sockaddr_in to;
   memcpy(&to, host_sockaddr_in, sizeof to);
-  if (to.sin_addr.s_addr != htonl(INADDR_BROADCAST)) {
+  const std::string_view bytes(static_cast<const char *>(data), size);
+  const bool broadcast = to.sin_addr.s_addr == htonl(INADDR_BROADCAST);
+  if (g_friends &&
+      (broadcast || g_friends->is_friend(ntohl(to.sin_addr.s_addr)))) {
+    uint16_t from_port = 0;
+    if (!local_port(slot, &from_port, error)) {
+      return -1;
+    }
+    if (!broadcast) {
+      if (!g_friends->send({ntohl(to.sin_addr.s_addr), ntohs(to.sin_port)},
+                           from_port, bytes)) {
+        *error = WINSOCK_EHOSTUNREACH;
+        return -1;
+      }
+      return static_cast<int64_t>(size);
+    }
+    g_friends->broadcast(ntohs(to.sin_port), from_port, bytes);
+  }
+  if (!broadcast) {
     return transferred(
         x2::native::socket_sendto(slot->host, data, size, flags, &to), error);
   }
@@ -558,6 +605,13 @@ int64_t winsock_recvfrom(uint32_t handle, void *data, size_t size, int flags,
   memset(&from, 0, sizeof from);
   const int64_t n = transferred(
       x2::native::socket_recvfrom(slot->host, data, size, flags, &from), error);
+  if (n >= 0 && g_friends && from.sin_addr.s_addr == htonl(INADDR_LOOPBACK)) {
+    /* A friend's datagram, handed over by its loopback proxy. */
+    if (const auto source = g_friends->source_of(ntohs(from.sin_port))) {
+      from.sin_addr.s_addr = htonl(source->address);
+      from.sin_port = htons(source->port);
+    }
+  }
   if (n >= 0 && host_sockaddr_in) {
     memcpy(host_sockaddr_in, &from, sizeof from);
   }

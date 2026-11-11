@@ -52,8 +52,28 @@ void lan_join_command(CPU *cpu) {
 
 void lan_session_route(x2::native::Socket fd, const char *query) {
   x2::lan::SessionDirector &director = x2::lan::session_director();
+  x2::net::Friends &friends = x2::lan::coordinator().friends();
   using Role = x2::lan::SessionDirector::Role;
   std::array<char, 8> value{};
+  std::array<char, 512> code{};
+  std::string error;
+  if (control_query_arg(query, "invite", value.data(), value.size())) {
+    if (!friends.invite(error)) {
+      control_reply_text(fd, 409, "Conflict", "no invite: %s\n", error.c_str());
+      return;
+    }
+    control_reply_text(fd, 200, "OK", "%s\n", friends.status().c_str());
+    return;
+  }
+  if (control_query_arg(query, "code", code.data(), code.size())) {
+    if (!friends.paste(code.data(), error)) {
+      control_reply_text(fd, 400, "Bad Request", "code not taken: %s\n",
+                         error.c_str());
+      return;
+    }
+    control_reply_text(fd, 200, "OK", "%s\n", friends.status().c_str());
+    return;
+  }
   const bool host =
       control_query_arg(query, "host", value.data(), value.size());
   const bool join =
@@ -70,9 +90,9 @@ void lan_session_route(x2::native::Socket fd, const char *query) {
                             : "this machine joins the LAN game it finds");
     return;
   }
-  control_reply_text(fd, 200, "OK", "%s\ndirector: %s\n",
+  control_reply_text(fd, 200, "OK", "%s\ndirector: %s\n%s\n",
                      x2::lan::coordinator().status().c_str(),
-                     director.status().c_str());
+                     director.status().c_str(), friends.status().c_str());
 }
 
 } // namespace x2::native

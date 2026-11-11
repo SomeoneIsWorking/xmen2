@@ -23,8 +23,10 @@ const char *lan_session_join_label();
 /* The `port_lan_join` retail console command: void, no arguments, RET. */
 void lan_join_command(CPU *cpu);
 
-/* /lan: presence and director status; /lan?host=1 re-forms this game as a
-   lobby; /lan?join=1 joins the LAN game the browser finds. */
+/* /lan: presence, director and friend status; /lan?host=1 re-forms this game
+   as a lobby; /lan?join=1 joins the LAN game the browser finds;
+   /lan?invite=1 shows a friend invite; /lan?code=<code> takes a friend's
+   invite or the reply to this machine's. */
 void lan_session_route(x2::native::Socket fd, const char *query);
 
 } // namespace x2::native

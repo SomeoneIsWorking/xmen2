@@ -22,6 +22,8 @@
 
 namespace x2::net {
 
+class FriendRoute;
+
 class BroadcastSocket {
 public:
   BroadcastSocket() = default;
@@ -33,7 +35,12 @@ public:
   bool open(uint16_t port);
   bool is_open() const { return open_; }
 
-  /* One datagram to every machine on every LAN. False when it left by none. */
+  /* Friends reached over the internet also hear every broadcast; none leaves
+     only the LANs. Not owned. */
+  void set_friends(FriendRoute *friends) { friends_ = friends; }
+
+  /* One datagram to every machine on every LAN and every friend. False when
+     it left by none. */
   bool broadcast(std::span<const uint8_t> datagram);
 
   /* The next waiting datagram's size (copied into `buffer`, truncated to
@@ -51,6 +58,7 @@ private:
   std::uintptr_t socket_ = 0u;
   bool open_ = false;
   uint16_t port_ = 0u;
+  FriendRoute *friends_ = nullptr;
   std::string error_;
 };
 

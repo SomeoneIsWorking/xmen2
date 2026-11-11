@@ -1,5 +1,6 @@
 #include "udp_broadcast_socket.hpp"
 
+#include "friend_route.hpp"
 #include "lan_broadcast.hpp"
 
 #ifndef __EMSCRIPTEN__
@@ -111,6 +112,13 @@ bool BroadcastSocket::broadcast(std::span<const uint8_t> datagram) {
   }
   if (!query_error.empty()) {
     error_ = query_error;
+  }
+  if (friends_ != nullptr &&
+      friends_->broadcast(
+          port_, port_,
+          std::string_view(reinterpret_cast<const char *>(datagram.data()),
+                           datagram.size())) > 0) {
+    reached = true;
   }
   return reached;
 }
