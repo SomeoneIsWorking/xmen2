@@ -29,43 +29,48 @@ namespace x2::native {
 #define RETAIL_DEVICE_ARRAY_OFFSET 0x0cu
 #define RETAIL_POLLED_MASK_OFFSET 0x129ccu
 
-static uint32_t g_manager;
+/* XMen2.exe's input manager: FUN_0061bae0 creates it, FUN_0061c3b0 polls it
+   each frame. The scan thread FUN_00618c90 enumerates into a scratch manager
+   of its own, so an EnumDevices pvRef does not name this one. */
+inline constexpr uint32_t kInputManager = 0x00a6abfcu;
 
-static const unsigned char *slot_guid(int controller_slot) {
-  return guest_memory_as<const unsigned char>(
-      g_manager + RETAIL_INSTANCE_OFFSET + (uint32_t)controller_slot * 16u);
+uint32_t dinput8_input_manager(void) {
+  return *guest_memory_as<const uint32_t>(kInputManager);
 }
 
-static int slot_is_attached(int controller_slot) {
+static const unsigned char *slot_guid(uint32_t manager, int controller_slot) {
+  return guest_memory_as<const unsigned char>(manager + RETAIL_INSTANCE_OFFSET +
+                                              (uint32_t)controller_slot * 16u);
+}
+
+static int slot_is_attached(uint32_t manager, int controller_slot) {
   const unsigned char *attached =
-      guest_memory_as<const unsigned char>(g_manager + RETAIL_ATTACHED_OFFSET);
+      guest_memory_as<const unsigned char>(manager + RETAIL_ATTACHED_OFFSET);
   return attached[controller_slot] != 0;
-}
-
-void dinput8_controller_slots_set_manager(uint32_t manager) {
-  g_manager = manager;
 }
 
 int dinput8_controller_slot_for_host_pad(int host_pad) {
   unsigned char guid[16];
   int controller_slot;
+  const uint32_t manager = dinput8_input_manager();
 
-  if (!g_manager || !dinput_pad_instance_guid(host_pad, guid))
+  if (!manager || !dinput_pad_instance_guid(host_pad, guid))
     return -1;
   for (controller_slot = 0; controller_slot < RETAIL_CONTROLLER_SLOTS;
        controller_slot++)
-    if (slot_is_attached(controller_slot) &&
-        memcmp(slot_guid(controller_slot), guid, sizeof guid) == 0)
+    if (slot_is_attached(manager, controller_slot) &&
+        memcmp(slot_guid(manager, controller_slot), guid, sizeof guid) == 0)
       return controller_slot;
   return -1;
 }
 
 int dinput8_controller_host_pad_for_slot(int controller_slot) {
-  if (!g_manager || controller_slot < 0 ||
+  const uint32_t manager = dinput8_input_manager();
+  if (!manager || controller_slot < 0 ||
       controller_slot >= RETAIL_CONTROLLER_SLOTS ||
-      !slot_is_attached(controller_slot))
+      !slot_is_attached(manager, controller_slot))
     return -1;
-  return dinput_pad_for_guid(slot_guid(controller_slot));
+  return dinput_pad_for_guid(slot_guid(manager, controller_slot));
 }
 
 size_t dinput8_controller_slots_probe(char *out, size_t size) {
@@ -74,29 +79,29 @@ size_t dinput8_controller_slots_probe(char *out, size_t size) {
   int slot, live = 0, attached = 0, read = 0;
   size_t at = 0;
   int wrote;
+  const uint32_t manager = dinput8_input_manager();
 
   if (!out || !size)
     return 0;
   /* Refuse rather than return an empty report: "no slots" and "the manager
      was never published" are different answers and must not print alike. */
-  if (!g_manager) {
+  if (!manager) {
     wrote = snprintf(out, size,
-                     "  dinput8 poll side: the game's input manager has "
-                     "not been published to this host yet, so NOTHING "
-                     "below is a statement about the poll side.\n");
+                     "  dinput8 poll side: the game has not created its "
+                     "input manager yet, so NOTHING below is a statement "
+                     "about the poll side.\n");
     return wrote > 0 ? (size_t)wrote : 0;
   }
 
   devices =
-      guest_memory_as<const uint32_t>(g_manager + RETAIL_DEVICE_ARRAY_OFFSET);
-  mask =
-      *guest_memory_as<const uint32_t>(g_manager + RETAIL_POLLED_MASK_OFFSET);
+      guest_memory_as<const uint32_t>(manager + RETAIL_DEVICE_ARRAY_OFFSET);
+  mask = *guest_memory_as<const uint32_t>(manager + RETAIL_POLLED_MASK_OFFSET);
 
-  wrote = snprintf(out + at, size - at,
-                   "  dinput8 poll side (manager 0x%08x, FUN_006285c0's own "
-                   "array at +0x%x and mask at +0x%x):\n",
-                   g_manager, RETAIL_DEVICE_ARRAY_OFFSET,
-                   RETAIL_POLLED_MASK_OFFSET);
+  wrote =
+      snprintf(out + at, size - at,
+               "  dinput8 poll side (manager 0x%08x, FUN_006285c0's own "
+               "array at +0x%x and mask at +0x%x):\n",
+               manager, RETAIL_DEVICE_ARRAY_OFFSET, RETAIL_POLLED_MASK_OFFSET);
   if (wrote > 0)
     at += (size_t)wrote;
 

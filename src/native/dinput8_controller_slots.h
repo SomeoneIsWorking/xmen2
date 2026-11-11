@@ -5,9 +5,9 @@
 
 namespace x2::native {
 
-/* The IDirectInput8 owner publishes the retail input-manager instance when
-   the game's controller enumeration reaches it. */
-void dinput8_controller_slots_set_manager(uint32_t manager);
+/* The game's input manager, the one its frame update polls; 0 before the
+   game creates it. */
+uint32_t dinput8_input_manager(void);
 
 /* The retail table's fixed size; both translators iterate it. */
 inline constexpr int DINPUT8_CONTROLLER_SLOTS = 10;

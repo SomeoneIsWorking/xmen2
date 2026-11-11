@@ -14,6 +14,9 @@
 #define DEVICE_ARRAY_OFFSET 0x0cu
 #define POLLED_MASK_OFFSET 0x129ccu
 #define MANAGER_ADDRESS 0x70000000u
+/* XMen2.exe's input-manager global and the page that holds it. */
+#define MANAGER_GLOBAL 0x00a6abfcu
+#define MANAGER_GLOBAL_PAGE 0x00a6a000u
 
 static unsigned char host_guid[2][16] = {{0xa1}, {0xb2}};
 static int checks;
@@ -58,6 +61,10 @@ static void set_poll(uint32_t manager, int controller_slot, uint32_t device,
     *mask &= ~(1u << controller_slot);
 }
 
+static void publish(uint32_t manager) {
+  *guest_memory_as<uint32_t>(MANAGER_GLOBAL) = manager;
+}
+
 static void set_slot(uint32_t manager, int controller_slot, int attached,
                      const unsigned char guid[16]) {
   unsigned char *base = guest_memory_as<unsigned char>(manager);
@@ -73,11 +80,14 @@ int main(void) {
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(manager, MANAGER_BYTES,
                              x2::native::kProtRead | x2::native::kProtWrite) !=
+          0 ||
+      guest_memory_map_fixed(MANAGER_GLOBAL_PAGE, 0x1000u,
+                             x2::native::kProtRead | x2::native::kProtWrite) !=
           0) {
     perror("test_dinput8_controller_slots guest map");
     return 1;
   }
-  x2::native::dinput8_controller_slots_set_manager(manager);
+  publish(manager);
 
   set_slot(manager, 0, 1, host_guid[1]);
   set_slot(manager, 2, 1, host_guid[0]);
@@ -103,7 +113,7 @@ int main(void) {
 
   /* The poll-side probe. Issue #117's whole shape is a slot the game
      SKIPS, so the probe is only worth anything if it says so out loud: it
-     must name the NULL slot, and it must not describe an unpublished
+     must name the NULL slot, and it must not describe a missing
      manager the same way it describes ten empty slots. Both answers are
      demanded here rather than assumed. */
   {
@@ -129,15 +139,15 @@ int main(void) {
     CHECK(strstr(report, "2 of 10 slot(s) hold a device interface"));
     CHECK(strstr(report, "1 read last frame"));
 
-    x2::native::dinput8_controller_slots_set_manager(0);
+    publish(0);
     len = x2::native::dinput8_controller_slots_probe(report, sizeof report);
     CHECK(len > 0);
-    CHECK(strstr(report, "has not been published"));
+    CHECK(strstr(report, "has not created its input manager"));
     CHECK(!strstr(report, "slot 0"));
-    x2::native::dinput8_controller_slots_set_manager(manager);
+    publish(manager);
   }
 
-  x2::native::dinput8_controller_slots_set_manager(0);
+  publish(0);
   CHECK(x2::native::dinput8_controller_slot_for_host_pad(0) == -1);
   CHECK(x2::native::dinput8_controller_host_pad_for_slot(0) == -1);
 

@@ -36,11 +36,18 @@ When the controller inventory changes, `dinput8_hotplug_pump` calls
 startup passes. No host code writes guest state; arrivals and removals are
 applied by the game's own rules.
 
-The routine's address is not hardcoded. `x86_native_entry_containing` answers
-"which function is my caller in", asked at the moment the game calls
-`EnumDevices`, so the host identifies the routine by finding itself inside it.
-It reports what it found (`0x00628e20 (FUN_00628e20)`) so a wrong answer is
-visible rather than silent.
+The routine is declared (`0x00628e20`) and admitted only once the game's own
+`EnumDevices(GAMECTRL)` call is seen returning to its call site `0x00628e57`.
+
+The pump calls it on the game's input manager, the object at `0x00a6abfc`:
+`FUN_0061bae0` creates it, `FUN_0061c3b0` polls it each frame through
+`FUN_006285c0`, and `FUN_00628b40` asks for exclusive access only for it. An
+`EnumDevices` pvRef does not name it. The game's gamepad-scan thread
+`FUN_00618c90` enumerates into a scratch manager at `0x00a6a7e4` whenever
+`0x00a6a7f9` is raised (by the main menu's timer `FUN_006256e0` and the Controls
+screen), only to list gamepad names. A pad admitted into that one is created
+and never polled. The slot translation (`dinput8_controller_slots.cpp`) reads
+the same global.
 
 The pump runs from keyboard `GetDeviceState`, which `FUN_006285c0` makes at
 `0x0062861e` before the joystick loop. It is not gated by `Present`, so it sees

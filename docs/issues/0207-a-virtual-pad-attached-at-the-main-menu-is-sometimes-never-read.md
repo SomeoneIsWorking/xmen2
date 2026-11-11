@@ -1,7 +1,7 @@
 ---
 id: 207
 title: a virtual pad attached at the main menu is sometimes never read
-status: open
+status: resolved
 symptom: "pad 0 connected, HOTSWAP and the session assignment all log, /pad presses are set, and the game reads the pad 0 times"
 state_items:
 tags: input,tooling
@@ -20,8 +20,24 @@ rows. One on 2026-11-12, same script and namespaces, never moved the focus:
 the control channel set every press and the run's report says `the game
 read a button 0 time(s)`.
 
-## Next
+## Cause
 
-Find which reader of the pad stays unbound in the failing runs: whether the
-game's enumeration at `0x00628e20` ran before the assignment took, and
-whether a player's real pad plugged in at the main menu meets the same.
+`src/native/dinput8.cpp:m_EnumDevices` took the pvRef of every
+`EnumDevices(GAMECTRL)` as the game's input manager, and the hotswap pump
+re-enumerated that object. The game's gamepad-scan thread `FUN_00618c90`
+enumerates into its own scratch manager (`0x00a6a7e4`) on a timer the main
+menu runs, so once the menu was up the pump admitted a pad into the scratch
+manager. The frame update polls the manager at `0x00a6abfc`, which never got
+the pad. A player plugging a pad in at the main menu meets the same. A pad
+attached during the intro, before the first scan, was admitted correctly.
+
+## Fix
+
+The pump and the slot translation read the input manager from `0x00a6abfc`
+each time; nothing keeps a pvRef.
+
+Proven 2026-11-12 with `scratch/lobby/padprobe.py` and `X2_VIRTUAL_PAD=f4000`,
+a pad attached with the main menu up: before the fix, two of two runs read the
+pad 0 times and the focus stayed on `label_option04`. After it, two of two
+runs read it about 350 times, and three d-pad presses moved the focus to
+`label_option07`. The early attach (`f600`) still moves.

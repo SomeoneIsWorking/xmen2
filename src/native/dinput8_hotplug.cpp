@@ -26,9 +26,8 @@ namespace x2::native {
 #define PAD_ENUM_ENTRY 0x00628e20u
 #define PAD_ENUM_RETURN 0x00628e57u
 
-/* The game's enumeration identity, remembered from its first GAMECTRL
-   EnumDevices; the pump re-enters the guest through it. */
-static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
+/* The enumeration entry, admitted once the game's own call is seen. */
+static uint32_t g_pad_enum;
 static x2::input::ControllerHotplug g_hotplug;
 
 void dinput8_check_controller_table(void);
@@ -64,12 +63,8 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
   generation = dinput_pad_generation();
   if (!x2::input::controller_hotplug_needs_admission(&g_hotplug, generation))
     return;
-  if (!g_pad_ref) {
-    static int told_ref;
-    if (!told_ref++)
-      x2_log_error("DINPUT8: a re-admission is pending but the "
-                   "game never enumerated controllers, so there is "
-                   "no routine to call.\n");
+  const uint32_t manager = dinput8_input_manager();
+  if (!manager) {
     return;
   }
 
@@ -93,7 +88,7 @@ void dinput8_hotplug_pump(struct X86pCpu *cpu) {
        one stack argument. TRUE is what admits a controller the game has
        not seen before -- the same value startup passes. */
     CPU K = *C;
-    K.reg[kX86pEcx] = g_pad_ref;
+    K.reg[kX86pEcx] = manager;
     K.reg[kX86pEsp] -= 4u;
     WR32(K.reg[kX86pEsp], 1u);
     x86_guest_call_args(&K, g_pad_enum, 4u);
@@ -128,7 +123,7 @@ void dinput8_check_controller_table(void) {
   static int was_broken;
   int broken;
 
-  if (!g_pad_enum || !g_pad_ref)
+  if (!g_pad_enum || !dinput8_input_manager())
     return;
   broken = !table_matches_live_inventory();
   if (!broken) {
@@ -147,13 +142,9 @@ void dinput8_check_controller_table(void) {
   x2::input::controller_hotplug_invalidate(&g_hotplug);
 }
 
-void dinput8_hotplug_note_game_enumeration(unsigned int callback,
-                                           unsigned int manager_ref,
-                                           unsigned int return_address) {
+void dinput8_hotplug_note_game_enumeration(unsigned int return_address) {
   char why[160];
   uint32_t entry = 0, site = 0;
-  g_pad_cb = callback;
-  g_pad_ref = manager_ref;
   if (x86_override_resolve_check(PAD_ENUM_IMAGE, PAD_ENUM_ENTRY, &entry, why,
                                  sizeof why) ||
       x86_override_resolve_check(PAD_ENUM_IMAGE, PAD_ENUM_RETURN, &site, why,
