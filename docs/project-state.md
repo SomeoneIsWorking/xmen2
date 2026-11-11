@@ -2123,10 +2123,23 @@ traffic dropped in B, A tapped Your code and B tapped Join by code. Both logged
 `connected over ZeroTier`, B joined from its main menu's row, and both loaded
 the tutorial scene in one session of two.
 
+The public roots work the same way. On 2026-11-12, A and B each ran in their
+own rootless pasta namespace, NAT'd to the internet through the host, with
+every UDP datagram to the host's LAN, ULA and public addresses dropped in both
+and `lan.zerotier_roots` empty. A tapped Your code, and B tapped Join by code.
+B's node was on its network 14 s after it started, the meeting connected over
+ZeroTier at most 12 s after B's tap, and both loaded the tutorial scene in one
+session of two. The release AppImage, built in its Ubuntu 22.04 container,
+links the same node.
+
+- no: the Windows build run under Wine with a friend over ZeroTier (it
+  cross-builds with libzt).
+- no: an Android APK with libzt installed and run (`libmain.so` builds).
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
 is the retail "dropped" path); the relayed path's input lag and correction are
-unmeasured (plan 204 stage 4); and no run has crossed two physical machines,
-real LAN hardware, the public ZeroTier roots, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+unmeasured (plan 204 stage 4); and no run has crossed two physical machines or
+real LAN hardware. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
 ### S026 — friends added by code from the game's own online menu: verified
