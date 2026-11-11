@@ -46,7 +46,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 5100878227142ee77c39b41d238f0ed4eafee19e
+    GIT_TAG 463c298cdd8933805be444a4592d61bd8556f61c
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -1816,7 +1816,7 @@ FetchContent_Declare(rmlui
     # Maintained fork adds SDL_GPU WGSL resources; native formats retain the
     # upstream f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc contract.
     URL https://github.com/SomeoneIsWorking/RmlUi/archive/31b5c791b937f7bba14f296372974fc918ccb7ca.tar.gz
-    URL_HASH SHA256=6dc1de88578fe237dce4c34791ed58f995d47b2e78d1c5b7416cb50f007feac3
+    URL_HASH SHA256=9bded79a2fbb6e75c097249ceb7e6e18bd55ff9f61708ba0dc192d398438843c
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(rmlui)
 if(_x2_had_find_package_preference)
