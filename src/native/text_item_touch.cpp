@@ -20,6 +20,7 @@
 #include "guest_image_reader.hpp"
 #include "guest_memory_view.hpp"
 #include "guest_modules.h"
+#include "lobby_friend_cards.hpp"
 #include "menu_action.hpp"
 #include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
@@ -561,7 +562,8 @@ bool x2::native::text_has_touch_button(std::string_view menu_class,
 extern "C" void x2_override_005c61d0(CPU *cpu) {
   const std::uint32_t self = cpu->reg[kX86pEcx];
   x2::native::team_touch_text_draw(*cpu, self, on_touch());
-  if (x2::native::options_port_column_draw(*cpu, self)) {
+  if (x2::native::options_port_column_draw(*cpu, self) ||
+      x2::native::lobby_friend_cards_draw(*cpu, self)) {
     cpu->reg[kX86pEsp] += 4u;
     return;
   }
@@ -579,6 +581,7 @@ extern "C" void x2_override_005c6fb0(CPU *cpu) {
   g_text_item_touch.destroy(*cpu, cpu->reg[kX86pEcx]);
   x2::native::options_touch_destroy(*cpu, cpu->reg[kX86pEcx]);
   x2::native::options_port_column_destroy(*cpu, cpu->reg[kX86pEcx]);
+  x2::native::lobby_friend_cards_destroy(*cpu, cpu->reg[kX86pEcx]);
   x86_guest_body(cpu, "XMen2.exe", kTextDestroy);
 }
 

@@ -1,5 +1,6 @@
 #include "derived_menus.hpp"
 
+#include "friend_code_rows.hpp"
 #include "host_files.h"
 #include "options_menu_derived.hpp"
 #include "shell32.h"
@@ -25,8 +26,9 @@ struct DerivedMenu {
                                       std::string *why);
 };
 
-constexpr std::array<DerivedMenu, 1> kMenus{{
+constexpr std::array<DerivedMenu, 2> kMenus{{
     {"ui/menus/options.", "Options", derive_options_menu},
+    {"ui/menus/campaign_lobby.", "the online lobby", derive_lobby_menu},
 }};
 constexpr std::string_view kDerivedDir = "derived";
 

@@ -6,7 +6,8 @@
  * UI, not spare hooks for the port.
  *
  * The port's rows run commands of their own instead: the derived pause XMLB
- * emits `port_settings`, the main menu's LAN Join row `port_lan_join`, and
+ * emits `port_settings`, the main menu's LAN Join row `port_lan_join`, the
+ * online lobby's friend rows `port_friend_row` (friend_code_rows.hpp), and
  * every port row of Options `port_option_next` / `port_option_prev`, which
  * step the row the menu has focused (port_option_rows.hpp).
  * After the retail registrar has completed, this override adds each through
@@ -17,6 +18,7 @@
  */
 #include "options_menu.h"
 
+#include "friend_code_rows.hpp"
 #include "port_option_rows.hpp"
 #include "retail_front_end.hpp"
 #include "retail_menu_model.hpp"
@@ -84,7 +86,9 @@ static std::vector<PortCommand> port_commands() {
   std::vector<PortCommand> commands = {
       {"port_settings", x2::native::port_settings_command, "options_menu",
        nullptr},
-      {"port_lan_join", x2::native::lan_join_command, "lan_session", nullptr}};
+      {"port_lan_join", x2::native::lan_join_command, "lan_session", nullptr},
+      {std::string(x2::native::kFriendRowCommand),
+       x2::native::friend_row_command, "friend_code_rows", nullptr}};
   for (const int &direction : kRowSteps) {
     commands.push_back({x2::native::port_option_command(direction),
                         x2::native::port_option_step_command,

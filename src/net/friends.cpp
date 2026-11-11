@@ -145,6 +145,9 @@ struct Friends::State {
   std::unique_ptr<Connector> meeting;
   bool hosting = false;
   std::string last;
+  // How the last meeting ended, while no meeting runs.
+  Friends::Stage ended = Friends::Stage::Idle;
+  std::string problem;
 };
 
 Friends::Friends() : state_(std::make_unique<State>()) {}
@@ -203,13 +206,47 @@ void Friends::poll() {
     state_->last =
         address ? "connected: " + lucent::net::format_ipv4(*address)
                 : std::string{"connected, but no room for another friend"};
+    state_->ended = address ? Stage::Connected : Stage::Failed;
+    state_->problem = address ? std::string{} : "no room for another friend";
     state_->meeting.reset();
   } else if (view.step == Connector::Step::Failed) {
     state_->last = std::string{"failed: "} + failure_name(view.failure);
+    state_->ended = Stage::Failed;
+    state_->problem = failure_name(view.failure);
     lucent::info("lan.friends", "the meeting failed: {}",
                  failure_name(view.failure));
     state_->meeting.reset();
   }
+}
+
+Friends::Shown Friends::shown() const {
+  const std::lock_guard lock(state_->mutex);
+  Shown out;
+  out.friends = state_->lan.friends().size();
+  if (!state_->meeting) {
+    out.stage = state_->ended;
+    out.problem = state_->problem;
+    return out;
+  }
+  const Connector::View view = state_->meeting->view();
+  out.hosting = state_->hosting;
+  out.code = view.code.empty() ? std::string{} : lucent::p2p::spaced(view.code);
+  switch (view.step) {
+  case Connector::Step::Gathering:
+    out.stage = Stage::Gathering;
+    break;
+  case Connector::Step::Inviting:
+  case Connector::Step::Replying:
+    out.stage = Stage::Waiting;
+    break;
+  case Connector::Step::Trying:
+  case Connector::Step::Punching:
+  case Connector::Step::Connected:
+  case Connector::Step::Failed:
+    out.stage = Stage::Connecting;
+    break;
+  }
+  return out;
 }
 
 std::string Friends::status() const {

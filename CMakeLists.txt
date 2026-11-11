@@ -2283,6 +2283,9 @@ set(X2_NATIVE_SOURCES
     src/native/options_menu.cpp
     src/native/options_menu_derived.cpp
     src/native/derived_menus.cpp
+    src/native/friend_code_rows.cpp
+    src/native/host_clipboard.cpp
+    src/native/lobby_friend_cards.cpp
     src/native/options_menu_no_advanced.cpp
     src/native/port_option_rows.cpp
     src/native/xmlb_tree.cpp

@@ -47,9 +47,10 @@ Winsock and the presence socket reach the friends through
 ## Stages
 
 1. Done: the friend LAN and the Winsock seam, in Lucent's `VirtualLan`.
-2. Friend codes in the product. Done over the control channel: `/lan?invite=1`
-   and `/lan?code=<code>`, with the friends and the meeting's step in `/lan`.
-   Still to do: a menu row and text entry of the game's own.
+2. Done: friend codes in the product. The online lobby's Your code copies
+   this machine's code to the clipboard (making one first) and Join by code
+   pastes the clipboard's, by pad, keys, mouse or touch (S026). The control
+   channel keeps `/lan?invite=1` and `/lan?code=<code>` for tools.
 3. The ZeroTier node (`lucent::zerotier`), started when the online menu opens,
    with its identity in the user-data directory.
 4. Measurements over a relayed ZeroTier path (rootless namespaces, a lab

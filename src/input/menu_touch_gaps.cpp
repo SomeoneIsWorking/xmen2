@@ -1,5 +1,6 @@
 #include "menu_touch_gaps.hpp"
 
+#include "../native/lobby_friend_cards.hpp"
 #include "../native/menu_action.hpp"
 #include "../native/menu_item_tap.hpp"
 #include "../native/options_port_column.hpp"
@@ -151,7 +152,9 @@ find_menu_touch_gaps(const menu::MenuSnapshot &menu,
                !native::text_has_finger_area(menu.menu_class, item.name) &&
                !native::options_touch_has_card(menu.menu_class, item.name) &&
                !native::options_port_column_has_card(menu.menu_class,
-                                                     item.name)) {
+                                                     item.name) &&
+               !native::lobby_friend_cards_has_card(menu.menu_class,
+                                                    item.name)) {
       gaps.push_back({MenuTouchGapKind::small_target, item.name});
     }
   }

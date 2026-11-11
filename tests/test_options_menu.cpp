@@ -68,8 +68,8 @@ int main(void) {
                     "the retail registrar was not super-called exactly once");
   failures += check(options_menu_stubs_singleton_calls() == 1,
                     "the retail command registry was not obtained once");
-  failures += check(options_menu_stubs_registration_calls() == 4,
-                    "the four port commands were not registered once each");
+  failures += check(options_menu_stubs_registration_calls() == 5,
+                    "the five port commands were not registered once each");
   failures += check(!strcmp(options_menu_stubs_command(0), "port_settings"),
                     "the first registered command is not `port_settings`");
   failures += check(options_menu_stubs_callback(0) == CALLBACK_TARGET,
@@ -78,9 +78,11 @@ int main(void) {
                     "the second registered command is not `port_lan_join`");
   failures += check(options_menu_stubs_callback(1) == JOIN_CALLBACK_TARGET,
                     "`port_lan_join` received the wrong native callback");
+  failures += check(!strcmp(options_menu_stubs_command(2), "port_friend_row"),
+                    "the third registered command is not `port_friend_row`");
   failures +=
-      check(!strcmp(options_menu_stubs_command(2), "port_option_next") &&
-                !strcmp(options_menu_stubs_command(3), "port_option_prev"),
+      check(!strcmp(options_menu_stubs_command(3), "port_option_next") &&
+                !strcmp(options_menu_stubs_command(4), "port_option_prev"),
             "the port rows' step commands are not registered");
   failures += check(options_menu_stubs_method() == REGISTER_TARGET,
                     "registration bypassed the retail vtable method");
@@ -97,7 +99,7 @@ int main(void) {
   x2::native::override_005f4900(&C);
   failures += check(options_menu_stubs_original_calls() == 2,
                     "a repeated retail registrar call was not super-called");
-  failures += check(options_menu_stubs_registration_calls() == 4 &&
+  failures += check(options_menu_stubs_registration_calls() == 5 &&
                         options_menu_stubs_singleton_calls() == 1,
                     "a repeated registrar duplicated the port commands");
 

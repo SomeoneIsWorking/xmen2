@@ -1380,8 +1380,9 @@ is absent from `options.xmlb`. Only the console opens it.
 The port's settings are rows of the retail Options menu. The menu file the
 game opens (`ui/menus/options.engb`, or the language's own) is derived from
 the player's install on first open into `<save dir>/derived/ui/menus/` and
-served in its place (`src/native/options_menu_derived.cpp`, through the
-`k32_set_asset_deriver` seam): one text item `port_option_<key>` per row of
+served in its place (`src/native/derived_menus.cpp`, through the
+`k32_set_asset_deriver` seam; Options' rule in
+`src/native/options_menu_derived.cpp`): one text item `port_option_<key>` per row of
 `src/native/port_option_rows.cpp`, inserted after Accept and chained between
 Vibration and Accept, so retail focus walks them with the pad and keys. Each
 runs `usecmd`/`rightcmd` `port_option_next` and `leftcmd` `port_option_prev`,
@@ -1559,6 +1560,19 @@ toggle) itself. `CMenuGameOptions` (`0x0069f65c`), `CMenuPlayerGameOptions`
 (`0x0069f724`) and `CMenuPlayersList` (`0x0069f4cc`) use the shared onMouse
 `0x005caa80`; `CMenuGamesList` (`0x0069f8b4`) has its own (`0x005b9650`, not
 read).
+
+The online lobby is derived the same way (`ui/menus/campaign_lobby.*`,
+`src/native/friend_code_rows.cpp`): `text_friendcode` (Your code) and
+`text_joincode` (Join by code) follow `text_joingame` with its
+`animtext_scene` and style, chained Host Game, Join Game, Your code, Join by
+code, and both run `port_friend_row`. The lobby's scene places only its own
+two rows, so the new items have no node; their cards and text are drawn when
+`text_joingame` draws, under it at the Host-to-Join pitch, and the port's
+`0x005b03b0` takes a pointer message over a card before retail's onMouse
+(`src/native/lobby_friend_cards.cpp`). A tool proves the copy and paste
+between two players on one desktop under X11 (`SDL_VIDEO_DRIVER=x11`):
+Wayland offers the selection only to the focused window, which a hidden
+window never is.
 
 The front end opens them in this order, as `src/native/lan_session_director.cpp`
 drives them: the main menu's `play online` opens `online` (the player

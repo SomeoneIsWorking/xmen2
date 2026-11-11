@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -14,6 +16,26 @@ class FriendRoute;
 // meeting at a time. A browser page has no friends.
 class Friends {
 public:
+  // Where this machine's meeting is, as a player sees it.
+  enum class Stage : std::uint8_t {
+    Idle,       // no meeting
+    Gathering,  // finding this machine's addresses for its code
+    Waiting,    // showing a code for the other player to paste
+    Connecting, // both codes known, trying the ways through
+    Connected,  // the last meeting added a friend
+    Failed,     // the last meeting ended without one
+  };
+  struct Shown {
+    Stage stage = Stage::Idle;
+    bool hosting = false;
+    // The code this machine shows (an invite, or the reply to one), spaced as
+    // the player reads it.
+    std::string code;
+    // Why the last meeting failed.
+    std::string problem;
+    std::size_t friends = 0;
+  };
+
   Friends();
   ~Friends();
   Friends(const Friends &) = delete;
@@ -32,7 +54,8 @@ public:
   bool paste(std::string_view code, std::string &error);
   // Takes a finished meeting's friend.
   void poll();
-  // The meeting's step and code, and the friends so far.
+  Shown shown() const;
+  // The meeting's step and code, and the friends so far, for /lan.
   std::string status() const;
 
 private:

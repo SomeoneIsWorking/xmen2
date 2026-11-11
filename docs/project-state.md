@@ -54,6 +54,7 @@ list per menu.
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 | S024 | Optional free or paid party revive at extraction points | partial | S002, S008, S016 | G004 |
 | S025 | Touch menus drawn in the game's own art and style | partial | S004, S008 | G008 |
+| S026 | Friends added by code from the game's own online menu | verified | S023 | G002 |
 
 ## State details and evidence
 
@@ -2118,6 +2119,34 @@ is the retail "dropped" path); codes have no menu UI yet, and no path through
 ZeroTier when direct UDP fails; and no run has crossed two physical machines,
 real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
+
+### S026 — friends added by code from the game's own online menu: verified
+
+The online lobby (`campaign_lobby`) has two rows under Host Game and Join
+Game. Your code copies this machine's code to the clipboard, making one
+first when there is none. Join by code takes the code on the clipboard. Each
+row shows its step: Make one, Making a code..., Copy, Copied, Friend
+coming..., Paste, Joining..., N friend(s) joined, or why the last press did
+nothing. The rows work by pad, keys, mouse and touch. The lobby menu is
+derived from the install (`src/native/friend_code_rows.cpp`); the cards are
+drawn under Join Game (`src/native/lobby_friend_cards.cpp`). Plan
+[204](plans/0204-lan-play-with-friends-by-code.md), stage 2.
+
+Evidence (2026-11-11, `scratch/lobby/two.py`): A at 10.77.0.1/24 and B at
+10.88.0.2/24, in rootless namespaces with no shared broadcast, each a hidden
+window on one X11 desktop. A drove the menus by pad: Play Online, Ready, then
+Your code, which showed Copied with the code on the clipboard. B drove them by
+touch: a tap on Join by code read that clipboard, and both machines logged
+`a friend joined over direct as 10.254.0.2`. Both lobbies then showed
+`1 friend joined` on both rows. After A re-formed as a LAN lobby, B's main
+menu listed `Join fedora`. A tool proves the copy and paste only under X11:
+Wayland offers the selection to the focused window alone, and a hidden
+window is never focused.
+
+Not covered: B could not go on from that row into A's game (issue
+[0205](issues/0205-the-main-menu-join-row-does-nothing-after-play-online.md)),
+and a host with no campaign running cannot start one (issue
+[0206](issues/0206-a-host-with-no-campaign-running-cannot-start-a-lan-game.md)).
 
 ### S022 — native Windows host package and CI release: verified
 

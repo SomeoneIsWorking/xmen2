@@ -1,3 +1,4 @@
+#include "friend_code_rows.hpp"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "options_menu.h"
@@ -17,6 +18,7 @@ enum {
   REGISTER_TARGET = 0x52001000u,
   CALLBACK_TARGET = 0x53001000u,
   JOIN_CALLBACK_TARGET = 0x53001010u,
+  FRIEND_CALLBACK_TARGET = 0x53001030u,
   ROW_CALLBACK_TARGET = 0x53001020u,
   MAX_REGISTRATIONS = 8
 };
@@ -95,6 +97,7 @@ void lan_join_command(CPU *C) {
   join_commands++;
   C->reg[kX86pEsp] += 4u;
 }
+void friend_row_command(CPU *C) { C->reg[kX86pEsp] += 4u; }
 } // namespace x2::native
 uint32_t options_menu_stubs_method(void) { return registered_method; }
 /* Runs the port row command registered `index`-th (0 next, 1 previous) and
@@ -140,6 +143,11 @@ uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
   if (!ctx && !strcmp(owner, "lan_session") && !strcmp(name, "port_lan_join") &&
       fn == x2::native::lan_join_command) {
     return JOIN_CALLBACK_TARGET;
+  }
+  if (!ctx && !strcmp(owner, "friend_code_rows") &&
+      !strcmp(name, "port_friend_row") &&
+      fn == x2::native::friend_row_command) {
+    return FRIEND_CALLBACK_TARGET;
   }
   if (ctx && !strcmp(owner, "port_option_rows") && row_callbacks < 2) {
     row_function = fn;
