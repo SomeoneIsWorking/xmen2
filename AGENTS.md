@@ -83,7 +83,7 @@ Build the release AppImage with
 `uv run --frozen python tools/appimage_container.py` (podman; CI passes
 `--engine docker`). It builds `packaging/appimage-build.Containerfile`, an
 Ubuntu 22.04 host with clang-20, and inside it links the release binary against
-the static SDL3, SDL3_image, FreeType and FFmpeg prefix `tools/linux_deps.py`
+the static SDL3, SDL3_image, FreeType, FFmpeg and OpenSSL prefix `tools/linux_deps.py`
 builds from the archives pinned in `tools/dependency_archives.py`, then runs
 `tools/package_appimage.py`. The packager stages only the native binary, UI
 resources, desktop metadata, and libraries discovered by `linuxdeploy`. It

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Provision the Linux x86-64 release dependency prefix.
 
-SDL3, SDL3_image, FreeType and FFmpeg are built from the pinned archives in
+SDL3, SDL3_image, FreeType, FFmpeg and OpenSSL are built from the pinned archives in
 `dependency_archives.py` into one static prefix, and glslc from pinned shaderc
 sources, all with the host's CC/CXX. A release binary linked against this
 prefix needs only the C/C++ runtime and the libraries SDL loads at run time
@@ -19,7 +19,8 @@ import shutil
 import sys
 
 from dependency_archives import (
-    FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_LIBRARIES, FREETYPE, FREETYPE_OPTIONS, SDL3,
+    FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_LIBRARIES, FREETYPE, FREETYPE_OPTIONS, OPENSSL,
+    OPENSSL_OPTIONS, SDL3,
     SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, Archive, fetch, github_commit, refuse, run,
     unpack)
 
@@ -35,7 +36,7 @@ CMAKE_PACKAGES = (
 
 # shaderc and the third_party trees it builds glslc from.
 SHADERC = github_commit("SomeoneIsWorking", "shaderc", "29be627ca0564fd96cbfcb6d3fcfe2c098c70105",
-                        "b269580b3df0220173925f313369eb735dc30787f52b1a2d9fa60e1dfc776bbf")
+                        "2b72aa80f05bf3b17cbce46a0543d17249581d11153e280991f295d6b74a8e99")
 SHADERC_THIRD_PARTY = (
     ("glslang", github_commit("KhronosGroup", "glslang",
                               "f0bd0257c308b9a26562c1a30c4748a0219cc951",
@@ -87,6 +88,18 @@ def ffmpeg_package(prefix: Path, work: Path, tools: Toolchain) -> None:
     run(["make", "install"], cwd=build)
 
 
+def openssl_package(prefix: Path, work: Path, tools: Toolchain) -> None:
+    perl = shutil.which("perl")
+    if not perl:
+        refuse("OpenSSL's Configure needs perl: sudo apt install perl (or dnf install perl)")
+    source = unpack(fetch(OPENSSL, work.parent / "sources"), work / "src")
+    environment = {**os.environ, "CC": tools.cc, "CXX": tools.cxx}
+    run([perl, str(source / "Configure"), "linux-x86_64", *OPENSSL_OPTIONS, "-fPIC",
+         f"--prefix={prefix}", "--libdir=lib"], cwd=source, env=environment)
+    run(["make", f"-j{tools.jobs}", "build_libs"], cwd=source, env=environment)
+    run(["make", "install_dev"], cwd=source, env=environment)
+
+
 def glslc_package(prefix: Path, work: Path, tools: Toolchain) -> None:
     sources = work.parent / "sources"
     tree = unpack(fetch(SHADERC, sources), work / "src")
@@ -110,10 +123,11 @@ def contract(tools: Toolchain) -> str:
     return json.dumps({
         "compilers": [tools.cc, tools.cxx],
         "archives": {archive.name: archive.sha256
-                     for archive in (*(pkg for pkg, _ in CMAKE_PACKAGES), FFMPEG, SHADERC,
+                     for archive in (*(pkg for pkg, _ in CMAKE_PACKAGES), FFMPEG, OPENSSL, SHADERC,
                                      *(dep for _, dep in SHADERC_THIRD_PARTY))},
         "cmake_options": {pkg.name: list(options) for pkg, options in CMAKE_PACKAGES},
         "ffmpeg": list(FFMPEG_COMMON_OPTIONS),
+        "openssl": list(OPENSSL_OPTIONS),
     }, indent=2, sort_keys=True) + "\n"
 
 
@@ -123,6 +137,9 @@ def required_files(prefix: Path) -> list[Path]:
             prefix / "lib/cmake/freetype/freetype-config.cmake",
             *(prefix / f"lib/lib{name}.a" for name in FFMPEG_LIBRARIES),
             prefix / "lib/pkgconfig/libavcodec.pc",
+            prefix / "include/openssl/ssl.h",
+            prefix / "lib/libssl.a",
+            prefix / "lib/libcrypto.a",
             prefix / "bin/glslc"]
 
 
@@ -143,6 +160,7 @@ def provision(deps_root: Path, tools: Toolchain) -> Path:
     for archive, options in CMAKE_PACKAGES:
         cmake_package(archive, options, prefix, work, tools)
     ffmpeg_package(prefix, work, tools)
+    openssl_package(prefix, work, tools)
     glslc_package(prefix, work, tools)
     missing = [str(path) for path in required_files(prefix) if not path.is_file()]
     if missing:

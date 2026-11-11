@@ -57,6 +57,8 @@ OPENSSL = Archive(
     "openssl", "3.5.9",
     "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz",
     "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a")
+# One static OpenSSL for every desktop prefix: the libraries and headers only.
+OPENSSL_OPTIONS = ("no-shared", "no-module", "no-tests", "no-docs", "no-apps")
 FFMPEG = Archive(
     "ffmpeg", "n7.1.1",
     "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.1.1.tar.gz",

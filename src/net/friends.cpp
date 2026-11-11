@@ -178,7 +178,8 @@ void Friends::go_online(const std::filesystem::path &storage,
                                         .network_port = kZeroTierPort},
                                        error);
   if (!state_->node) {
-    lucent::warn("lan.friends", "no ZeroTier node: {}", error);
+    lucent::log(lucent::Level::Warn, "lan.friends",
+                "no ZeroTier node: " + error);
   }
 }
 
@@ -241,8 +242,9 @@ void Friends::poll() {
     state_->last = std::string{"failed: "} + failure_name(view.failure);
     state_->ended = Stage::Failed;
     state_->problem = failure_name(view.failure);
-    lucent::info("lan.friends", "the meeting failed: {}",
-                 failure_name(view.failure));
+    lucent::log(lucent::Level::Info, "lan.friends",
+                std::string{"the meeting failed: "} +
+                    failure_name(view.failure));
     state_->meeting.reset();
   }
 }

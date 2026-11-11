@@ -19,7 +19,7 @@ import sys
 
 from dependency_archives import (
     FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_FEATURES, FFMPEG_LIBRARIES, FREETYPE,
-    FREETYPE_OPTIONS, OPENSSL, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
+    FREETYPE_OPTIONS, OPENSSL, OPENSSL_OPTIONS, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
     fetch, refuse, run, sha256_of, unpack)
 import libzt_deps
 
@@ -143,7 +143,7 @@ def openssl_package(toolchain: Path, prefix: Path, work: Path, jobs: int) -> Non
     environment = {**os.environ,
                    "PATH": os.pathsep.join([str(toolchain / "bin"), os.environ["PATH"]])}
     run([perl, (source / "Configure").as_posix(), "mingw64",
-         f"--cross-compile-prefix={TRIPLE}-", "no-shared", "no-module", "no-tests", "no-docs", "no-apps",
+         f"--cross-compile-prefix={TRIPLE}-", *OPENSSL_OPTIONS,
          f"--prefix={prefix.as_posix()}", "--libdir=lib"],
         cwd=source, env=environment)
     run([make, f"-j{jobs}", "build_libs"], cwd=source, env=environment)
