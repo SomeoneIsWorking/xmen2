@@ -2143,9 +2143,11 @@ menu listed `Join fedora`. A tool proves the copy and paste only under X11:
 Wayland offers the selection to the focused window alone, and a hidden
 window is never focused.
 
-Not covered: B could not go on from that row into A's game (issue
-[0205](issues/0205-the-main-menu-join-row-does-nothing-after-play-online.md)),
-and a host with no campaign running cannot start one (issue
+On 2026-11-12 both players went the whole way by touch on fresh profiles: A
+hosted through Host Game and Post Game, B tapped `Join fedora` after its trip
+to the online lobby, A tapped Start Game, and both loaded
+`act0/tutorial/tutorial1` in one network game (issues
+[0205](issues/0205-the-main-menu-join-row-does-nothing-after-play-online.md),
 [0206](issues/0206-a-host-with-no-campaign-running-cannot-start-a-lan-game.md)).
 
 ### S022 — native Windows host package and CI release: verified

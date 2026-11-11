@@ -123,26 +123,29 @@ public:
       }
     }
     x2::guest::GuestCall call(cpu);
+    if (over == nullptr) {
+      hand_focus_back(call, menu, lobby, point);
+      return false;
+    }
     if (message == kButtonDown) {
-      pressed_ = over != nullptr ? over->item : 0u;
-      return over != nullptr;
+      pressed_ = over->item;
+      return true;
     }
     if (message == kButtonUp) {
-      const bool chose = over != nullptr && pressed_ == over->item;
+      const bool chose = pressed_ == over->item;
       pressed_ = 0u;
       if (chose) {
         item::focus(call, menu, over->item);
         x2::native::friend_row_choose(over->text->row);
       }
-      return over != nullptr;
+      return true;
     }
-    if (message == kPointerMove && over != nullptr &&
-        x2::input::touch_runtime_active() == 0 &&
+    if (message == kPointerMove && x2::input::touch_runtime_active() == 0 &&
         RD32(menu + x2::menu::kMenuFocus) != over->item) {
       /* A mouse over a card focuses its row, as on the retail rows. */
       item::focus(call, menu, over->item);
     }
-    return over != nullptr;
+    return true;
   }
 
 private:
@@ -159,6 +162,26 @@ private:
     std::uint32_t join = 0u;
     std::uint32_t panel = 0u;
   };
+
+  /* Retail's onMouse walks the focus from its own two rows, so a press on
+     one of them while a friend row has the focus first focuses that row. */
+  static void hand_focus_back(x2::guest::GuestCall &call, std::uint32_t menu,
+                              const Lobby &lobby, ScenePoint point) {
+    const std::uint32_t focus = RD32(menu + x2::menu::kMenuFocus);
+    bool friend_focused = false;
+    for (const Row &row : lobby.rows) {
+      friend_focused = friend_focused || row.item == focus;
+    }
+    if (!friend_focused) {
+      return;
+    }
+    for (const std::uint32_t retail : {lobby.host, lobby.join}) {
+      if (retail != 0u && item::box(retail).contains(point)) {
+        item::focus(call, menu, retail);
+        return;
+      }
+    }
+  }
 
   Lobby &lobby_for(x2::guest::GuestCall &call, std::uint32_t menu) {
     const auto found = lobbies_.find(menu);

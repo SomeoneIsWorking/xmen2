@@ -65,6 +65,7 @@ Coordinator::Coordinator()
 void Coordinator::map_loaded(uint32_t map, bool succeeded) {
   if (succeeded && map) {
     map_ = std::string(guest::guest_string(map + kMapPath, kMapPathLimit));
+    in_campaign_ = presence::is_campaign_map(map_);
   }
 }
 
@@ -91,7 +92,7 @@ presence::LocalFacts Coordinator::read_facts(const CPU &cpu) {
   const SessionDirector &director = session_director();
   presence::LocalFacts facts;
   facts.map = map_;
-  facts.hosting_lobby = director.hosting_lobby();
+  facts.hosting_lobby = director.menu() == "host";
   facts.session_players = static_cast<uint8_t>(session.player_count());
   if (director.menu() == "host") {
     lobby_role_ = LobbyRole::Host;
@@ -255,6 +256,8 @@ void Coordinator::refresh_label(const CPU &cpu) {
   x2::native::main_menu_refresh(&call,
                                 retail::FrontEnd::active_menu_object(cpu));
 }
+
+bool Coordinator::in_campaign() const { return in_campaign_; }
 
 const char *Coordinator::join_label() const {
   return label_.empty() ? nullptr : label_.c_str();

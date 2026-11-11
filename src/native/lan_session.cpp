@@ -78,6 +78,12 @@ void lan_session_route(x2::native::Socket fd, const char *query) {
       control_query_arg(query, "host", value.data(), value.size());
   const bool join =
       !host && control_query_arg(query, "join", value.data(), value.size());
+  if (host && !x2::lan::coordinator().in_campaign()) {
+    control_reply_text(fd, 409, "Conflict",
+                       "no campaign is running to re-form as a lobby; a new "
+                       "game is hosted from the online lobby's Host Game\n");
+    return;
+  }
   if (host || join) {
     if (!director.request(host ? Role::Host : Role::Join)) {
       control_reply_text(fd, 409, "Conflict",

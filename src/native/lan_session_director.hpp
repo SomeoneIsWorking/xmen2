@@ -87,10 +87,6 @@ public:
   /* The guest's input thread: a host script is requested or running, so
      more players may still be expected. */
   bool hosting() const;
-  bool hosting_lobby() const {
-    return directing() &&
-           script_[next_].kind == ScriptAction::Kind::StartWhenReady;
-  }
 
 private:
   void poll_unguarded(const CPU &cpu, double now);

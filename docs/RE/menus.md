@@ -1569,7 +1569,9 @@ code, and both run `port_friend_row`. The lobby's scene places only its own
 two rows, so the new items have no node; their cards and text are drawn when
 `text_joingame` draws, under it at the Host-to-Join pitch, and the port's
 `0x005b03b0` takes a pointer message over a card before retail's onMouse
-(`src/native/lobby_friend_cards.cpp`). A tool proves the copy and paste
+(`src/native/lobby_friend_cards.cpp`). That onMouse walks the focus from
+its own two rows, so a press on one of them while a friend row has the focus
+first focuses that row. A tool proves the copy and paste
 between two players on one desktop under X11 (`SDL_VIDEO_DRIVER=x11`):
 Wayland offers the selection only to the focused window, which a hidden
 window never is.

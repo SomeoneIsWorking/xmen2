@@ -28,6 +28,7 @@
 
 #include "x86rt.h"
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <optional>
@@ -49,6 +50,9 @@ public:
 
   /* The guest's thread: the main menu's Join row text, or nullptr. */
   const char *join_label() const;
+  /* Any thread: a campaign map is loaded, so there is a game to re-form as
+     a lobby. */
+  bool in_campaign() const;
 
   /* The guest's thread: the player chose the Join row. */
   void join_chosen();
@@ -89,6 +93,8 @@ private:
   NatNegotiation nat_;
   std::string name_;
   std::string map_;
+  /* map_ is a campaign map; read by the control thread. */
+  std::atomic<bool> in_campaign_{false};
   /* Which lobby menu this machine last passed through: only a host sees
      "host", only a joiner "join". Forgotten when the session empties. */
   enum class LobbyRole { None, Host, Client };

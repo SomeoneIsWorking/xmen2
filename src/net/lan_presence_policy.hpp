@@ -29,7 +29,7 @@ struct LocalFacts {
   std::string map;
   /* This machine joined the network session through another's lobby. */
   bool client = false;
-  /* The session director waits in its own lobby. */
+  /* This machine's host room is up: it hosts a lobby, whoever opened it. */
   bool hosting_lobby = false;
   /* Part way through a re-form or a join, or waiting for a host's lobby. */
   bool directing = false;
