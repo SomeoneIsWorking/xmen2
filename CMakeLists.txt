@@ -46,7 +46,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 463c298cdd8933805be444a4592d61bd8556f61c
+    GIT_TAG 8adbf7ddc81dd4f13431a159d7429d46775e074f
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -325,7 +325,9 @@ target_include_directories(test_web_request PRIVATE src/web)
 add_test(NAME web_request COMMAND test_web_request)
 
 add_executable(test_winsock_host tests/test_winsock_host.cpp
-               src/native/winsock_host.cpp src/native/winsock_resolve.cpp)
+               src/native/winsock_host.cpp src/native/winsock_resolve.cpp
+               src/net/lan_broadcast.cpp)
+target_link_libraries(test_winsock_host PRIVATE lucent::lucent)
 add_test(NAME winsock_host COMMAND test_winsock_host)
 
 add_executable(test_control_http tests/test_control_http.cpp
@@ -2223,6 +2225,7 @@ set(X2_NATIVE_SOURCES
     src/native/lan_session_director.cpp
     src/native/lan_coordinator.cpp
     src/native/retail_net_session.cpp
+    src/net/lan_broadcast.cpp
     src/net/lan_presence.cpp
     src/net/lan_presence_policy.cpp
     src/net/lan_presence_protocol.cpp

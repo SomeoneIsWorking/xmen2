@@ -2098,6 +2098,13 @@ unprivileged network namespace at 10.77.0.1 and B in a child namespace at
 main menu offered "Join fedora" from A's broadcast. B joined, and both reached
 the tutorial scene: the session had two players, with B as client 1.
 
+A virtual network beside the default route also works. On 2026-11-11, each
+namespace's default route was a dummy `eth0` on its own subnet, and the only
+shared link was a veth `zt0` with no route over it, as a ZeroTier interface
+has. Broadcasts go to every interface's directed broadcast
+(`x2::net::lan_broadcast_destinations` on `lucent::net::lan_broadcasts`). B
+heard A, A re-formed for two and started, and both loaded the tutorial scene.
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
 is the retail "dropped" path); and no run has crossed two physical machines,
 real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)

@@ -7,9 +7,9 @@
  *
  * Several processes on one machine may hold the port at once (SO_REUSEADDR),
  * and every one of them hears each broadcast -- two port instances on one
- * desk see each other exactly as two machines would. Datagrams go to the
- * limited broadcast address, the same destination the game's own server
- * query uses.
+ * desk see each other exactly as two machines would. Datagrams go to every
+ * LAN the host is on (lan_broadcast.hpp), as the game's own server query
+ * does.
  *
  * The browser has no UDP: open() refuses there, by name.
  */
@@ -33,7 +33,7 @@ public:
   bool open(uint16_t port);
   bool is_open() const { return open_; }
 
-  /* One datagram to every machine on the LAN. False on a send error. */
+  /* One datagram to every machine on every LAN. False when it left by none. */
   bool broadcast(std::span<const uint8_t> datagram);
 
   /* The next waiting datagram's size (copied into `buffer`, truncated to

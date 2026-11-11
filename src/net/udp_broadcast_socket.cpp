@@ -1,5 +1,7 @@
 #include "udp_broadcast_socket.hpp"
 
+#include "lan_broadcast.hpp"
+
 #ifndef __EMSCRIPTEN__
 #include "platform_socket.h"
 #include <cstring>
@@ -92,17 +94,25 @@ bool BroadcastSocket::open(uint16_t port) {
 }
 
 bool BroadcastSocket::broadcast(std::span<const uint8_t> datagram) {
-  sockaddr_in to{};
-  to.sin_family = AF_INET;
-  to.sin_port = htons(port_);
-  to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-  const x2::native::SocketSsize sent = x2::native::socket_sendto(
-      host_socket(socket_), datagram.data(), datagram.size(), 0, &to);
-  if (sent != static_cast<x2::native::SocketSsize>(datagram.size())) {
-    fail("sendto");
-    return false;
+  std::string query_error;
+  bool reached = false;
+  for (const uint32_t destination : lan_broadcast_destinations(query_error)) {
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_port = htons(port_);
+    to.sin_addr.s_addr = destination;
+    const x2::native::SocketSsize sent = x2::native::socket_sendto(
+        host_socket(socket_), datagram.data(), datagram.size(), 0, &to);
+    if (sent == static_cast<x2::native::SocketSsize>(datagram.size())) {
+      reached = true;
+    } else {
+      fail("sendto");
+    }
   }
-  return true;
+  if (!query_error.empty()) {
+    error_ = query_error;
+  }
+  return reached;
 }
 
 std::optional<size_t> BroadcastSocket::receive(std::span<uint8_t> buffer) {

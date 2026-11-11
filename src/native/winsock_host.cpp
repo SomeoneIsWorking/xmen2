@@ -1,10 +1,12 @@
 #include "winsock_host.h"
 
+#include "../net/lan_broadcast.hpp"
 #include "platform_socket.h"
 #include "winsock_resolve.h"
 
 #include <mutex>
 #include <string.h>
+#include <string>
 
 namespace x2::native {
 
@@ -522,8 +524,27 @@ int64_t winsock_sendto(uint32_t handle, const void *data, size_t size,
   }
   struct sockaddr_in to;
   memcpy(&to, host_sockaddr_in, sizeof to);
-  return transferred(
-      x2::native::socket_sendto(slot->host, data, size, flags, &to), error);
+  if (to.sin_addr.s_addr != htonl(INADDR_BROADCAST)) {
+    return transferred(
+        x2::native::socket_sendto(slot->host, data, size, flags, &to), error);
+  }
+  /* The game's LAN query goes to every network the host is on. */
+  std::string query_error;
+  int64_t result = -1;
+  for (const uint32_t destination :
+       x2::net::lan_broadcast_destinations(query_error)) {
+    to.sin_addr.s_addr = destination;
+    uint32_t send_error = 0;
+    const int64_t sent = transferred(
+        x2::native::socket_sendto(slot->host, data, size, flags, &to),
+        &send_error);
+    if (sent >= 0) {
+      result = sent;
+    } else if (result < 0) {
+      *error = send_error;
+    }
+  }
+  return result;
 }
 
 int64_t winsock_recvfrom(uint32_t handle, void *data, size_t size, int flags,

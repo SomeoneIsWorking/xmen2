@@ -6,17 +6,12 @@
 #include <string.h>
 #include <strings.h>
 
-#if defined(_WIN32)
-#include <iphlpapi.h>
-#include <stdlib.h>
-#else
+#include <lucent/network_interfaces.h>
+
+#include <string>
+
+#if !defined(_WIN32)
 #include <netdb.h>
-/* getifaddrs arrived in Android's libc at API 24; below that the primary
-   address alone is what the machine reports. */
-#if !defined(__ANDROID__) || __ANDROID_API__ >= 24
-#include <ifaddrs.h>
-#define X2_HAVE_GETIFADDRS 1
-#endif
 #endif
 
 namespace x2::native {
@@ -71,60 +66,22 @@ int primary_address(uint32_t *out) {
   return found;
 }
 
-#if defined(_WIN32)
-/* Every unicast IPv4 address of an adapter that is up. */
+/* Every IPv4 address of an interface that is up. */
 void adapter_addresses(uint32_t *out, unsigned *count, unsigned max) {
-  ULONG size = 16 * 1024;
-  IP_ADAPTER_ADDRESSES *adapters = nullptr;
-  ULONG rc = ERROR_BUFFER_OVERFLOW;
-  for (int attempt = 0; attempt < 3 && rc == ERROR_BUFFER_OVERFLOW; ++attempt) {
-    free(adapters);
-    adapters = static_cast<IP_ADAPTER_ADDRESSES *>(malloc(size));
-    if (!adapters) {
-      return;
-    }
-    rc = GetAdaptersAddresses(AF_INET,
-                              GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST |
-                                  GAA_FLAG_SKIP_DNS_SERVER,
-                              nullptr, adapters, &size);
-  }
-  for (const IP_ADAPTER_ADDRESSES *adapter = rc == NO_ERROR ? adapters
-                                                            : nullptr;
-       adapter && *count < max; adapter = adapter->Next) {
-    if (adapter->OperStatus != IfOperStatusUp) {
-      continue;
-    }
-    for (const IP_ADAPTER_UNICAST_ADDRESS *at = adapter->FirstUnicastAddress;
-         at && *count < max; at = at->Next) {
-      const SOCKADDR *address = at->Address.lpSockaddr;
-      if (address && address->sa_family == AF_INET) {
-        add_adapter(
-            reinterpret_cast<const sockaddr_in *>(address)->sin_addr.s_addr,
-            out, count);
-      }
-    }
-  }
-  free(adapters);
-}
-#elif defined(X2_HAVE_GETIFADDRS)
-void adapter_addresses(uint32_t *out, unsigned *count, unsigned max) {
-  struct ifaddrs *interfaces = nullptr;
-  if (getifaddrs(&interfaces) != 0) {
+  std::string error;
+  const auto interfaces = lucent::net::ipv4_interfaces(error);
+  if (!interfaces) {
     return;
   }
-  for (const struct ifaddrs *at = interfaces; at && *count < max;
-       at = at->ifa_next) {
-    if (at->ifa_addr && at->ifa_addr->sa_family == AF_INET) {
-      add_adapter(
-          reinterpret_cast<const sockaddr_in *>(at->ifa_addr)->sin_addr.s_addr,
-          out, count);
+  for (const lucent::net::Ipv4Interface &entry : *interfaces) {
+    if (*count >= max) {
+      return;
+    }
+    if (entry.up) {
+      add_adapter(htonl(entry.address), out, count);
     }
   }
-  freeifaddrs(interfaces);
 }
-#else
-void adapter_addresses(uint32_t *, unsigned *, unsigned) {}
-#endif
 
 void loopback_answer(WinsockHost *out) {
   out->addresses[0] = htonl(0x7f000001u);
