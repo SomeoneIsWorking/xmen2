@@ -91,8 +91,9 @@ std::vector<ScriptAction> host_script() {
       {Kind::QueueCommand, "mainmenuexit 1", ""},
       {Kind::AwaitMenu, "main", ""},
       {Kind::ResetHostInfo, "", ""},
-      {Kind::QueueCommand, "openmenu online", ""},
-      {Kind::AwaitMenu, "online", ""},
+      /* Play Online hands the pressing controller to the session; a queued
+         openmenu leaves the lobby with no local controller to seat. */
+      {Kind::Press, "label_option09", "online"},
       {Kind::Press, "text_ready", "campaign_lobby"},
       {Kind::Press, "text_hostgame", "game_options"},
       {Kind::InstallCampaign, "", ""},

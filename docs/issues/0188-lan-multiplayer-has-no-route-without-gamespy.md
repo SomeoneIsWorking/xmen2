@@ -105,7 +105,7 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   `src/native/lan_session_director.cpp`). It drives the retail menus by
   focusing a named item and delivering one accept, and it reaches the front end
   with the console's own queued `mainmenuexit 1`. Host: capture → main →
-  online → Ready → Host Game → install the capture as the hosted save (the
+  Play Online (pressed, not a queued `openmenu online`) → Ready → Host Game → install the capture as the hosted save (the
   load-completion sequence at 0x004aed10) → Post Game → Start Game once every
   player is Ready. Join: main → online → Ready → Join Game → the search menu
   (`player_game_options`, whose Search item is named `text_mapname`) → the
@@ -128,6 +128,17 @@ game's "Player(s) have been dropped from the game" on A, which continues.
   machines asking in different polls produced a lobby for two that started
   without the second. The host starts once that
   many players are Ready, or after 45 s with those who are.
+
+  The host must press Play Online. Returning to the front end resets the
+  player manager's last-used controllers (`FUN_00551ed0` +0x34/+0x38) to -1,
+  and the main menu's Play Online press (`FUN_005c9640`) is what records the
+  pressing controller again. Post Game seats the host through `FUN_00551720`:
+  it tries those two controllers, then any controller of the Alchemy
+  `igControllerManager` at +0x2c. The game never appends to that list, so its
+  data pointer is null and the loop faults in `getController`. A queued
+  `openmenu online` skipped the press and the host crashed on Post Game. The
+  join script keeps the queued command: its Join row displaces Play Online,
+  and the join callback `FUN_00607810` seats the controller itself.
 
   Leaving a network game blanks the host-info block's version (session
   +0x3e2), and a browser hides a reply whose version differs from its own
@@ -220,6 +231,20 @@ driver ran under `nsenter -t <holder> -n`. A played the tutorial alone, and
 B's main menu listed "Join fedora" from A's presence broadcast. After Return,
 A re-formed for two, B walked the join script, and both directors reported
 started with two session players, B as client 1, in the tutorial scene.
+
+A virtual network such as ZeroTier is a second interface, not the default
+route, so limited broadcast never reaches it. Broadcasts therefore go to the
+directed broadcast of every running, non-loopback interface
+(`lucent::net::lan_broadcasts`, via `x2::net::lan_broadcast_destinations`):
+the presence beacon (`BroadcastSocket::broadcast`) and every guest `sendto`
+to 255.255.255.255 (`winsock_sendto`). `gethostbyname` and
+`GetAdaptersInfo` list every interface that is up
+(`lucent::net::ipv4_interfaces`). On 2026-11-11, each namespace had a dummy
+`eth0` holding the default route on its own subnet (10.77.0.1/24 and
+10.88.0.2/24), and the only shared link was a veth `zt0` (10.147.17.1 and .2
+on a /24) with no route over it. B heard A's presence, A re-formed for two
+and reported started with two session players, and B loaded the same
+tutorial scene.
 
 Two physical machines and Android remain unobserved. Both instances reported
 the same host name, because the UTS namespace was shared.
