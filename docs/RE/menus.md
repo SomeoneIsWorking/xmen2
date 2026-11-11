@@ -461,7 +461,7 @@ in all; the table is in the model source).
 | `+0x00` | vtable → class through RTTI (`CMenuItem` `0x6a007c`, `Text` `0x6a10cc`, `TextBox` `0x6a1154`, `Model` `0x6a0304`, `Bar` `0x6a042c`, `Binary` `0x6a04b4`, `List` `0x6a053c`, `ListBox` `0x6a062c`, `ListCycle` `0x6a0914`, …) |
 | `+0x08` | `name` (pool-2 handle) |
 | `+0x0c..+0x1c` | `desctext[5]` |
-| `+0x24` | `usecmd` |
+| `+0x24` | `usecmd` (pool-2 handle: the pool id and a hash slot, `0x0041a460`; the pool has no reference counts and is refilled when the front end reloads its menus, so a handle kept across a reload can name an empty slot) |
 | `+0x28`, `+0x2c` | `leftcmd`, `rightcmd` |
 | `+0x30` | `animtext_scene` |
 | `+0x34`, `+0x38` | gamevar getter and setter, copied from the registry by name |

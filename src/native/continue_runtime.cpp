@@ -227,11 +227,11 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
                  "the shipped main menu\n");
     return;
   }
-  if (!g_continue_command)
-    g_continue_command = intern_command(source, g_exe + LOADGAME_COMMAND,
-                                        (uint32_t)strlen("loadgame") + 1u);
-  if (!g_join_command)
-    g_join_command = intern_join_command(source);
+  /* The pool is refilled when the front end reloads its menus, so a handle
+     kept from an earlier show can name an emptied slot. */
+  g_continue_command = intern_command(source, g_exe + LOADGAME_COMMAND,
+                                      (uint32_t)strlen("loadgame") + 1u);
+  g_join_command = intern_join_command(source);
   if (join_label && (!g_join_command || !join_text(join_label))) {
     x2_log_error("main menu: the LAN Join row could not be prepared; "
                  "leaving it out\n");
