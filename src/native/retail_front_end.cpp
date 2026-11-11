@@ -1,6 +1,7 @@
 #include "retail_front_end.hpp"
 
 #include "guest_call.hpp"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "popup_dialog.hpp"
 
@@ -19,8 +20,6 @@ inline constexpr uint32_t kConsoleQueueSlot = 0x1cu;
 inline constexpr uint32_t kMenuManagerRva = 0x001d8920u;
 inline constexpr uint32_t kActiveMenuSlot = 0x210u;
 inline constexpr uint32_t kMenuName = 0x0cu;
-/* Menu slot 4 moves the focus to an item (CMenu::SetFocus). */
-inline constexpr uint32_t kMenuFocusSlot = 0x4u;
 
 uint32_t exe_base() { return x86_module_base("XMen2.exe"); }
 
@@ -53,18 +52,14 @@ std::string FrontEnd::active_menu(const CPU &cpu) {
 }
 
 bool FrontEnd::focus(const CPU &cpu, std::string_view item) {
-  const uint32_t exe = exe_base();
   const uint32_t menu = active_menu_object(cpu);
-  const guest::GuestText name(item);
-  if (!menu || !name) {
-    return false;
-  }
-  const uint32_t target = guest::GuestCall(cpu).thiscall(
-      exe + native::menu_item::kItemByNameRva, menu, {name.address()});
+  guest::GuestCall call(cpu);
+  const uint32_t target =
+      menu ? native::menu_item::named(call, menu, item) : 0u;
   if (!target) {
     return false;
   }
-  guest::GuestCall(cpu).virtual_call(menu, kMenuFocusSlot, {target});
+  native::menu_item::focus(call, menu, target);
   return true;
 }
 

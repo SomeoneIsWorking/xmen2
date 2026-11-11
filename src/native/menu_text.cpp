@@ -2,6 +2,7 @@
 
 #include "guest_modules.h"
 #include "menu_item_memory.hpp"
+#include "menu_scene.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -107,6 +108,34 @@ void line(guest::GuestCall &call, std::uint32_t item, std::uint32_t box,
                 {word(area.left - origin_x), word(area.bottom - origin_z),
                  word(area.width()), word(area.height()),
                  guest::float_bits(scale), align, colour, text, 0xffffffffu});
+}
+
+void label_and_value(guest::GuestCall &call, std::uint32_t host,
+                     std::uint32_t self, const input::SceneBox &card,
+                     std::string_view label, std::string_view value,
+                     bool focused, float pad, float label_share) {
+  const std::uint32_t box = RD32(host + menu_item::kTextBox);
+  const guest::GuestBlock line_text(kLineBytes);
+  menu_scene::Vectors vectors;
+  if (box == 0u || !line_text || !vectors) {
+    return;
+  }
+  const input::SceneBox inner = input::card_text_box(card, pad * card.height());
+  const float split = inner.left + label_share * inner.width();
+  const input::SceneBox left{inner.left, inner.bottom, split, inner.top};
+  const input::SceneBox right{split, inner.bottom, inner.right, inner.top};
+  const float scale = row_scale([&](float s) {
+    return wrap(call, box, line_text.address(), label, left.width(), s) &&
+           wrap(call, box, line_text.address(), value, right.width(), s);
+  });
+  const std::uint32_t colour =
+      menu_scene::style_color(call, vectors, RD32(self + menu_item::kStyle),
+                              focused ? 1.0F : 0.0F, true, self);
+  wrap(call, box, line_text.address(), label, left.width(), scale);
+  line(call, host, box, left, scale, kAlignMiddle, colour, line_text.address());
+  wrap(call, box, line_text.address(), value, right.width(), scale);
+  line(call, host, box, right, scale, kAlignRight | kAlignMiddle, colour,
+       line_text.address());
 }
 
 } // namespace x2::native::menu_text

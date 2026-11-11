@@ -15,6 +15,7 @@
 #include "guest_body.h"
 #include "guest_call.hpp"
 #include "guest_modules.h"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
@@ -131,23 +132,6 @@ std::uint32_t word(float value) {
 
 bool on_touch() { return x2::input::touch_runtime_active() != 0; }
 
-SceneBox text_box(std::uint32_t self) {
-  const auto left = static_cast<float>(s16(self + item::kBoxLeft));
-  const auto top = static_cast<float>(s16(self + item::kBoxTop));
-  return {left, top - static_cast<float>(s16(self + item::kBoxHeight)),
-          left + static_cast<float>(s16(self + item::kBoxWidth)), top};
-}
-
-std::uint32_t item_named(x2::guest::GuestCall &call, std::uint32_t menu,
-                         std::string_view name) {
-  const x2::guest::GuestText text(name);
-  if (!text) {
-    return 0u;
-  }
-  return call.thiscall(x2::native::guest_exe_base() + item::kItemByNameRva,
-                       menu, {text.address()});
-}
-
 std::string item_text(x2::guest::GuestCall &call, std::uint32_t self) {
   const std::uint32_t at = call.virtual_call(self, item::kSlotText);
   return at == 0u
@@ -193,8 +177,8 @@ public:
     }
     hide_retail(call, panel);
     const float finger = x2::input::menu_finger_units(*plane);
-    const SceneBox title = text_box(panel.title);
-    const SceneBox accept = text_box(panel.accept);
+    const SceneBox title = item::box(panel.title);
+    const SceneBox accept = item::box(panel.accept);
     const auto bar_left =
         static_cast<float>(s16(panel.title_bar + item::kBoxLeft));
     x2::input::OptionsTouchInput input;
@@ -273,7 +257,7 @@ public:
       return;
     }
     Row &row = panel->rows[static_cast<std::size_t>(*setting)];
-    row.retail_bar = text_box(self);
+    row.retail_bar = item::box(self);
     step_toward_finger(*cpu, row, self);
     if (!row.shown) {
       cpu->reg[kX86pEsp] += 4u;
@@ -289,7 +273,7 @@ public:
          static_cast<std::uint16_t>(word(row.bar.width())));
     WR16(self + item::kBoxHeight,
          static_cast<std::uint16_t>(word(row.bar.height())));
-    queue_track(*cpu, self, text_box(self));
+    queue_track(*cpu, self, item::box(self));
     x86_guest_body(cpu, "XMen2.exe", kBarDraw);
     WR16(self + item::kBoxLeft, left);
     WR16(self + item::kBoxTop, top);
@@ -390,7 +374,7 @@ public:
       return true;
     }
     const std::uint32_t label = row.label;
-    const SceneBox box = text_box(label);
+    const SceneBox box = item::box(label);
     const ScenePoint aim{0.5F * (box.left + box.right),
                          0.5F * (box.bottom + box.top)};
     forward(cpu, menu, kPointerMove, aim);
@@ -499,15 +483,15 @@ private:
     Panel &panel = panels_[menu];
     for (std::size_t i = 0; i < kSettings.size(); ++i) {
       Row &row = panel.rows[i];
-      row.label = item_named(call, menu, kSettings[i].label);
-      row.value = item_named(call, menu, kSettings[i].value);
-      row.focus = item_named(call, menu, kSettings[i].focus);
+      row.label = item::named(call, menu, kSettings[i].label);
+      row.value = item::named(call, menu, kSettings[i].value);
+      row.focus = item::named(call, menu, kSettings[i].focus);
     }
-    panel.panel_art = item_named(call, menu, kPanelArt);
-    panel.panel_bracket = item_named(call, menu, kPanelBracket);
-    panel.title = item_named(call, menu, kTitle);
-    panel.title_bar = item_named(call, menu, kTitleBar);
-    panel.accept = item_named(call, menu, kAccept);
+    panel.panel_art = item::named(call, menu, kPanelArt);
+    panel.panel_bracket = item::named(call, menu, kPanelBracket);
+    panel.title = item::named(call, menu, kTitle);
+    panel.title_bar = item::named(call, menu, kTitleBar);
+    panel.accept = item::named(call, menu, kAccept);
     menu_scene::Vectors vectors;
     if (vectors) {
       for (Row &row : panel.rows) {

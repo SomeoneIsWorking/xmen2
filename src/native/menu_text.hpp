@@ -76,6 +76,15 @@ void line(guest::GuestCall &call, std::uint32_t item, std::uint32_t box,
           const input::SceneBox &area, float scale, std::uint32_t align,
           std::uint32_t colour, std::uint32_t text);
 
+/* A card's label at its left and value at its right, through `host`'s text
+   box in `self`'s style lit when `focused`, both at the one scale that fits
+   them; text inset `pad` card heights from its ends, the label given
+   `label_share` of the width. */
+void label_and_value(guest::GuestCall &call, std::uint32_t host,
+                     std::uint32_t self, const input::SceneBox &card,
+                     std::string_view label, std::string_view value,
+                     bool focused, float pad, float label_share);
+
 } // namespace x2::native::menu_text
 
 #endif

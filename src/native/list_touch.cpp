@@ -14,6 +14,7 @@
 #include "guest_call.hpp"
 #include "guest_modules.h"
 #include "menu_action.hpp"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
@@ -95,14 +96,6 @@ bool replaced_class(std::uint32_t self) {
   return x2::input::list_has_touch_layout(
       x2::menu::classify_item(RD32(self), image),
       x2::menu::classify_menu(RD32(RD32(self + item::kMenu)), image));
-}
-
-/* The list's box in the scene, z up. */
-SceneBox list_box(std::uint32_t self) {
-  const auto left = static_cast<float>(s16(self + item::kBoxLeft));
-  const auto top = static_cast<float>(s16(self + item::kBoxTop));
-  return {left, top - static_cast<float>(s16(self + item::kBoxHeight)),
-          left + static_cast<float>(s16(self + item::kBoxWidth)), top};
 }
 
 std::vector<std::string> split_columns(std::string_view text, int columns) {
@@ -211,7 +204,7 @@ public:
   std::optional<SceneBox> card_area(std::uint32_t self) const {
     const std::uint32_t menu = RD32(self + item::kMenu);
     const auto place = [&](std::uint32_t list) {
-      return x2::input::ListPlace{list_box(list),
+      return x2::input::ListPlace{item::box(list),
                                   RD32(menu + x2::menu::kMenuFocus) == list};
     };
     std::vector<x2::input::ListPlace> others;

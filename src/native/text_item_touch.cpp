@@ -21,6 +21,7 @@
 #include "guest_memory_view.hpp"
 #include "guest_modules.h"
 #include "menu_action.hpp"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
@@ -153,14 +154,6 @@ int s16(std::uint32_t address) {
 
 bool on_touch() { return x2::input::touch_runtime_active() != 0; }
 
-/* Where the draw puts the item's text line, z up. */
-SceneBox text_box(std::uint32_t self) {
-  const auto left = static_cast<float>(s16(self + item::kBoxLeft));
-  const auto top = static_cast<float>(s16(self + item::kBoxTop));
-  return {left, top - static_cast<float>(s16(self + item::kBoxHeight)),
-          left + static_cast<float>(s16(self + item::kBoxWidth)), top};
-}
-
 /* The colour share the retail draw lights the item's text by. */
 float retail_lit(std::uint32_t self) {
   const std::uint32_t style = RD32(self + item::kStyle);
@@ -254,7 +247,7 @@ public:
     const float finger = x2::input::menu_finger_units(*plane);
     x2::input::TouchTargets &targets = x2::input::touch_targets();
     if (turn_pair) {
-      const auto areas = x2::input::pair_buttons(text_box(self), finger);
+      const auto areas = x2::input::pair_buttons(item::box(self), finger);
       const std::array<std::string, 2> labels = turn_labels(text);
       int turn = 0;
       for (std::size_t side = 0; side < areas.size(); ++side) {
@@ -368,7 +361,7 @@ private:
      text size and the text pad at each end, from the host's left. */
   static SceneBox prompt_area(x2::guest::GuestCall &call, std::uint32_t self,
                               const std::string &label, float finger) {
-    SceneBox text = text_box(self);
+    SceneBox text = item::box(self);
     const std::uint32_t box = RD32(self + item::kTextBox);
     const x2::guest::GuestBlock line(menu_text::kLineBytes);
     if (box != 0u && line) {
@@ -384,11 +377,11 @@ private:
      its text's, unless it would touch a neighbour's. */
   SceneBox footer_area(x2::guest::GuestCall &call, std::uint32_t self,
                        std::string_view menu_class, float finger) {
-    std::vector<SceneBox> texts{text_box(self)};
+    std::vector<SceneBox> texts{item::box(self)};
     for (const std::uint32_t other :
          footers_of(call, RD32(self + item::kMenu))) {
       if (other != self && drawn_as_button(call, other, menu_class)) {
-        texts.push_back(text_box(other));
+        texts.push_back(item::box(other));
       }
     }
     return x2::input::footer_buttons(texts, finger).front();
@@ -428,13 +421,8 @@ private:
     footers.vtable = RD32(menu);
     found.clear();
     for (int n = 1; n <= kFooterNames; ++n) {
-      const x2::guest::GuestText name(std::string(kFooterName) +
-                                      std::to_string(n));
       const std::uint32_t at =
-          name ? call.thiscall(x2::native::guest_exe_base() +
-                                   item::kItemByNameRva,
-                               menu, {name.address()})
-               : 0u;
+          item::named(call, menu, std::string(kFooterName) + std::to_string(n));
       if (at != 0u) {
         found.push_back(at);
       }
@@ -454,11 +442,11 @@ private:
       return;
     }
     const float finger = x2::input::menu_finger_units(*plane);
-    SceneBox area = x2::input::text_button(text_box(self), finger);
+    SceneBox area = x2::input::text_button(item::box(self), finger);
     if (bar != 0u) {
       const auto left = static_cast<float>(s16(bar + item::kBoxLeft));
       area = x2::input::row_button(
-          text_box(self), left,
+          item::box(self), left,
           left + static_cast<float>(s16(bar + item::kBoxWidth)), finger);
     }
     x2::input::touch_targets().put(
@@ -482,11 +470,10 @@ private:
     if (found != bars_.end()) {
       return found->second;
     }
-    const x2::guest::GuestText bar_name(name.substr(kRowPrefix.size()));
     std::uint32_t bar = 0u;
-    if (name.starts_with(kRowPrefix) && bar_name) {
-      bar = call.thiscall(x2::native::guest_exe_base() + item::kItemByNameRva,
-                          RD32(self + item::kMenu), {bar_name.address()});
+    if (name.starts_with(kRowPrefix)) {
+      bar = item::named(call, RD32(self + item::kMenu),
+                        name.substr(kRowPrefix.size()));
     }
     return bars_[self] = bar;
   }

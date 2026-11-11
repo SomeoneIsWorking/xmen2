@@ -3,14 +3,11 @@
 
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "xmlb_tree.hpp"
 
-/* The retail Options menu with the port's rows added (plan #203). The menu
-   file the game opens (ui/menus/options.engb, or another language's) is
-   derived from the player's own install into the save directory on first
-   open and served in its place, so every platform gets the same rows. */
+/* The retail Options menu with the port's rows added (plan #203), served
+   by derived_menus.hpp in place of ui/menus/options.engb. */
 namespace x2::native {
 
 /* `retail`'s tree with one text item per port row after Accept, chained
@@ -18,10 +15,6 @@ namespace x2::native {
    commands; nothing when `retail` is not the Options menu this expects. */
 std::optional<xmlb::Node> derive_options_menu(const xmlb::Node &retail,
                                               std::string *why);
-
-/* The host path to open for `guest_path` instead of the install's file, or
-   null when the port derives nothing for it. */
-const char *options_menu_replacement(const char *guest_path);
 
 } // namespace x2::native
 

@@ -25,6 +25,7 @@
 #include "guest_modules.h"
 #include "list_touch.hpp"
 #include "menu_action.hpp"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
@@ -692,12 +693,7 @@ private:
     if (found != items_.end()) {
       return found->second;
     }
-    const x2::guest::GuestText text(name);
-    const std::uint32_t at =
-        text
-            ? call.thiscall(x2::native::guest_exe_base() + item::kItemByNameRva,
-                            menu, {text.address()})
-            : 0u;
+    const std::uint32_t at = item::named(call, menu, name);
     items_[key] = at;
     return at;
   }

@@ -2282,6 +2282,7 @@ set(X2_NATIVE_SOURCES
     src/native/movie_image_layout.cpp
     src/native/options_menu.cpp
     src/native/options_menu_derived.cpp
+    src/native/derived_menus.cpp
     src/native/options_menu_no_advanced.cpp
     src/native/port_option_rows.cpp
     src/native/xmlb_tree.cpp

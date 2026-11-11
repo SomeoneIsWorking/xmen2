@@ -18,6 +18,7 @@
 #include "../input/touch_runtime.h"
 #include "guest_call.hpp"
 #include "guest_modules.h"
+#include "menu_item_access.hpp"
 #include "menu_item_memory.hpp"
 #include "menu_scene.hpp"
 #include "menu_text.hpp"
@@ -48,8 +49,6 @@ constexpr std::uint32_t kButtonDown = 0x201u;
 constexpr std::uint32_t kButtonUp = 0x202u;
 constexpr std::uint32_t kPointerMove = 0x200u;
 constexpr std::uint32_t kWheel = 0x20au;
-/* CMenu slot 4: CMenu::setFocus. */
-constexpr std::uint32_t kSetFocusSlot = 0x04u;
 
 /* The title bar's box gives the panel's width; heights come from the text
    labels, as a model item's box is not in the scene's z. */
@@ -70,35 +69,6 @@ constexpr float kDragStart = 0.25F;
 
 int s16(std::uint32_t address) {
   return static_cast<std::int16_t>(RD16(address));
-}
-
-SceneBox item_box(std::uint32_t self) {
-  const auto left = static_cast<float>(s16(self + item::kBoxLeft));
-  const auto top = static_cast<float>(s16(self + item::kBoxTop));
-  return {left, top - static_cast<float>(s16(self + item::kBoxHeight)),
-          left + static_cast<float>(s16(self + item::kBoxWidth)), top};
-}
-
-void set_item_box(std::uint32_t self, const SceneBox &box) {
-  const auto i16 = [](float v) {
-    return static_cast<std::uint16_t>(
-        static_cast<std::int16_t>(std::lround(v)));
-  };
-  WR16(self + item::kBoxLeft, i16(box.left));
-  WR16(self + item::kBoxTop, i16(box.top));
-  WR16(self + item::kBoxWidth, i16(box.width()));
-  WR16(self + item::kBoxHeight, i16(box.height()));
-  WR16(self + item::kLocalTop, 0u);
-}
-
-std::uint32_t item_named(x2::guest::GuestCall &call, std::uint32_t menu,
-                         std::string_view name) {
-  const x2::guest::GuestText text(name);
-  if (!text) {
-    return 0u;
-  }
-  return call.thiscall(x2::native::guest_exe_base() + item::kItemByNameRva,
-                       menu, {text.address()});
 }
 
 class PortColumn {
@@ -135,14 +105,17 @@ public:
       row.shown = page && shown >= 0 &&
                   shown < static_cast<int>(column.stack.cards.size());
       if (!row.shown) {
-        set_item_box(row.item, {});
+        item::set_box(row.item, {});
         continue;
       }
       row.card = column.stack.cards[static_cast<std::size_t>(shown)];
-      set_item_box(row.item, row.card);
+      item::set_box(row.item, row.card);
       const bool focused = focus == row.item;
       row.art.show(call, vectors, row.card, depth + kCardDepth, focused);
-      draw_text(call, vectors, self, row.item, row, *row.option, focused);
+      menu_text::label_and_value(call, self, row.item, row.card,
+                                 row.option->label,
+                                 x2::native::port_option_value(*row.option),
+                                 focused, kTextPad, kLabelShare);
     }
     return false;
   }
@@ -271,15 +244,15 @@ private:
     for (const auto *option : x2::native::port_option_rows()) {
       Row row;
       row.option = option;
-      row.item = item_named(call, menu, x2::native::port_option_item(*option));
+      row.item = item::named(call, menu, x2::native::port_option_item(*option));
       if (row.item == 0u) {
         continue;
       }
       column.rows.push_back(row);
     }
-    column.title_bar = item_named(call, menu, kTitleBar);
-    column.title_label = item_named(call, menu, kTitleLabel);
-    column.text_host = item_named(call, menu, kTextHost);
+    column.title_bar = item::named(call, menu, kTitleBar);
+    column.title_label = item::named(call, menu, kTitleLabel);
+    column.text_host = item::named(call, menu, kTextHost);
     menu_scene::Vectors vectors;
     if (vectors && !column.rows.empty()) {
       for (Row &row : column.rows) {
@@ -294,9 +267,9 @@ private:
   static void layout(Column &column,
                      const x2::presentation::RetailScenePlane &plane,
                      std::uint32_t focus) {
-    const SceneBox title = item_box(column.title_bar);
-    const float top = item_box(column.title_label).top;
-    const float bottom = item_box(column.text_host).bottom;
+    const SceneBox title = item::box(column.title_bar);
+    const float top = item::box(column.title_label).top;
+    const float bottom = item::box(column.text_host).bottom;
     const float gap = kGap * title.width();
     const float plane_right = plane.left() + plane.width();
     const float margin = std::max(0.0F, title.left - plane.left());
@@ -328,51 +301,14 @@ private:
     column.first = column.stack.first;
   }
 
-  /* The row's label and value on its card, through `host`'s text box in
-     the row's own style. */
-  static void draw_text(x2::guest::GuestCall &call,
-                        menu_scene::Vectors &vectors, std::uint32_t host,
-                        std::uint32_t self, const Row &row,
-                        const x2::native::PortOptionRow &option, bool focused) {
-    const std::uint32_t box = RD32(host + item::kTextBox);
-    const x2::guest::GuestBlock line(menu_text::kLineBytes);
-    if (box == 0u || !line) {
-      return;
-    }
-    const SceneBox inner =
-        x2::input::card_text_box(row.card, kTextPad * row.card.height());
-    const float split = inner.left + kLabelShare * inner.width();
-    const SceneBox label{inner.left, inner.bottom, split, inner.top};
-    const SceneBox value{split, inner.bottom, inner.right, inner.top};
-    const std::string label_text(option.label);
-    const std::string value_text = x2::native::port_option_value(option);
-    const float scale = menu_text::row_scale([&](float s) {
-      return menu_text::wrap(call, box, line.address(), label_text,
-                             label.width(), s) &&
-             menu_text::wrap(call, box, line.address(), value_text,
-                             value.width(), s);
-    });
-    const std::uint32_t colour =
-        menu_scene::style_color(call, vectors, RD32(self + item::kStyle),
-                                focused ? 1.0F : 0.0F, true, self);
-    menu_text::wrap(call, box, line.address(), label_text, label.width(),
-                    scale);
-    menu_text::line(call, host, box, label, scale, menu_text::kAlignMiddle,
-                    colour, line.address());
-    menu_text::wrap(call, box, line.address(), value_text, value.width(),
-                    scale);
-    menu_text::line(call, host, box, value, scale,
-                    menu_text::kAlignRight | menu_text::kAlignMiddle, colour,
-                    line.address());
-  }
-
   static void detach(x2::guest::GuestCall &call, Row &row) {
     row.art.hide(call);
   }
 
   static void focus(const CPU &cpu, std::uint32_t menu, const Row &row) {
     if (RD32(menu + x2::menu::kMenuFocus) != row.item) {
-      x2::guest::GuestCall(cpu).virtual_call(menu, kSetFocusSlot, {row.item});
+      x2::guest::GuestCall call(cpu);
+      item::focus(call, menu, row.item);
     }
   }
 
