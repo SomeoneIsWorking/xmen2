@@ -4,11 +4,17 @@
 #include "lan_coordinator.hpp"
 #include "retail_front_end.hpp"
 #include "retail_menu_model.hpp"
+#include "shell32.h"
 #include "x2_log.h"
 #include "x86rt_native.h"
 
 #include "../net/friends.hpp"
 
+#include <lucent/cvar_c.h>
+
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <vector>
 
 namespace x2::native {
@@ -33,6 +39,7 @@ xmlb::Node *named(xmlb::Node &root, std::string_view name) {
 class FriendRows {
 public:
   std::string value(FriendRow row) {
+    go_online();
     const Friends::Shown shown = friends().shown();
     take_pending(shown);
     if (row == FriendRow::YourCode) {
@@ -54,6 +61,27 @@ public:
 
 private:
   static Friends &friends() { return lan::coordinator().friends(); }
+
+  /* The node starts when the rows are first shown; its identity is user data
+     beside the saves. lan.zerotier_roots names a root-set file for a lab. */
+  void go_online() {
+    if (online_) {
+      return;
+    }
+    online_ = true;
+    std::string roots;
+    const std::filesystem::path file = lucent_cvar_text("lan.zerotier_roots");
+    if (!file.empty()) {
+      std::ifstream in{file, std::ios::binary};
+      if (!in) {
+        x2_log_error("friend rows: no root set at %s\n", file.string().c_str());
+        return;
+      }
+      roots.assign(std::istreambuf_iterator<char>{in},
+                   std::istreambuf_iterator<char>{});
+    }
+    friends().go_online(std::filesystem::path{save_dir()} / "zerotier", roots);
+  }
 
   static bool meeting(const Friends::Shown &shown) {
     return shown.stage == Friends::Stage::Gathering ||
@@ -164,6 +192,7 @@ private:
   std::string code_refusal_;
   std::string join_refusal_;
   bool pending_copy_ = false;
+  bool online_ = false;
 };
 
 FriendRows g_rows;

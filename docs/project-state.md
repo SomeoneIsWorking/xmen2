@@ -2114,10 +2114,19 @@ for an invite (`/lan?invite=1`) from the tutorial and B pasted its code
 other as 10.254.0.2 (`lucent::p2p::VirtualLan`). B's menu offered "Join fedora",
 A re-formed for two, and both loaded the tutorial scene.
 
+When direct UDP fails, a friend comes through the game's embedded ZeroTier
+node (`lucent::zerotier`), which starts when the online lobby's friend rows are
+first shown and keeps its identity under the save root (`zerotier/`). On
+2026-11-12, with A and B as above, a lab root in A at 10.77.0.1:9993
+(`lan.zerotier_roots`), and every UDP datagram between A and B other than root
+traffic dropped in B, A tapped Your code and B tapped Join by code. Both logged
+`connected over ZeroTier`, B joined from its main menu's row, and both loaded
+the tutorial scene in one session of two.
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
-is the retail "dropped" path); codes have no menu UI yet, and no path through
-ZeroTier when direct UDP fails; and no run has crossed two physical machines,
-real LAN hardware, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
+is the retail "dropped" path); the relayed path's input lag and correction are
+unmeasured (plan 204 stage 4); and no run has crossed two physical machines,
+real LAN hardware, the public ZeroTier roots, or Android. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
 ### S026 — friends added by code from the game's own online menu: verified

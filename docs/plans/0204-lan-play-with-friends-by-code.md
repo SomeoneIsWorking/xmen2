@@ -5,7 +5,7 @@ status: in-progress
 state_items: [S023]
 tags: lan,multiplayer,online,zerotier,netcode
 created: 2026-11-11
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 ## The request
@@ -51,8 +51,12 @@ Winsock and the presence socket reach the friends through
    this machine's code to the clipboard (making one first) and Join by code
    pastes the clipboard's, by pad, keys, mouse or touch (S026). The control
    channel keeps `/lan?invite=1` and `/lan?code=<code>` for tools.
-3. The ZeroTier node (`lucent::zerotier`), started when the online menu opens,
-   with its identity in the user-data directory.
+3. Done: the ZeroTier node (`lucent::zerotier`) in `x2::net::Friends`, started
+   the first time the lobby's friend rows are shown, its identity in
+   `<save root>/zerotier`, and handed to every meeting's connector.
+   `lan.zerotier_roots` names a signed root-set file for a lab; empty uses
+   ZeroTier's public roots. libzt comes from `tools/libzt_deps.py` for every
+   platform (S023 has the relayed two-player run).
 4. Measurements over a relayed ZeroTier path (rootless namespaces, a lab
    root, direct UDP between the two players dropped), recorded in S023.
 

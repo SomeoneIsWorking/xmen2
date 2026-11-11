@@ -21,6 +21,7 @@ from dependency_archives import (
     FFMPEG, FFMPEG_COMMON_OPTIONS, FFMPEG_FEATURES, FFMPEG_LIBRARIES, FREETYPE,
     FREETYPE_OPTIONS, OPENSSL, SDL3, SDL3_IMAGE, SDL3_IMAGE_OPTIONS, SDL3_OPTIONS, ZLIB, Archive,
     fetch, refuse, run, sha256_of, unpack)
+import libzt_deps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,12 @@ CMAKE_PACKAGES = (
 class WindowsDependencies:
     llvm_mingw: Path
     prefix: Path
+    libzt: Path
+
+    @property
+    def prefixes(self) -> str:
+        """The CMake search list: the release prefix, then libzt's."""
+        return f"{self.prefix.as_posix()};{self.libzt.as_posix()}"
 
     @property
     def zlib_library(self) -> Path:
@@ -167,15 +174,22 @@ def required_files(prefix: Path) -> list[Path]:
             prefix / "lib/pkgconfig/libavcodec.pc"]
 
 
+def libzt_package(toolchain: Path, jobs: int) -> Path:
+    return libzt_deps.provision(
+        f"{TRIPLE}-llvm-mingw{LLVM_MINGW_VERSION}",
+        (f"-DCMAKE_TOOLCHAIN_FILE={TOOLCHAIN_FILE}", f"-DLLVM_MINGW_ROOT={toolchain}"), jobs)
+
+
 def provision(deps_root: Path, jobs: int) -> WindowsDependencies:
     deps_root = deps_root.resolve()
     toolchain = llvm_mingw_root(deps_root)
+    libzt = libzt_package(toolchain, jobs)
     prefix = deps_root / "x86_64"
     marker = prefix / "windows-dependencies.json"
     wanted = contract(toolchain)
     if (marker.is_file() and marker.read_text(encoding="utf-8") == wanted
             and all(path.is_file() for path in required_files(prefix))):
-        return WindowsDependencies(toolchain, prefix)
+        return WindowsDependencies(toolchain, prefix, libzt)
     if prefix.exists():
         shutil.rmtree(prefix)
     work = deps_root / "work"
@@ -188,7 +202,7 @@ def provision(deps_root: Path, jobs: int) -> WindowsDependencies:
         refuse("the prefix build did not install " + ", ".join(missing))
     marker.write_text(wanted, encoding="utf-8")
     shutil.rmtree(work)
-    return WindowsDependencies(toolchain, prefix)
+    return WindowsDependencies(toolchain, prefix, libzt)
 
 
 def parse_args() -> argparse.Namespace:

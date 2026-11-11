@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -45,6 +46,13 @@ public:
 
   // Where friends' datagrams go; none in a browser page.
   FriendRoute *route();
+
+  // Starts this machine's ZeroTier node once, so it is on its network before a
+  // code is made or pasted: identity in `storage`, `roots` a signed root set
+  // (empty for ZeroTier's public roots). A node that cannot start leaves
+  // meetings to the other ways through.
+  void go_online(const std::filesystem::path &storage,
+                 const std::string &roots);
 
   // A new invite; false with `error` while a meeting runs or where there are no
   // friends.

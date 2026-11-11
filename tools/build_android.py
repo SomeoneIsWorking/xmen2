@@ -20,8 +20,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import bootstrap
 
 try:
+    from . import libzt_deps
     from .shared_dir import shared_dir
 except ImportError:
+    import libzt_deps
     from shared_dir import shared_dir
 
 
@@ -82,6 +84,16 @@ def native_prefix(build_root: Path, api: int, abi: str) -> Path:
 
 
 @cache
+def libzt_prefix(ndk: Path, api: int, abi: str) -> Path:
+    """libzt for this ABI and API, built with the NDK's own toolchain file."""
+    return libzt_deps.provision(
+        f"android{api}-{abi}-ndk{ndk.name}",
+        (f"-DCMAKE_TOOLCHAIN_FILE={ndk / 'build/cmake/android.toolchain.cmake'}",
+         f"-DANDROID_ABI={abi}", f"-DANDROID_PLATFORM=android-{api}", "-DANDROID_STL=c++_shared",
+         "-DZTS_NDK_ONLY=ON"),
+        native_jobs())
+
+
 def shared_android() -> ModuleType:
     tool = android_port_tool()
     spec = importlib.util.spec_from_file_location("x2_shared_android", tool)
@@ -355,6 +367,7 @@ def main() -> int:
             # investigation into the packaged product tree.
             f"-DPython3_EXECUTABLE={sys.executable}",
             f"-DX2_ANDROID_PORT_PREFIX={prefix}",
+            f"-Dlibzt_DIR={libzt_prefix(ndk, args.api, args.abi) / 'lib/cmake/libzt'}",
         ],
         cwd=root,
     )

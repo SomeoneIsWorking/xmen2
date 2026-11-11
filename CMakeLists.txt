@@ -220,9 +220,11 @@ endif()
 include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 # Friends over the internet: lucent::online's code-to-connection transport, which
-# finds OpenSSL in the platform prefix above; a browser page has no friends.
+# finds OpenSSL in the platform prefix above, and its embedded ZeroTier node, which
+# finds libzt in the prefix tools/libzt_deps.py builds; a browser page has no friends.
 if(NOT EMSCRIPTEN)
     set(LUCENT_BUILD_ONLINE ON)
+    set(LUCENT_BUILD_ZEROTIER ON)
 endif()
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
@@ -2531,7 +2533,7 @@ target_include_directories(x2native PRIVATE src/runtime/x86_abi src/native src/v
                                             ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
 if(NOT EMSCRIPTEN)
-    target_link_libraries(x2native PRIVATE lucent::online)
+    target_link_libraries(x2native PRIVATE lucent::online lucent::zerotier)
 endif()
 target_link_libraries(x2native PRIVATE Freetype::Freetype)
 target_link_libraries(x2native PRIVATE x86port_runtime)

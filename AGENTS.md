@@ -74,6 +74,11 @@ build/native/x2native --d3d8                   # the LIVE path: arms the host Di
 `run.sh` launches the native-overrides + x86port-JIT gameplay product. The
 Wine control and maintainer diagnostics remain separate tools.
 
+libzt, for the embedded ZeroTier node, is built by `tools/libzt_deps.py` into
+`~/.local/share/lucent-thirdparty/libzt-<rev>-<toolchain>`; `run.py`, the
+Windows and Android builds and CI provision it, and a hand-configured tree
+passes that prefix in `CMAKE_PREFIX_PATH`.
+
 Build the release AppImage with
 `uv run --frozen python tools/appimage_container.py` (podman; CI passes
 `--engine docker`). It builds `packaging/appimage-build.Containerfile`, an

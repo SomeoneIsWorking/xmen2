@@ -14,6 +14,8 @@ import subprocess
 import sys
 from typing import Callable
 
+import libzt_deps
+
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -43,6 +45,9 @@ class Toolchain:
     cc: str
     cxx: str
     cmake_compiler_id: str
+
+    def libzt_prefix(self) -> Path:
+        return libzt_deps.host_prefix(self.cc, self.cxx, os.cpu_count() or 2, self.ninja)
 
 
 def resolve_toolchain(which: Callable[[str], str | None] = shutil.which,
@@ -235,6 +240,7 @@ def run_native() -> int:
                  f"-DCMAKE_MAKE_PROGRAM={toolchain.ninja}",
                  f"-DCMAKE_C_COMPILER={toolchain.cc}",
                  f"-DCMAKE_CXX_COMPILER={toolchain.cxx}",
+                 f"-DCMAKE_PREFIX_PATH={toolchain.libzt_prefix()}",
                  f"-DPython3_EXECUTABLE={sys.executable}",
                  # The clang-tidy gate reads this tree's compile_commands.json.
                  # Without it the only entries are the dependencies' own, and the

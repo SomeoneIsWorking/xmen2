@@ -146,12 +146,14 @@ def release_prefix(target: ci_support.TargetSupport, environment: dict[str, str]
     """Linux links the pinned static prefix (tools/linux_deps.py), never the host's libraries."""
     if target.system != "Linux":
         return ()
+    import libzt_deps
     import linux_deps
 
     tools = linux_deps.Toolchain(environment["CC"], environment["CXX"], os.cpu_count() or 2)
     prefix = linux_deps.provision(linux_deps.DEFAULT_DEPS_ROOT, tools)
+    libzt = libzt_deps.host_prefix(environment["CC"], environment["CXX"], os.cpu_count() or 2)
     environment["PKG_CONFIG_LIBDIR"] = str(prefix / "lib" / "pkgconfig")
-    return (f"-DCMAKE_PREFIX_PATH={prefix}", f"-DX2_GLSLC={prefix / 'bin' / 'glslc'}")
+    return (f"-DCMAKE_PREFIX_PATH={prefix};{libzt}", f"-DX2_GLSLC={prefix / 'bin' / 'glslc'}")
 
 
 def release_binary(target: ci_support.TargetSupport, build: Path) -> None:

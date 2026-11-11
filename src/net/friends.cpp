@@ -11,6 +11,8 @@ Friends::~Friends() = default;
 
 FriendRoute *Friends::route() { return nullptr; }
 
+void Friends::go_online(const std::filesystem::path &, const std::string &) {}
+
 bool Friends::invite(std::string &error) {
   error = "a browser page cannot reach friends";
   return false;
@@ -38,6 +40,7 @@ std::string Friends::status() const {
 #include <lucent/p2p/connector.h>
 #include <lucent/p2p/descriptor.h>
 #include <lucent/p2p/virtual_lan.h>
+#include <lucent/p2p/zerotier.h>
 
 #include <mutex>
 
@@ -51,6 +54,8 @@ using lucent::p2p::ConnectorConfig;
 
 constexpr CodePrefixes kPrefixes{"XMI", "XMR"};
 constexpr std::string_view kLabel = "xmen2-lan";
+// Names the game's ad-hoc ZeroTier network and the UDP port on it.
+constexpr std::uint16_t kZeroTierPort = 5166;
 
 const char *step_name(Connector::Step step) {
   switch (step) {
@@ -104,10 +109,11 @@ const char *problem_name(CodeProblem problem) {
   return "?";
 }
 
-ConnectorConfig config() {
+ConnectorConfig config(const lucent::p2p::ZeroTierNode *node) {
   ConnectorConfig out;
   out.prefixes = kPrefixes;
   out.label = std::string{kLabel};
+  out.zerotier = node;
   return out;
 }
 
@@ -142,6 +148,8 @@ struct Friends::State {
   lucent::p2p::VirtualLan lan;
   LanRoute route{lan};
   mutable std::mutex mutex;
+  std::unique_ptr<lucent::p2p::ZeroTierNode> node;
+  bool went_online = false;
   std::unique_ptr<Connector> meeting;
   bool hosting = false;
   std::string last;
@@ -155,13 +163,32 @@ Friends::~Friends() = default;
 
 FriendRoute *Friends::route() { return &state_->route; }
 
+void Friends::go_online(const std::filesystem::path &storage,
+                        const std::string &roots) {
+  const std::lock_guard lock(state_->mutex);
+  if (state_->went_online) {
+    return;
+  }
+  state_->went_online = true;
+  std::string error;
+  state_->node =
+      lucent::p2p::ZeroTierNode::start({.storage = storage,
+                                        .roots = roots,
+                                        .port = 0,
+                                        .network_port = kZeroTierPort},
+                                       error);
+  if (!state_->node) {
+    lucent::warn("lan.friends", "no ZeroTier node: {}", error);
+  }
+}
+
 bool Friends::invite(std::string &error) {
   const std::lock_guard lock(state_->mutex);
   if (state_->meeting) {
     error = "a meeting is already running";
     return false;
   }
-  state_->meeting = std::make_unique<Connector>(config());
+  state_->meeting = std::make_unique<Connector>(config(state_->node.get()));
   state_->hosting = true;
   return true;
 }
@@ -187,7 +214,8 @@ bool Friends::paste(std::string_view code, std::string &error) {
     error = problem_name(problem);
     return false;
   }
-  state_->meeting = std::make_unique<Connector>(config(), std::move(*invite));
+  state_->meeting = std::make_unique<Connector>(config(state_->node.get()),
+                                                std::move(*invite));
   state_->hosting = false;
   return true;
 }
@@ -258,6 +286,9 @@ std::string Friends::status() const {
   if (state_->lan.friends().empty()) {
     out += " none";
   }
+  out += state_->node && state_->node->reach() ? " | zerotier: on its network"
+         : state_->node                        ? " | zerotier: joining"
+                                               : " | zerotier: off";
   if (state_->meeting) {
     const Connector::View view = state_->meeting->view();
     out += std::string{" | meeting: "} +
