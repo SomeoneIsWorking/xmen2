@@ -495,7 +495,7 @@ int settings_save(const Settings *settings, const char *path, char *why,
                strerror(errno));
     return 0;
   }
-  fprintf(file, "# x2native settings -- edited by the in-game RmlUi menu\n");
+  fprintf(file, "# x2native settings -- edited from the game's Options\n");
   fprintf(file, "video.width=%u\nvideo.height=%u\nvideo.mode=%s\n",
           settings->width, settings->height,
           window_mode_name(settings->window_mode));

@@ -7,17 +7,6 @@ requirements. Current ownership comes from `docs/codemap.md`; current behavior
 and gaps come from `docs/project-state.md`. Keep exact provenance for material
 actually reused.
 
-## Settings-window stylesheet attribution
-
-`assets/ui/settings.rcss` adapts CC0 stylesheet material from
-[Dusklight](https://github.com/TwilitRealm/dusklight), specifically
-`res/rml/window.rcss` at commit
-`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`. The adapted material is the
-`window`, `tab-bar`, `tab`, `content`, scrollable `pane`, `select-button`,
-`key`, and `value` vocabulary plus the dark/gold focus treatment. This
-attribution applies only to that stylesheet material; this project defines its
-own architecture, behavior, and ownership boundaries.
-
 ## Outline typefaces for the game's text
 
 `assets/fonts/` holds the unmodified faces `outline_glyph_atlas.cpp` draws the

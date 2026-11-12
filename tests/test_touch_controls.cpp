@@ -316,16 +316,6 @@ int main() {
     return 1;
   }
 
-  /* A touch player has no F2: this button is the port menu's only way in. */
-  const std::vector<lucent::touch::Contact> menu_button = {
-      {3, centre(x2::presentation::kSlotPortMenu),
-       lucent::touch::Phase::began}};
-  const auto menu_events = controls.route(menu_button);
-  if (!has_value(menu_events, x2::input::TouchAction::PortMenu, 1.0F)) {
-    std::cerr << "port menu zone was not reachable\n";
-    return 1;
-  }
-
   /* Jump must route independently while the movement thumb remains held. */
   const std::vector<lucent::touch::Contact> jump_button = {
       {7, centre(x2::presentation::kSlotJump), lucent::touch::Phase::began}};
@@ -423,54 +413,6 @@ int main() {
       visible(x2::input::TouchAction::RetailPauseMenu)) {
     std::cerr << "a tap on a retail menu icon was not its click\n";
     return 1;
-  }
-
-  /* With the game's whole menu-icon row drawn, the port menu takes the next
-     place along it at the icons' size, and leaves the spot it waited in. */
-  hud.menu_icons[0] = {480, 10, 512, 42};
-  hud.menu_icon_mask = 3;
-  controls.set_hud(hud);
-  const auto beside =
-      controls.route({{{9, {576, 26}, lucent::touch::Phase::began}}});
-  controls.route({{{9, {576, 26}, lucent::touch::Phase::ended}}});
-  const auto waited =
-      controls.route({{{10, centre(x2::presentation::kSlotPortMenu),
-                        lucent::touch::Phase::began}}});
-  controls.route({{{10, centre(x2::presentation::kSlotPortMenu),
-                    lucent::touch::Phase::ended}}});
-  if (!has_value(beside, x2::input::TouchAction::PortMenu, 1.0F) ||
-      has_value(waited, x2::input::TouchAction::PortMenu, 1.0F)) {
-    std::cerr << "the port menu did not join the game's menu-icon row\n";
-    return 1;
-  }
-
-  /* A portrait on that next place sends the port menu back to its own. */
-  {
-    x2::presentation::HudRegions crowded = hud;
-    crowded.menu_icons[0] = {380, 10, 412, 42};
-    crowded.menu_icons[1] = {420, 10, 452, 42};
-    controls.set_hud(crowded);
-    const auto clear_next =
-        controls.route({{{12, {476, 26}, lucent::touch::Phase::began}}});
-    controls.route({{{12, {476, 26}, lucent::touch::Phase::ended}}});
-    crowded.portraits[0] = {465, 10, 515, 60};
-    crowded.portrait_mask |= 1u;
-    controls.set_hud(crowded);
-    const auto back =
-        controls.route({{{13, centre(x2::presentation::kSlotPortMenu),
-                          lucent::touch::Phase::began}}});
-    controls.route({{{13, centre(x2::presentation::kSlotPortMenu),
-                      lucent::touch::Phase::ended}}});
-    const auto covered =
-        controls.route({{{14, {476, 26}, lucent::touch::Phase::began}}});
-    controls.route({{{14, {476, 26}, lucent::touch::Phase::ended}}});
-    if (!has_value(clear_next, x2::input::TouchAction::PortMenu, 1.0F) ||
-        !has_value(back, x2::input::TouchAction::PortMenu, 1.0F) ||
-        has_value(covered, x2::input::TouchAction::PortMenu, 1.0F)) {
-      std::cerr << "the port menu took a place on a portrait\n";
-      return 1;
-    }
-    controls.set_hud(hud);
   }
 
   /* The game's use prompt is a Use button anywhere inside its drawn button,

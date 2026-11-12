@@ -1,11 +1,11 @@
 ---
 id: 203
 title: Port settings live in the game's own Options screen; render resolution defaults to native
-status: in-progress
+status: done
 state_items: []
 tags: options,menus,settings,rmlui,resolution,text,touch
 created: 2026-11-03
-updated: 2026-11-03
+updated: 2026-11-12
 ---
 
 ## The request
@@ -56,9 +56,8 @@ On touch, `src/native/options_touch.cpp` hides the panel art and draws the
 nine settings as cards of `ui/models/m_pda_option_screen` /
 `m_pda_option_focus`, a tap being the retail click on the row.
 
-`tools/make_port_pause_menu.py` already derives a retail menu XMLB (it adds a
-`port_settings` row to the pause menu) into the gitignored asset pack; the
-same technique derives `options`.
+A retail menu XMLB is derived from the player's install at first open
+(`src/native/derived_menus.cpp`) and served in place of the shipped file.
 
 ## Stage 2: the right-hand column
 
@@ -129,16 +128,21 @@ record (`FUN_005ee590` reads `[box+0x2140c]`).
 
 ## Where it stands
 
-Stage 2 items 1-4 and 6 are built: the derived menu
-(`options_menu_derived`), the rows table (`port_option_rows`), the column
-(`options_port_column`, a single column beside the retail panel rather than a
-two-column touch list), all rows of the list above, and Advanced Options
-removed (`options_menu_no_advanced`). The rows share two commands,
-`port_option_next`/`port_option_prev`, which step the focused row: the retail
-registry holds 51 commands. The Display, Gameplay and HUD documents are
-deleted; `settings_document` keeps only the Controls tab (device assignment
-and keyboard bindings), opened by F2 and the pause menu's `port_settings`.
-Remaining: item 5 (Controls and bindings sub-pages) and the rest of item 7.
+Stage 2 is built: the derived menu (`options_menu_derived`), the rows table
+(`port_option_rows`), the column (`options_port_column`, a single column
+beside the retail panel rather than a two-column touch list), all rows of the
+list above, and Advanced Options removed (`options_menu_no_advanced`). The rows
+share two commands, `port_option_next`/`port_option_prev`, which step the
+focused row: the retail registry holds 51 commands.
+
+The Controls and Key Bindings rows open `port_controls` and `port_bindings`,
+each derived from Options with only its frame, title, footer and Accept kept
+(`derive_options_page`) and served Options' package (`derived_menus`). The
+column lays a page's rows between its title and Accept and scrolls them. A
+binding row's Change waits for the next host key (`src/input/binding_capture`).
+The RmlUi settings overlay, its F2 toggle, the touch menu button and the pause
+menu's `port_settings` row are deleted. RmlUi keeps the touch controls,
+notices, the skip button, first-run setup and developer views.
 
 Stage 3 is built as one rule: every row menu's text (main menu, Options, the
 port column, the PDA's team and list cards) is the font record at scale 1,
@@ -148,7 +152,9 @@ finger-relative size.
 
 ## Proof per stage
 
-Stage 1: `tools/live_case.py native-resolution`. Each later stage: the touch
+Stage 1: `tools/live_case.py native-resolution`. The sub-pages:
+`options-pages` (both pages by keyboard and mouse, a binding captured, saved,
+cancelled and restored). Each later stage: the touch
 cases (`touch-menu`, `touch-pda`, `touch-conversation`, `touch-cluster`), an
 Options case that steps every new row through the control channel and reads
 the setting back from `x2native.conf`, and main-menu/Options shots at

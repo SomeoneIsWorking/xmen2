@@ -80,7 +80,7 @@ Other callers: `resurrect(a)` script command (`0x004a3b70`, 0.5), the
 `off` is retail. `free` (the default) and `paid` are port additions, owned by
 `src/native/extraction_revive.cpp` (guest bridge), `extraction_revive_policy.cpp`
 (cost rule), `src/input/revive_prompt.cpp` (the request), `src/ui/extraction_revive_document.cpp`
-(the drawn prompt) and `src/ui/gameplay_settings_document.cpp` (the setting).
+(the drawn prompt) and `src/native/port_option_rows.cpp` (the Options row).
 
 Detecting "reaches an extraction point": both modes use presence, not the Use
 command. The input poll (0.25 s throttle, only while gameplay control is

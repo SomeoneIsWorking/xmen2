@@ -46,7 +46,7 @@
  *
  * ## The scale
  *
- * `ui.text_scale` in x2native.conf, written by Port Settings; X2_TEXT_SCALE
+ * `ui.text_scale` in x2native.conf; X2_TEXT_SCALE
  * overrides it for one run. 0 means AUTO: hold the size the retail game draws
  * at 1080p, at every resolution.
  *
@@ -111,7 +111,7 @@ static float g_applied = -1.0f;
  * Every font record the loader filled, holding the metrics IT wrote.
  *
  * The AUTO scale is derived from the output height, and the output height
- * changes while the game runs: Port Settings applies a resolution live. A
+ * changes while the game runs: Options' Resolution row applies live. A
  * record scaled once at boot therefore keeps the boot size for the rest of the
  * run -- start at 4K, switch to 800x600, and the text stays 4K-sized.
  *

@@ -61,6 +61,11 @@ namespace x2::native {
 const char *save_dir(void) { return X2_TEST_TOUCH_RUNTIME_ROOT; }
 } // namespace x2::native
 
+/* The presented-frame count the gameplay gate is keyed on; the test steps
+   it as frames would. */
+unsigned long g_frame = 1u;
+unsigned long gpu_frames_presented(void) { return g_frame; }
+
 namespace {
 
 int g_failures = 0;
@@ -311,7 +316,7 @@ int main() {
         "the overlay is hidden before the game reports gameplay control",
         "no HUD heartbeat has arrived");
 
-  x2_gameplay_control_hud_drawn(guest_clock_now_s());
+  x2_gameplay_control_hud_drawn(g_frame);
   check(x2::input::touch_runtime_overlay_visible() != 0,
         "the overlay is visible once the retail HUD has drawn",
         "one heartbeat");
@@ -675,7 +680,7 @@ int main() {
     send_finger(SDL_EVENT_FINGER_UP, 21, jump_x, jump_y, width, height);
     while (touch_runtime_take_pointer(&drained)) {
     }
-    x2_gameplay_control_hud_drawn(guest_clock_now_s());
+    x2_gameplay_control_hud_drawn(g_frame);
   }
 
   /* The control channel's d-pad press ends with its hold, as its buttons do. */
@@ -710,13 +715,10 @@ int main() {
   /* What the overlay drew is what a reader off the frame is told, even once
      the heartbeat has gone stale between frames. */
   {
-    x2_gameplay_control_hud_drawn(guest_clock_now_s());
+    x2_gameplay_control_hud_drawn(g_frame);
     const auto frame = visuals();
     x2::input::touch_runtime_note_drawn(frame);
-    const double stale =
-        guest_clock_now_s() + X2_GAMEPLAY_HUD_GRACE_SECONDS + 0.05;
-    while (guest_clock_now_s() < stale) {
-    }
+    g_frame += 2u;
     const x2::input::DrawnControls kept = x2::input::touch_runtime_drawn();
     check(visuals().empty() && !frame.empty() &&
               kept.visuals.size() == frame.size() &&

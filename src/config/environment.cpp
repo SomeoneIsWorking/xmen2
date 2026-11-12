@@ -80,7 +80,6 @@ const char *const k_override_names[] = {
     "X2_SECURITY_WATCH",
     "X2_SELECTOR_PROBE",
     "X2_SELECTOR_TEXTURE",
-    "X2_SETTINGS_OPEN",
     "X2_SHOT",
     "X2_SHOT_AFTER_FILE",
     "X2_SHOT_EVERY",

@@ -227,11 +227,6 @@ void win32_mouse_window_state(Win32Mouse *mouse, int hidden, int focused,
   mouse->pointer_inside = pointer_inside != 0;
 }
 
-void win32_mouse_overlay(Win32Mouse *mouse, int visible) {
-  if (mouse)
-    mouse->overlay_visible = visible != 0;
-}
-
 void win32_mouse_modal(Win32Mouse *mouse, int visible) {
   if (mouse)
     mouse->modal_visible = visible != 0;
@@ -241,7 +236,7 @@ int win32_mouse_os_cursor_visible(const Win32Mouse *mouse) {
   if (!mouse || mouse->window_hidden)
     return 0;
   return !mouse->window_focused || !mouse->pointer_inside ||
-         mouse->overlay_visible || mouse->modal_visible;
+         mouse->modal_visible;
 }
 
 int win32_mouse_guest_show_cursor(Win32Mouse *mouse, int show) {

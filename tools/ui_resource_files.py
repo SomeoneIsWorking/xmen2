@@ -17,15 +17,10 @@ UI_FILES = (
     "Barlow-OFL.txt",
     "DSEG7Classic-BoldItalic.ttf",
     "DSEG-OFL.txt",
-    "settings.rcss",
     "touch_controls.rcss",
     # The touch buttons' authored art (assets/ui/touch_*.svg).
     "touch_punch.svg",
     "touch_smash.svg",
     "touch_use.svg",
     "touch_jump.svg",
-    "touch_menu.svg",
-    # Port Settings' device-assignment marks (assets/ui/assign_*.svg).
-    "assign_on.svg",
-    "assign_off.svg",
 )

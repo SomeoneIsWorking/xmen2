@@ -228,12 +228,6 @@ def run_native() -> int:
         refuse("GAME_PC_DIR is not a directory; set it in .env or drop the install at ./game")
     toolchain = resolve_toolchain()
     check_native_dependencies(toolchain)
-    assets = os.environ.get("X2_ASSETS")
-    if not assets:
-        assets = str(ROOT / "build/generated-assets/native")
-        subprocess.run([sys.executable, str(ROOT / "tools/prepare_native_assets.py"),
-                        game_value, assets], cwd=ROOT, check=True)
-        os.environ["X2_ASSETS"] = assets
     build = build_directory()
     prepare_build_directory(build, toolchain)
     configure = [toolchain.cmake, "-S", str(ROOT), "-B", str(build), "-G", "Ninja",

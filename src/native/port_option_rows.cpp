@@ -1,16 +1,24 @@
 #include "port_option_rows.hpp"
 
+#include "../input/binding_capture.hpp"
+#include "../input/controller_assignment_rows.hpp"
+#include "../input/keyboard_binding_labels.hpp"
+#include "binding_rows.h"
 #include "display_geometry.h"
 #include "gpu_shadow.h"
 #include "live_resolution.h"
 #include "render_size.h"
 #include "resolution_ladder.h"
+#include "retail_front_end.hpp"
 #include "settings_store.h"
 #include "x2_log.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <deque>
 #include <mutex>
+#include <optional>
 #include <utility>
 
 namespace x2::native {
@@ -40,20 +48,95 @@ unsigned percent_step(unsigned value, unsigned low, unsigned high,
 
 std::string percent(unsigned value) { return std::to_string(value) + "%"; }
 
-const std::vector<PortOptionRow> kRows = {
-    {"resolution", "Resolution", false},
-    {"window_mode", "Window Mode", true},
-    {"shadows", "Dynamic Shadows", false},
-    {"shadow_quality", "Shadow Quality", false},
-    {"hud_layout", "HUD Layout", false},
-    {"hud_vitals", "Health Size", false},
-    {"hud_potions", "Potion Size", false},
-    {"hud_portraits", "Portrait Size", false},
-    {"hud_inset", "Edge Spacing", false},
-    {"touch_controls", "Touch Controls", false},
-    {"extraction_revive", "Extraction Revive", false},
-    {"boot", "Boot", false},
+/* Keyboards and controllers on the Controls page; more controllers than
+   seats are never assignable at once. */
+constexpr unsigned kControllerRows = 6u;
+constexpr std::string_view kKeyboardKey = "keyboard_";
+constexpr std::string_view kControllerKey = "controller_";
+constexpr std::string_view kBindingKey = "binding_";
+
+const std::vector<PortSubPage> kSubPages = {
+    {PortPage::Controls, "port_controls", "Controls"},
+    {PortPage::Bindings, "port_bindings", "Key Bindings"},
 };
+
+std::vector<PortOptionRow> make_rows() {
+  std::vector<PortOptionRow> rows = {
+      {"resolution", "Resolution", false, PortPage::Options},
+      {"window_mode", "Window Mode", true, PortPage::Options},
+      {"shadows", "Dynamic Shadows", false, PortPage::Options},
+      {"shadow_quality", "Shadow Quality", false, PortPage::Options},
+      {"hud_layout", "HUD Layout", false, PortPage::Options},
+      {"hud_vitals", "Health Size", false, PortPage::Options},
+      {"hud_potions", "Potion Size", false, PortPage::Options},
+      {"hud_portraits", "Portrait Size", false, PortPage::Options},
+      {"hud_inset", "Edge Spacing", false, PortPage::Options},
+      {"touch_controls", "Touch Controls", false, PortPage::Options},
+      {"extraction_revive", "Extraction Revive", false, PortPage::Options},
+      {"boot", "Boot", false, PortPage::Options},
+      {"controls", "Controls", false, PortPage::Options},
+      {"bindings", "Key Bindings", false, PortPage::Options},
+  };
+  for (unsigned i = 0; i < x2::config::kSettingsKeyboardProfiles; ++i) {
+    rows.push_back({std::string(kKeyboardKey) + std::to_string(i + 1u),
+                    "Keyboard " + std::to_string(i + 1u), false,
+                    PortPage::Controls});
+  }
+  for (unsigned i = 0; i < kControllerRows; ++i) {
+    rows.push_back({std::string(kControllerKey) + std::to_string(i + 1u),
+                    "Controller " + std::to_string(i + 1u), false,
+                    PortPage::Controls});
+  }
+  rows.push_back({"profile", "Keyboard", false, PortPage::Bindings});
+  rows.push_back(
+      {"restore_all", "Restore All Defaults", false, PortPage::Bindings});
+  for (unsigned i = 0; i < x2::input::INPUT_BINDING_ROWS; ++i) {
+    const char *label = x2::input::input_binding_row_display_label(i);
+    rows.push_back({std::string(kBindingKey) + std::to_string(i),
+                    label != nullptr ? label : "?", false, PortPage::Bindings});
+  }
+  return rows;
+}
+
+const std::vector<PortOptionRow> kRows = make_rows();
+
+/* The keyboard profile the Key Bindings page shows; not saved. */
+std::atomic<unsigned> g_profile{0u};
+
+/* The number after `prefix` in `key`, or -1. */
+int numbered(std::string_view key, std::string_view prefix) {
+  if (key.substr(0, prefix.size()) != prefix) {
+    return -1;
+  }
+  int value = 0;
+  for (const char c : key.substr(prefix.size())) {
+    if (c < '0' || c > '9') {
+      return -1;
+    }
+    value = value * 10 + (c - '0');
+  }
+  return value;
+}
+
+std::optional<x2::input::ControllerAssignmentRow> controller(unsigned index) {
+  const auto rows =
+      x2::input::controller_assignment_rows(*x2::config::settings_store());
+  if (index >= rows.size()) {
+    return std::nullopt;
+  }
+  return rows[index];
+}
+
+std::string owner_label(int owner) {
+  return owner < 0 ? std::string("Off") : "Player " + std::to_string(owner + 1);
+}
+
+/* The next seat from `owner` (-1 none) in `direction`, Off between 4 and 1. */
+int next_owner(int owner, int direction) {
+  const int seats = static_cast<int>(x2::config::kSettingsPlayers) + 1;
+  const int from = std::max(owner, -1) + 1;
+  return (from + (direction < 0 ? seats - 1 : 1)) % seats - 1;
+}
 
 class Queue {
 public:
@@ -132,6 +215,49 @@ bool apply(const PortOptionRow &row, int direction, SDL_Window *window,
   if (key == "shadows" || key == "shadow_quality") {
     return shadows(settings, key == "shadow_quality", direction, why, whyn);
   }
+  std::string reason;
+  if (const int n = numbered(key, kKeyboardKey); n > 0) {
+    const unsigned profile = static_cast<unsigned>(n - 1);
+    const bool done = x2::input::assign_keyboard(
+        *settings, profile,
+        next_owner(settings->keyboard_player[profile], direction), &reason);
+    std::snprintf(why, static_cast<std::size_t>(whyn), "%s", reason.c_str());
+    return done;
+  }
+  if (const int n = numbered(key, kControllerKey); n > 0) {
+    const auto pad = controller(static_cast<unsigned>(n - 1));
+    if (!pad) {
+      std::snprintf(why, static_cast<std::size_t>(whyn), "no controller");
+      return false;
+    }
+    const bool done = x2::input::assign_controller(
+        *settings, *pad, next_owner(pad->owner, direction), &reason);
+    std::snprintf(why, static_cast<std::size_t>(whyn), "%s", reason.c_str());
+    return done;
+  }
+  if (key == "profile") {
+    g_profile =
+        cycle(g_profile, x2::config::kSettingsKeyboardProfiles, direction);
+    return true;
+  }
+  if (key == "restore_all") {
+    return stored(
+        settings,
+        [](Settings &s) {
+          x2::config::keyboard_profile_restore_all(
+              &s.keyboard_profile[g_profile]);
+        },
+        why, whyn);
+  }
+  if (const int n = numbered(key, kBindingKey); n >= 0) {
+    return stored(
+        settings,
+        [n](Settings &s) {
+          x2::config::keyboard_profile_restore_row(
+              &s.keyboard_profile[g_profile], static_cast<unsigned>(n));
+        },
+        why, whyn);
+  }
   return stored(
       settings,
       [&](Settings &s) {
@@ -171,12 +297,24 @@ bool apply(const PortOptionRow &row, int direction, SDL_Window *window,
 
 } // namespace
 
+const std::vector<PortSubPage> &port_sub_pages() { return kSubPages; }
+
 std::vector<const PortOptionRow *> port_option_rows() {
   const bool host_is_display = x2::presentation::host_window_fills_display();
   std::vector<const PortOptionRow *> rows;
   for (const PortOptionRow &row : kRows) {
     if (!(row.desktop_only && host_is_display)) {
       rows.push_back(&row);
+    }
+  }
+  return rows;
+}
+
+std::vector<const PortOptionRow *> port_option_rows(PortPage page) {
+  std::vector<const PortOptionRow *> rows;
+  for (const PortOptionRow *row : port_option_rows()) {
+    if (row->page == page) {
+      rows.push_back(row);
     }
   }
   return rows;
@@ -202,9 +340,49 @@ std::string port_option_item(const PortOptionRow &row) {
   return std::string(kItemPrefix) + std::string(row.key);
 }
 
+std::string port_option_label(const PortOptionRow &row) {
+  if (const int n = numbered(row.key, kControllerKey); n > 0) {
+    const auto pad = controller(static_cast<unsigned>(n - 1));
+    if (pad && !pad->name.empty()) {
+      return pad->name;
+    }
+  }
+  return row.label;
+}
+
 std::string port_option_value(const PortOptionRow &row) {
   const Settings &s = *x2::config::settings_store();
   const std::string_view key = row.key;
+  if (const int n = numbered(key, kKeyboardKey); n > 0) {
+    return owner_label(s.keyboard_player[n - 1]);
+  }
+  if (const int n = numbered(key, kControllerKey); n > 0) {
+    const auto pad = controller(static_cast<unsigned>(n - 1));
+    if (!pad) {
+      return "None";
+    }
+    std::string value = owner_label(pad->owner == -2 ? -1 : pad->owner);
+    if (pad->name.empty()) {
+      value += ", not connected";
+    } else if (pad->transient_assignment || !pad->stable_identity) {
+      value += ", this session";
+    }
+    return value;
+  }
+  if (key == "profile") {
+    return "Keyboard " + std::to_string(g_profile + 1u);
+  }
+  if (key == "controls" || key == "bindings" || key == "restore_all") {
+    return {};
+  }
+  if (const int n = numbered(key, kBindingKey); n >= 0) {
+    const auto waiting = x2::input::binding_capture_target();
+    if (waiting && waiting->row == static_cast<unsigned>(n)) {
+      return "Press a key";
+    }
+    return x2::input::keyboard_binding_label(s.keyboard_profile[g_profile],
+                                             static_cast<unsigned>(n));
+  }
   if (key == "resolution") {
     char label[16];
     unsigned width = 0;
@@ -250,7 +428,23 @@ std::string port_option_value(const PortOptionRow &row) {
   return {};
 }
 
-void port_option_request(const PortOptionRow &row, int direction) {
+void port_option_choose(const CPU &cpu, const PortOptionRow &row,
+                        int direction) {
+  for (const PortSubPage &page : kSubPages) {
+    if ((row.key == "controls" && page.page == PortPage::Controls) ||
+        (row.key == "bindings" && page.page == PortPage::Bindings)) {
+      const std::string command = "openmenu " + std::string(page.menu);
+      if (!x2::retail::FrontEnd::queue_command(cpu, command)) {
+        x2_log_error("PORT OPTIONS: the console refused \"%s\".\n",
+                     command.c_str());
+      }
+      return;
+    }
+  }
+  if (const int n = numbered(row.key, kBindingKey); n >= 0 && direction > 0) {
+    x2::input::binding_capture_begin({g_profile, static_cast<unsigned>(n)});
+    return;
+  }
   g_queue.push(&row, direction);
 }
 
@@ -258,12 +452,12 @@ void port_options_service(SDL_Window *window) {
   for (const auto &[row, direction] : g_queue.take()) {
     char why[256] = "";
     if (apply(*row, direction, window, why, static_cast<int>(sizeof why))) {
-      x2_log_info("PORT OPTIONS: %.*s is now %s.\n",
-                  static_cast<int>(row->label.size()), row->label.data(),
+      x2_log_info("PORT OPTIONS: %s is now %s.\n",
+                  port_option_label(*row).c_str(),
                   port_option_value(*row).c_str());
     } else {
-      x2_log_error("PORT OPTIONS: %.*s was not changed: %s.\n",
-                   static_cast<int>(row->label.size()), row->label.data(), why);
+      x2_log_error("PORT OPTIONS: %s was not changed: %s.\n",
+                   port_option_label(*row).c_str(), why);
     }
   }
 }

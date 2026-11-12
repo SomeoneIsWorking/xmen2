@@ -135,8 +135,6 @@ const char *touch_action_name(TouchAction action) {
     return "retail-pause-menu";
   case TouchAction::RetailTeamMenu:
     return "retail-team-menu";
-  case TouchAction::PortMenu:
-    return "port-menu";
   }
   return "unknown-action";
 }
@@ -290,30 +288,6 @@ TouchControls::set_power_icons(const std::array<int, 4> &icons) {
   return released;
 }
 
-x2::presentation::Rect
-TouchControls::port_menu_rect(x2::presentation::Rect waiting) const {
-  constexpr unsigned all_icons = (1u << x2::presentation::kHudMenuIcons) - 1u;
-  if (hud_.menu_icon_mask != all_icons)
-    return waiting;
-  // One more step along the row the game spaced its own icons on, at their
-  // size, kept on screen and off the portraits.
-  const x2::presentation::Rect &last =
-      hud_.menu_icons[x2::presentation::kHudMenuIcons - 1];
-  const float step =
-      last.left - hud_.menu_icons[x2::presentation::kHudMenuIcons - 2].left;
-  const x2::presentation::Rect next{last.left + step, last.top,
-                                    last.right + step, last.bottom};
-  if (step <= 0.0F || next.right > viewport_.width - viewport_.safe_area.right)
-    return waiting;
-  for (unsigned i = 0; i < 4; ++i) {
-    if ((hud_.portrait_mask & (1u << i)) &&
-        x2::presentation::layout_rects_overlap(next, hud_.portraits[i])) {
-      return waiting;
-    }
-  }
-  return next;
-}
-
 void TouchControls::rebuild_zones() {
   zones_.clear();
   x2::presentation::LayoutViewport layout_viewport{
@@ -362,8 +336,6 @@ void TouchControls::rebuild_zones() {
         false);
     zones_.back().power_icon = power_icons_[i];
   }
-  add(40, port_menu_rect(slots[x2::presentation::kSlotPortMenu]), 20,
-      TouchAction::PortMenu, false);
 
   // Camera is an invisible relative swipe over the playfield -- everything
   // the controls and the HUD do not claim. Lowest priority, so a combat

@@ -56,6 +56,8 @@ constexpr std::string_view kTitleBar = "title";
 constexpr std::string_view kTitleLabel = "label_options";
 /* The text item whose box and depth the rows' text and cards use. */
 constexpr std::string_view kTextHost = "label_accept";
+/* One of Options' own rows, absent from the port's pages. */
+constexpr std::string_view kRetailRow = "label_vibration";
 constexpr float kCardDepth = 5.0F;
 /* The gap between the retail panel and the column, and the column's margin
    from the plane's right edge, as shares of the panel's width. */
@@ -66,6 +68,9 @@ constexpr float kTextPad = 0.3F;
 constexpr float kLabelShare = 0.55F;
 /* A drag scrolls after this share of a card pitch. */
 constexpr float kDragStart = 0.25F;
+constexpr float kBarLabels = 1.5F;
+/* Shortest desktop card in row text heights; past it the column scrolls. */
+constexpr float kMinCardLabels = 1.0F;
 
 int s16(std::uint32_t address) {
   return static_cast<std::int16_t>(RD16(address));
@@ -113,7 +118,7 @@ public:
       const bool focused = focus == row.item;
       row.art.show(call, vectors, row.card, depth + kCardDepth, focused);
       menu_text::label_and_value(call, self, row.item, row.card,
-                                 row.option->label,
+                                 x2::native::port_option_label(*row.option),
                                  x2::native::port_option_value(*row.option),
                                  focused, kTextPad, kLabelShare);
     }
@@ -208,6 +213,8 @@ private:
     std::uint32_t title_bar = 0u;
     std::uint32_t title_label = 0u;
     std::uint32_t text_host = 0u;
+    /* Options' own rows are left of the column; a port page has none. */
+    bool beside_panel = true;
     SceneBox area;
     x2::input::CardStack stack;
     int first = 0;
@@ -251,6 +258,7 @@ private:
       column.rows.push_back(row);
     }
     column.title_bar = item::named(call, menu, kTitleBar);
+    column.beside_panel = item::named(call, menu, kRetailRow) != 0u;
     column.title_label = item::named(call, menu, kTitleLabel);
     column.text_host = item::named(call, menu, kTextHost);
     menu_scene::Vectors vectors;
@@ -262,26 +270,34 @@ private:
     return column;
   }
 
-  /* The column right of the panel; finger-tall cards on touch, on desktop
-     as tall as lets every row show, at most a finger. */
+  /* The column right of the panel, or from the title's left edge on a page
+     without one; finger-tall cards on touch, on desktop as tall as lets
+     every row show, at most a finger and at least a readable row. */
   static void layout(Column &column,
                      const x2::presentation::RetailScenePlane &plane,
                      std::uint32_t focus) {
     const SceneBox title = item::box(column.title_bar);
-    const float top = item::box(column.title_label).top;
-    const float bottom = item::box(column.text_host).bottom;
+    const SceneBox label = item::box(column.title_label);
+    const SceneBox accept = item::box(column.text_host);
+    /* On a page the column runs between the title and Accept bars, each a
+       label and this many label heights of art around it. */
+    const float bar = kBarLabels * label.height();
+    const float top = column.beside_panel ? label.top : label.bottom - bar;
+    const float bottom = column.beside_panel ? accept.bottom : accept.top + bar;
     const float gap = kGap * title.width();
     const float plane_right = plane.left() + plane.width();
     const float margin = std::max(0.0F, title.left - plane.left());
-    column.area = {title.right + gap, bottom,
-                   std::max(title.right + gap, plane_right - margin), top};
+    const float left = column.beside_panel ? title.right + gap : title.left;
+    column.area = {left, bottom, std::max(left, plane_right - margin), top};
     const int rows = static_cast<int>(column.rows.size());
     const float finger = x2::input::menu_finger_units(plane);
     const float fitting =
         column.area.height() / (static_cast<float>(rows) *
                                 (x2::input::kCardHeight + x2::input::kCardGap));
-    const float card =
-        x2::input::touch_runtime_active() ? finger : std::min(finger, fitting);
+    const float readable = std::min(finger, kMinCardLabels * accept.height());
+    const float card = x2::input::touch_runtime_active()
+                           ? finger
+                           : std::clamp(fitting, readable, finger);
     if (focus != column.last_focus) {
       column.last_focus = focus;
       column.follow_focus = true;
@@ -314,7 +330,7 @@ private:
 
   static void choose(const CPU &cpu, std::uint32_t menu, const Row &row) {
     focus(cpu, menu, row);
-    x2::native::port_option_request(*row.option, 1);
+    x2::native::port_option_choose(cpu, *row.option, 1);
   }
 
   std::unordered_map<std::uint32_t, Column> columns_;

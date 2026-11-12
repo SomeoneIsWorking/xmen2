@@ -49,7 +49,6 @@ struct Win32Mouse {
   int window_hidden;
   int window_focused;
   int pointer_inside;
-  int overlay_visible;
   int modal_visible;
   int guest_cursor_count;
 };
@@ -94,7 +93,6 @@ int win32_mouse_button(Win32Mouse *mouse, uint32_t hwnd,
    content; the OS cursor owns unfocused/outside content and native UI. */
 void win32_mouse_window_state(Win32Mouse *mouse, int hidden, int focused,
                               int pointer_inside);
-void win32_mouse_overlay(Win32Mouse *mouse, int visible);
 void win32_mouse_modal(Win32Mouse *mouse, int visible);
 int win32_mouse_os_cursor_visible(const Win32Mouse *mouse);
 

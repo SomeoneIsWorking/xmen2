@@ -5,11 +5,11 @@
  * `options` and `options_main` callbacks remain retail-owned: those are game
  * UI, not spare hooks for the port.
  *
- * The port's rows run commands of their own instead: the derived pause XMLB
- * emits `port_settings`, the main menu's LAN Join row `port_lan_join`, the
- * online lobby's friend rows `port_friend_row` (friend_code_rows.hpp), and
- * every port row of Options `port_option_next` / `port_option_prev`, which
- * step the row the menu has focused (port_option_rows.hpp).
+ * The port's rows run commands of their own instead: the main menu's LAN
+ * Join row `port_lan_join`, the online lobby's friend rows `port_friend_row`
+ * (friend_code_rows.hpp), and every port row of Options and its pages
+ * `port_option_next` / `port_option_prev`, which choose the row the menu
+ * has focused (port_option_rows.hpp).
  * After the retail registrar has completed, this override adds each through
  * the same registry vtable method the original function uses. The registry
  * copies command names, so each temporary guest-heap string is released.
@@ -26,7 +26,6 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "lan_session.h"
-#include "settings_overlay_state.h"
 #include "x86rt_native.h"
 
 #include "guest_body.h"
@@ -53,13 +52,8 @@ static const int kRowSteps[2] = {1, -1};
 
 namespace x2::native {
 
-void port_settings_command(CPU *C) {
-  x2::ui::settings_overlay_show();
-  /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
-  C->reg[kX86pEsp] += 4u;
-}
-
-/* The menu runs a row's command with that row focused. */
+/* The menu runs a row's command with that row focused. BehavEd menu
+   commands are void/no-argument callbacks ending in RET. */
 static void port_option_step_command(CPU *C) {
   const int direction = *static_cast<const int *>(x86_callback_ctx());
   const uint32_t menu = x2::retail::FrontEnd::active_menu_object(*C);
@@ -67,7 +61,7 @@ static void port_option_step_command(CPU *C) {
   const std::string name =
       item != 0u ? x2::menu::read_live_item_name(item) : std::string();
   if (const PortOptionRow *row = port_option_row_of_item(name)) {
-    port_option_request(*row, direction);
+    port_option_choose(*C, *row, direction);
   } else {
     x2_log_error("options menu: a port row command ran with \"%s\" focused, "
                  "which is no port row; nothing was changed.\n",
@@ -84,8 +78,6 @@ std::string port_option_command(int direction) {
 
 static std::vector<PortCommand> port_commands() {
   std::vector<PortCommand> commands = {
-      {"port_settings", x2::native::port_settings_command, "options_menu",
-       nullptr},
       {"port_lan_join", x2::native::lan_join_command, "lan_session", nullptr},
       {std::string(x2::native::kFriendRowCommand),
        x2::native::friend_row_command, "friend_code_rows", nullptr}};

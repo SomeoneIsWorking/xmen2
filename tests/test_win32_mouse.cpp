@@ -186,9 +186,6 @@ static void cursor_contract(void) {
 
   x2::native::win32_mouse_window_state(&mouse, 0, 1, 1);
   CHECK(!x2::native::win32_mouse_os_cursor_visible(&mouse));
-  x2::native::win32_mouse_overlay(&mouse, 1);
-  CHECK(x2::native::win32_mouse_os_cursor_visible(&mouse));
-  x2::native::win32_mouse_overlay(&mouse, 0);
   x2::native::win32_mouse_window_state(&mouse, 0, 0, 1);
   CHECK(x2::native::win32_mouse_os_cursor_visible(&mouse));
   x2::native::win32_mouse_window_state(&mouse, 0, 1, 0);

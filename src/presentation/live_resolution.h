@@ -29,7 +29,7 @@ void live_resolution_rendered(const x2::config::Settings *settings,
 void live_resolution_follow_surface(struct SDL_Window *window);
 
 /*
- * Apply and persist one Port Settings resolution change as a transaction.
+ * Apply and persist one resolution change as a transaction.
  * The caller has already placed the requested dimensions in `settings` and
  * supplies the complete prior value for rollback. On any failure, settings,
  * the SDL window policy, retained title display state, and active D3D8

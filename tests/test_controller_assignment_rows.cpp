@@ -1,4 +1,5 @@
 #include "controller_assignment_rows.hpp"
+#include "settings_store.h"
 #include "transient_controller_assignment.h"
 
 #include <cassert>
@@ -48,6 +49,11 @@ int x2::input::transient_controller_player_for_pad(int pad) {
   return -1;
 }
 
+int x2::input::transient_controller_assign(int, unsigned) { return 0; }
+int x2::input::transient_controller_move(unsigned, unsigned) { return 0; }
+void x2::input::transient_controller_clear_player(unsigned) {}
+int x2::config::settings_store_save(char *, int) { return 1; }
+
 int main() {
   x2::config::Settings settings{};
   for (auto &assignment : settings.controller)
@@ -64,16 +70,16 @@ int main() {
   pad_name[1] = "Virtual Pad";
   pad_stable[1] = 0;
 
-  auto rows = x2::ui::controller_assignment_rows(settings);
+  auto rows = x2::input::controller_assignment_rows(settings);
   CHECK(rows.size() == 2);
   CHECK(rows[0].id == "stable-a");
   CHECK(rows[0].owner == 1);
   CHECK(rows[0].pad == 0);
   CHECK(rows[0].stable_identity);
   CHECK(rows[0].transient_assignment);
-  CHECK(rows[0].name == "Generic USB Pad (session assignment; not saved)");
+  CHECK(rows[0].name == "Generic USB Pad");
   CHECK(rows[1].id == "session-b");
-  CHECK(rows[1].name == "Virtual Pad (session only; not saved)");
+  CHECK(rows[1].name == "Virtual Pad");
   CHECK(!rows[1].stable_identity);
   CHECK(!rows[1].transient_assignment);
   CHECK(rows[1].pad == 1);

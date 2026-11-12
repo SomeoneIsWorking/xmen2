@@ -1,5 +1,7 @@
 #include "xmlb_tree.hpp"
 
+#include <algorithm>
+
 #include <cstring>
 #include <functional>
 #include <unordered_map>
@@ -101,7 +103,13 @@ void Node::set(std::string_view key, std::string_view value) {
       return;
     }
   }
-  attrs.emplace_back(key, value);
+  /* Shipped attributes are in byte order, and the game misses one that is not.
+   */
+  const auto at =
+      std::find_if(attrs.begin(), attrs.end(), [key](const auto &attr) {
+        return std::string_view(attr.first) > key;
+      });
+  attrs.emplace(at, key, value);
 }
 
 std::optional<Node> parse(const std::vector<std::uint8_t> &data) {

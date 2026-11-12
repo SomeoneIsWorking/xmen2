@@ -111,7 +111,7 @@ int macos_bundle_init(const char *executable) {
     config_override_set(x2::config::ConfigOverride::UiResourceDir, path, 0);
   else
     x2_log_error("macos bundle: the UI resources are MISSING from this "
-                 "bundle (%s); the settings overlay will not draw.\n",
+                 "bundle (%s); the touch controls and notices will not draw.\n",
                  path);
 
   /* VK_DRIVER_FILES is the current name and VK_ICD_FILENAMES the one older

@@ -60,9 +60,10 @@ int windows_package_init_from(const char *executable) {
   std::snprintf(path, sizeof path, "%.*s/ui", static_cast<int>(length),
                 executable);
   if (!is_directory(path)) {
-    x2_log_error("windows package: the UI resources are MISSING from this "
-                 "package (%s); the settings overlay will not draw.\n",
-                 path);
+    x2_log_error(
+        "windows package: the UI resources are MISSING from this "
+        "package (%s); the touch controls and notices will not draw.\n",
+        path);
   } else {
     config_override_set(x2::config::ConfigOverride::UiResourceDir, path, 0);
   }

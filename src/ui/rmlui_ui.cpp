@@ -1,7 +1,7 @@
 /*
- * RmlUi/SDL_GPU lifetime and host event bridge. The settings document and its
- * interaction live in settings_document.cpp so document behavior stays
- * separate from renderer and platform lifetime.
+ * RmlUi/SDL_GPU lifetime for the port's overlays that are not settings:
+ * touch controls, the skip button, the revive prompt and the autosave
+ * notice. Each document owns its own content.
  */
 #include "rmlui_ui.h"
 #include "../config/environment.h"
@@ -19,8 +19,6 @@
 #include "environment.h"
 #include "extraction_revive_document.hpp"
 #include "igb_textures.hpp"
-#include "settings_document.hpp"
-#include "settings_overlay_state.h"
 #include "skip_document.hpp"
 #include "touch_document.hpp"
 #include "touch_runtime.h"
@@ -37,7 +35,6 @@ Rml::Context *context;
 x2::ui::SkipDocument skip_document;
 x2::ui::ExtractionReviveDocument revive_document;
 x2::ui::AutosaveNoticeDocument autosave_document;
-SDL_Window *host_window;
 bool initialized;
 
 void sync_surface_metrics(SDL_Window *window, unsigned width, unsigned height) {
@@ -65,67 +62,24 @@ void sync_surface_metrics(SDL_Window *window, unsigned width, unsigned height) {
       std::max(display_scale, resolution_scale));
 }
 
-bool gamepad_navigation(const SDL_Event &event) {
-  if (!initialized || (event.type != SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
-                       event.type != SDL_EVENT_GAMEPAD_BUTTON_UP))
-    return false;
-  Rml::Input::KeyIdentifier key = Rml::Input::KI_UNKNOWN;
-  int modifiers = 0;
-  switch (event.gbutton.button) {
-  /* RmlUi has browser-style focus traversal but no default spatial focus
-     navigation. Map the four directions onto forward/backward traversal so
-     every control in this document remains reachable with a pad. */
-  case SDL_GAMEPAD_BUTTON_DPAD_UP:
-  case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-    key = Rml::Input::KI_TAB;
-    modifiers = Rml::Input::KM_SHIFT;
-    break;
-  case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-  case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-    key = Rml::Input::KI_TAB;
-    break;
-  case SDL_GAMEPAD_BUTTON_SOUTH:
-    key = Rml::Input::KI_RETURN;
-    break;
-  case SDL_GAMEPAD_BUTTON_EAST:
-    if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
-      x2::ui::settings_overlay_hide();
-      x2::ui::settings_document_cancel_capture();
-    }
-    return true;
-  default:
-    return false;
-  }
-  if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN)
-    context->ProcessKeyDown(key, modifiers);
-  else
-    context->ProcessKeyUp(key, modifiers);
-  return true;
-}
-
 void discard_partial_initialization() {
   autosave_document.shutdown();
   revive_document.shutdown();
   skip_document.shutdown();
   x2::ui::touch_document_shutdown();
-  x2::ui::settings_document_shutdown();
   context = nullptr;
   Rml::Shutdown();
   if (render_interface)
     render_interface->Shutdown();
   render_interface.reset();
   system_interface.reset();
-  host_window = nullptr;
 }
 
 /*
  * Say which step failed, once.
  *
  * ui_render calls initialize every frame, so a failure here is retried
- * forever. Three of its four exits used to return silently: the settings
- * overlay and the Android touch overlay simply never appeared, with nothing
- * in the log to say the attempt had even been made. Reporting once names the
- * step without turning a failure into a per-frame flood.
+ * forever; reporting once names the step without a per-frame flood.
  */
 bool initialize_failed(const char *step) {
   static bool reported;
@@ -139,7 +93,6 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
                 unsigned height) {
   if (initialized)
     return true;
-  host_window = window;
   system_interface = std::make_unique<SystemInterface_SDL>(window);
   render_interface =
       std::make_unique<x2::ui::IgbTextureRenderInterface>(device, window);
@@ -157,16 +110,12 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   if (!Rml::LoadFontFace(bold))
     x2_log_error("RMLUI: could not load font %s\n", bold);
   context =
-      Rml::CreateContext("x2-settings", Rml::Vector2i((int)width, (int)height));
+      Rml::CreateContext("x2-overlay", Rml::Vector2i((int)width, (int)height));
   if (!context) {
     discard_partial_initialization();
     return initialize_failed("Rml::CreateContext");
   }
   sync_surface_metrics(window, width, height);
-  if (!x2::ui::settings_document_load(context, window)) {
-    discard_partial_initialization();
-    return initialize_failed("loading the settings document");
-  }
   if (!x2::ui::touch_document_load(context)) {
     discard_partial_initialization();
     return initialize_failed("loading the touch overlay document");
@@ -184,94 +133,28 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
     return initialize_failed("loading the autosave notice document");
   }
   initialized = true;
-  x2_log_info("RMLUI: Port Settings overlay initialized.\n");
+  x2_log_info("RMLUI: overlays initialized.\n");
   return true;
 }
 
 } // namespace
 
-int ui_handle_event(SDL_Event *event) {
-  if (!event)
-    return 0;
-  /* F2 toggles this overlay from any state, so it sits ahead of both the
-     visibility gate and binding capture: a rebinding session must not be
-     able to swallow the host's own key. The guest never acts on F2 anyway
-     -- none of the 42 retail keyboard defaults read DIK 0x3c -- but the
-     consumed event also never reaches the guest's window. */
-  if ((event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) &&
-      x2::ui::settings_overlay_toggle_key(event->key.key,
-                                          event->type == SDL_EVENT_KEY_DOWN,
-                                          event->key.repeat != 0)) {
-    if (event->type == SDL_EVENT_KEY_DOWN) {
-      x2_log_info("RMLUI: F2 %s the Port Settings overlay.\n",
-                  x2::ui::settings_overlay_visible() ? "showed" : "hid");
-      if (!x2::ui::settings_overlay_visible() &&
-          x2::ui::settings_document_capturing())
-        x2::ui::settings_document_cancel_capture();
-    }
-    return 1;
-  }
-  if (!x2::ui::settings_overlay_visible())
-    return 0;
-  if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-      event->key.key == SDLK_ESCAPE) {
-    if (x2::ui::settings_document_capturing())
-      x2::ui::settings_document_cancel_capture();
-    else
-      x2::ui::settings_overlay_hide();
-    return 1;
-  }
-  if (x2::ui::settings_document_handle_event(*event))
-    return 1;
-  if (gamepad_navigation(*event))
-    return 1;
-  if (initialized) {
-    RmlSDL::InputEventHandler(context, host_window, *event);
-    if (x2::ui::settings_document_take_close_request())
-      x2::ui::settings_overlay_hide();
-  }
-  return 1;
-}
-
-int ui_captures_input(void) { return x2::ui::settings_overlay_visible(); }
-
 void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
                SDL_GPUTexture *swapchain, uint32_t width, uint32_t height,
                SDL_Window *window) {
-  static bool environment_checked;
-  if (!environment_checked) {
-    const char *open =
-        config_override_get(x2::config::ConfigOverride::SettingsOpen);
-    environment_checked = true;
-    if (open && open[0] && open[0] != '0') {
-      x2::ui::settings_overlay_show();
-      x2_log_info("RMLUI: X2_SETTINGS_OPEN requested the settings overlay at "
-                  "startup.\n");
-    }
-  }
-  if (x2::input::touch_runtime_take_menu_request()) {
-    x2::ui::settings_overlay_show();
-    x2_log_info("RMLUI: the touch menu button showed the Port Settings "
-                "overlay.\n");
-  }
-  const bool settings_visible = x2::ui::settings_overlay_visible();
-  const bool touch_visible =
-      x2::input::touch_runtime_overlay_on_screen() && !settings_visible;
+  const bool touch_visible = x2::input::touch_runtime_overlay_on_screen();
   /* Its own gate: a cinematic hides the gameplay overlay. */
-  const bool skip_visible = x2::ui::SkipDocument::wanted() && !settings_visible;
-  /* The paid revive offer: gameplay only, under the modal port settings. */
-  const bool revive_visible =
-      x2::ui::ExtractionReviveDocument::wanted() && !settings_visible;
-  const bool autosave_visible =
-      x2::ui::AutosaveNoticeDocument::wanted() && !settings_visible;
-  if ((!settings_visible && !touch_visible && !skip_visible &&
-       !revive_visible && !autosave_visible) ||
+  const bool skip_visible = x2::ui::SkipDocument::wanted();
+  /* The paid revive offer: gameplay only. */
+  const bool revive_visible = x2::ui::ExtractionReviveDocument::wanted();
+  const bool autosave_visible = x2::ui::AutosaveNoticeDocument::wanted();
+  if ((!touch_visible && !skip_visible && !revive_visible &&
+       !autosave_visible) ||
       !device || !command_buffer || !swapchain || !window ||
       !initialize(device, window, width, height)) {
     x2::input::touch_runtime_note_drawn({});
     return;
   }
-  x2::ui::settings_document_set_visible(settings_visible);
   x2::ui::touch_document_set_visible(touch_visible);
   /* The overlay may have been hidden while the window moved to a display
      with another DPI. Hidden events deliberately bypass RmlUi, so reconcile
@@ -282,7 +165,6 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
      doing BeginFrame after Update records uploads against stale state and
      corrupts both UI vertices and the frame under the overlay. */
   render_interface->BeginFrame(command_buffer, swapchain, width, height);
-  x2::ui::settings_document_update();
   x2::ui::touch_document_update();
   skip_document.update();
   revive_document.update();
@@ -300,13 +182,11 @@ void ui_gpu_shutdown(void) {
   revive_document.shutdown();
   skip_document.shutdown();
   x2::ui::touch_document_shutdown();
-  x2::ui::settings_document_shutdown();
   context = nullptr;
   Rml::Shutdown();
   render_interface->Shutdown();
   render_interface.reset();
   system_interface.reset();
-  host_window = nullptr;
   initialized = false;
 }
 

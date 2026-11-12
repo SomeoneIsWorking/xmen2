@@ -22,9 +22,10 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S008 — the port's settings in retail Options.** The remaining port settings move
-into the game's own Options menu and the RmlUi settings surface is deleted
-([plan 203](plans/0203-port-settings-in-retail-options.md)).
+**S003 — a dropped item that is usable but undrawn** ([issue
+202](issues/0202-a-dropped-item-can-be-usable-and-undrawn.md)): the port now
+logs each model refusal as a pickup drops; the next step is a phone run that
+catches one.
 
 ## Capability inventory
 
@@ -37,7 +38,7 @@ into the game's own Options menu and the RmlUi settings surface is deleted
 | S005 | Native audio mixing and SFD movie playback | verified | S002 | G002 |
 | S006 | SDL3 keyboard/controller/mouse input, assignment, and hotswap | partial | S002 | G002, G004 |
 | S007 | Xbox-derived controller defaults and source-sensitive prompts | partial | S006 | G002, G004 |
-| S008 | Port-owned RmlUi settings and input-binding surface | partial | S003, S006 | G002, G004, G007 |
+| S008 | Port settings and input bindings in the game's own Options | partial | S003, S006 | G002, G004, G007 |
 | S009 | Direct development boot into an initialized game | partial | S002 | G002, G004 |
 | S010 | Measured frame and level-load performance | partial | S002, S016 | G003 |
 | S011 | Wine oracle and evidence-backed differential RE workflow | partial | — | G002, G006 |
@@ -530,15 +531,20 @@ Gap: the retained PC action corresponding to Xbox White / Use Energy Pack is
 not yet joined by sufficient PC-and-console evidence, so it remains omitted.
 The entire preset and source policy also retain S006's physical-hardware gap.
 
-### S008 — RmlUi settings and bindings: partial
+### S008 — Port settings and bindings in retail Options: partial
 
-Observed subset: a distinct Port Settings row opens the pinned RmlUi overlay in
-the pause menu. The overlay shares the game's SDL_GPU command buffer and owns
-window-mode choices, four keyboard profiles, controller assignment, rebinding,
-persistence, migration, join/leave policy, and neutral input publication while
-modal. A live end-to-end check configured Player 2 as Keyboard 2, rebound
-Forward to `I`, and persisted `input.profile1.row0=23`; pure tests cover
-ownership, migration, source switching, reconnect, and slot reuse. Resolution
+Observed subset: every port setting is a row of the game's own Options or
+of its two pages, Controls (four keyboards and six controller slots, each
+assigned to a player) and Key Bindings (the keyboard's 42 rows and Restore All
+Defaults), derived from Options and opened from its rows; Back returns to
+Options. A binding's Change waits for the next key, with the game's input held
+neutral meanwhile; Escape cancels, Delete unbinds, Left restores the game's
+key. `tools/live_case.py options-pages` passed 18/18 on 2026-11-12: Keyboard 2
+assigned to Player 1 and saved, Move Forward captured as T, saved as
+`input.profile0.row0`, cancelled and restored, by keyboard and mouse. The
+RmlUi settings overlay, F2, the pause menu's Port Settings row and the touch
+gear are deleted. Pure tests cover ownership, migration, source switching,
+reconnect, and slot reuse. Resolution
 selection now transactionally replaces the active logical D3D colour/depth
 targets, updates the D3D8 backbuffer/depth descriptions and viewport, applies
 the title's retained display dimensions/aspect/pixel scales and window
@@ -556,8 +562,7 @@ resolution change never resizes the window. Resolution, window mode,
 shadows, HUD sizes, touch controls, extraction revive and boot mode are rows
 of the retail Options screen on the right of its panel, reached by keyboard,
 pad, mouse and touch; Advanced Options is gone (plan #203,
-`tools/live_case.py options-rows`). The Controls tab, F2 and the pause menu's
-Port Settings still open the RmlUi overlay. One
+`tools/live_case.py options-rows`). One
 owner now answers "display size in pixels" for the ladder, GetDeviceCaps and
 the D3D8 legality pass. The visible
 800x600 -> 1280x720 case passed 8/8 and directly matched the live menu geometry
@@ -569,12 +574,11 @@ including exact D3D device dimensions, persisted retail Resolution bytes, and
 a same-profile warm capture at 3840x2160.
 
 Gap: fullscreen transitions and real-controller identity/hotplug require
-hardware/user validation, and controller UI navigation still uses focus
-traversal rather than spatial navigation.
+hardware/user validation, and the Controls page has not been driven with a
+real second controller plugged in.
 
-The General tab's Gameplay pane holds one row, Extraction point revive (`gameplay.extraction_revive`:
-Off, Free full restore, Paid revive), saved through the same transactional store and rolled back
-on a failed save; see S024.
+Extraction Revive is an Options row (`gameplay.extraction_revive`: Off, Free
+full restore, Paid revive); see S024.
 
 ### S009 — direct initialized development boot: partial
 

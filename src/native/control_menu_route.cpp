@@ -119,13 +119,14 @@ void put_row(std::string *out, const menu::MenuSnapshot &menu,
   put_int(out, "slot", static_cast<long>(item.slot));
   put_text(out, "name", item.name);
   put_text(out, "class", menu::item_class_name(item.item_class));
-  put_text(out, "label", item.label);
+  const native::PortOptionRow *port =
+      native::port_option_row_of_item(item.name);
+  put_text(out, "label",
+           port != nullptr ? native::port_option_label(*port) : item.label);
   const menu::MenuItem *value =
       item.value_item >= 0
           ? &menu.items[static_cast<std::size_t>(item.value_item)]
           : nullptr;
-  const native::PortOptionRow *port =
-      native::port_option_row_of_item(item.name);
   put_key(out, "value");
   if (value) {
     put_string(out, value->label);

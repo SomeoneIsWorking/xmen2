@@ -10,6 +10,7 @@
 #include "cutscene_skip_probe.h"
 #include "guest_memory.h"
 
+#include "../input/binding_capture.hpp"
 #include "conversation_player.h"
 #include "cutscene_dialogue.h"
 #include "cutscene_player.h"
@@ -17,7 +18,6 @@
 #include "cutscene_skip_publication.h"
 #include "hud_cinematic_skip.h"
 #include "input_bindings.h"
-#include "rmlui_ui.h"
 #include "text_put.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -206,16 +206,15 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
   fmv_mask = call0(cpu, input_manager, VT_FMV_ACTION_MASK, &fmv_readable);
   cinematic_mask =
       call0(cpu, input_manager, VT_CINEMATIC_MASK, &cinematic_readable);
-  ui_capture = x2::ui::ui_captures_input();
+  ui_capture = x2::input::binding_capture_active();
 
   x2::native::text_put(out, size, &at,
                        "cutscene skip input boundary -- player %u\n",
                        player + 1u);
   x2::native::text_put(
-      out, size, &at, "  host modal UI capture: %s%s\n",
+      out, size, &at, "  key binding capture: %s%s\n",
       ui_capture ? "yes" : "no",
-      ui_capture ? " (game DirectInput is intentionally zeroed; Escape closes "
-                   "the settings UI, not the cutscene)"
+      ui_capture ? " (game DirectInput is zeroed until the key is released)"
                  : "");
   x2::native::text_put(
       out, size, &at,

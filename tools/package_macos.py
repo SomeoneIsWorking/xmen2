@@ -352,7 +352,7 @@ def selftest() -> int:
         required = [
             app / "Contents/Info.plist",
             app / "Contents/MacOS/x2native",
-            app / "Contents/Resources/ui/settings.rcss",
+            app / "Contents/Resources/ui/touch_controls.rcss",
         ]
         complete = all(path.is_file() for path in required)
         no_game = not any(path.name.lower() == "xmen2.exe"

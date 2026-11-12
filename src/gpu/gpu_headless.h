@@ -33,8 +33,8 @@ void gpu_headless_note_frame(void);
 /*
  * Follow a backbuffer resize, unless the harness gave an explicit size.
  *
- * Port Settings is a windowed RmlUi path, so a headless run has no settings
- * document to follow; this only keeps the zero-argument diagnostics working.
+ * A headless run has no window to follow; this only keeps the zero-argument
+ * diagnostics working.
  */
 void gpu_headless_follow_backbuffer(uint32_t width, uint32_t height);
 

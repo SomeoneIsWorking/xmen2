@@ -1,6 +1,5 @@
 #include "guest_heap.h"
 #include "options_menu.h"
-#include "settings_overlay_state.h"
 #include "x86rt_native.h"
 
 #include <stdint.h>
@@ -11,7 +10,6 @@ enum {
   HEAP_BASE = 0x31000000u,
   HEAP_SIZE = 0x00010000u,
   REGISTER_TARGET = 0x52001000u,
-  CALLBACK_TARGET = 0x53001000u,
   JOIN_CALLBACK_TARGET = 0x53001010u
 };
 
@@ -23,7 +21,6 @@ const char *options_menu_stubs_command(int index);
 uint32_t options_menu_stubs_callback(int index);
 uint32_t options_menu_stubs_method(void);
 int options_menu_stubs_run_row(int index, CPU *C);
-x86_override_fn options_menu_stubs_callback_function(void);
 int options_menu_stubs_override_is(const char *name, uint32_t ep);
 
 static int check(int condition, const char *what) {
@@ -68,21 +65,17 @@ int main(void) {
                     "the retail registrar was not super-called exactly once");
   failures += check(options_menu_stubs_singleton_calls() == 1,
                     "the retail command registry was not obtained once");
-  failures += check(options_menu_stubs_registration_calls() == 5,
-                    "the five port commands were not registered once each");
-  failures += check(!strcmp(options_menu_stubs_command(0), "port_settings"),
-                    "the first registered command is not `port_settings`");
-  failures += check(options_menu_stubs_callback(0) == CALLBACK_TARGET,
-                    "`port_settings` received the wrong native callback");
-  failures += check(!strcmp(options_menu_stubs_command(1), "port_lan_join"),
-                    "the second registered command is not `port_lan_join`");
-  failures += check(options_menu_stubs_callback(1) == JOIN_CALLBACK_TARGET,
+  failures += check(options_menu_stubs_registration_calls() == 4,
+                    "the four port commands were not registered once each");
+  failures += check(!strcmp(options_menu_stubs_command(0), "port_lan_join"),
+                    "the first registered command is not `port_lan_join`");
+  failures += check(options_menu_stubs_callback(0) == JOIN_CALLBACK_TARGET,
                     "`port_lan_join` received the wrong native callback");
-  failures += check(!strcmp(options_menu_stubs_command(2), "port_friend_row"),
-                    "the third registered command is not `port_friend_row`");
+  failures += check(!strcmp(options_menu_stubs_command(1), "port_friend_row"),
+                    "the second registered command is not `port_friend_row`");
   failures +=
-      check(!strcmp(options_menu_stubs_command(3), "port_option_next") &&
-                !strcmp(options_menu_stubs_command(4), "port_option_prev"),
+      check(!strcmp(options_menu_stubs_command(2), "port_option_next") &&
+                !strcmp(options_menu_stubs_command(3), "port_option_prev"),
             "the port rows' step commands are not registered");
   failures += check(options_menu_stubs_method() == REGISTER_TARGET,
                     "registration bypassed the retail vtable method");
@@ -99,25 +92,9 @@ int main(void) {
   x2::native::override_005f4900(&C);
   failures += check(options_menu_stubs_original_calls() == 2,
                     "a repeated retail registrar call was not super-called");
-  failures += check(options_menu_stubs_registration_calls() == 5 &&
+  failures += check(options_menu_stubs_registration_calls() == 4 &&
                         options_menu_stubs_singleton_calls() == 1,
                     "a repeated registrar duplicated the port commands");
-
-  x2::ui::settings_overlay_hide();
-  memset(&C, 0, sizeof C);
-  C.reg[kX86pEax] = 0x76543210u;
-  C.reg[kX86pEsp] = stack + 0xfe0u;
-  WR32(C.reg[kX86pEsp], 0xabcdef02u);
-  options_menu_stubs_callback_function()(&C);
-  failures += check(x2::ui::settings_overlay_visible(),
-                    "the `port_settings` callback did not show its UI");
-  failures += check(C.reg[kX86pEsp] == stack + 0xfe4u,
-                    "the `port_settings` callback did not reproduce RET");
-  failures += check(C.reg[kX86pEax] == 0x76543210u,
-                    "the void port callback invented a return value");
-  x2::ui::settings_overlay_hide();
-  failures += check(!x2::ui::settings_overlay_visible(),
-                    "closing Port Settings did not release guest input");
 
   memset(&C, 0, sizeof C);
   C.reg[kX86pEsp] = stack + 0xfc0u;
@@ -128,6 +105,6 @@ int main(void) {
   failures += check(options_menu_stubs_run_row(1, &C) == -1,
                     "previous did not step the focused row back");
 
-  printf("options menu ownership: %d of 22 checks passed\n", 22 - failures);
+  printf("options menu ownership: %d of 17 checks passed\n", 17 - failures);
   return failures != 0;
 }

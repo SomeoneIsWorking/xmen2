@@ -1,12 +1,9 @@
 /*
  * The control channel's two HOST-layer input routes.
  *
- * /key and /pad drive the GAME: they are injected into its own DirectInput
- * poll. Nothing there can reach the port's own overlay, which is an SDL
- * document with SDL input -- so a run could be driven from outside the process
- * in every respect except the one part the port itself owns. These two routes
- * close that gap, and they are kept apart from the guest-facing routes so the
- * difference is visible in the file a reader opens.
+ * /key and /pad are injected into the game's own DirectInput poll; these
+ * push SDL events into the window's queue, which is what the port's own
+ * readers (a key binding's capture, the pointer path) see.
  */
 #include "control_ui_route.h"
 
@@ -31,19 +28,8 @@ std::deque<std::string> g_typed;
 } // namespace
 
 /*
- * Press a key at the HOST window layer, not at the guest's keyboard.
- *
- * /key injects into the game's own DirectInput poll, which is the right thing
- * for anything the game reads -- and the wrong thing for the port's own
- * hotkeys. F2 opens Port Settings from an SDL key event, so a DirectInput
- * injection of F2 is delivered to a game that has no binding for it and the
- * overlay never opens. Without this route the port's own UI is the one part of
- * the run that cannot be driven from outside it, which is exactly where a
- * change like a live resolution switch has to be exercised.
- *
- * SDL_PushEvent is the documented cross-thread way in, and the event lands in
- * the same queue the window's own presses do: the overlay consumes what it
- * owns, and anything it does not consume reaches the game as a real press.
+ * Press a key at the window: a down and an up pushed into SDL's queue, the
+ * cross-thread way in, landing where the window's own presses do.
  */
 void control_ui_key_route(x2::native::Socket fd, const char *query) {
   char name[32] = "";
@@ -53,8 +39,8 @@ void control_ui_key_route(x2::native::Socket fd, const char *query) {
 
   if (!control_query_arg(query, "name", name, sizeof name) || !name[0]) {
     control_reply_text(fd, 400, "Bad Request",
-                       "no key named. Use /ui/key?name=F2.\n"
-                       "Names are SDL key names: F2, Tab, Return, Escape,\n"
+                       "no key named. Use /ui/key?name=Return.\n"
+                       "Names are SDL key names: Tab, Return, Escape,\n"
                        "Up, Down, Left, Right, Space ...\n");
     return;
   }
@@ -92,12 +78,7 @@ void control_ui_key_route(x2::native::Socket fd, const char *query) {
 }
 
 /*
- * Click at the HOST window layer, for the port's own overlay.
- *
- * Port Settings is laid out as a document and its rows are reached with the
- * pointer; nothing in it declares a tab-index, so a key press alone cannot
- * move between the tabs or the rows. Driving it from outside the process
- * therefore needs the pointer as well as the keyboard.
+ * Click at the window: a pointer move, press and release in SDL's queue.
  */
 void control_ui_click_route(x2::native::Socket fd, const char *query) {
   char xs[16] = "", ys[16] = "";

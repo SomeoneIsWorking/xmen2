@@ -42,17 +42,13 @@ const char *action_art(int action) {
     return "touch_use.svg";
   case TouchAction::Jump:
     return "touch_jump.svg";
-  case TouchAction::PortMenu:
-    return "touch_menu.svg";
   default:
     return "";
   }
 }
 
 /* True for a control drawn as a bare ring: one laid over art the game draws
-   itself -- a hero portrait, a potion or a mouse-overlay menu icon -- and the
-   port menu, which sits in that menu-icon row and is drawn the way its
-   neighbours are, a glyph with no plate behind it. */
+   itself -- a hero portrait, a potion or a mouse-overlay menu icon. */
 bool ring_only(int action) {
   using x2::input::TouchAction;
   switch (static_cast<TouchAction>(action)) {
@@ -64,7 +60,6 @@ bool ring_only(int action) {
   case TouchAction::EnergyPack:
   case TouchAction::RetailPauseMenu:
   case TouchAction::RetailTeamMenu:
-  case TouchAction::PortMenu:
     return true;
   default:
     return false;

@@ -49,7 +49,6 @@ enum class ConfigOverride {
   SecurityWatch,
   SelectorProbe,
   SelectorTexture,
-  SettingsOpen,
   Shot,
   ShotAfterFile,
   ShotEvery,

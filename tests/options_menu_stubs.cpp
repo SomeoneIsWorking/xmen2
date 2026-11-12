@@ -16,7 +16,6 @@ enum {
   EXE_BASE = 0x41000000u,
   COMMAND_REGISTRY_RVA = 0x0015c890u,
   REGISTER_TARGET = 0x52001000u,
-  CALLBACK_TARGET = 0x53001000u,
   JOIN_CALLBACK_TARGET = 0x53001010u,
   FRIEND_CALLBACK_TARGET = 0x53001030u,
   ROW_CALLBACK_TARGET = 0x53001020u,
@@ -30,7 +29,6 @@ static uint32_t manager;
 static int original_calls, singleton_calls, registration_calls;
 static char registered_name[MAX_REGISTRATIONS][32];
 static uint32_t registered_callback[MAX_REGISTRATIONS], registered_method;
-static x86_override_fn callback_function;
 static int join_commands;
 static x86_override_fn row_function;
 static void *row_ctx[2];
@@ -71,8 +69,8 @@ int options_menu_stubs_join_commands(void) { return join_commands; }
 /* lan_session.cpp's command, port_option_rows.cpp's rows and the live
    menu reads, which this test does not link: the menu up has the
    Resolution row focused. */
-static const x2::native::PortOptionRow kStubRow = {"resolution", "Resolution",
-                                                   false};
+static const x2::native::PortOptionRow kStubRow = {
+    "resolution", "Resolution", false, x2::native::PortPage::Options};
 static uint32_t stub_menu, stub_focus;
 uint32_t x2::retail::FrontEnd::active_menu_object(const CPU &) {
   if (!stub_menu) {
@@ -89,7 +87,7 @@ namespace x2::native {
 const PortOptionRow *port_option_row_of_item(std::string_view item) {
   return item == "port_option_resolution" ? &kStubRow : nullptr;
 }
-void port_option_request(const PortOptionRow &row, int direction) {
+void port_option_choose(const CPU &, const PortOptionRow &row, int direction) {
   requested_row = &row;
   requested_direction = direction;
 }
@@ -110,9 +108,6 @@ int options_menu_stubs_run_row(int index, CPU *C) {
   return requested_row == &kStubRow ? requested_direction : 0;
 }
 void *x86_callback_ctx(void) { return current_ctx; }
-x86_override_fn options_menu_stubs_callback_function(void) {
-  return callback_function;
-}
 
 int options_menu_stubs_override_is(const char *name, uint32_t ep) {
   int index;
@@ -134,12 +129,6 @@ X86Module *x86_modules(void) { return &module; }
 
 uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
                              const char *name, void *ctx) {
-  if (!ctx && !strcmp(owner, "options_menu") &&
-      !strcmp(name, "port_settings") &&
-      fn == x2::native::port_settings_command) {
-    callback_function = fn;
-    return CALLBACK_TARGET;
-  }
   if (!ctx && !strcmp(owner, "lan_session") && !strcmp(name, "port_lan_join") &&
       fn == x2::native::lan_join_command) {
     return JOIN_CALLBACK_TARGET;

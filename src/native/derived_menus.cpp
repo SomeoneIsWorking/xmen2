@@ -21,21 +21,34 @@ namespace {
 
 struct DerivedMenu {
   std::string_view stem;
+  /* The install's menu it is made from. */
+  std::string_view source;
   std::string_view title;
   std::optional<xmlb::Node> (*derive)(const xmlb::Node &retail,
                                       std::string *why);
 };
 
-constexpr std::array<DerivedMenu, 2> kMenus{{
-    {"ui/menus/options.", "Options", derive_options_menu},
-    {"ui/menus/campaign_lobby.", "the online lobby", derive_lobby_menu},
+constexpr std::array<DerivedMenu, 4> kMenus{{
+    {"ui/menus/options.", "ui/menus/options.", "Options", derive_options_menu},
+    {"ui/menus/campaign_lobby.", "ui/menus/campaign_lobby.", "the online lobby",
+     derive_lobby_menu},
+    {"ui/menus/port_controls.", "ui/menus/options.", "Controls",
+     [](const xmlb::Node &retail, std::string *why) {
+       return derive_options_page(retail, PortPage::Controls, why);
+     }},
+    {"ui/menus/port_bindings.", "ui/menus/options.", "Key Bindings",
+     [](const xmlb::Node &retail, std::string *why) {
+       return derive_options_page(retail, PortPage::Bindings, why);
+     }},
 }};
 constexpr std::string_view kDerivedDir = "derived";
+constexpr std::string_view kMenuDir = "ui/menus/";
+constexpr std::string_view kPackageDir =
+    "packages/generated/maps/package/menus/";
+constexpr std::string_view kPackageExt = "pkgb";
 
-/* The menu `guest_path` names, as "ui/menus/options.engb" from any spelling
-   of it, and its entry; nothing for other files. */
-std::optional<std::pair<std::string, const DerivedMenu *>>
-menu_of(const char *guest_path) {
+/* `guest_path` as "ui/menus/options.engb" from any spelling of it. */
+std::string normalised(const char *guest_path) {
   std::string path;
   if (guest_path[0] != '\0' && guest_path[1] == ':') {
     guest_path += 2;
@@ -48,6 +61,12 @@ menu_of(const char *guest_path) {
     path.push_back(
         static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
   }
+  return path;
+}
+
+/* The menu `path` names and its entry; nothing for other files. */
+std::optional<std::pair<std::string, const DerivedMenu *>>
+menu_of(const std::string &path) {
   for (const DerivedMenu &menu : kMenus) {
     if (path.size() != menu.stem.size() + 4u ||
         path.compare(0, menu.stem.size(), menu.stem) != 0) {
@@ -105,18 +124,19 @@ bool write_file(const std::string &path,
 
 /* The derived file for `name`, written on first use; empty when it cannot
    be made, and then the install's own file is opened. */
-std::string derived_path(const char *guest_path, const std::string &name,
-                         const DerivedMenu &menu) {
+std::string derived_path(const std::string &name, const DerivedMenu &menu) {
   const char *saves = save_dir();
-  const char *retail = win_path(guest_path);
+  const std::string source =
+      std::string(menu.source) + name.substr(menu.stem.size());
+  const char *retail = win_path(source.c_str());
   std::vector<std::uint8_t> bytes;
   std::string why;
   const std::string title(menu.title);
   if (saves == nullptr || saves[0] == '\0' || retail == nullptr ||
       !read_file(retail, &bytes)) {
-    x2_log_error("DERIVED MENU: cannot read \"%s\" to add the port's rows; "
-                 "%s opens without them.\n",
-                 guest_path, title.c_str());
+    x2_log_error("DERIVED MENU: cannot read \"%s\" to make %s from; "
+                 "it opens as the install has it.\n",
+                 source.c_str(), title.c_str());
     return {};
   }
   const auto tree = xmlb::parse(bytes);
@@ -143,6 +163,23 @@ std::string derived_path(const char *guest_path, const std::string &name,
   return path;
 }
 
+/* A page's package is the package of the menu it is made from: the page has
+   none of its own, and without one the art it shares goes with that menu. */
+std::optional<std::string> package_source(const std::string &path) {
+  for (const DerivedMenu &menu : kMenus) {
+    if (menu.stem == menu.source) {
+      continue;
+    }
+    const std::string_view name = menu.stem.substr(kMenuDir.size());
+    if (path == std::string(kPackageDir).append(name).append(kPackageExt)) {
+      return std::string(kPackageDir)
+          .append(menu.source.substr(kMenuDir.size()))
+          .append(kPackageExt);
+    }
+  }
+  return std::nullopt;
+}
+
 /* Each menu file's derived path, made once per run; empty when it failed. */
 std::map<std::string, std::string> g_derived;
 
@@ -152,16 +189,24 @@ const char *derived_menu_replacement(const char *guest_path) {
   if (guest_path == nullptr) {
     return nullptr;
   }
-  const auto menu = menu_of(guest_path);
+  const std::string path = normalised(guest_path);
+  if (const auto package = package_source(path)) {
+    auto found = g_derived.find(path);
+    if (found == g_derived.end()) {
+      const char *retail = win_path(package->c_str());
+      found = g_derived.emplace(path, retail != nullptr ? retail : "").first;
+    }
+    return found->second.empty() ? nullptr : found->second.c_str();
+  }
+  const auto menu = menu_of(path);
   if (!menu) {
     return nullptr;
   }
   auto found = g_derived.find(menu->first);
   if (found == g_derived.end()) {
-    found = g_derived
-                .emplace(menu->first,
-                         derived_path(guest_path, menu->first, *menu->second))
-                .first;
+    found =
+        g_derived.emplace(menu->first, derived_path(menu->first, *menu->second))
+            .first;
   }
   return found->second.empty() ? nullptr : found->second.c_str();
 }

@@ -50,8 +50,6 @@ enum class TouchAction : std::uint8_t {
   // centre. Like a portrait, a tap is a click on the retail icon.
   RetailPauseMenu,
   RetailTeamMenu,
-  // The port's own RmlUi menu (F2 on a keyboard).
-  PortMenu,
 };
 
 // The action's name, for traces and the control channel; never null.
@@ -172,9 +170,6 @@ public:
 
 private:
   void rebuild_zones();
-  // Where the port menu goes: the next place in the game's menu-icon row,
-  // once the game has drawn that row, and `waiting` until it has.
-  x2::presentation::Rect port_menu_rect(x2::presentation::Rect waiting) const;
   unsigned accept_regions(std::span<const x2::presentation::Rect> regions,
                           unsigned mask,
                           std::span<x2::presentation::Rect> out) const;

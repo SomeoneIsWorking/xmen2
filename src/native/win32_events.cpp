@@ -7,12 +7,12 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "../input/binding_capture.hpp"
 #include "../input/revive_prompt.hpp"
 #include "../input/touch_runtime.h"
 #include "d3d8_drawcall.h"
 #include "live_resolution.h"
 #include "port_option_rows.hpp"
-#include "rmlui_ui.h"
 #include "touch_menu_source.hpp"
 
 #include <SDL3/SDL.h>
@@ -93,7 +93,6 @@ void win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden) {
         &g_mouse, hidden, (flags & SDL_WINDOW_INPUT_FOCUS) != 0u,
         (flags & SDL_WINDOW_MOUSE_FOCUS) != 0u);
   }
-  x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
 }
 
@@ -264,12 +263,8 @@ static void pump_sdl(void) {
     x2::input::touch_runtime_note_source(&event);
     x2::input::touch_runtime_lifecycle_event(&event);
 
-    if (x2::ui::ui_handle_event(&event)) {
-      if (x2::ui::ui_captures_input()) {
-        x2::input::touch_runtime_cancel();
-      }
-      x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
-      apply_cursor_policy();
+    if (x2::input::binding_capture_event(event)) {
+      x2::input::touch_runtime_cancel();
       continue;
     }
     if (x2::input::revive_prompt_event(event)) {
@@ -279,8 +274,6 @@ static void pump_sdl(void) {
     if (touch_handled) {
       continue;
     }
-    x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
-
     if (event.type == SDL_EVENT_MOUSE_MOTION ||
         event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
         event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
@@ -302,7 +295,6 @@ static void pump_sdl(void) {
     apply_cursor_policy();
   }
 
-  x2::native::win32_mouse_overlay(&g_mouse, x2::ui::ui_captures_input());
   apply_cursor_policy();
   x2::presentation::live_resolution_follow_surface(g_window);
   x2::native::port_options_service(g_window);

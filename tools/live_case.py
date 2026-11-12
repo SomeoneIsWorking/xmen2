@@ -42,6 +42,7 @@ scratch/run/live.json.
                                               # (-unloadable: money models fail)
     tools/live_case.py native-resolution      # Native is the output size; 720p is not
     tools/live_case.py options-rows           # the port's rows in the game's Options
+    tools/live_case.py options-pages          # Options' Controls and Key Bindings pages
     tools/live_case.py script-lines           # 4- and 12-statement /script run in order
 
 Every case prints PASS/FAIL evidence lines and exits 0 only on a full pass.
@@ -126,6 +127,7 @@ from live_cases_script import case_script_lines
 from live_cases_use_prompt import case_touch_use_prompt
 from live_cases_touch_money import case_touch_money
 from live_cases_touch_cluster import SHAPES as CLUSTER_SHAPES, case_touch_cluster
+from live_cases_options_pages import case_options_pages
 from live_cases_options_rows import case_options_rows
 from live_cases_resolution import case_native_resolution
 from live_harness import BINARY, DEFAULT_PORT, Case, RunOptions, refuse
@@ -214,6 +216,7 @@ CASES.update({
     "live-resolution": case_live_resolution,
     "native-resolution": case_native_resolution,
     "options-rows": case_options_rows,
+    "options-pages": case_options_pages,
     "mouse-click": case_mouse_click,
 })
 

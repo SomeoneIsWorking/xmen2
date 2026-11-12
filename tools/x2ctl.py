@@ -12,7 +12,7 @@ then talk to it while it runs:
     tools/x2ctl.py status                 # frames, guest time, frame timing
     tools/x2ctl.py key Return             # press a key (--hold SECONDS)
     tools/x2ctl.py key Escape Escape Up   # several, in order
-    tools/x2ctl.py uikey F2               # the PORT's own UI, not the game
+    tools/x2ctl.py uikey T                # a key at the window, not the game's poll
     tools/x2ctl.py uiclick 279,97         # ... and its pointer
     tools/x2ctl.py pad a start             # synthetic pad buttons
     tools/x2ctl.py touch 0.2,0.73          # tap the screen, as a finger does
@@ -163,12 +163,10 @@ def cmd_key(args):
 
 
 def cmd_uikey(args):
-    """Press a key at the PORT's own UI layer, not the game's keyboard.
+    """Press a key at the window, as the player's keyboard does.
 
-    `key` injects into the game's DirectInput poll, so it can never reach the
-    port's own hotkeys: F2 opens Port Settings from an SDL key event, and a
-    DirectInput F2 goes to a game that has no binding for it. Use this for the
-    overlay -- opening it, moving through it, activating a row.
+    `key` injects into the game's DirectInput poll, which the port's own
+    readers of SDL events never see: a key binding's capture waits on one.
     """
     bad = 0
     for name in args.names:
@@ -183,11 +181,7 @@ def cmd_uikey(args):
 
 
 def cmd_uiclick(args):
-    """Click at the PORT's own UI layer, in the coordinates of a screenshot.
-
-    Port Settings has no tab-index on anything, so its tabs and rows cannot be
-    reached with `uikey` alone; this is how the overlay is driven.
-    """
+    """Click at the window, in the coordinates of a screenshot."""
     bad = 0
     for point in args.points:
         try:
@@ -451,8 +445,8 @@ def main():
                    help="seconds between presses")
     k.set_defaults(fn=cmd_key)
 
-    u = sub.add_parser("uikey", help="press a key at the port's own UI "
-                                     "(F2 opens Port Settings)")
+    u = sub.add_parser("uikey", help="press a key at the window "
+                                     "(what a key binding capture reads)")
     u.add_argument("names", nargs="+")
     u.add_argument("--gap", type=float, default=0.4,
                    help="seconds between presses")

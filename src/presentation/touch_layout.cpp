@@ -46,14 +46,11 @@ const ArcSeat kArcSeats[] = {
     {kSlotPower1, 0, 90.0F},       {kSlotPower2, 1, 180.0F},
     {kSlotPower3, 1, 150.0F},      {kSlotPower4, 1, 120.0F},
     {kSlotUse, 1, 90.0F}};
-/* The game's own menu icons are 32 units of its 384-unit screen height; the
-   port menu that waits for them is that size. */
-const float kMenuIconSize = 32.0F / 384.0F; /* of the short edge */
 
 const char *const kSlotNames[] = {
-    "vitals",       "potions",      "portraits", "minimap",  "stick",
-    "light-attack", "heavy-attack", "use",       "jump",     "power-1",
-    "power-2",      "power-3",      "power-4",   "port-menu"};
+    "vitals",       "potions",      "portraits", "minimap", "stick",
+    "light-attack", "heavy-attack", "use",       "jump",    "power-1",
+    "power-2",      "power-3",      "power-4"};
 
 static_assert((int)(sizeof kSlotNames / sizeof kSlotNames[0]) ==
                   (int)kSlotCount,
@@ -243,30 +240,6 @@ int layout_build(LayoutViewport v, const HudPlacement *hud, Rect *out) {
         out[seat.slot] = centred(attack_x + at.x * unit, attack_y - at.y * unit,
                                  kSecondaryFingers * unit);
       }
-    }
-
-    /* The port menu belongs in the row of menu icons the game's mouse
-     * overlay draws either side of the top centre; the controls put it
-     * beside them once the game reports where they are. Until then it waits
-     * just right of that pair, at their size. */
-    {
-      const float icon = shortest * kMenuIconSize;
-      const float mid = (left + right) * 0.5F;
-      /* Right of the game's icon pair, shrunk to fit short of the portraits;
-         under the portraits when the HUD leaves no room there. */
-      const float menu_left = mid + icon + gap * 0.25F;
-      const float room = out[kSlotPortraits].left - gap * 0.25F - menu_left;
-      const float size = hud ? fminf(icon, room) : icon;
-      Rect menu = {menu_left, top + gap, menu_left + size, top + gap + size};
-      for (int i = kSlotVitals; i <= kSlotPortraits; ++i) {
-        if (size < icon * 0.5F || layout_rects_overlap(menu, out[i])) {
-          menu = centred(menu_left + icon * 0.5F,
-                         out[kSlotPortraits].bottom + gap * 0.25F + icon * 0.5F,
-                         icon);
-          break;
-        }
-      }
-      out[kSlotPortMenu] = menu;
     }
   }
 

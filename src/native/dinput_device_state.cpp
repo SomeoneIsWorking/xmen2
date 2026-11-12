@@ -3,6 +3,7 @@
 #include "dinput_device_internal.h"
 #include "guest_memory.h"
 
+#include "../input/binding_capture.hpp"
 #include "dinput8_hotplug.h"
 #include "dinput_joystick.h"
 #include "dinput_pad.h"
@@ -14,7 +15,6 @@
 #include "input_record.h"
 #include "joystick_neutral.h"
 #include "player_input.h"
-#include "rmlui_ui.h"
 
 #include "stdcall_import.h"
 #include <stdio.h>
@@ -97,8 +97,11 @@ void dinput_device_get_state(CPU *C, DInputDevice *device) {
     unsigned long frame = gpu_frames_presented();
     dinput_pad_virtual_tick(frame);
     x2::native::dinput8_hotplug_pump(C);
+    dinput_system_keyboard_state(out, bytes);
+    /* Runs the control channel's commands, during a capture too. */
+    x2::native::dinput_script_apply(C, out, bytes);
   }
-  if (x2::ui::ui_captures_input()) {
+  if (x2::input::binding_capture_active()) {
     if (device->kind == DINPUT_DEV_JOYSTICK)
       x2::input::joystick_write_neutral(guest_memory_pointer(out), bytes,
                                         device->axis_lo, device->axis_hi);
@@ -109,8 +112,6 @@ void dinput_device_get_state(CPU *C, DInputDevice *device) {
     return;
   }
   if (device->kind == DINPUT_DEV_KEYBOARD) {
-    dinput_system_keyboard_state(out, bytes);
-    x2::native::dinput_script_apply(C, out, bytes);
     x2::input::player_input_note_keyboard_state(
         guest_memory_as<const unsigned char>(out), bytes);
   } else if (device->kind == DINPUT_DEV_JOYSTICK) {

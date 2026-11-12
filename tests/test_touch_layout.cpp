@@ -243,20 +243,6 @@ int main(void) {
         CHECK(x2::presentation::layout_slot_name(i),
               !layout_rects_overlap(reach, slots[i]));
     }
-    /* The port menu waits in the top band just right of the centreline,
-       where the game's own pause and team icons sit either side of it, and
-       at their size: not an action button's. */
-    {
-      const x2::presentation::Rect menu =
-          slots[x2::presentation::kSlotPortMenu];
-      const float centre =
-          (viewport.safe_left + viewport.width - viewport.safe_right) * 0.5f;
-      CHECK(name, menu.bottom < viewport.height * 0.25f);
-      CHECK(name, menu.left > centre);
-      CHECK(name, menu.right - menu.left <
-                      slots[x2::presentation::kSlotLightAttack].right -
-                          slots[x2::presentation::kSlotLightAttack].left);
-    }
     /* Attack is the largest button; every other action is one size and at
        least a finger, a tenth of the short edge. */
     {

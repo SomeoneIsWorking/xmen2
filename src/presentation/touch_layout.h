@@ -116,7 +116,6 @@ enum LayoutSlot : int {
   kSlotPower2,
   kSlotPower3,
   kSlotPower4,
-  kSlotPortMenu,
   kSlotCount /* MUST stay last */
 };
 

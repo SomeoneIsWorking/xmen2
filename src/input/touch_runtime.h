@@ -52,8 +52,6 @@ void touch_runtime_hud_regions(const x2::presentation::HudRegions *regions);
  * like the tap regions. */
 void touch_runtime_hud_placement(
     const x2::presentation::HudPlacement *placement);
-/* 1 once per tap of the port menu button, for the UI that owns the menu. */
-int touch_runtime_take_menu_request(void);
 /* The window event owner drains all portrait transitions in FIFO order,
  * including cancellation when no SDL event is pending. */
 int touch_runtime_take_pointer(TouchPointer *pointer);

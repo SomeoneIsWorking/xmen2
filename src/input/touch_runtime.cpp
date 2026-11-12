@@ -81,8 +81,6 @@ public:
   void cancel(TouchCancelCause cause);
   void set_hud_regions(const x2::presentation::HudRegions *regions);
   void set_hud_placement(const x2::presentation::HudPlacement *placement);
-  // True once per press of the port menu button.
-  bool take_menu_request();
   void set_power_slots(const int icons[kPowerSlots]);
   bool take_pointer(TouchPointer &out);
   std::size_t visuals(TouchVisual *out, std::size_t capacity) const;
@@ -134,7 +132,6 @@ private:
      from, so neither owner computes its own and they cannot disagree about
      where the screen is. */
   x2::presentation::LayoutViewport viewport_{};
-  bool menu_requested_ = false;
   // Written on the render thread, read by the control channel.
   mutable std::mutex drawn_lock_;
   DrawnControls drawn_;
@@ -189,10 +186,6 @@ void TouchRuntime::publish(std::span<const ActionEvent> actions) {
     pointer_.resolved(event.position, event.phase);
   }
   for (const auto &event : actions) {
-    if (event.action == TouchAction::PortMenu &&
-        event.phase == lucent::touch::Phase::began) {
-      menu_requested_ = true;
-    }
     if (is_release(event.phase)) {
       active_zones_.erase(event.zone_id);
     } else {
@@ -445,12 +438,6 @@ void TouchRuntime::set_hud_regions(
   }
 }
 
-bool TouchRuntime::take_menu_request() {
-  const bool requested = menu_requested_;
-  menu_requested_ = false;
-  return requested;
-}
-
 void TouchRuntime::set_power_slots(const int icons[kPowerSlots]) {
   std::array<int, kPowerSlots> next{};
   std::copy(icons, icons + kPowerSlots, next.begin());
@@ -551,10 +538,6 @@ void touch_runtime_hud_regions(const x2::presentation::HudRegions *regions) {
 void touch_runtime_hud_placement(
     const x2::presentation::HudPlacement *placement) {
   runtime.set_hud_placement(placement);
-}
-
-int touch_runtime_take_menu_request(void) {
-  return runtime.take_menu_request() ? 1 : 0;
 }
 
 void touch_runtime_power_slots(const int icons[kPowerSlots]) {

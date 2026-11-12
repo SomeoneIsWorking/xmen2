@@ -6,10 +6,11 @@
 #include <optional>
 #include <string>
 
-/* Retail menu files the port adds rows to. Each is derived from the
-   player's own install into the save directory on first open and served in
-   its place, so every platform gets the same rows; a file that cannot be
-   derived opens as shipped and the failure is logged. */
+/* Retail menu files the port adds rows to, and the port's own pages made
+   from one. Each is derived from the player's own install into the save
+   directory on first open and served in its place, so every platform gets the
+   same rows; a file that cannot be derived opens as shipped and the failure is
+   logged. */
 namespace x2::native {
 
 /* The host path to open for `guest_path` instead of the install's file, or

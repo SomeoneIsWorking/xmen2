@@ -1410,6 +1410,35 @@ next lookup that misses spins in `_stricmp` forever. Measured: registering a
 command per row direction (26) hung the menu boot at Loading, its
 `mainmenuexit 1` never found. The port registers four.
 
+### The Controls and Key Bindings pages
+
+`port_controls` and `port_bindings` are new menu names served a copy of
+Options' file (`derive_options_page`). What was found making them:
+
+- A new name opens as `CMenuOptions` with Options' art: the MENU's
+  `igb=x2m_options` names it, not the menu's own name.
+- An item left out of the file draws nothing; dropping `options_screen` and
+  `options_bracket_top` removes the panel. The page keeps the frame, title,
+  footer and Accept.
+- A menu opens its package `packages/generated/maps/package/menus/<name>.pkgb`
+  first. Without one, the page draws from the art Options' package loaded,
+  which is gone once Options closes for the second time: the page then loads
+  all its items, focuses one and draws nothing, every item's box zero. Each
+  page is served `options.pkgb` (`derived_menus.cpp:package_source`).
+- Options has `no_stack=true`, so Back from a page went to the main menu.
+  Without it Back returns to Options, and Back again to the main menu.
+  `closecmd` on a MENU did nothing.
+- Default focus (`FUN_005ae990`) is a named item when the caller gives one,
+  else the first item with flag `0x02`, which `startactive="true"` sets, else
+  the first enabled focusable item. Options' `startactive` is on Effects
+  Volume, which a page lacks, so its first row carries it.
+- Shipped attribute lists are in byte order and the game misses one out of
+  order: `startactive` appended after `usecmd` never set the flag.
+  `xmlb::Node::set` inserts a new attribute in order.
+- Options' second page (`menu+0x18d8`, `label_controls`, `controls_list`) is
+  the console controller diagram, and `options_controller` is never opened on
+  PC; neither holds bindings.
+
 ## Advanced Options (`CMenuSebas`)
 
 The factory builds `SEBAS_MENU` as `CMenuSebas` (vtable `0x006a1f64`) only

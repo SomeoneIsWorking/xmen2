@@ -47,8 +47,7 @@ whether there is a drawn control under it.
 **With the overlay up**, the contact goes to its zone and the zone to the
 virtual DirectInput pad — the whole of the table below. The exceptions are
 the party portraits and the pause and team menu icons, which belong to the
-retail mouse handler, and the port menu button, which opens the port's own
-RmlUi settings.
+retail mouse handler. The port's settings are rows of the game's own Options.
 
 **With no overlay drawn — the legal splash, the intro movies, the main menu,
 the load and save screens, every cutscene — the contact IS the retail GUI's
@@ -511,7 +510,6 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
 | Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. Any other line the game would stack in the prompt's band, such as an XP award, keeps the game's own band and art apart from the button, a button gap beneath it: it is no control, and a tap on it does not use. `GET /controls` lists that band as `message-band` |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
-| Gear beside the retail menu icons, top centre | `PortMenu`: opens the port's RmlUi settings, the touch player's F2 |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
 | Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
 
@@ -541,14 +539,8 @@ move and jump with two thumbs. Controls remain anchored to safe edges on wide sc
 factor, the smaller of what the width and the height below the portraits and
 the minimap allow, keeps the groups separate on narrow, short and portrait
 screens; it never takes an action button below a finger, and on a screen too
-narrow for that the stick gives up the width. The port menu button joins the
-row of menu icons the game's mouse overlay draws at the top centre: once the
-game reports where it drew them, the button takes the next place along that
-row at their size (`TouchControls::port_menu_rect`), unless that place
-would cover a drawn portrait (at 4:3 it would cover the first), and then, as
-before the game reports, it keeps the layout's own place: just right of the
-centreline, or under the portraits when there is no room there. The vitals and party portraits start at that
-row's top too (`x2::presentation::hud_layout_build`'s `row_top`), so the top band is one
+narrow for that the stick gives up the width. The vitals and party portraits start at the top of
+the row of menu icons the game's mouse overlay draws (`x2::presentation::hud_layout_build`'s `row_top`), so the top band is one
 line even on a phone whose reported safe area starts lower than where the
 game draws its own icons.
 
@@ -597,8 +589,7 @@ The HUD's slots in the touch layout are the HUD owner's own placement:
 `hud_draw_runtime.cpp` publishes `x2::presentation::hud_layout_build`'s result to the touch
 runtime, and `layout_build` copies it rather than computing rectangles of
 its own. The controls then fit around it: the stick shrinks to fit under the
-potions, and the port menu button shrinks to stop short of the portraits, or
-drops under them when there is no room. Without a placement (HUD not
+potions. Without a placement (HUD not
 relocated) the HUD slots are empty and the controls keep their full size.
 
 The layout must leave an inset for cutouts/navigation bars, support at least the
@@ -607,17 +598,16 @@ reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.cpp`](../src/native/xbox_defaults.cpp), not invented per screen. Every
 button is a round icon filling a dark circle with a light ring. A power shows
-its own icon from the hero's atlas. Attack, Smash, Use, Jump and the port menu
-show the port's own art, `assets/ui/touch_{punch,smash,use,jump,menu}.svg`:
+its own icon from the hero's atlas. Attack, Smash, Use and Jump
+show the port's own art, `assets/ui/touch_{punch,smash,use,jump}.svg`:
 neon line icons in the style of the retail pause and team icons (a saturated
-outline, a soft glow and a pale core; orange for the attacks and the menu,
+outline, a soft glow and a pale core; orange for the attacks,
 blue for Use and Jump). They are drawn without filters, so SDL_image's SVG
 rasterizer renders them identically on every platform, at 384 pixels, which
 RmlUi scales down to the button: crisp at a phone's size. The game's own
 talent icons are 64-pixel cells and looked soft scaled up that far.
 Portraits, potions and the retail menu icons are drawn by the game, so their
-controls are the same ring with no fill; the port menu, in their row, is drawn
-the same way. Active controls get a bright border and filled background. The camera
+controls are the same ring with no fill. Active controls get a bright border and filled background. The camera
 gesture stays invisible, captured zones highlight, and the persistent Input setting can hide the controls. Held contacts
 persist until finger-up/cancel rather than expiring on a test-channel timeout.
 
@@ -732,7 +722,7 @@ renderer's final frame at 2728×1264, a phone's shape, shown at half size
 from a windowed run in a private Xvfb display with an isolated profile forcing
 `input.touch_controls=2` and SDL dummy audio. The opening conversation's
 last line was continued by a tap on it. In control, the overlay shows the move
-stick, the four actions inside their own circles, the port menu button, and the power button with the game's own icon for the hero's power. The vitals,
+stick, the four actions inside their own circles and the power button with the game's own icon for the hero's power. The vitals,
 potions and party portraits stay clear. This is native UI presentation
 evidence, not Android touchscreen or performance qualification. A headless
 `--no-window` run draws the port UI into its capture target, so its

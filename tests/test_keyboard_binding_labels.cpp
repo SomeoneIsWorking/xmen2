@@ -1,4 +1,4 @@
-#include "keyboard_bindings_document.hpp"
+#include "keyboard_binding_labels.hpp"
 
 #include "dinput_system.h"
 #include "player_input.h"
@@ -42,8 +42,8 @@ int player_input_game_keyboard_binding(unsigned row, uint32_t *kind,
 int main() {
   x2::config::KeyboardProfile profile{};
 
-  CHECK(!x2::ui::keyboard_bindings_game_known());
-  CHECK(x2::ui::keyboard_binding_label(profile, 0) == "Game default");
+  CHECK(!x2::input::keyboard_bindings_game_known());
+  CHECK(x2::input::keyboard_binding_label(profile, 0) == "Game default");
 
   game_known = true;
   game_kind[0] = 1;
@@ -52,37 +52,26 @@ int main() {
   game_code[2] = 1;
   game_kind[3] = 1;
   game_code[3] = 0x7f;
-  CHECK(x2::ui::keyboard_bindings_game_known());
-  CHECK(x2::ui::keyboard_binding_label(profile, 0) == "W");
-  CHECK(x2::ui::keyboard_binding_label(profile, 1) == "Unbound");
-  CHECK(x2::ui::keyboard_binding_label(profile, 2) == "Mouse 1");
-  CHECK(x2::ui::keyboard_binding_label(profile, 3) == "Device 1 code 0x7f");
+  CHECK(x2::input::keyboard_bindings_game_known());
+  CHECK(x2::input::keyboard_binding_label(profile, 0) == "W");
+  CHECK(x2::input::keyboard_binding_label(profile, 1) == "Unbound");
+  CHECK(x2::input::keyboard_binding_label(profile, 2) == "Mouse 1");
+  CHECK(x2::input::keyboard_binding_label(profile, 3) == "Device 1 code 0x7f");
 
   profile.keyboard_set[0] = 1;
   profile.keyboard[0] = 0x1e;
   profile.keyboard_set[1] = 1;
   profile.keyboard[1] = 0;
-  CHECK(x2::ui::keyboard_binding_label(profile, 0) == "A");
-  CHECK(x2::ui::keyboard_binding_label(profile, 1) == "Unbound");
+  CHECK(x2::input::keyboard_binding_label(profile, 0) == "A");
+  CHECK(x2::input::keyboard_binding_label(profile, 1) == "Unbound");
 
-  std::string rml = x2::ui::keyboard_bindings_document_rml(profile);
-  CHECK(rml.find("id='binding-reset-0'") != std::string::npos);
-  CHECK(rml.find("id='binding-reset-2'") == std::string::npos);
-  CHECK(rml.find("id='binding-reset-all'") != std::string::npos);
-
-  CHECK(!x2::ui::keyboard_bindings_document_restore(profile, "kb-0"));
-  CHECK(
-      !x2::ui::keyboard_bindings_document_restore(profile, "binding-reset-42"));
-  CHECK(
-      !x2::ui::keyboard_bindings_document_restore(profile, "binding-reset-0x"));
-  CHECK(x2::ui::keyboard_bindings_document_restore(profile, "binding-reset-0"));
+  x2::config::keyboard_profile_restore_row(&profile, 0);
   CHECK(!profile.keyboard_set[0]);
   CHECK(profile.keyboard_set[1]);
-  CHECK(x2::ui::keyboard_binding_label(profile, 0) == "W");
-  CHECK(
-      x2::ui::keyboard_bindings_document_restore(profile, "binding-reset-all"));
+  CHECK(x2::input::keyboard_binding_label(profile, 0) == "W");
+  x2::config::keyboard_profile_restore_all(&profile);
   CHECK(!profile.keyboard_set[1]);
 
-  std::printf("test_keyboard_bindings_document: %d checks passed\n", checks);
+  std::printf("test_keyboard_binding_labels: %d checks passed\n", checks);
   return 0;
 }

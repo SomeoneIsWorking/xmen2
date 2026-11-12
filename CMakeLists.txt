@@ -681,11 +681,6 @@ target_compile_definitions(test_settings PRIVATE
     X2_TEST_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-x2native.conf")
 add_test(NAME settings COMMAND test_settings)
 
-add_executable(test_settings_overlay tests/test_settings_overlay.cpp
-                src/ui/settings_overlay_state.cpp)
-target_include_directories(test_settings_overlay PRIVATE src/ui)
-target_link_libraries(test_settings_overlay PRIVATE ${X2_SDL})
-add_test(NAME settings_overlay COMMAND test_settings_overlay)
 
 add_executable(test_display_mode_seed tests/test_display_mode_seed.cpp
                 src/presentation/display_mode_seed.cpp
@@ -915,22 +910,21 @@ add_test(NAME transient_controller_assignment
 
 add_executable(test_controller_assignment_rows
                tests/test_controller_assignment_rows.cpp
-               src/ui/controller_assignment_rows.cpp)
+               src/input/controller_assignment_rows.cpp
+               src/config/input_assignments.cpp)
 target_include_directories(test_controller_assignment_rows PRIVATE
-                           src/ui src/input src/native src/config)
+                           src/input src/native src/config)
 add_test(NAME controller_assignment_rows COMMAND test_controller_assignment_rows)
 
-add_executable(test_keyboard_bindings_document
-               tests/test_keyboard_bindings_document.cpp
-               src/ui/keyboard_bindings_document.cpp src/ui/rml_text.cpp
+add_executable(test_keyboard_binding_labels
+               tests/test_keyboard_binding_labels.cpp
+               src/input/keyboard_binding_labels.cpp
                src/input/binding_rows.cpp src/config/settings.cpp
                src/config/hud_settings.cpp src/config/input_assignments.cpp
                src/config/boot_mode.cpp)
-target_include_directories(test_keyboard_bindings_document PRIVATE
-                           src/ui src/input src/native src/config)
-target_link_libraries(test_keyboard_bindings_document PRIVATE rmlui_core)
-add_test(NAME keyboard_bindings_document
-         COMMAND test_keyboard_bindings_document)
+target_include_directories(test_keyboard_binding_labels PRIVATE
+                           src/input src/native src/config)
+add_test(NAME keyboard_binding_labels COMMAND test_keyboard_binding_labels)
 
 add_executable(test_input_record tests/test_input_record.cpp
                src/input/input_record.cpp src/native/json_string.cpp
@@ -1468,9 +1462,8 @@ add_test(NAME x2native_options COMMAND test_x2native_options)
 add_executable(test_options_menu
     tests/test_options_menu.cpp src/native/options_menu.cpp
     src/native/guest_heap.cpp src/native/guest_memory.cpp src/native/guest_memory_arena.cpp
-    src/ui/settings_overlay_state.cpp
     tests/options_menu_stubs.cpp)
-target_include_directories(test_options_menu PRIVATE src/runtime/x86_abi src/native src/ui)
+target_include_directories(test_options_menu PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_options_menu PRIVATE X86_NATIVE)
 target_link_libraries(test_options_menu PRIVATE pthread)
 add_test(NAME options_menu COMMAND test_options_menu)
@@ -1591,10 +1584,6 @@ add_test(NAME prompt_glyph_atlas
 set_tests_properties(prompt_glyph_atlas PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-add_test(NAME prepare_native_assets
-         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
-
 add_test(NAME appimage_packaging
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/package_appimage.py --selftest)
@@ -1622,10 +1611,6 @@ add_test(NAME android_qualify
                  ${CMAKE_SOURCE_DIR}/tests/test_android_qualify.py)
 set_tests_properties(android_qualify PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_test(NAME port_pause_menu
-         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/make_port_pause_menu.py --selftest)
 
 add_test(NAME launcher
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_launcher.py)
@@ -1863,37 +1848,27 @@ configure_file(
 configure_file(
     "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf"
     "${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf" COPYONLY)
-configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
-               "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
 # The touch buttons' own art, authored as SVG and rasterized by SDL_image at
 # load time. tools/ui_resource_files.py lists the same files for packaging.
-foreach(x2_touch_icon punch smash use jump menu)
+foreach(x2_touch_icon punch smash use jump)
     configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_${x2_touch_icon}.svg"
                    "${CMAKE_BINARY_DIR}/ui/touch_${x2_touch_icon}.svg" COPYONLY)
-endforeach()
-foreach(x2_assign_mark on off)
-    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/assign_${x2_assign_mark}.svg"
-                   "${CMAKE_BINARY_DIR}/ui/assign_${x2_assign_mark}.svg" COPYONLY)
 endforeach()
 # The application icon, for the windows the port opens.
 configure_file("${CMAKE_SOURCE_DIR}/packaging/xmen2-port.svg"
                "${CMAKE_BINARY_DIR}/ui/app_icon.svg" COPYONLY)
 add_library(x2_rmlui_ui STATIC
-    src/ui/controller_assignment_rows.cpp
     src/ui/rmlui_ui.cpp
     src/ui/ui_resources.cpp
-    src/ui/settings_document.cpp
-    src/ui/keyboard_bindings_document.cpp
     src/ui/rml_text.cpp
     src/ui/touch_document.cpp
     src/ui/skip_document.cpp
     src/ui/extraction_revive_document.cpp
     src/ui/autosave_notice_document.cpp
     src/ui/window_icon.cpp
-    src/ui/igb_textures.cpp
-    src/ui/settings_overlay_state.cpp)
+    src/ui/igb_textures.cpp)
 target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
                                                src/presentation src/input
                                                src/gpu src/save)
@@ -2031,11 +2006,14 @@ set(X2_NATIVE_SOURCES
     src/native/outline_kerning.cpp
     src/native/prompt_tokens.cpp
     src/native/ui_transform.cpp
+    src/input/binding_capture.cpp
     src/input/binding_rows.cpp
+    src/input/controller_assignment_rows.cpp
     src/input/controller_hotplug.cpp
     src/input/controller_instance.cpp
     src/input/input_probe_lifecycle.cpp
     src/input/joystick_neutral.cpp
+    src/input/keyboard_binding_labels.cpp
     src/input/player_input.cpp
     src/input/player_participation_policy.cpp
     src/input/transient_controller_assignment.cpp

@@ -52,8 +52,8 @@ void gpu_device_presentation_size(uint32_t *width, uint32_t *height);
 /* The D3D device's logical backbuffer size. Colour and automatic depth are
    replaced as one transaction; failure preserves the active pair. The
    window/swapchain is an independent presentation target and may have any
-   dimensions. Headless output is a harness-owned target, not a Port Settings
-   path, and keeps its explicit diagnostic dimensions. */
+   dimensions. Headless output is a harness-owned target, not a resolution
+   setting, and keeps its explicit diagnostic dimensions. */
 int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height);
 
 /*

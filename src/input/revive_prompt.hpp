@@ -69,7 +69,7 @@ private:
 /* The process's one prompt. */
 RevivePrompt &revive_prompt();
 
-/* The host pump's entry, after the settings overlay and before touch. */
+/* The host pump's entry, after a binding capture and before touch. */
 bool revive_prompt_event(const SDL_Event &event);
 
 } // namespace x2::input
