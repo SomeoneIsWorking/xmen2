@@ -2146,8 +2146,10 @@ and 170 ms through the public roots; A showed each position a median 3 ms
 roots. From B's tap on `Join fedora` to its seat in A's room took 12 s on
 the lab, 16 to 17 s through the public roots.
 
-- no: a session that survives a map load longer than about 4 s
-  ([#209](issues/0209-a-long-map-load-drops-the-network-session.md)).
+Two players keep the session through the tutorial's opening cutscene: while a
+session lists more than one player the cutscene skip is not offered, since a
+skip taken on one machine alone desyncs the game's checksum
+([#209](issues/0209-a-skipped-opening-cutscene-drops-the-network-session.md)).
 
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
 is the retail "dropped" path); and no run has crossed two physical machines or

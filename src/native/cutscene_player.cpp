@@ -25,6 +25,7 @@
 #include "guest_body.h"
 #include "guest_modules.h"
 #include "hud_cinematic_skip.h"
+#include "retail_net_session.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <stdint.h>
@@ -413,9 +414,12 @@ void x2_override_004a00d0(CPU *cpu) {
      the RELEASE is published as reliably as the acquisition. The same fact
      is the skip offer a touch button reads (cutscene_skip.h). */
   x2_gameplay_control_set_cutscene_locked(locked);
+  /* Another machine runs this world in lockstep: a skip completed here alone
+     desyncs the session's checksum (FUN_00614c80), and retail has none. */
+  const bool shared = x2::retail::NetSession(*cpu).player_count() > 1u;
   /* A briefing's cancel script is CHud's own action-20 skip. */
   briefing = x2::native::hud_cinematic_skippable();
-  x2_cutscene_skip_offer(locked || briefing);
+  x2_cutscene_skip_offer((locked && !shared) || briefing);
   g_player.input_polls++;
   if (call_action_mask(cpu, &mask))
     down = !!(mask & (1u << CINEMATIC_SKIP_ACTION));
@@ -423,7 +427,7 @@ void x2_override_004a00d0(CPU *cpu) {
   requested = x2_cutscene_skip_take_request();
   if (requested && briefing)
     x2::native::hud_cinematic_skip_press();
-  if ((down && !g_player.skip_down) || requested) {
+  if (!shared && ((down && !g_player.skip_down) || requested)) {
     g_player.input_edges++;
     (void)finish(cpu);
   }

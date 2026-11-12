@@ -455,7 +455,9 @@ closes it ([menus](RE/menus.md#options-port-rows-plan-203)). Prove it with
 corner, the phone's Escape. The cutscene player offers the skip on every input
 poll while an authored sequence holds the player's controls, and it takes a
 touch request on the same poll as the Escape edge, running the same owned
-completion (`src/input/cutscene_skip.h`). A mission briefing
+completion (`src/input/cutscene_skip.h`). In a network game with another
+player it offers none, since the peer plays the sequence through
+(docs/RE/cutscene_player.md). A mission briefing
 (`cinematicStart`) does not hold the controls (`lockControls(0)`); CHud's
 update cancels it itself when action 20 is down. The cutscene player offers
 the skip while that cinematic is shown with a cancel script as well, and

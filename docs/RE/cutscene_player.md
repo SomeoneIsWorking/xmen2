@@ -188,6 +188,25 @@ a Skip request taken by the cutscene player while the bit is set and a cancel
 script is named makes the action mask report action 20 down inside the next
 CHud update only, so the retail branch above performs the skip.
 
+## Network sessions
+
+A network game runs every player's world in lockstep. Each machine's timer
+runs in fixed 1/30 s steps (`0x007ac248` `+0x30`), the shared random generator is
+seeded with 8675309 at the start (`00560150`), and every 30 ticks each machine
+sends a checksum (`00614a40`). The checksum sums the heroes' fields ×10000,
+the camera singleton's two vectors (`004457e0`, `+0xec` and `+0x104`) and the
+generator's draw count (`007ad8b4`). `00614c80` compares the checksums; on a
+mismatch `00614810` drops the minority peer with string 4300 on one side and
+4301 on the other.
+
+Retail has no skip for a `lockControls` sequence, so both machines play it
+through on the same ticks. A synchronous completion runs only on the machine
+that pressed, at its own tick: its camera and AI thinks (`0051dfe0`, which draw
+from the shared generator) then differ from the peer's. While
+`x2::retail::NetSession::player_count()` lists more than one player, the
+player neither offers its skip nor completes one. A briefing's skip is
+retail's own CHud action 20 and stays.
+
 ## Verification contract
 
 `tools/live_case.py cutscene-skip --pacing fast` presses Escape on the first
