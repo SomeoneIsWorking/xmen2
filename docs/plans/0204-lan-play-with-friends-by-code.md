@@ -57,8 +57,8 @@ Winsock and the presence socket reach the friends through
    `lan.zerotier_roots` names a signed root-set file for a lab; empty uses
    ZeroTier's public roots. libzt comes from `tools/libzt_deps.py` for every
    platform (S023 has the relayed two-player run).
-4. Measurements over a relayed ZeroTier path (rootless namespaces, a lab
-   root, direct UDP between the two players dropped), recorded in S023.
+4. Done: input lag, correction and drop-in time over the lab relay, the
+   public roots and the direct path, recorded in S023.
 
 ## Known gaps
 

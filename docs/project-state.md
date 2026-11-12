@@ -2136,9 +2136,21 @@ links the same node.
   cross-builds with libzt).
 - no: an Android APK with libzt installed and run (`libmain.so` builds).
 
+Input lag and correction (2026-11-12, `scratch/lan-pub/measure.py`): after
+the tutorial map loaded, B pushed its touch stick at a wall time both players
+share and each sampled `/party` every 3 to 25 ms. Cyclops took the same path on
+both screens, and no sample on either stepped back along the run, so a remote
+hero is not corrected. B's hero moved 72 ms after the push over the lab relay
+and 170 ms through the public roots; A showed each position a median 3 ms
+(max 15) later over the lab relay and 57 ms (p90 62, max 79) through the public
+roots. From B's tap on `Join fedora` to its seat in A's room took 12 s on
+the lab, 16 to 17 s through the public roots.
+
+- no: a session that survives a map load longer than about 4 s
+  ([#209](issues/0209-a-long-map-load-drops-the-network-session.md)).
+
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
-is the retail "dropped" path); the relayed path's input lag and correction are
-unmeasured (plan 204 stage 4); and no run has crossed two physical machines or
+is the retail "dropped" path); and no run has crossed two physical machines or
 real LAN hardware. Issue [#188](issues/0188-lan-multiplayer-has-no-route-without-gamespy.md)
 holds the recovered flow.
 
