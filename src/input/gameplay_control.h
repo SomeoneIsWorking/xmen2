@@ -50,6 +50,10 @@ void x2_gameplay_control_set_cutscene_locked(int locked);
 X2GameplayControl x2_gameplay_control_state(unsigned long frame);
 int x2_gameplay_control_active(unsigned long frame);
 
+/* The HUD is on screen in `frame`: it drew during that frame and no cinematic
+   holds control. The overlay is drawn over a frame only when this holds. */
+int x2_gameplay_control_on_screen(unsigned long frame);
+
 /* Testing and the shutdown report: how many times each answer was given. */
 void x2_gameplay_control_reset(void);
 unsigned long x2_gameplay_control_answers(int state);

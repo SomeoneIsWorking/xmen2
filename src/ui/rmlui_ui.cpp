@@ -256,7 +256,7 @@ void ui_render(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command_buffer,
   }
   const bool settings_visible = x2::ui::settings_overlay_visible();
   const bool touch_visible =
-      x2::input::touch_runtime_overlay_visible() && !settings_visible;
+      x2::input::touch_runtime_overlay_on_screen() && !settings_visible;
   /* Its own gate: a cinematic hides the gameplay overlay. */
   const bool skip_visible = x2::ui::SkipDocument::wanted() && !settings_visible;
   /* The paid revive offer: gameplay only, under the modal port settings. */

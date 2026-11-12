@@ -101,6 +101,7 @@ public:
   // can look at until it is on a phone is a layout that ships wrong.
   static bool active();
   bool overlay_visible() const;
+  bool overlay_on_screen() const;
   // While touch play is the input, the virtual pad attached and player one's.
   void ready_pad();
 
@@ -155,6 +156,11 @@ bool TouchRuntime::active() {
 bool TouchRuntime::overlay_visible() const {
   return window_ != nullptr && active() &&
          x2_gameplay_control_active(gpu_frames_presented());
+}
+
+bool TouchRuntime::overlay_on_screen() const {
+  return window_ != nullptr && active() &&
+         x2_gameplay_control_on_screen(gpu_frames_presented());
 }
 
 void TouchRuntime::ready_pad() {
@@ -612,6 +618,10 @@ int touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }
 
 int touch_runtime_overlay_visible(void) {
   return runtime.overlay_visible() ? 1 : 0;
+}
+
+int touch_runtime_overlay_on_screen(void) {
+  return runtime.overlay_on_screen() ? 1 : 0;
 }
 
 void touch_runtime_ready_pad(void) { runtime.ready_pad(); }

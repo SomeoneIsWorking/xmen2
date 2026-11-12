@@ -755,7 +755,10 @@ it routed then, so it always matches the screen. The gameplay gate
 (`src/input/gameplay_control.cpp`) says yes while the retail HUD drew on the
 frame in progress or the last presented one, and no once a whole frame is
 presented without it; a late frame, from a busy host or a network game
-waiting on its peer, keeps a held stick held (issue 0210). Every drawn control is listed; HUD taps
+waiting on its peer, keeps a held stick held (issue 0210). The overlay is
+drawn over a frame only when the HUD drew in that same frame
+(`x2_gameplay_control_on_screen`), so it never outlives the retail HUD, for
+example when the other player leaves (issue 0211). Every drawn control is listed; HUD taps
 (portraits, potions, menu icons) are not cut off by the layout's slot count.
 
 A phone's screen keyboard sends text as SDL text events, so `/ui/text?text=`

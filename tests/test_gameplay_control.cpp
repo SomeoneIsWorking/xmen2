@@ -48,6 +48,10 @@ int main(void) {
   expect(10ul, kX2ControlActive, "the frame that drew it");
   expect(11ul, kX2ControlActive, "the next frame, before its HUD draw");
 
+  check(x2_gameplay_control_on_screen(10ul), "on screen in the frame it drew");
+  check(!x2_gameplay_control_on_screen(11ul),
+        "not on screen in a frame it has not drawn (issue 0211)");
+
   /* Frame 11 was presented without the HUD: a menu. */
   expect(12ul, kX2ControlHudStale, "a whole frame without the HUD");
   expect(5000ul, kX2ControlHudStale, "long past, still stale");
@@ -59,6 +63,7 @@ int main(void) {
 
   x2_gameplay_control_set_cutscene_locked(1);
   expect(5001ul, kX2ControlCutsceneLocked, "HUD up, cinematic holds input");
+  check(!x2_gameplay_control_on_screen(5000ul), "a cinematic hides it");
   check(!x2_gameplay_control_active(5001ul), "cutscene-locked is not active");
   expect(5002ul, kX2ControlHudStale, "stale outranks the lock");
 

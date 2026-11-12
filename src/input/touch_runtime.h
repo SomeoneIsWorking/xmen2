@@ -162,6 +162,8 @@ void touch_runtime_report(const char *tag);
  * puts the on-screen pad away. */
 void touch_runtime_note_source(const union SDL_Event *event);
 int touch_runtime_overlay_visible(void);
+/* The overlay belongs over the frame being presented: the HUD drew in it. */
+int touch_runtime_overlay_on_screen(void);
 
 /* While touch play is the input, attaches the virtual pad and gives it
    player one, so the first tap on a control is read. Polled by the event

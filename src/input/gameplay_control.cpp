@@ -47,6 +47,10 @@ int x2_gameplay_control_active(unsigned long frame) {
   return x2_gameplay_control_state(frame) == kX2ControlActive;
 }
 
+int x2_gameplay_control_on_screen(unsigned long frame) {
+  return g_gate.seen && g_gate.last_hud == frame && !g_gate.cutscene_locked;
+}
+
 void x2_gameplay_control_reset(void) {
   size_t i;
   g_gate.last_hud = 0ul;
