@@ -751,9 +751,11 @@ the viewport those rectangles are in, so a run driving itself taps what the
 game is drawing rather than a coordinate chosen before the run started. The UI
 renderer records that list once per frame (`touch_runtime_note_drawn`, from
 `ui_render`; empty on a frame that drew no overlay), with the use prompt as
-it routed then. The gameplay gate is a 0.25 s HUD heartbeat, so a request
-evaluated against it in the middle of a long frame would list nothing while
-the screen shows every control. Every drawn control is listed; HUD taps
+it routed then, so it always matches the screen. The gameplay gate
+(`src/input/gameplay_control.cpp`) says yes while the retail HUD drew on the
+frame in progress or the last presented one, and no once a whole frame is
+presented without it; a late frame, from a busy host or a network game
+waiting on its peer, keeps a held stick held (issue 0210). Every drawn control is listed; HUD taps
 (portraits, potions, menu icons) are not cut off by the layout's slot count.
 
 A phone's screen keyboard sends text as SDL text events, so `/ui/text?text=`

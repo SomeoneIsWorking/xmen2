@@ -1,7 +1,7 @@
 /* CHud's party draw is reached only when its visibility owner permits it. */
 #include "touch_hud_runtime.h"
 #include "../input/gameplay_control.h"
-#include "guest_clock.h"
+#include "gpu_device.h"
 #include "hud_draw_runtime.h"
 #include "x86rt_native.h"
 #include <lucent/log_c.h>
@@ -10,7 +10,7 @@ static unsigned long g_root_calls;
 
 static void hud_draw(CPU *cpu) {
   ++g_root_calls;
-  x2_gameplay_control_hud_drawn(guest_clock_now_s());
+  x2_gameplay_control_hud_drawn(gpu_frames_presented());
   x2::native::hud_party_draw(cpu);
   if (g_root_calls % 300 == 0)
     x2::native::hud_draw_report();
@@ -22,7 +22,7 @@ void touch_hud_report(void) {
   lucent_log_info("hud", "%lu visible party draws; control gate %s",
                   g_root_calls,
                   x2_gameplay_control_name(
-                      (int)x2_gameplay_control_state(guest_clock_now_s())));
+                      (int)x2_gameplay_control_state(gpu_frames_presented())));
   hud_draw_report();
 }
 

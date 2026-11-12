@@ -78,6 +78,7 @@ from live_cases_pad import (
     case_pad_after_load,
     case_pad_late,
     case_pad_persisted,
+    case_stick_hitch,
     case_stick_travel,
     case_touch_pad,
 )
@@ -174,6 +175,7 @@ CASES = {
     "touch-team-assign": case_touch_team_assign,
     "touch-team-skill-details": case_touch_team_skill_details,
     "extract-keyboard-back": case_extract_keyboard_back,
+    "stick-hitch": case_stick_hitch,
     "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,

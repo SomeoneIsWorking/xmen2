@@ -4,9 +4,9 @@
 #include "../input/revive_prompt.hpp"
 #include "autosave_runtime.h"
 #include "extraction_revive_policy.hpp"
+#include "gpu_device.h"
 #include "guest_body.h"
 #include "guest_call.hpp"
-#include "guest_clock.h"
 #include "guest_image_reader.hpp"
 #include "guest_memory.h"
 #include "guest_memory_view.hpp"
@@ -275,8 +275,8 @@ void ExtractionRevive::poll(CPU *cpu, double now) {
   input::RevivePrompt &prompt = input::revive_prompt();
   const x2::config::ExtractionRevive mode =
       x2::config::settings_store()->extraction_revive;
-  const bool active =
-      cpu && x2_gameplay_control_state(guest_clock_now_s()) == kX2ControlActive;
+  const bool active = cpu && x2_gameplay_control_state(
+                                 gpu_frames_presented()) == kX2ControlActive;
   if (mode != x2::config::ExtractionRevive::Paid || !active) {
     prompt.withdraw();
   }

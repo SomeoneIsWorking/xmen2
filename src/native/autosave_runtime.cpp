@@ -6,6 +6,7 @@
 #include "autosave_policy.h"
 #include "autosave_storage.h"
 #include "campaign_snapshot.h"
+#include "gpu_device.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -137,7 +138,7 @@ void autosave_runtime_poll(CPU *cpu) {
   if (!cpu || !g_exe)
     return;
   g_last_manager_mode = RD32(g_exe + MANAGER_RVA + MANAGER_MODE);
-  g_last_control = x2_gameplay_control_state(guest_clock_now_s());
+  g_last_control = x2_gameplay_control_state(gpu_frames_presented());
   result = x2::save::autosave_policy_poll(&g_policy, g_last_manager_mode,
                                           g_last_control == kX2ControlActive,
                                           &checkpoint);

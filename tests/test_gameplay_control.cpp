@@ -16,8 +16,9 @@ static void check(int ok, const char *what) {
   }
 }
 
-static void expect(double now, X2GameplayControl want, const char *what) {
-  const X2GameplayControl got = x2_gameplay_control_state(now);
+static void expect(unsigned long frame, X2GameplayControl want,
+                   const char *what) {
+  const X2GameplayControl got = x2_gameplay_control_state(frame);
   checks++;
   if (got != want) {
     failures++;
@@ -29,7 +30,6 @@ static void expect(double now, X2GameplayControl want, const char *what) {
 int main(void) {
   int i;
 
-  /* Every state is named, and out-of-range is refused rather than indexed. */
   for (i = 0; i < kX2ControlCount; i++)
     check(strcmp(x2_gameplay_control_name(i), "invalid") != 0,
           "each state has a name");
@@ -37,45 +37,37 @@ int main(void) {
   check(strcmp(x2_gameplay_control_name(kX2ControlCount), "invalid") == 0,
         "above range");
 
-  /* Before any frame: not active, and it says WHY. */
   x2_gameplay_control_reset();
-  expect(0.0, kX2ControlNeverSeen, "no frame yet");
-  expect(100.0, kX2ControlNeverSeen, "still no frame, much later");
-  check(!x2_gameplay_control_active(100.0), "never-seen is not active");
+  expect(0ul, kX2ControlNeverSeen, "no frame yet");
+  expect(100ul, kX2ControlNeverSeen, "still no frame, much later");
+  check(!x2_gameplay_control_active(100ul), "never-seen is not active");
 
-  /* A HUD heartbeat means gameplay. */
+  /* Drawn during frame 10: active through frame 11, which has not drawn yet. */
   x2_gameplay_control_reset();
-  x2_gameplay_control_hud_drawn(10.0);
-  expect(10.0, kX2ControlActive, "same instant");
-  expect(10.0 + X2_GAMEPLAY_HUD_GRACE_SECONDS, kX2ControlActive,
-         "at the grace boundary, still active");
+  x2_gameplay_control_hud_drawn(10ul);
+  expect(10ul, kX2ControlActive, "the frame that drew it");
+  expect(11ul, kX2ControlActive, "the next frame, before its HUD draw");
 
-  /* The heartbeat EXPIRES -- this is the menu case, and nothing reports it. */
-  expect(10.0 + X2_GAMEPLAY_HUD_GRACE_SECONDS + 0.001, kX2ControlHudStale,
-         "just past the grace, stale");
-  expect(60.0, kX2ControlHudStale, "long past, still stale");
-  check(!x2_gameplay_control_active(60.0), "stale is not active");
+  /* Frame 11 was presented without the HUD: a menu. */
+  expect(12ul, kX2ControlHudStale, "a whole frame without the HUD");
+  expect(5000ul, kX2ControlHudStale, "long past, still stale");
+  check(!x2_gameplay_control_active(5000ul), "stale is not active");
 
-  /* And it recovers when the HUD comes back. */
-  x2_gameplay_control_hud_drawn(60.0);
-  expect(60.0, kX2ControlActive, "recovered after the menu closed");
+  /* However long frame 11 took, it is still the next frame (issue 0210). */
+  x2_gameplay_control_hud_drawn(5000ul);
+  expect(5001ul, kX2ControlActive, "a slow frame is not a menu");
 
-  /* A cinematic holds control while the HUD is still up. */
   x2_gameplay_control_set_cutscene_locked(1);
-  expect(60.0, kX2ControlCutsceneLocked, "HUD up, cinematic holds input");
-  check(!x2_gameplay_control_active(60.0), "cutscene-locked is not active");
-
-  /* The lock takes priority over nothing: once stale, stale wins, because
-     a menu over a cutscene is still not gameplay either way. */
-  expect(61.0, kX2ControlHudStale, "stale outranks the stale lock");
+  expect(5001ul, kX2ControlCutsceneLocked, "HUD up, cinematic holds input");
+  check(!x2_gameplay_control_active(5001ul), "cutscene-locked is not active");
+  expect(5002ul, kX2ControlHudStale, "stale outranks the lock");
 
   x2_gameplay_control_set_cutscene_locked(0);
-  x2_gameplay_control_hud_drawn(61.0);
-  expect(61.0, kX2ControlActive, "released");
+  x2_gameplay_control_hud_drawn(5002ul);
+  expect(5002ul, kX2ControlActive, "released");
 
-  /* Every state was actually reached: the denominator of this test. */
   x2_gameplay_control_reset();
-  x2_gameplay_control_state(0.0);
+  x2_gameplay_control_state(0ul);
   check(x2_gameplay_control_answers(kX2ControlNeverSeen) == 1ul,
         "answers are counted");
   check(x2_gameplay_control_answers(-1) == 0ul, "counter refuses bad index");

@@ -1,10 +1,10 @@
 #include "touch_runtime.h"
 
-#include "../native/guest_clock.h"
 #include "gameplay_control.h"
 
 #include "../config/settings.h"
 #include "../config/settings_store.h"
+#include "../gpu/gpu_device.h"
 #include "touch_census.h"
 #include "touch_controls.h"
 #include "touch_pad.h"
@@ -154,7 +154,7 @@ bool TouchRuntime::active() {
 
 bool TouchRuntime::overlay_visible() const {
   return window_ != nullptr && active() &&
-         x2_gameplay_control_active(guest_clock_now_s());
+         x2_gameplay_control_active(gpu_frames_presented());
 }
 
 void TouchRuntime::ready_pad() {

@@ -18,25 +18,19 @@
  *   - THE CUTSCENE CONTROL LOCK, from cutscene_player. A cinematic can hold
  *     input while the HUD stays up, so the HUD signal alone is not sufficient.
  *
- * The HUD signal is a heartbeat, not a level: it arrives once per drawn frame
- * and says nothing on the frames between. So it expires. A stale heartbeat
- * means the HUD stopped drawing -- a menu opened, or the game stopped
- * presenting -- and the answer becomes "no" without anyone reporting it.
+ * The HUD signal is a heartbeat, not a level: it arrives once per drawn frame.
+ * It expires when a whole frame is presented without it, so a menu turns the
+ * answer to "no" on its first frame and a late frame changes nothing.
  */
 #ifndef X2_GAMEPLAY_CONTROL_H
 #define X2_GAMEPLAY_CONTROL_H
-
-/* How long a HUD heartbeat stands for. Generous next to a frame at 30 Hz, so
-   an uneven frame is not read as a menu; short enough that opening one is
-   answered within a blink. */
-#define X2_GAMEPLAY_HUD_GRACE_SECONDS 0.25
 
 /* Why the answer is what it is. Reported, not inferred by the caller: "no
    overlay" and "no overlay because we have never seen a frame" are different
    facts about a run. */
 typedef enum X2GameplayControl {
   kX2ControlNeverSeen = 0,  /* No HUD heartbeat has EVER arrived. */
-  kX2ControlHudStale,       /* One did, but not recently: menu, or no frames. */
+  kX2ControlHudStale,       /* A frame was presented without it: a menu. */
   kX2ControlCutsceneLocked, /* HUD is up; a cinematic holds input. */
   kX2ControlActive,         /* The player drives a character. */
   kX2ControlCount
@@ -44,17 +38,17 @@ typedef enum X2GameplayControl {
 
 const char *x2_gameplay_control_name(int state);
 
-/* The retail HUD drew at `now` (monotonic seconds). Called from the CHud::draw
-   override, on the frames the game itself decided to draw it. */
-void x2_gameplay_control_hud_drawn(double now);
+/* The retail HUD drew during `frame`, the frame in progress counted in
+   presents (gpu_frames_presented). Called from the CHud::draw override. */
+void x2_gameplay_control_hud_drawn(unsigned long frame);
 
 /* The cutscene player's verdict this frame. Non-zero means a cinematic holds
    control. Sticky until the next call, like the lock it mirrors. */
 void x2_gameplay_control_set_cutscene_locked(int locked);
 
-/* The answer. Never cached by callers -- it expires with time. */
-X2GameplayControl x2_gameplay_control_state(double now);
-int x2_gameplay_control_active(double now);
+/* The answer while `frame` is in progress. Never cached by callers. */
+X2GameplayControl x2_gameplay_control_state(unsigned long frame);
+int x2_gameplay_control_active(unsigned long frame);
 
 /* Testing and the shutdown report: how many times each answer was given. */
 void x2_gameplay_control_reset(void);

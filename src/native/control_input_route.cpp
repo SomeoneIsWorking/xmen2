@@ -23,7 +23,6 @@
 #include "dinput_pad.h"
 #include "dinput_system.h"
 #include "gpu_device.h"
-#include "guest_clock.h"
 #include "hud_draw_runtime.h"
 #include "hud_minimap.hpp"
 
@@ -289,7 +288,7 @@ void control_route_controls(x2::native::Socket fd) {
                        x2::input::touch_runtime_active() ? "ACTIVE"
                                                          : "NOT active",
                        x2_gameplay_control_name(
-                           x2_gameplay_control_state(guest_clock_now_s())),
+                           x2_gameplay_control_state(gpu_frames_presented())),
                        x2::input::touch_runtime_overlay_visible()
                            ? "visible, but it published no zone"
                            : "NOT visible");

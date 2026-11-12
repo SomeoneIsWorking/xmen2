@@ -6,7 +6,7 @@
 #include "../config/settings.h"
 #include "../config/settings_store.h"
 
-#include "../native/guest_clock.h"
+#include "../gpu/gpu_device.h"
 
 #include <lucent/log_c.h>
 
@@ -56,7 +56,7 @@ void touch_census_report(const char *tag, int has_window, int touch_devices,
         prefix, mode_name,
         x2::input::touch_source_is_touch() ? "touch" : "not touch",
         x2_gameplay_control_name(
-            (int)x2_gameplay_control_state(guest_clock_now_s())),
+            (int)x2_gameplay_control_state(gpu_frames_presented())),
         has_window ? "a window was present" : "there was NO window",
         touch_devices, touch_capable ? "CAN" : "cannot");
     return;
@@ -79,7 +79,7 @@ void touch_census_report(const char *tag, int has_window, int touch_devices,
                         : "there was no window to route them into"),
       mode_name, x2::input::touch_source_is_touch() ? "touch" : "not touch",
       x2_gameplay_control_name(
-          (int)x2_gameplay_control_state(guest_clock_now_s())));
+          (int)x2_gameplay_control_state(gpu_frames_presented())));
   /*
    * The two destinations, side by side. A contact reaches exactly one of
    * them, so a run whose zone actions and pointer events are both zero has
@@ -92,7 +92,7 @@ void touch_census_report(const char *tag, int has_window, int touch_devices,
       "drawn (gate %s); %lu refused, held by another finger",
       prefix, g_census.pointer_events,
       x2_gameplay_control_name(
-          (int)x2_gameplay_control_state(guest_clock_now_s())),
+          (int)x2_gameplay_control_state(gpu_frames_presented())),
       g_census.pointer_refused);
   lucent_log_info(
       "touch",

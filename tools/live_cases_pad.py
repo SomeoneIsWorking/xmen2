@@ -503,3 +503,68 @@ def case_stick_travel(case: Case) -> None:
 
     case.check("and the game is still running",
                case.alive() and case.http("/status")[0] == 200)
+
+
+def case_stick_hitch(case: Case) -> None:
+    """A held stick survives a frame that takes longer than usual.
+
+    A busy phone, or a network game waiting on its peer, presents a frame late
+    while the thumb is still down. The HUD was drawn on the frame before and
+    is drawn on the one after; nothing opened, so the stick stays held and the
+    hero keeps walking (issue 0210)."""
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_BOOT_MAP": TUTORIAL_MAP})
+    case.wait_control(60)
+    reached = reach_authored_conversation(case, 240)
+    case.check("gameplay reached", reached)
+    if not reached:
+        return
+    case.http("/key?name=Escape&hold=0.4")
+    case.check("controls unlocked after the skip",
+               wait_controls_unlocked(case, 180))
+    deadline = time.monotonic() + 120
+    found = live_stick(case)
+    while not found and time.monotonic() < deadline and case.alive():
+        time.sleep(2.0)
+        found = live_stick(case)
+    case.check("the overlay draws its movement ring", found is not None)
+    if not found:
+        return
+    (left, top, width, height), _ = found
+    viewport = live_viewport(case, "/controls")
+    if not viewport:
+        case.check("the overlay reports its surface", False)
+        return
+
+    def contact(px: float, py: float, phase: str) -> None:
+        case.http("/touch?x=%g&y=%g&phase=%s"
+                  % (px / viewport[0], py / viewport[1], phase))
+
+    def hero() -> tuple[float, float]:
+        first = json.loads(case.get_text("/party"))["heroes"][0]
+        return first["x"], first["y"]
+
+    radius = min(width, height) * 0.5
+    cx, cy = left + width * 0.5, top + height * 0.5
+    contact(cx, cy, "down")
+    contact(cx, cy + radius, "motion")
+    time.sleep(0.5)
+    held = live_stick(case)
+    case.check("the stick is deflected before the hitch",
+               held is not None and held[1][1] > 0.95)
+    start = hero()
+    for _ in range(3):
+        case.signal(signal.SIGSTOP)
+        time.sleep(0.4)
+        case.signal(signal.SIGCONT)
+        time.sleep(0.3)
+    after = live_stick(case)
+    end = hero()
+    walked = abs(end[0] - start[0]) + abs(end[1] - start[1])
+    print("  deflection after the hitches: %s; hero walked %.1f"
+          % (after[1] if after else None, walked))
+    case.check("the stick is still held after three 0.4 s hitches",
+               after is not None and after[1][1] > 0.95)
+    case.check("and the hero still walks", walked > 20.0)
+    case.shot("after-hitch")
+    contact(cx, cy + radius, "up")
