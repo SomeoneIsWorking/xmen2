@@ -439,7 +439,9 @@ Game, the game options' Post Game, the host room's Leave Room) and
 `touch-lobby-join` (Join Game, Search, the games list's Back, then the
 players list and the join room by the console; with no session the join
 room closes with its "no longer available" popup, so its rows are judged
-under it), each also `-4x3`, `-tablet` and `-20x9`.
+under it), each also `-4x3`, `-tablet` and `-20x9`. The join room's Ready and
+Leave Room need a host; tapped in a two-game session, Leave Room takes the
+joiner back to the join options and Ready shows READY in both rooms.
 
 **The port's settings are rows of Options** (plan #203), in a column of the
 option cards right of the retail panel, a finger tall on touch and as tall as

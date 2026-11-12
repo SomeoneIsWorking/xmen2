@@ -164,9 +164,11 @@ finger area at its raw box and the footers are finger buttons. Shown by
 `touch-lobby-host` (play online, Ready, Host Game, Post Game, Leave Room)
 and `touch-lobby-join` (Join Game, Search, the games list's Back, the
 players list, the join room under its popup), each also `-4x3`, `-tablet`
-and `-20x9`. The join room's own Ready and Leave Room are finger areas but
-were not tapped: with no session it closes with its "no longer available"
-popup, and a session needs a second running game. `players` is
+and `-20x9`. With no session the join room closes with its "no longer
+available" popup, so its own Ready and Leave Room were tapped in a two-game
+session (2026-11-12): Leave Room returned the joiner to the join options and
+the host's room to one player, and Ready marked the joiner READY on both
+screens and let the host's Start Game begin the game. `players` is
 `PLAYERS_MENU`, which the PC factory does not build: `openmenu players`
 gives a plain `CMenu` that draws nothing, and no PC string opens it.
 

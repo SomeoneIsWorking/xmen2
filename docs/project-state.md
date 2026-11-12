@@ -22,9 +22,9 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S025 — native touch menus.** The retail menus become the touch UI with nothing drawn
-over them ([#199](issues/0199-native-touch-menus.md)); `tools/scan.py` gives the work
-list per menu.
+**S008 — the port's settings in retail Options.** The remaining port settings move
+into the game's own Options menu and the RmlUi settings surface is deleted
+([plan 203](plans/0203-port-settings-in-retail-options.md)).
 
 ## Capability inventory
 
@@ -53,7 +53,7 @@ list per menu.
 | S023 | Seamless LAN multiplayer without GameSpy's servers | partial | S002 | G002 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 | S024 | Optional free or paid party revive at extraction points | partial | S002, S008, S016 | G004 |
-| S025 | Touch menus drawn in the game's own art and style | partial | S004, S008 | G008 |
+| S025 | Touch menus drawn in the game's own art and style | verified | S004, S008 | G008 |
 | S026 | Friends added by code from the game's own online menu | verified | S023 | G002 |
 
 ## State details and evidence
@@ -2256,11 +2256,15 @@ Gap: the energy refill from below maximum was not observed (health was); the sho
 compared with a guest call of `0x004b8830`; what the get-up timer's `0x005252e0` `+0x1c8` check
 asks (it decides whether a revive keeps its fraction) is not decoded.
 
-### S025 — touch menus in the game's own art: partial
+### S025 — touch menus in the game's own art: verified
 
 Touch menus drawn with the game's own panels, fonts, colours and focus art from the install,
 laid out for fingers (G008). The menus `tools/scan.py` opens are native on touch, the online
 lobby's included: the game draws them, nothing covers them, their rows
 and footers are finger targets and a tap is their own pointer (`touch-menu`, `touch-lobby-host`
 and the other `touch-*` cases). The RmlUi touch menu and the menu pad
-are deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` reports no gap. Gap: the join room's Ready and Leave Room were not tapped, a session needing a second game.
+are deleted ([#199](issues/0199-native-touch-menus.md)). `tools/scan.py` reports no gap. The join room, which closes without a session,
+was tapped in a two-game session on 2026-11-12 (two network namespaces joined
+by friend code): Leave Room returned the joiner to the join options and the
+host's room to one player; after rejoining, Ready turned the joiner's row
+READY in both rooms and the host's Start Game began the game.
