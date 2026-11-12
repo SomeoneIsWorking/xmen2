@@ -1,7 +1,7 @@
 ---
 id: 204
 title: LAN play with friends anywhere, by a pasted code over Lucent's transport
-status: in-progress
+status: done
 state_items: [S023]
 tags: lan,multiplayer,online,zerotier,netcode
 created: 2026-11-11

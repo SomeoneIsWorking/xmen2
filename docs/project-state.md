@@ -2150,6 +2150,12 @@ Two players keep the session through the tutorial's opening cutscene: while a
 session lists more than one player the cutscene skip is not offered, since a
 skip taken on one machine alone desyncs the game's checksum
 ([#209](issues/0209-a-skipped-opening-cutscene-drops-the-network-session.md)).
+After the opening, the client moves its own hero by touch and by pad, and both
+screens agree to within a frame. A late frame keeps a held stick held
+([#210](issues/0210-a-late-frame-lets-go-of-the-held-touch-stick.md)). When
+the other player leaves, the touch overlay goes with the retail HUD rather than
+leaving empty rings
+([#211](issues/0211-the-touch-rings-outlive-the-retail-hud-when-the-other-player-leaves.md)).
 
 Gaps: drop-out re-forms nobody (the others continue in the same session, which
 is the retail "dropped" path); and no run has crossed two physical machines or
