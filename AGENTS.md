@@ -94,6 +94,12 @@ injects a `patchelf` 0.19+ binary into the deployer's temporary AppImage
 payload, because older patchers corrupt `DT_INIT` in current Fedora ELFs, and
 refuses any staged ELF that needs a glibc, libstdc++ or C++ ABI version newer
 than Ubuntu 22.04's, which the AppImage catalog requires.
+
+`tools/desktop_shortcut.py local` writes this machine's menu and Desktop entry
+(the newest `build/native/x2native`, built only when absent);
+`tools/desktop_shortcut.py ally` installs that release AppImage and a copy of
+the configured PC install in `~/Games/xmen2/` on `ssh ally`, with the same entries.
+Re-run either when the launcher, name or icon changes, and `ally` after a new AppImage.
 `appimagetool` writes the result to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
