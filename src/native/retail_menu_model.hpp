@@ -14,7 +14,7 @@
  * The active retail CMenu read out of guest memory as plain data: its items,
  * their displayed text, flags and hit boxes, and the rows in the order the
  * game's own up/down navigation visits them. Every field and its evidence is
- * in docs/RE/menus.md. Checked reads only, no guest call, no lock, so it is
+ * in external/xmen2-decomp/docs/notes/menus.md. Checked reads only, no guest call, no lock, so it is
  * safe from any host thread.
  */
 namespace x2::menu {
@@ -169,7 +169,7 @@ struct PopupFooter {
   SceneRect rect;
 };
 
-/* The shown CPopupDialog page (docs/RE/menus.md, "The popup"). */
+/* The shown CPopupDialog page (external/xmen2-decomp/docs/notes/menus.md, "The popup"). */
 struct PopupSnapshot {
   /* The page's title; a message popup's whole message. */
   std::string title;

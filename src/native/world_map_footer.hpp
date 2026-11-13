@@ -8,7 +8,7 @@
 namespace x2::native {
 
 /* The world map's footer after its init (0x005e8c40) shows Back twice,
-   desctext1 and the XMLB's desctext2; docs/RE/menus.md, "The two Backs are the
+   desctext1 and the XMLB's desctext2; external/xmen2-decomp/docs/notes/menus.md, "The two Backs are the
    game's own". The address of the shown desctext2 when it is a Back prompt
    beside another one; nullopt otherwise. */
 std::optional<std::uint32_t>

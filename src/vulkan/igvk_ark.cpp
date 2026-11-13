@@ -1,5 +1,5 @@
 #include "../native/x2_log.h"
-/* See igvk_ark.h. The mechanism this speaks is docs/RE/ark.md (C008/C009). */
+/* See igvk_ark.h. The mechanism this speaks is external/xmen2-decomp/docs/notes/ark.md (C008/C009). */
 #include "igvk_ark.h"
 
 #include "../native/stdcall_import.h"

@@ -1,6 +1,6 @@
 /*
  * The retail menu model, read by the shipping reader from a fake guest image
- * laid out at the offsets docs/RE/menus.md records.
+ * laid out at the offsets external/xmen2-decomp/docs/notes/menus.md records.
  */
 #include "retail_menu_model.hpp"
 

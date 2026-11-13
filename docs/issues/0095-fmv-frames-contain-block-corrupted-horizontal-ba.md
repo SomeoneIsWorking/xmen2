@@ -35,7 +35,7 @@ Observed after the issue #79 queue-lifetime fix on a screenshot-confirmed story 
 
 The requested native replacement now owns only MPEG-PS/MPEG-1/ADX decode and
 streams its output through the retail `igCriMovieCodec` lifecycle documented in
-`docs/RE/fmv.md`. A real external `cine01.sfd` decoder test produced 177 changed
+`external/xmen2-decomp/docs/notes/fmv.md`. A real external `cine01.sfd` decoder test produced 177 changed
 frames, 119 distinct hashes, and 288,256 decoded audio frames. Its tight and
 padded BGRA copies matched on all 480 rows and preserved every row-padding
 sentinel; lower-half picture range was non-uniform. This proves the native

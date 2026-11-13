@@ -12,7 +12,7 @@ Alchemy's input interface is igController/igControllerManager and a port supplie
 
 ## Evidence
 
-tools/ark_classes.py over libIGDisplay.json + libIGDisplay.dll + its IAT: 19 classes recovered at 19 igArkRegister call sites across 549 functions, 0 sites whose arguments could not be fully recovered, 0 disagreements between the isAbstract argument and the independent retrieveVTablePointer==NULL reading. Four abstract->concrete bindings via _Meta+0x3c, all recovered: igController->igWin32Controller, igControllerManager->igWin32ControllerManager, igInterfaceManager->igDefaultInterfaceManager, igWindow->igWin32Window. Sizes: abstract igController 16 bytes vs concrete igWin32Controller 148; igControllerManager 12 vs igWin32ControllerManager 12. Written up in shared/alchemy docs/RE/input.md.
+tools/ark_classes.py over libIGDisplay.json + libIGDisplay.dll + its IAT: 19 classes recovered at 19 igArkRegister call sites across 549 functions, 0 sites whose arguments could not be fully recovered, 0 disagreements between the isAbstract argument and the independent retrieveVTablePointer==NULL reading. Four abstract->concrete bindings via _Meta+0x3c, all recovered: igController->igWin32Controller, igControllerManager->igWin32ControllerManager, igInterfaceManager->igDefaultInterfaceManager, igWindow->igWin32Window. Sizes: abstract igController 16 bytes vs concrete igWin32Controller 148; igControllerManager 12 vs igWin32ControllerManager 12. Written up in shared/alchemy external/xmen2-decomp/docs/notes/input.md.
 
 ## What would falsify it
 

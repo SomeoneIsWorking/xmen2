@@ -7,7 +7,7 @@ namespace x2::native {
 
 /* Does the retail glyph loop draw a quad for this wide character?
  *
- * The drawer's own exceptions, read out of the body (docs/RE/text.md): a
+ * The drawer's own exceptions, read out of the body (external/xmen2-decomp/docs/notes/text.md): a
  * space and a tab advance the pen without drawing, colour tokens and absolute
  * pen sets draw nothing, and only wchar < 256 reaches the glyph path. Every
  * owner that walks a string alongside the emitter asks THIS, because two

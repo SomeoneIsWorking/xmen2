@@ -30,7 +30,7 @@ projection adds the autosave row.
 `load_game_menu_runtime.cpp` overrides `0x004b0800` and, in load mode, adds the
 present autosaves to `+0xcc` before the retail body runs. The same change
 replaced the single `autosave.save` with five rotating slots; see
-[Boot](../RE/boot.md).
+[Boot](../../external/xmen2-decomp/docs/notes/boot.md).
 
 Live: with only `autosave0.save`, Load Game listed "AUTOSAVE - 00:00 - Jungle
 Canal (Normal)" and loaded it.

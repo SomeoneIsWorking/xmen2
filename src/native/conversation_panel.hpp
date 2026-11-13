@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-/* The conversation singleton's panel (docs/RE/cutscene_player.md): its flags,
+/* The conversation singleton's panel (external/xmen2-decomp/docs/notes/cutscene_player.md): its flags,
    the highlighted response, its two text boxes and its models. */
 namespace x2::native::conversation {
 

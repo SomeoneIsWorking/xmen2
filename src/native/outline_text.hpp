@@ -1,6 +1,6 @@
 /* Retail font records drawn with outline glyphs: which typeface each font
  * gets, its scale against the record's own metrics, and the quad that
- * replaces one retail glyph. See docs/RE/text.md. */
+ * replaces one retail glyph. See external/xmen2-decomp/docs/notes/text.md. */
 #pragma once
 
 #include "outline_glyph_atlas.hpp"

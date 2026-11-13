@@ -3,7 +3,7 @@
 The revive cases launch the real binary on genosha1, kills a hero with the game's
 own killEntity, walks the party onto the extraction pad with setPos*, and
 judges the result by GET /party, which reads health, energy and money from the
-game's memory. See docs/RE/extraction.md.
+game's memory. See external/xmen2-decomp/docs/notes/extraction.md.
 """
 
 from __future__ import annotations
@@ -298,7 +298,7 @@ def wait_pad_autosaves(case: Case, count: int) -> bool:
 
 def choose_team(case: Case) -> dict:
     """The choose-team load of the pad map, which moves a fallen party hero
-    to the bench (docs/RE/menus.md); returns the team menu's items once its
+    to the bench (external/xmen2-decomp/docs/notes/menus.md); returns the team menu's items once its
     party shows."""
     case.http("/console?command=loadmap%20" + PAD_MAP + "%200%201")
     wait_game_menu(case, lambda m: m.get("menu") == "team"

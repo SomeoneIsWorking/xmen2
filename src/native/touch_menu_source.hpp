@@ -12,7 +12,7 @@ namespace x2::native {
 
 /* The retail scene plane as the running image presents it: the viewport
    singleton at 0x00a0a138 and the logical backbuffer at 0x00a09ffc/0x00a0a000
-   (docs/RE/menus.md). */
+   (external/xmen2-decomp/docs/notes/menus.md). */
 std::optional<presentation::RetailScenePlane>
 read_scene_plane(const GuestMemoryView &memory, std::uint32_t image_base);
 /* The running image's scene plane. Guest thread only. */

@@ -12,7 +12,7 @@
 namespace x2::native {
 
 /* One record of the game's character table as its menus show it; every field
-   and its evidence is in docs/RE/menus.md. */
+   and its evidence is in external/xmen2-decomp/docs/notes/menus.md. */
 struct HeroRecord {
   /* record+0x150, the name scripts and menus key on ("sabretooth_hero"). */
   std::string name;

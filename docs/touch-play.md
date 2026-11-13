@@ -62,12 +62,12 @@ calls the game's own window-event callback (`0x005faa20`, which
 only when the point changed, then at most one press or release per frame. A
 release is therefore seen after the previous frame's menu update and before
 this frame's held-button check, which is what the difficulty popup needs to
-accept a tap or a long press ([Menus](RE/menus.md#the-popup)). Alchemy's own
+accept a tap or a long press ([Menus](../external/xmen2-decomp/docs/notes/menus.md#the-popup)). Alchemy's own
 move handling is skipped with it; its listener (`sink+0xc`) is null.
 
 While touch is the input (`touch_runtime_active`) the game's arrow is not
 drawn: the same file skips its draw `FUN_005f5b00`
-([Menus](RE/menus.md#the-arrow)), so no arrow sits where the last finger
+([Menus](../external/xmen2-decomp/docs/notes/menus.md#the-arrow)), so no arrow sits where the last finger
 lifted or at 0,0 before the first. With a mouse, or with touch controls Off,
 the game draws it as ever. Check it on the PDA's frame: the top-left corner
 has no arrow pixels on touch and has them with `input.touch_controls=0`.
@@ -191,7 +191,7 @@ codex, which loads an entry only on accept, accepts a tapped entry once the
 walk reaches it. The accept is posted from the list's next draw, not from
 the tap: a posted action is a press for one controller round, and the tap's
 own frame runs several rounds before the menu reads one
-([menus](RE/menus.md)). A drag scrolls the cards a card per pitch without moving the
+([menus](../external/xmen2-decomp/docs/notes/menus.md)). A drag scrolls the cards a card per pitch without moving the
 selection, and the menu's own arrows mark entries above and below. While touch
 draws a list its window rows (`+0xdb`) are the cards that fit and its
 navigation margin (`+0xdd`) is 0, so the game's own stepping and arrows agree
@@ -319,7 +319,7 @@ A card's value is drawn at its right as wide as the font draws it, short of
 the art's slanted end by the text pad, and its name from the left up to a pad
 short of the value; one text scale per column is the largest at which every
 card's name fits that space. Widths are the font manager's widest line
-(vtable `+0x34`, [text](RE/text.md)): its wrap (`+0x38`) breaks only at a
+(vtable `+0x34`, [text](../external/xmen2-decomp/docs/notes/text.md)): its wrap (`+0x38`) breaks only at a
 space, so a one-word name it leaves on one line can still be too wide;
 `menu_text::wrap` reports a fit only when the line is no wider than asked. `GET /menu` reports each
 column button's drawn letters (`name_text`, `value_text`); the team cases
@@ -449,7 +449,7 @@ scrolls the column, a tap on a card steps its row to the next value, and the
 pad and keys reach the rows through the retail focus chain (Left and Right
 step them). There is no Window Mode row where the window is the display.
 Advanced Options is gone: Options has no `Advanced...` footer and Escape
-closes it ([menus](RE/menus.md#options-port-rows-plan-203)). Prove it with
+closes it ([menus](../external/xmen2-decomp/docs/notes/menus.md#options-port-rows-plan-203)). Prove it with
 `tools/live_case.py options-rows`.
 
 **A cinematic that holds the controls offers a Skip button** in the top-right
@@ -458,7 +458,7 @@ poll while an authored sequence holds the player's controls, and it takes a
 touch request on the same poll as the Escape edge, running the same owned
 completion (`src/input/cutscene_skip.h`). In a network game with another
 player it offers none, since the peer plays the sequence through
-(docs/RE/cutscene_player.md). A mission briefing
+(external/xmen2-decomp/docs/notes/cutscene_player.md). A mission briefing
 (`cinematicStart`) does not hold the controls (`lockControls(0)`); CHud's
 update cancels it itself when action 20 is down. The cutscene player offers
 the skip while that cinematic is shown with a cancel script as well, and
@@ -503,12 +503,12 @@ document uses the action meanings proven by `binding_rows.cpp` and
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin; a thumb landing anywhere in the lower-left reach (`layout_stick_reach`) takes it |
 | Bottom-right action cluster | Attack (A) in the corner; Smash (B), Jump (Y) and power 1 on the inner arc around it; powers 2-4 and Use (X) on the outer arc (see [The action cluster](#the-action-cluster)) |
 | Power buttons on the arcs | One button per RT power the hero actually has, drawn with the game's own icon; pressing it holds RT with that slot's face button |
-| Retail minimap, under the portraits | The round minimap (MapToggle mode 1), moved and shrunk into the HUD owner's minimap square (`hud_minimap.cpp`, docs/RE/hud.md); `GET /controls` lists it as `minimap`. The full-screen modes are retail's |
+| Retail minimap, under the portraits | The round minimap (MapToggle mode 1), moved and shrunk into the HUD owner's minimap square (`hud_minimap.cpp`, external/xmen2-decomp/docs/notes/hud.md); `GET /controls` lists it as `minimap`. The full-screen modes are retail's |
 | Retail party portraits, top-right | Pointer press/release through the game's window-event callback; the retail click handler selects the tapped hero |
 | Retail potions, under the vitals | Each in its own ring: health uses a health potion (`HealthPack`), energy an energy potion (`EnergyPack`) |
 | Retail money notice, after a pickup | Its own box right of the potion rings, half a ring tall: the icon, then the total; no control may overlap it (`touch-money`, `touch-money-20x9`; `/controls` lists it as `money`) |
 | Retail pause and team menu icons, top centre | A click on the icon through the same pointer path; the retail handler opens the pause or team menu |
-| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, docs/RE/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. Any other line the game would stack in the prompt's band, such as an XP award, keeps the game's own band and art apart from the button, a button gap beneath it: it is no control, and a tap on it does not use. `GET /controls` lists that band as `message-band` |
+| Retail use prompt, bottom centre | While the hero is in range of something to use, the game's own "Use ..." line is the Use (X) button: the game's band behind it is drawn as a finger-sized button around the line in the menus' button look, an orange frame round a dark fill that lights orange while held, and the line's leading button token (`$GUARD1`, drawn as the device's key) is left out (`hud_draw_runtime.cpp`, external/xmen2-decomp/docs/notes/hud.md), and a tap anywhere in it presses Use through the virtual pad. Where a drawn control (a power, Jump, the stick ring) would cover it, the line and its button move to the nearest place clear of every drawn control and the vitals, a button gap away (`layout_clear_of`, through `TouchControls::clear_of_controls`); the line eases there over a few frames, as the game moves its own lines. The overlay draws nothing there; `GET /controls` lists it as `use-prompt`. Any other line the game would stack in the prompt's band, such as an XP award, keeps the game's own band and art apart from the button, a button gap beneath it: it is no control, and a tap on it does not use. `GET /controls` lists that band as `message-band` |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
 | Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |

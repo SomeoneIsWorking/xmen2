@@ -154,7 +154,7 @@ page's Back, which retail draws nowhere, is a finger button in its empty
 description line, and a personal file's Back is a finger button. Shown by
 `touch-image-viewer`, `touch-credits`, `touch-controller-page` and
 `touch-personal`, each also `-4x3`, `-tablet` and `-20x9`. Retail never
-opens the controller page or a personal file ([menus](../RE/menus.md)).
+opens the controller page or a personal file ([menus](../../external/xmen2-decomp/docs/notes/menus.md)).
 
 The online lobby menus are native on touch: CMenuOnline, CMenuCampaignLobby,
 CMenuGameOptions, CMenuPlayerGameOptions, CMenuHost, CMenuJoin,
@@ -175,7 +175,7 @@ gives a plain `CMenu` that draws nothing, and no PC string opens it.
 Advanced Options (CMenuSebas) is native on touch, and with it every menu, so
 the menu pad is deleted (step 6's second half). The screen is a second
 widget GUI, not CMenu items
-([menus](../RE/menus.md#advanced-options-cmenusebas)); after each builder
+([menus](../../external/xmen2-decomp/docs/notes/menus.md#advanced-options-cmenusebas)); after each builder
 runs, the port moves its widgets through their own layout setter into
 finger places (`src/native/sebas_touch.cpp`, `src/input/sebas_touch_layout.cpp`,
 see [touch play](../touch-play.md)). Two causes kept a finger in: the menu

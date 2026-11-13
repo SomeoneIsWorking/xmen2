@@ -35,7 +35,7 @@ opposite order on each side.
 `src/native/cutscene_player.cpp:x2_override_004a00d0` completed the tutorial's
 opening `lockControls` sequence synchronously on a local skip, at that
 machine's own tick and only there. Retail has no skip for such a sequence, so
-in retail both worlds play it on the same ticks (docs/RE/cutscene_player.md,
+in retail both worlds play it on the same ticks (external/xmen2-decomp/docs/notes/cutscene_player.md,
 Network sessions).
 
 ## Fix

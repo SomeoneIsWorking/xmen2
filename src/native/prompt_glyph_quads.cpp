@@ -3,7 +3,7 @@
  *
  * The alternative was for the port to lay the label out itself, which the
  * measurements ruled out: the engine's text run is right-anchored, so the
- * origin depends on the string's own content (C269 and docs/RE/text.md).
+ * origin depends on the string's own content (C269 and external/xmen2-decomp/docs/notes/text.md).
  * Instead the stock loop lays everything out with the port's published
  * metrics, and its own quad for each of our codepoints is intercepted at
  * FUN_005ee400. The retail emitter still receives a collapsed zero-area

@@ -1,5 +1,5 @@
 /*
- * CMenuAutoMap on touch (docs/touch-play.md, docs/RE/menus.md): the map is
+ * CMenuAutoMap on touch (docs/touch-play.md, external/xmen2-decomp/docs/notes/menus.md): the map is
  * the game's own screen and a finger moves it the way a phone's map moves.
  * A drag that starts off every touch button keeps the ground under the
  * finger; retail's held-button pan and turn (0x210 and 0x211, steering by

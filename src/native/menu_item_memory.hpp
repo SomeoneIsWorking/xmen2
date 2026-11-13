@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-/* CMenuItem's and CMenuItemListBox's memory (docs/RE/menus.md). Offsets from
+/* CMenuItem's and CMenuItemListBox's memory (external/xmen2-decomp/docs/notes/menus.md). Offsets from
    the item. */
 namespace x2::native::menu_item {
 

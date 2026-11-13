@@ -1,5 +1,5 @@
 /*
- * CMenuTextEntry's typing (docs/RE/menus.md): its update takes the one
+ * CMenuTextEntry's typing (external/xmen2-decomp/docs/notes/menus.md): its update takes the one
  * character the game's window callback stored for a WM_CHAR, so a word that
  * arrives at once, as a phone's keyboard commits it, is handed over one
  * character per update. While the menu is up the platform's text input is

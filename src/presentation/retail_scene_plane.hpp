@@ -20,12 +20,12 @@ struct ClientPoint {
 /*
  * The plane the retail menu items' hit boxes live in, and the mapping the
  * retail mouse handler FUN_005f9eb0 applies to a client point to reach it
- * (docs/RE/menus.md): integer arithmetic against the logical backbuffer at
+ * (external/xmen2-decomp/docs/notes/menus.md): integer arithmetic against the logical backbuffer at
  * DAT_00a09ffc/DAT_00a0a000.
  */
 class RetailScenePlane {
 public:
-  /* The viewport singleton's aspect and scales (docs/RE/hud.md) and the
+  /* The viewport singleton's aspect and scales (external/xmen2-decomp/docs/notes/hud.md) and the
      logical backbuffer; nullopt when any of them describe no plane. */
   static std::optional<RetailScenePlane>
   from_viewport(float aspect, float scale_x, float scale_z, unsigned client_w,

@@ -1,6 +1,6 @@
 /* The outline typefaces that replace the retail font atlases' pixels: their
  * size-free layout metrics, and the glyph cache that rasterises each glyph at
- * the pixel size it is drawn at. See docs/RE/text.md. */
+ * the pixel size it is drawn at. See external/xmen2-decomp/docs/notes/text.md. */
 #pragma once
 
 #include <cstdint>

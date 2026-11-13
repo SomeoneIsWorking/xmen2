@@ -6,7 +6,7 @@
 #include <cstdint>
 
 /* What the pointer does to a retail menu item that has no usecmd, which
-   CMenuItem::onMouse (0x005bc1b0) leaves untouchable (docs/RE/menus.md). */
+   CMenuItem::onMouse (0x005bc1b0) leaves untouchable (external/xmen2-decomp/docs/notes/menus.md). */
 namespace x2::native {
 
 inline constexpr std::uint32_t kMouseButtonUp = 0x202u;

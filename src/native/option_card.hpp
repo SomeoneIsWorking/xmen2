@@ -9,7 +9,7 @@
 /* One card of the game's PDA option row, every layer the PDA draws for a
    row: the frame, the focus or no-focus panel, the light at its right end
    and, beside a rail, the side hinge, each placed on the frame as the PDA's
-   scene places option01's layers (docs/RE/menus.md). */
+   scene places option01's layers (external/xmen2-decomp/docs/notes/menus.md). */
 namespace x2::native {
 
 class OptionCard {

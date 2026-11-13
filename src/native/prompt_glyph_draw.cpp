@@ -16,7 +16,7 @@
  * harvested the same way and drawn from the outline atlas instead.
  *
  * The string is the first STACK argument. An earlier detector read EDX, which
- * the retail body overwrites before use; I069 and docs/RE/text.md retain that
+ * the retail body overwrites before use; I069 and external/xmen2-decomp/docs/notes/text.md retain that
  * failure because the wrong pointer still decoded plausible text and made a
  * false zero look trustworthy.
  */
@@ -69,7 +69,7 @@ static uint32_t glyph_loop_string(const CPU *C) {
  * FUN_005ee400 does not say which character it is drawing, so the override
  * walks the same string in the same order and consumes one quad per wchar
  * THAT EMITS ONE. The exceptions are the drawer's own, read out of the body
- * (docs/RE/text.md): a space and a tab advance the pen without drawing,
+ * (external/xmen2-decomp/docs/notes/text.md): a space and a tab advance the pen without drawing,
  * colour tokens (1000..1999) and absolute pen sets (>=3000) draw nothing,
  * and only wchar < 256 reaches the glyph path at all.
  *

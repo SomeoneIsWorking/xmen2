@@ -42,7 +42,7 @@ public:
 
   /* The shortest stick the game walks on. Its movement code ignores a
      vector shorter than about 0.3 (measured: 0.283 stands still, 0.326
-     walks; docs/RE/input.md), so travel past the dead zone starts here
+     walks; external/xmen2-decomp/docs/notes/input.md), so travel past the dead zone starts here
      rather than at zero: the whole ring steers, and the first bit of travel
      is the slowest walk rather than nothing. */
   static constexpr float kWalkStart = 0.33F;

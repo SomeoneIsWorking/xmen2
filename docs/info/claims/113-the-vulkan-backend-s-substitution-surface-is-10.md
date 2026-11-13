@@ -16,7 +16,7 @@ The Vulkan backend's substitution surface is 10 abstract ARK classes in libIGGfx
 sites and 100 classes, with zero unrecovered argument lists and zero
 `isAbstract`/`retrieveVTablePointer == NULL` disagreements. Of 29
 `_Meta+0x3c` stores, 23 resolve to registered classes and six are concrete
-classes clearing their own slot. C008 and `docs/RE/ark.md` own the substitution
+classes clearing their own slot. C008 owns the substitution
 semantics; libIGCore 0x10044380 follows `+0x3c` in a loop.
 
 ## What would falsify it

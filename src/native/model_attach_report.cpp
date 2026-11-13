@@ -1,6 +1,6 @@
 /*
  * Reports the entity model attaches retail leaves quietly empty
- * (docs/RE/pickups.md): every CPhysicalEntity::setModel (FUN_004730f0) that
+ * (external/xmen2-decomp/docs/notes/pickups.md): every CPhysicalEntity::setModel (FUN_004730f0) that
  * fails, and every CInventoryEntity::setItem (FUN_00479cc0) that keeps its
  * pickup without a model. setItem ignores setModel's result, so a refused
  * model leaves a pickup that can be used but is not drawn.

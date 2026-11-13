@@ -25,7 +25,7 @@
 #include <vector>
 
 /* The guest side of `gameplay.extraction_revive`; addresses in
- * docs/RE/extraction.md. */
+ * external/xmen2-decomp/docs/notes/extraction.md. */
 namespace x2::native {
 namespace {
 

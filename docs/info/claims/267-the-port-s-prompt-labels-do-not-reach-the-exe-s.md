@@ -45,6 +45,6 @@ columns were measuring memory the feature never touches. The narrow->wide
 step is a plain MOVZX AX,BL at 0x005ef7b3, so the 0x80..0x93 bytes widen
 unchanged -- the multibyte-lead-byte hypothesis recorded alongside C267 is
 also dead. Prompt labels DO reach FUN_005ee780 and step 1 of the
-docs/RE/text.md plan stands.
+external/xmen2-decomp/docs/notes/text.md plan stands.
 
 > Anything that cited this claim as proof must be re-checked. Grep the repo for it.

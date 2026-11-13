@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: shadow,renderer,retail
-depends: docs/RE/shadows.md
+depends: external/xmen2-decomp/docs/notes/shadows.md
 ---
 
 ## Claim
@@ -13,7 +13,7 @@ Retail DetailedShadow is disconnected from shadow rendering: its backing byte ha
 
 ## Evidence
 
-Static XMen2 xrefs at 0x00a68d40; CShadowMgr call graph at 0x004b64e0/0x004b5700; matched stock fan4 draws and existing native frame dumps, documented with denominators in docs/RE/shadows.md.
+Static XMen2 xrefs at 0x00a68d40; CShadowMgr call graph at 0x004b64e0/0x004b5700; matched stock fan4 draws and existing native frame dumps, documented with denominators in external/xmen2-decomp/docs/notes/shadows.md.
 
 ## What would falsify it
 

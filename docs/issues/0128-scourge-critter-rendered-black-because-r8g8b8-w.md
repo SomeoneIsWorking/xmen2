@@ -13,7 +13,7 @@ updated: 2026-10-20
 The defect reproduces without walking to an authored encounter:
 `tools/live_case.py deadzone-render` Continues into Dead Zone 1 and spawns
 `_ms_ss_critter_a` beside the party through `/script` (see
-[Console](../RE/console.md)). The run used to report D3D format 20
+[Console](../../external/xmen2-decomp/docs/notes/console.md)). The run used to report D3D format 20
 (`D3DFMT_R8G8B8`) as unsupported.
 
 ## Root cause

@@ -2,7 +2,7 @@
 
 /* The retail scripted cinematic (`cinematicStart`, a mission briefing): CHud
    update 0x0059f1a0 runs its cancel script when action 20 is down. See
-   docs/RE/cutscene_player.md. */
+   external/xmen2-decomp/docs/notes/cutscene_player.md. */
 
 namespace x2::native {
 

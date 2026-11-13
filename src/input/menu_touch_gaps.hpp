@@ -11,7 +11,7 @@
 #include <vector>
 
 /* What a finger cannot do on a retail menu through the game's own pointer
-   path (docs/RE/menus.md), named by the guest function that refuses it. */
+   path (external/xmen2-decomp/docs/notes/menus.md), named by the guest function that refuses it. */
 namespace x2::input {
 
 enum class MenuTouchGapKind : std::uint8_t {

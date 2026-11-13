@@ -1,4 +1,4 @@
-"""Live case for the money notice in the mobile HUD (docs/RE/hud.md).
+"""Live case for the money notice in the mobile HUD (external/xmen2-decomp/docs/notes/hud.md).
 
 CHud shows money, its icon and "total + picked up", for a few seconds after
 the party picks money up (005a5170). The run loads Dead Zone 2 on touch,

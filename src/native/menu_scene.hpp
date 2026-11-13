@@ -9,7 +9,7 @@
 
 /* The game's own model entities placed in a menu by port code: loading a
    model's art, attaching it to CMenuMgr's scene, placing and stretching it,
-   and the menu style's text colour (docs/RE/menus.md). */
+   and the menu style's text colour (external/xmen2-decomp/docs/notes/menus.md). */
 namespace x2::native::menu_scene {
 
 /* Guest scratch for one draw's vectors. */

@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-26
 tags: text,glyphs,fonts,renderer,overrides
-depends: src/native/text_caller_probe.cpp#x2_probe_005972a0, docs/RE/text.md
+depends: src/native/text_caller_probe.cpp#x2_probe_005972a0, external/xmen2-decomp/docs/notes/text.md
 ---
 
 ## Claim
@@ -28,7 +28,7 @@ calls, eight distinct return sites, the two hot ones (`0x005ee63d`,
 (`scratch/re-ghidra/decomp-drawer.c`) shows the char loop, the
 `wchar*0x1c + [obj+0x18]` record lookup, the UV float reads with v-flip, and
 the `FUN_005ee400` submission. The retained aggregate counts are recorded above.
-Full write-up: `docs/RE/text.md`.
+Full write-up: `external/xmen2-decomp/docs/notes/text.md`.
 
 ## What would falsify it
 

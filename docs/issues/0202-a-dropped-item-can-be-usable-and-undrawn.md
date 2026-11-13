@@ -21,7 +21,7 @@ wasn't under anyone". Not reproduced on desktop.
 
 `setItem` `FUN_00479cc0` ignores `setModel`'s answer, so a pickup whose model
 was refused keeps its label, touch and use activation and has no model
-(`docs/RE/pickups.md`). setModel refuses when the instance or a component pool
+(`external/xmen2-decomp/docs/notes/pickups.md`). setModel refuses when the instance or a component pool
 is full, when a new file meets a full model file cache or resource name table,
 and when the file does not load. Retail logs none of these.
 

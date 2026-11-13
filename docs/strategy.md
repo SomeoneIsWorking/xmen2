@@ -93,7 +93,7 @@ Native override work then continues at the D3D8 seam described below.
   oracle (C005). It is not a generated or replacement-DLL product mode.
 - Boundary observations already recorded from the retail binary remain valid
   evidence when their falsifiers still hold.
-- `docs/RE/ark.md` — the ARK meta-object system (C008, C009). The guest's own
+- The ARK meta-object system (claims C008, C009). The guest's own
   code reproduces it automatically; overrides need it understood.
 - Xbox-derived controller and behavioral observations remain evidence only.
 
@@ -122,7 +122,7 @@ and threw away. The retired prompt-glyph plan demonstrated the cost: it would
 have encoded an atlas index in a UV float and split a lowered D3D8 draw. The
 native replacement instead brackets libIGGfx's semantic text draw, keeps the
 engine's own finalized transform, and submits the SVG before lowering. That is
-the ownership boundary this strategy means (`RE/text.md`).
+the ownership boundary this strategy means (`external/xmen2-decomp/docs/notes/text.md`).
 
 ### What the seam actually carries, measured
 

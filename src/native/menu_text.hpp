@@ -9,7 +9,7 @@
 #include <utility>
 
 /* Text drawn by port code with a menu item's own text box and font, as the
-   game's items draw theirs (docs/RE/menus.md). */
+   game's items draw theirs (external/xmen2-decomp/docs/notes/menus.md). */
 namespace x2::native::menu_text {
 
 /* Guest bytes a line is fitted into. */

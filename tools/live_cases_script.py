@@ -2,7 +2,7 @@
 
 The retail loader splits a script file on CRLF only, so a script whose lines
 reached it with bare LF breaks ran as one statement and overflowed the parse
-node (docs/RE/console.md). Two scripts in one run also prove each new file is
+node (xmen2-decomp docs/notes/console.md). Two scripts in one run also prove each new file is
 found: the second one is opened after the overlay directory was listed.
 """
 from __future__ import annotations

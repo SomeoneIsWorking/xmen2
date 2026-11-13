@@ -7,7 +7,7 @@
  * natively -- the early return while the menu waits, then the pressed mask --
  * and resumes the retail body at 0x005cbe73, past the Start branch that set
  * 0x008afde4 and ran "openmenu sebas". The init (0x005cb9c0, +0x44) runs as
- * retail and then clears the footer slot it filled. docs/RE/menus.md.
+ * retail and then clears the footer slot it filled. external/xmen2-decomp/docs/notes/menus.md.
  */
 #include "guest_body.h"
 #include "guest_memory.h"

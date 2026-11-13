@@ -2,7 +2,7 @@
 #define X2_RETAIL_ENTITIES_HPP
 
 /* The retail entity table through checked reads; layout in
- * docs/RE/extraction.md. */
+ * external/xmen2-decomp/docs/notes/extraction.md. */
 
 #include "guest_memory_view.hpp"
 

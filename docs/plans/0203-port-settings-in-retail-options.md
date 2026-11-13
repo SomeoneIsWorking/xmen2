@@ -46,7 +46,7 @@ The choice is the Resolution row of Options (stage 2).
 ## How retail Options is built
 
 `options` is an `OPTIONS_MENU` XMLB of 73 items (cap `0xaf` = 175 at
-`CMenu+0x1608`, `docs/RE/menus.md`): ten text rows, volume bars with
+`CMenu+0x1608`, `external/xmen2-decomp/docs/notes/menus.md`): ten text rows, volume bars with
 `leftcmd`/`rightcmd` (`setdecrement`/`setincrement`), the rest `usecmd`, each
 value a separate item paired by its command's last word, values backed by
 gamevars (registry `0x7acad0`). `CMenuOptions::onMouse` (`0x005cb5f0`) hit-tests

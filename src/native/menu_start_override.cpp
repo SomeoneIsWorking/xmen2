@@ -1,7 +1,7 @@
 /*
  * CMenu's base Start handler (0x005ad730), with Back as its fallback when a
  * focused item dispatched it for a key that is both. The rule is
- * menu_start_policy; docs/RE/menus.md says why retail loses Escape there.
+ * menu_start_policy; external/xmen2-decomp/docs/notes/menus.md says why retail loses Escape there.
  */
 #include "guest_body.h"
 #include "guest_memory.h"

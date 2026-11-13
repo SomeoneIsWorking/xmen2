@@ -3,7 +3,7 @@
 
 #include <cstdint>
 
-/* CPopupDialog's memory (docs/RE/menus.md): the singleton, its three pages,
+/* CPopupDialog's memory (external/xmen2-decomp/docs/notes/menus.md): the singleton, its three pages,
    its models and its text box. */
 namespace x2::native::popup {
 

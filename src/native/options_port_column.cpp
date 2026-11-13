@@ -7,7 +7,7 @@
  *
  * A port row has no node of its own, so its text box is never rendered and
  * never cleared, and a line put there holds glyphs of the game's shared pool
- * until it runs out for every menu (docs/RE/menus.md). The rows' text goes
+ * until it runs out for every menu (external/xmen2-decomp/docs/notes/menus.md). The rows' text goes
  * through the Accept label's box instead, which the game renders and clears
  * each frame, drawn when that label draws.
  */

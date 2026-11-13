@@ -72,7 +72,7 @@ game's "Player(s) have been dropped from the game" on A, which continues.
 - Continue no longer hides Play Online when there is no save.
 - The host's co-op participation policy works in seats and translates them
   through the player→controller map, so it never evicts a network player
-  ([co-op participation](../RE/co_op_participation.md)).
+  ([co-op participation](../../external/xmen2-decomp/docs/notes/co_op_participation.md)).
 
 ## Still open
 

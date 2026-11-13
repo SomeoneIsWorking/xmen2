@@ -63,7 +63,7 @@ the Win32/COM layer beneath it. So the honest ordering is:
    CoCreateInstance that already fails?) -- FUN_00617480 is the function.
 2. Decide where the port's graphics boundary sits: at D3D8 calls, or higher, at
    igDisplay/igGfx via the ARK `_Meta+0x3c` substitution point that
-   docs/RE/ark.md documents for exactly this.
+   claim C008 documents for exactly this.
 3. Only then does the check have a truthful answer.
 
 Making MessageBoxA's caller skip the dialog, or returning a fabricated success

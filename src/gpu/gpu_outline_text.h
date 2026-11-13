@@ -1,6 +1,6 @@
 /* Outline text at its drawn pixel size: picks each glyph's raster from the
  * text batch's matrix and the viewport, and keeps the cache's atlas pages on
- * the GPU. See docs/RE/text.md. */
+ * the GPU. See external/xmen2-decomp/docs/notes/text.md. */
 #pragma once
 
 #include "../native/prompt_glyph_quads.h"

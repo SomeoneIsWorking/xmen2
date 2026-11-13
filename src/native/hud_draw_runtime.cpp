@@ -1,5 +1,5 @@
 /* Native CHud presentation adapters. Retail submits sprite/text records and
-   scene transforms here; rasterization occurs later. See docs/RE/hud.md. */
+   scene transforms here; rasterization occurs later. See external/xmen2-decomp/docs/notes/hud.md. */
 #include "hud_draw_runtime.h"
 #include "../input/menu_touch_gaps.hpp"
 #include "../input/text_touch_layout.hpp"
@@ -314,7 +314,7 @@ static void mouse_overlay_draw(CPU *cpu) {
 }
 
 /*
- * The use prompt (FUN_0042eaf0, docs/RE/hud.md) is a type-0 GUI message: the
+ * The use prompt (FUN_0042eaf0, external/xmen2-decomp/docs/notes/hud.md) is a type-0 GUI message: the
  * message draw (0059dc00) lays its line out at the bottom centre and puts a
  * dark band (sprite icon 0x1b) behind all its type-0 lines. On touch, while
  * the prompt is one of them, the band is grown to a finger-sized button round

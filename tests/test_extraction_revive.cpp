@@ -1,6 +1,6 @@
 /*
  * The extraction revive rules and the prompt that carries a request, through
- * the shipping policy, prompt and entity reader (docs/RE/extraction.md).
+ * the shipping policy, prompt and entity reader (external/xmen2-decomp/docs/notes/extraction.md).
  */
 #include "extraction_revive_policy.hpp"
 #include "retail_entities.hpp"

@@ -167,7 +167,7 @@ CHud element by element.
 ## Resolution 2026-09-05 -- scene-graph placement and direct portrait selection
 
 The scene-graph structure under CHud is recovered and documented in
-`docs/RE/hud.md`:
+`external/xmen2-decomp/docs/notes/hud.md`:
 
 1. **Composition and draw entries.** `005a62c0` invokes `005a43d0` (party
    selector/cross), `005a3320` (vitals panel), `005a5170` (inventory/potions),

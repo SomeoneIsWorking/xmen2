@@ -177,7 +177,7 @@ int igvk_ark_probe(void) {
   x2_log_info("  ok    meta object allocated            0x%08x\n", meta);
 
   /* +0x48 is the instance size libIGCore recorded, +0x1a the isAbstract
-     byte (docs/RE/ark.md). Reading them back checks that our eleven
+     byte (external/xmen2-decomp/docs/notes/ark.md). Reading them back checks that our eleven
      arguments landed where the engine expects, not merely that the call
      returned. */
   {

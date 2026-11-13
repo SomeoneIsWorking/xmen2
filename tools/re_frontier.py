@@ -3,9 +3,9 @@
 
 The tool itself lives in the `re-harness` repo, because every port in the
 tree needs it and nine forked copies is how it drifted into nine different
-versions. The DATA it reads (docs/info, docs/issues, docs/re-frontier.md) is
-this port's and stays here; the harness resolves it from the working
-directory, which is why this shim only has to find the tool and hand over.
+versions. The roadmap it reads is the decomp's (external/xmen2-decomp), named
+through RE_FRONTIER_ROADMAP; the rest of its data is resolved from the working
+directory.
 """
 import os
 import runpy
@@ -15,6 +15,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared_dir import shared_dir
 
 _tool = os.path.join(shared_dir("re-harness", "tools/re_frontier.py"), "tools", "re_frontier.py")
+os.environ.setdefault("RE_FRONTIER_ROADMAP", os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "external", "xmen2-decomp", "docs", "re-frontier.md"))
 
 if __name__ == "__main__":
     sys.argv[0] = _tool

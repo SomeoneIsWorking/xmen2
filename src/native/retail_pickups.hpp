@@ -2,7 +2,7 @@
 #define X2_RETAIL_PICKUPS_HPP
 
 /* A dropped item (CInventoryEntity) and the model pools its model comes from,
- * through checked reads; layout in docs/RE/pickups.md. */
+ * through checked reads; layout in external/xmen2-decomp/docs/notes/pickups.md. */
 
 #include "guest_memory_view.hpp"
 #include "retail_entities.hpp"

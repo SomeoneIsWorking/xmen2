@@ -16,9 +16,12 @@ at runtime and why the PC build is the conformance target.
 ## Docs
 
 `docs/project-goals.md`, `docs/project-state.md`, `docs/codemap.md`,
-`docs/issues/`, and `docs/re-frontier.md` hold the corresponding project
-authorities. Keep title evidence and exact guest bindings in `docs/RE/`;
-`docs/prior-art.md` records attribution for material actually reused.
+and `docs/issues/` hold the corresponding project authorities. RE knowledge
+(behaviour notes, the symbol map, `docs/re-frontier.md`, the title's
+`docs/prior-art.md`) lives in the decomp, `external/xmen2-decomp`
+(SomeoneIsWorking/xmen2-decomp); a new guest address or finding is committed
+there first and the submodule bumped in the port change that uses it. The
+port's `docs/prior-art.md` records attribution for port material actually reused.
 
 ## Setup
 
@@ -271,7 +274,7 @@ cancels the current handle before advancing. It also composes the generic
 synchronous cutscene work without pausing existing ambient/gameplay voices.
 Ordinary event/fiber pumps retain retail deadline rules; the synchronous skip
 never runs a world update or changes the guest clock.
-See `docs/RE/cutscene_player.md`.
+See `external/xmen2-decomp/docs/notes/cutscene_player.md`.
 
 Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`
 owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
@@ -281,12 +284,12 @@ owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
 DirectSound. `src/native/movie.cpp`
 only bridges the evidenced `igCriMovieCodec` methods and writes the guest
 runtime `igImage`, leaving libMovie's scene, texture upload, lifetime, and
-callback behavior intact. See `docs/RE/fmv.md`; no media asset belongs in git.
+callback behavior intact. See `external/xmen2-decomp/docs/notes/fmv.md`; no media asset belongs in git.
 `src/media/fmv_probe.{c,h}` owns opt-in decoded-to-padded-to-upload row
 verification; `src/d3d8/d3d8_texture_luma.{c,h}` owns the independent texture
 luma diagnostic rather than growing the D3D8 resource implementation.
 
-Shadow ownership follows the title evidence in `docs/RE/shadows.md`.
+Shadow ownership follows the title evidence in `external/xmen2-decomp/docs/notes/shadows.md`.
 `CShadowMgr` owns per-entity procedural floor-decal selection and the GPU renders
 the resulting ordinary scene packets. `DetailedShadow` is dead persisted
 configuration, not a renderer switch or an exposed retail control. The separate

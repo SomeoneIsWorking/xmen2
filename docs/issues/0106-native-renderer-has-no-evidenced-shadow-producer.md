@@ -59,7 +59,7 @@ policy. Alpha-tested skinned packets use their real UV/texture cutoff; blended
 packets remain excluded. The production three-answer test proves sampled
 occlusion disappears both when disabled and when its caster is removed. A
 bounded live scene submitted all 11,836 VS 1.1 draws as both casters and
-receivers with zero shadow failures. See `docs/RE/shadows.md` for exact policy
+receivers with zero shadow failures. See `external/xmen2-decomp/docs/notes/shadows.md` for exact policy
 and the authored-tag limitation.
 
 ## Falsifier

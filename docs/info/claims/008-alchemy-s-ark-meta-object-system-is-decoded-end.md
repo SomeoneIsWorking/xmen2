@@ -12,7 +12,7 @@ Alchemy's ARK meta-object system is decoded end to end: class registration is on
 
 ## Evidence
 
-Ghidra decompile of libIGDisplay.dll (igWindow / igControllerManager / igWin32Window arkRegister/arkRegisterInternal/arkRegisterInitialize/_instantiateFromPool/getClassTypeLazy) and libIGCore.dll (igMetaObject::createInstance @0x10044380, both igArkRegister overloads @0x10045140/@0x10045180). Both igArkRegister signatures recovered from the MSVC mangling itself, not guessed. Written up in docs/RE/ark.md.
+Ghidra decompile of libIGDisplay.dll (igWindow / igControllerManager / igWin32Window arkRegister/arkRegisterInternal/arkRegisterInitialize/_instantiateFromPool/getClassTypeLazy) and libIGCore.dll (igMetaObject::createInstance @0x10044380, both igArkRegister overloads @0x10045140/@0x10045180). Both igArkRegister signatures recovered from the MSVC mangling itself, not guessed.
 
 ## What would falsify it
 

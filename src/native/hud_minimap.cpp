@@ -1,5 +1,5 @@
 /* CHudAutoMap's round minimap, placed by the mobile HUD layout.
-   docs/RE/hud.md "Minimap" has the guest contract. */
+   external/xmen2-decomp/docs/notes/hud.md "Minimap" has the guest contract. */
 #include "hud_minimap.hpp"
 
 #include "guest_body.h"

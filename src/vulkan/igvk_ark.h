@@ -1,7 +1,7 @@
 /*
  * Registering a HOST-side class with the guest's ARK meta-object system.
  *
- * The mechanism is written up in docs/RE/ark.md and recorded as C008/C009. This
+ * The mechanism is written up in external/xmen2-decomp/docs/notes/ark.md and recorded as C008/C009. This
  * is the other half: the code that actually speaks it. C008's falsifier says
  * "nothing has yet been CONSTRUCTED this way -- the mechanism is read, not
  * exercised", and this exists to exercise it.

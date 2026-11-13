@@ -13,8 +13,11 @@ Load Game and announced on screen (S015); retail has no autosave.
 This is the authoritative inventory of what the port demonstrably does now and
 what remains partial, blocked, or absent. Epic intent belongs in
 [`project-goals.md`](project-goals.md), atomic work in [`issues/`](issues/),
-ownership in [`codemap.md`](codemap.md), and the ordered binary-evidence chain
-in [`re-frontier.md`](re-frontier.md).
+ownership in [`codemap.md`](codemap.md). The title's decomp,
+[`external/xmen2-decomp`](../external/xmen2-decomp) (SomeoneIsWorking/xmen2-decomp, MIT), holds the
+symbol map, the RE notes and the ordered binary-evidence chain in its
+[`re-frontier.md`](../external/xmen2-decomp/docs/re-frontier.md); the port's guest addresses move to
+constants generated from that map ([plan 212](plans/0212-addresses-from-the-decomp-symbol-map.md)).
 
 States: `verified` means the stated outcome was observed with durable evidence;
 `partial` names both the demonstrated subset and the exact remaining gap;
@@ -422,7 +425,7 @@ seam also remains beneath most engine rendering.
 ### S004 — native Alchemy 2D/UI rendering: partial
 
 Observed subset: native prompt SVGs now cross above D3D8. C271 and
-[`RE/text.md`](RE/text.md) establish that the port retains the executable's
+[`RE/text.md`](../external/xmen2-decomp/docs/notes/text.md) establish that the port retains the executable's
 text layout, brackets `igDxVisualContext::drawNonIndexed`, snapshots Alchemy's
 finalized world/view/projection state from the nested context update, and
 submits a port-owned RGBA atlas before the stock label. A keyboard binding is
@@ -584,7 +587,7 @@ full restore, Paid revive); see S024.
 
 Observed subset: `X2_BOOT_MAP=<map>` skips intro presentation and menus while
 retaining BehavEd's retail `startFirstMission` party initialization. C223 and
-[`RE/boot.md`](RE/boot.md) prove a resolved hero and the formerly suppressed
+[`RE/boot.md`](../external/xmen2-decomp/docs/notes/boot.md) prove a resolved hero and the formerly suppressed
 tutorial conversation on this path.
 
 Gap: this is a development route, not a player-facing Start Game policy. A
@@ -851,7 +854,7 @@ owned work synchronously. The visible-record and camera-only tutorial gates
 pass 11/11 and 10/10 with control restored, no guest frame or clock advance,
 zero dialogue-presentation leaks, and every reached cutscene-owned DirectSound
 start suppressed (C274);
-[`RE/cutscene_player.md`](RE/cutscene_player.md) records the binary chain.
+[`RE/cutscene_player.md`](../external/xmen2-decomp/docs/notes/cutscene_player.md) records the binary chain.
 
 Gap: most of the Alchemy renderer and game remain runtime-translated guest code.
 Stock 2D, scene traversal, materials, lighting, shadows, render targets, and
@@ -2243,7 +2246,7 @@ Setting `gameplay.extraction_revive` (Settings, General, Gameplay): `off` keeps 
 hero stays down), `free` (the default) restores the party and revives every other fallen character once when any
 hero touches an extraction pad's 240x240x72 trigger box (again only after every hero has left), `paid` offers to
 revive the fallen party on a pad for the retail cost. Grounding and addresses are in
-[`RE/extraction.md`](RE/extraction.md).
+[`RE/extraction.md`](../external/xmen2-decomp/docs/notes/extraction.md).
 
 Observed on genosha1 with the real binary (`tools/live_case.py extraction-off`, `extraction-free`,
 `extraction-paid`, judged from `GET /party`): with `off` a fallen hero stays down and nothing is

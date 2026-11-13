@@ -1,5 +1,5 @@
 """Drops and their models: enemies killed beside the party drop items, and
-`/pickups` says which of them has a loaded model (docs/RE/pickups.md).
+`/pickups` says which of them has a loaded model (external/xmen2-decomp/docs/notes/pickups.md).
 
 `pickup-models` is the shipped data: every drop is loaded and nothing is
 logged. `pickup-models-unloadable` makes the money models unloadable through

@@ -5,7 +5,7 @@
  * ## Why the font record is written at all
  *
  * The renderer-side direction is that no GAME PIXEL is edited and no font
- * ASSET is copied: docs/RE/text.md. Metrics are a different thing from
+ * ASSET is copied: external/xmen2-decomp/docs/notes/text.md. Metrics are a different thing from
  * pixels. The exe's glyph loop takes every layout decision from the font
  * record -- the pen advances by `word[glyph*0x1c+4]`, and the quad's size
  * comes from the record's width and height -- so a codepoint whose record is

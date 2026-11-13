@@ -1,0 +1,3 @@
+[submodule "external/xmen2-decomp"]
+	path = external/xmen2-decomp
+	url = https://github.com/SomeoneIsWorking/xmen2-decomp.git

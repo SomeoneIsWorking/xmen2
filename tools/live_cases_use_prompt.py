@@ -7,7 +7,7 @@ menu opens. Each variant runs in one window shape, and in each no drawn
 control overlaps the prompt. The -xp variants award XP, whose notice the
 game would stack in the prompt's band: the prompt keeps its own button, the
 notice its own band outside it, and a tap on the notice does not use. See
-docs/RE/hud.md for the prompt.
+external/xmen2-decomp/docs/notes/hud.md for the prompt.
 """
 
 from __future__ import annotations

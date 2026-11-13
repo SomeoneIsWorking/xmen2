@@ -44,5 +44,5 @@ A second Escape does not leave Advanced Options: the update `FUN_005d1e90`
 tests the pad's actions before the keys, Escape is bound to actions 4 and
 `0x11`, and that path (`0x0061922e`) dispatches message 0, so the direct
 Escape test at `0x0061918b` is never reached
-([menus](../RE/menus.md#advanced-options-cmenusebas)). A click on its
+([menus](../../external/xmen2-decomp/docs/notes/menus.md#advanced-options-cmenusebas)). A click on its
 `Esc Back` or Accept closes it, and on touch both are finger buttons (#199).

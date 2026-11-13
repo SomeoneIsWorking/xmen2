@@ -7,7 +7,7 @@ namespace x2::native {
 /* Retail Escape is Pause (Start, bits 19 and 20) and Back (bit 21). A focused
    item's update (0x005bbfe0) dispatches Start first and only otherwise Back, so
    a menu whose Start is the base handler (0x005ad730) loses Escape; see
-   docs/RE/menus.md, "Escape in a menu with a focused item". */
+   external/xmen2-decomp/docs/notes/menus.md, "Escape in a menu with a focused item". */
 class MenuStartDispatch {
 public:
   MenuStartDispatch() = default;

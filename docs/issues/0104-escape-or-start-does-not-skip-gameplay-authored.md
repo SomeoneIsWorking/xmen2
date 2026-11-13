@@ -120,4 +120,4 @@ clamp together, no seen-bit collision); check_conversation_skip_wiring
 --selftest 12 broken chains rejected.
 
 ### Note (2026-08-27)
-Superseded 2026-08-27 by issue #122. The conversation latch and FUN_004d6a00 deadline floor described in this issue were attached below the owner and are deleted. The current resolution is the cutscene player documented in docs/RE/cutscene_player.md and verified by C247/C263.
+Superseded 2026-08-27 by issue #122. The conversation latch and FUN_004d6a00 deadline floor described in this issue were attached below the owner and are deleted. The current resolution is the cutscene player documented in external/xmen2-decomp/docs/notes/cutscene_player.md and verified by C247/C263.

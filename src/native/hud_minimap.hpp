@@ -4,7 +4,7 @@
 #include "../presentation/touch_layout.h"
 
 /* The round minimap (CHudAutoMap mode 1) moved and shrunk into the mobile
-   layout's minimap square while that layout is in use (docs/RE/hud.md). */
+   layout's minimap square while that layout is in use (external/xmen2-decomp/docs/notes/hud.md). */
 namespace x2::native {
 
 /* The square the minimap is drawn in while it is moved, in output pixels.

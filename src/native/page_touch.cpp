@@ -1,6 +1,6 @@
 /*
  * The retail pages with no list of their own on touch (docs/touch-play.md,
- * docs/RE/menus.md): CMenuImageViewer and CMenuCredits share the onMouse
+ * external/xmen2-decomp/docs/notes/menus.md): CMenuImageViewer and CMenuCredits share the onMouse
  * 0x005bb590, which only runs the base CMenu::onMouse (their footers). A
  * finger that starts off every touch button also does what the pad would: a
  * swipe across the image viewer shows the next or previous screen, and a

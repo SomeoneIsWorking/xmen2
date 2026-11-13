@@ -1,6 +1,6 @@
 /* Pair kerning from an OpenType GPOS table: the x-advance adjustments of the
  * lookups the `kern` feature names (PairPos formats 1 and 2, directly or
- * through an extension). See docs/RE/text.md. */
+ * through an extension). See external/xmen2-decomp/docs/notes/text.md. */
 #pragma once
 
 #include <cstddef>

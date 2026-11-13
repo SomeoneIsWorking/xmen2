@@ -3,7 +3,7 @@
 
 The tool itself lives in the `re-harness` repo, because every port in the
 tree needs it and nine forked copies is how it drifted into nine different
-versions. The DATA it reads (docs/info, docs/issues, docs/re-frontier.md) is
+versions. The DATA it reads (docs/info, docs/issues) is
 this port's and stays here; the harness resolves it from the working
 directory, which is why this shim only has to find the tool and hand over.
 """
