@@ -40,9 +40,9 @@ ZLIB = Archive(
     "zlib", "1.3.2",
     "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
     "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16")
-# release-3.4.16 plus an ICCCM WM_NAME, fork branch xmen2/release-3.4.16
-SDL3 = github_commit("SomeoneIsWorking", "SDL", "7fbba8cfddf828e8020ddb4d21180ba539670c3b",
-                     "f5e10dcc2ef46479a3ad68dc9a82aa9259ba4183535e243d78a4fe35988322b0")
+# release-3.4.16 plus an ICCCM WM_NAME and InputPlumber's Steam Deck pads, fork branch xmen2/release-3.4.16
+SDL3 = github_commit("SomeoneIsWorking", "SDL", "59848d8c7f9f5e1a742bac56d3838fb22e75eeb5",
+                     "7bb8d349992074f41bf0aa1e73878e49379af7379e087412a270382e60b66071")
 SDL3_IMAGE = Archive(
     "SDL3_image", "3.4.6",
     "https://github.com/libsdl-org/SDL_image/releases/download/release-3.4.6/"

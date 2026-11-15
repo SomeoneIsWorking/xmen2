@@ -27,6 +27,8 @@ ENTRY_ID = "xmen2-port"
 CONFIG = Path.home() / ".config" / "xmen2"
 HOST = "ally"
 REMOTE_HOME = "Games/xmen2"  # relative to the remote home
+STEAM_NAME = "X-Men Legends II"
+STEAM_SHORTCUT = ROOT.parent.parent / "shared" / "re-harness" / "tools" / "steam_shortcut.py"
 
 
 def refuse(message: str) -> None:
@@ -93,6 +95,12 @@ def install_ally() -> None:
         f'[ -d "$d" ] || continue; printf "%s" "$e" > "$d/{ENTRY_ID}.desktop"; '
         f'chmod 755 "$d/{ENTRY_ID}.desktop"; echo "desktop_shortcut: wrote {HOST}:$d/{ENTRY_ID}.desktop"; done')
     ssh(script)
+    # game mode lists it through a Steam shortcut, added while the ally's Steam runs
+    home = subprocess.run(["ssh", HOST, 'printf %s "$HOME"'], text=True, capture_output=True, check=True).stdout
+    steam = subprocess.run([sys.executable, "-I", str(STEAM_SHORTCUT), "--host", HOST, "add", "--name", STEAM_NAME,
+                            "--exe", f"{home}/{REMOTE_HOME}/{APPIMAGE.name}"], text=True, capture_output=True)
+    print(f"desktop_shortcut: Steam shortcut {STEAM_NAME}" if steam.returncode == 0
+          else f"desktop_shortcut: no Steam shortcut: {steam.stderr.strip()}")
 
 
 def launch() -> int:
