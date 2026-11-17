@@ -2452,6 +2452,17 @@ if(NOT TARGET x86port_runtime)
         "has been removed and is not a fallback; update shared/x86port.")
 endif()
 
+# Guest addresses come from the decomp's symbol map, generated into
+# x2::symbols::<image> (plan 0212).
+set(X2_DECOMP_IMAGES "${CMAKE_SOURCE_DIR}/external/xmen2-decomp/config/images.toml")
+if(NOT EXISTS "${X2_DECOMP_IMAGES}")
+    message(FATAL_ERROR
+        "x2native: external/xmen2-decomp is not checked out; run "
+        "`git submodule update --init --recursive`.")
+endif()
+x86port_symbol_constants(x2_symbols IMAGES "${X2_DECOMP_IMAGES}" NAMESPACE x2::symbols)
+target_link_libraries(x2native PRIVATE x2_symbols)
+
 add_executable(test_guest_memory_window tests/test_guest_memory_window.cpp
     src/native/guest_memory.cpp src/native/guest_memory_arena.cpp src/native/guest_memory_probe.cpp
     src/native/guest_file_io.cpp)

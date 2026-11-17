@@ -18,6 +18,7 @@ jobs:
       - name: Checkout title
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          submodules: true
           fetch-depth: 1
       # The shared dependencies are NOT checked out here. Their revisions are
       # owned by bootstrap.SHARED_REPOS and materialised by tools/provision.py,

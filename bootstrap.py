@@ -55,7 +55,7 @@ SHARED_REPOS = (
                "b2218bb51d3f5b877015d06ea8ca6187fc4f2a11",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "cb10114927ac340d192d7bd03e4290dd9ebe2b08",
+               "2e33c0da476376b5adde16e4e2df05a522a152ad",
                "src/x86port/jit_engine.h"),
 )
 
@@ -379,10 +379,16 @@ def provision(game: Path) -> None:
     print("bootstrap: native inputs ready")
 
 
+def ensure_submodules() -> None:
+    """The port's own submodules (the decomp's symbol map feeds the build)."""
+    run_git(["submodule", "update", "--init", "--recursive"], ROOT)
+
+
 def initialize() -> None:
     os.chdir(ROOT)
     game = find_game()
     validate_game(game)
+    ensure_submodules()
     ensure_shared()
     provision(game)
 

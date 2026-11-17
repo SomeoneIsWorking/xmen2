@@ -20,7 +20,10 @@ and `docs/issues/` hold the corresponding project authorities. RE knowledge
 (behaviour notes, the symbol map, `docs/re-frontier.md`, the title's
 `docs/prior-art.md`) lives in the decomp, `external/xmen2-decomp`
 (SomeoneIsWorking/xmen2-decomp); a new guest address or finding is committed
-there first and the submodule bumped in the port change that uses it. The
+there first and the submodule bumped in the port change that uses it. The build generates
+`x2::symbols::<image>` constants from its symbol map (`#include "xmen2_symbols.hpp"`, target
+`x2_symbols`); code uses those names, not address literals (plan 212). A fresh clone needs
+`git submodule update --init --recursive`, which `./run.sh` does. The
 port's `docs/prior-art.md` records attribution for port material actually reused.
 
 ## Setup
