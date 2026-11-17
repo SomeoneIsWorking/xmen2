@@ -340,3 +340,5 @@ one to land a feature. New host code is C++ in `x2::` namespaces.
   cursors advancing rather than disabling audio (`dsound.cpp`).
 - **One clock the guest can see** (`guest_clock.cpp`). `--unbounded` skips only
   scheduler idle waits; it never scales guest time.
+
+- Per-operation cost metering is missing and needs building: Lucent `lucent::perf` scopes (`OperationMeter`) reporting the run-end lines of the re-harness `perf-units` skill.
