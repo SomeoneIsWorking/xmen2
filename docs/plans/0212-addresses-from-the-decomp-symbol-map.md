@@ -8,14 +8,16 @@ the decomp first; the port bumps the submodule in the change that uses it.
 
 ## Where it stands
 
-- The decomp holds 191 names (XMen2.exe 155, libIGSg 8, libIGMath 6, libIGCore 2, libIGGfx 20),
-  harvested from the port's named `constexpr`/`#define` addresses. `tools/verify.py` checks each
-  against the user's install.
-- About 390 distinct XMen2.exe addresses appear in `src/`; the other ~200 are unnamed literals
-  (override registrations `x2_override_XXXXXXXX`, inline call targets, comments).
-- Structure sizes and field offsets (`popup_dialog.hpp`, `menu_item_memory.hpp`,
-  `conversation_panel.hpp` and others) are not in the map yet.
-- Nine addresses the port names twice are listed in the decomp's `docs/our-names.md`.
+- Stage 1 is built: x86port `tools/symbol_constants.py` and `x86port_symbol_constants()` generate
+  `x2::symbols::<image>` into `build/native/x2_symbols/include/` (target `x2_symbols`), checked
+  against `config/images.toml` on every build.
+- Stage 2's ordered owners use the generated names: `popup_touch.cpp`, `extraction_revive.cpp`,
+  `conversation_touch.cpp`, `options_menu_no_advanced.cpp`, `team_touch.cpp`, `list_touch.cpp`,
+  `hud_minimap.cpp`, `vec3_override.cpp`. Their map entries were renamed from port-file prefixes
+  to guest concepts (`MenuMgr_Get`, `Hud_Get`, `PopupDialog_Draw`, `ListBox_EntryText`, ...).
+- About 90 map names still carry a port-file prefix (`StickAxisOverride_FN_PADS`), each used by
+  the remaining owners as a literal, `#define` or RVA; the DLL maps have no generated users yet.
+- Structure sizes and field offsets are not in the map yet.
 
 ## Stages
 
@@ -41,4 +43,4 @@ the decomp first; the port bumps the submodule in the change that uses it.
 code, and the stage-2 owners still pass their live cases (`options-pages`, `touch-menu`,
 `pickup-models`).
 
-Until stage 1 lands, a new address is added to the symbol map first and copied by name.
+A new address is named in the symbol map first and used through the generated constant.

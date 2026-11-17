@@ -10,10 +10,12 @@
 #include "guest_image_reader.hpp"
 #include "guest_memory.h"
 #include "guest_memory_view.hpp"
+#include "guest_modules.h"
 #include "retail_entities.hpp"
 #include "retail_hero_table.hpp"
 #include "settings_store.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <lucent/log_c.h>
 
@@ -29,18 +31,7 @@
 namespace x2::native {
 namespace {
 
-constexpr std::uint32_t kImageBase = 0x00400000u;
-
-/* XMen2.exe linked addresses. */
-constexpr std::uint32_t kExtractionPoint = 0x004a6b50u;
-constexpr std::uint32_t kExtractionPointLite = 0x004a6d80u;
-constexpr std::uint32_t kGetUpEnd = 0x004220d0u; /* timer end of slot +0x21c */
-constexpr std::uint32_t kPartySingleton = 0x0046dce0u;
-constexpr std::uint32_t kResolveActor = 0x0041fb10u; /* cdecl(handle) */
-constexpr std::uint32_t kActorStats = 0x0041d5a0u;   /* this = actor */
-constexpr std::uint32_t kStatsLevel = 0x004b87c0u; /* this = record, -> short */
-constexpr std::uint32_t kMoneySingleton = 0x00480a00u;
-constexpr std::uint32_t kReviveSource = 0x0069d058u; /* DAT_0069d058 */
+namespace exe = x2::symbols::xmen2;
 
 /* Slots and fields. */
 constexpr std::uint32_t kPartyListSlot = 0x120u;
@@ -72,10 +63,6 @@ constexpr float kTouchHalfWidth = 120.0F;
 constexpr float kTouchHeight = 72.0F;
 constexpr double kScanSeconds = 0.25;
 
-std::uint32_t exe(std::uint32_t linked) {
-  return x86_module_base("XMen2.exe") + linked - kImageBase;
-}
-
 struct Hero {
   std::uint32_t actor = 0;
   std::uint32_t record = 0; /* the hero's stats record, actor +0x35c */
@@ -104,18 +91,19 @@ std::vector<Hero> read_party(const CPU &cpu) {
   }
   std::memset(list.bytes(), 0, kPartyListBytes);
   guest::GuestCall call(cpu);
-  const std::uint32_t singleton = call.cdecl_call(exe(kPartySingleton));
+  const std::uint32_t singleton =
+      call.cdecl_call(exe_linked(exe::GameOwner_Get));
   call.virtual_call(singleton, kPartyListSlot,
                     {list.address(), 0xffffffffu, 0u});
   const std::uint32_t count = RD32(list.address() + 4u * kPartyHandles);
   for (std::uint32_t i = 0; i < count && i < kPartyHandles; ++i) {
     Hero hero;
-    hero.actor =
-        call.cdecl_call(exe(kResolveActor), {RD32(list.address() + 4u * i)});
+    hero.actor = call.cdecl_call(exe_linked(exe::Actor_FromHandle),
+                                 {RD32(list.address() + 4u * i)});
     if (!hero.actor) {
       continue;
     }
-    hero.record = call.thiscall(exe(kActorStats), hero.actor);
+    hero.record = call.thiscall(exe_linked(exe::Actor_GetStats), hero.actor);
     if (!hero.record ||
         !memory.read_u32(hero.record + kStatsRecord, &hero.stats) ||
         !hero.stats || !read_position(memory, hero.actor, &hero.at)) {
@@ -123,7 +111,7 @@ std::vector<Hero> read_party(const CPU &cpu) {
     }
     hero.fallen = (call.virtual_call(hero.stats, kStatsDeadSlot) & 0xffu) != 0u;
     hero.level = static_cast<std::int16_t>(
-        call.thiscall(exe(kStatsLevel), hero.record) & 0xffffu);
+        call.thiscall(exe_linked(exe::Stats_GetLevel), hero.record) & 0xffffu);
     party.push_back(hero);
   }
   return party;
@@ -132,7 +120,7 @@ std::vector<Hero> read_party(const CPU &cpu) {
 Money read_money(const CPU &cpu) {
   guest::GuestCall call(cpu);
   Money money;
-  money.object = call.cdecl_call(exe(kMoneySingleton));
+  money.object = call.cdecl_call(exe_linked(exe::Money_Get));
   money.amount =
       static_cast<std::int32_t>(call.virtual_call(money.object, kMoneyGetSlot));
   return money;
@@ -175,8 +163,9 @@ void revive(const CPU &cpu, const Hero &hero, std::uint32_t health_fraction) {
   call.virtual_call(hero.stats, kStatsReviveSlot);
   call.virtual_call(hero.actor, kActorSetHealthSlot,
                     {RD32(hero.actor + kActorMaxHealth)});
-  call.virtual_call(hero.actor, kActorReviveSlot,
-                    {0u, RD32(exe(kReviveSource)), health_fraction, 1u, 0u});
+  call.virtual_call(
+      hero.actor, kActorReviveSlot,
+      {0u, RD32(exe_linked(exe::ReviveSource)), health_fraction, 1u, 0u});
 }
 
 void refill(const CPU &cpu, const Hero &hero) {
@@ -345,7 +334,7 @@ void ExtractionRevive::get_up_end(CPU *cpu) {
   if (revived_by_us) {
     WR32(cpu->reg[kX86pEsp] + 8u, kFullHealth);
   }
-  x86_guest_body(cpu, "XMen2.exe", kGetUpEnd);
+  x86_guest_body(cpu, "XMen2.exe", exe::Actor_GetUpEnd);
   if (revived_by_us && RD32(actor + kActorGetUpPending) == 0u) {
     set_getting_up(actor, false);
   }
@@ -378,7 +367,7 @@ ExtractionRevive g_revive;
 void get_up_end_override(CPU *cpu) { g_revive.get_up_end(cpu); }
 
 __attribute__((constructor)) void register_get_up_end() {
-  x86_register_override("XMen2.exe", kGetUpEnd, get_up_end_override);
+  x86_register_override("XMen2.exe", exe::Actor_GetUpEnd, get_up_end_override);
 }
 } // namespace
 

@@ -26,6 +26,7 @@
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <lucent/cvar_c.h>
 
@@ -37,13 +38,8 @@
 namespace x2::native {
 namespace {
 
+namespace exe = x2::symbols::xmen2;
 constexpr const char *kModule = "XMen2.exe";
-constexpr uint32_t kAffine = 0x005fcf70u;
-constexpr uint32_t kAdd = 0x005fe5e0u;
-constexpr uint32_t kSub = 0x005fe610u;
-constexpr uint32_t kScale = 0x005fe640u;
-constexpr uint32_t kDot = 0x005fe670u;
-constexpr uint32_t kCross = 0x005fe690u;
 constexpr uint32_t kVec3Bytes = 12u;
 constexpr uint32_t kAffineBytes = 48u;
 
@@ -237,7 +233,7 @@ int affine_native(CPU *C) {
     memory.read_block(m, mm, sizeof mm);
     memory.write(out + 4u * row, vec3_affine_row(vv, mm, row));
   }
-  finish(C, kAffine, memory, Answer{m, v, out, esp + 4u, false, 0});
+  finish(C, exe::Vec3_Affine, memory, Answer{m, v, out, esp + 4u, false, 0});
   return 1;
 }
 
@@ -267,10 +263,14 @@ int elementwise_native(CPU *C, uint32_t ep) {
   return 1;
 }
 
-int add_native(CPU *C) { return elementwise_native<vec3_add, false>(C, kAdd); }
-int sub_native(CPU *C) { return elementwise_native<vec3_sub, false>(C, kSub); }
+int add_native(CPU *C) {
+  return elementwise_native<vec3_add, false>(C, exe::Vec3_Add);
+}
+int sub_native(CPU *C) {
+  return elementwise_native<vec3_sub, false>(C, exe::Vec3_Sub);
+}
 int scale_native(CPU *C) {
-  return elementwise_native<vec3_scale, true>(C, kScale);
+  return elementwise_native<vec3_scale, true>(C, exe::Vec3_Scale);
 }
 
 /* thiscall this . v into ST(0), ret 4. Leaves EAX = v. */
@@ -288,7 +288,7 @@ int dot_native(CPU *C) {
   float vv[3];
   memory.read_block(self, t, sizeof t);
   memory.read_block(v, vv, sizeof vv);
-  finish(C, kDot, memory,
+  finish(C, exe::Vec3_Dot, memory,
          Answer{v, self, C->reg[kX86pEdx], esp + 8u, true, vec3_dot(t, vv)});
   return 1;
 }
@@ -313,7 +313,7 @@ int cross_native(CPU *C) {
                                           memory.read(v + 8u)));
   memory.write(self + 8u, vec3_cross_term(t[0], memory.read(v + 4u), t[1],
                                           memory.read(v)));
-  finish(C, kCross, memory,
+  finish(C, exe::Vec3_Cross, memory,
          Answer{v, self, C->reg[kX86pEdx], esp + 8u, false, 0});
   return 1;
 }
@@ -328,24 +328,24 @@ int cross_native(CPU *C) {
   }                                                                            \
   int leaf_##name(CPU *C) { return enabled() && !s_verify && name##_native(C); }
 
-X2_VEC3_OVERRIDE(affine, kAffine)
-X2_VEC3_OVERRIDE(add, kAdd)
-X2_VEC3_OVERRIDE(sub, kSub)
-X2_VEC3_OVERRIDE(scale, kScale)
-X2_VEC3_OVERRIDE(dot, kDot)
-X2_VEC3_OVERRIDE(cross, kCross)
+X2_VEC3_OVERRIDE(affine, exe::Vec3_Affine)
+X2_VEC3_OVERRIDE(add, exe::Vec3_Add)
+X2_VEC3_OVERRIDE(sub, exe::Vec3_Sub)
+X2_VEC3_OVERRIDE(scale, exe::Vec3_Scale)
+X2_VEC3_OVERRIDE(dot, exe::Vec3_Dot)
+X2_VEC3_OVERRIDE(cross, exe::Vec3_Cross)
 
 __attribute__((constructor)) void vec3_register_overrides() {
   const struct {
     uint32_t ep;
     void (*override_fn)(CPU *);
     x86_override_leaf_fn leaf;
-  } table[] = {{kAffine, override_affine, leaf_affine},
-               {kAdd, override_add, leaf_add},
-               {kSub, override_sub, leaf_sub},
-               {kScale, override_scale, leaf_scale},
-               {kDot, override_dot, leaf_dot},
-               {kCross, override_cross, leaf_cross}};
+  } table[] = {{exe::Vec3_Affine, override_affine, leaf_affine},
+               {exe::Vec3_Add, override_add, leaf_add},
+               {exe::Vec3_Sub, override_sub, leaf_sub},
+               {exe::Vec3_Scale, override_scale, leaf_scale},
+               {exe::Vec3_Dot, override_dot, leaf_dot},
+               {exe::Vec3_Cross, override_cross, leaf_cross}};
   for (const auto &entry : table) {
     x86_register_override(kModule, entry.ep, entry.override_fn);
     x86_register_override_leaf(kModule, entry.ep, entry.leaf);

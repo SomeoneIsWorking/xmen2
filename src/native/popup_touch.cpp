@@ -21,6 +21,7 @@
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <algorithm>
 #include <array>
@@ -33,56 +34,30 @@
 
 namespace {
 
+namespace exe = x2::symbols::xmen2;
 namespace popup = x2::native::popup;
 using x2::input::SceneBox;
 using x2::native::menu_scene::Vectors;
 using x2::presentation::ScenePoint;
 namespace menu_scene = x2::native::menu_scene;
 
-constexpr std::uint32_t kPopupDraw = 0x005ea9e0u;
-/* CPopupDialog::onMouse(x, z, _, message, _), ret 0x14. */
-constexpr std::uint32_t kPopupOnMouse = 0x005ea2c0u;
-/* The popup attaching its models to the menu scene or the world scene, and
-   detaching them; +0x4056 bit 0 says they are attached. */
-constexpr std::uint32_t kAttachMenu = 0x005e91c0u;
-constexpr std::uint32_t kAttachWorld = 0x005e90d0u;
-constexpr std::uint32_t kDetachMenu = 0x005e93b0u;
-constexpr std::uint32_t kDetachWorld = 0x005e92d0u;
+/* +0x4056 bit 0: the popup's models are attached to a scene. */
 constexpr std::uint32_t kAttached = 0x4056u;
-/* CMenuMgr, and the world scene with its attach and detach slots. */
-constexpr std::uint32_t kMenuManager = 0x005d8920u;
-constexpr std::uint32_t kWorldScene = 0x0059ee20u;
+/* The HUD's world-scene attach and detach slots. */
 constexpr std::uint32_t kWorldAttach = 0x24u;
 constexpr std::uint32_t kWorldDetach = 0x28u;
-/* FUN_005e9510(name, &entity): one entity of a model's art. */
-constexpr std::uint32_t kLoadModel = 0x005e9510u;
-/* Vtable slot 2 (FUN_005e9070): the popup releasing its models, after which
-   their art is gone. */
-constexpr std::uint32_t kReleaseModels = 0x005e9070u;
-constexpr std::uint32_t kBarArtName = 0x006a32d4u;
-/* The text line call (lines, x, z, width, style, scale, flags, colour,
-   format, ...) and its "%s". */
-constexpr std::uint32_t kTextLine = 0x005ef270u;
-constexpr std::uint32_t kLineFormat = 0x00685ca4u;
-/* The font manager's text height (width, text, scale, 0, 1) and "A". */
-constexpr std::uint32_t kFonts = 0x00597c20u;
+/* The font manager's text height (width, text, scale, 0, 1). */
 constexpr std::uint32_t kTextHeight = 0x38u;
-constexpr std::uint32_t kLineProbe = 0x0069a444u;
-/* STYLE_MENU: the draw's lazily looked-up handle, its ready bit, and the
-   lookup, a name hash (FUN_00425df0) passed to CMenuMgr vt+0x228. */
-constexpr std::uint32_t kMenuStyle = 0x008b1400u;
-constexpr std::uint32_t kStyleReady = 0x008b1408u;
+/* g_MenuStyleFlags bit: g_MenuStyle holds STYLE_MENU's handle, looked up
+   through CMenuMgr vt+0x228. */
 constexpr std::uint32_t kMenuStyleReady = 0x2u;
-constexpr std::uint32_t kStyleName = 0x0069e83cu;
-constexpr std::uint32_t kNameHash = 0x00425df0u;
 constexpr std::uint32_t kStyleLookup = 0x228u;
 /* The page's footer prompts, three of 0x40 bytes, shown while the page's
-   timeout (+0x1554) is at most [0x00680030]. */
+   timeout (+0x1554) is at most MenuFadeThreshold. */
 constexpr std::uint32_t kPrompts = 0x1310u;
 constexpr std::uint32_t kPromptBytes = 0x40u;
 constexpr std::uint32_t kPromptCount = 3u;
 constexpr std::uint32_t kTimeout = 0x1554u;
-constexpr std::uint32_t kPromptTimeout = 0x00680030u;
 
 constexpr std::uint32_t kButtonDown = 0x201u;
 constexpr std::uint32_t kButtonUp = 0x202u;
@@ -169,7 +144,7 @@ public:
     std::array<std::string, kPromptCount> prompts{};
     int footers = 0;
     if (RDF32(page + kTimeout) <=
-        RDF32(x2::native::exe_linked(kPromptTimeout))) {
+        RDF32(x2::native::exe_linked(exe::MenuFadeThreshold))) {
       for (std::uint32_t i = 0; i < kPromptCount; ++i) {
         const std::string_view prompt = x2::guest::guest_string(
             page + kPrompts + i * kPromptBytes, kPromptBytes);
@@ -418,8 +393,9 @@ private:
     }
     for (std::uint32_t &bar : bars_) {
       WR32(slot.address(), 0u);
-      call.thiscall(x2::native::exe_linked(kLoadModel), 0u,
-                    {x2::native::exe_linked(kBarArtName), slot.address()});
+      call.thiscall(
+          x2::native::exe_linked(exe::Model_LoadEntity), 0u,
+          {x2::native::exe_linked(exe::s_PopupBarArt), slot.address()});
       bar = RD32(slot.address());
       place_bar(call, vectors, bar, {});
     }
@@ -435,7 +411,7 @@ private:
       }
     } else {
       const std::uint32_t world =
-          call.cdecl_call(x2::native::exe_linked(kWorldScene));
+          call.cdecl_call(x2::native::exe_linked(exe::Hud_Get));
       call.virtual_call(world, attach ? kWorldAttach : kWorldDetach,
                         {entity, 0u});
     }
@@ -448,45 +424,48 @@ private:
   }
 
   static float line_height(x2::guest::GuestCall &call, std::uint32_t popup) {
-    const std::uint32_t fonts = call.cdecl_call(x2::native::exe_linked(kFonts));
+    const std::uint32_t fonts =
+        call.cdecl_call(x2::native::exe_linked(exe::FontMgr_Get));
     const auto width =
         static_cast<std::int16_t>(RD16(popup + popup::kTextWidth));
     call.virtual_call(fonts, kTextHeight,
                       {static_cast<std::uint32_t>(width),
-                       x2::native::exe_linked(kLineProbe),
+                       x2::native::exe_linked(exe::s_TextProbe),
                        x2::guest::float_bits(1.0F), 0u, 1u});
     return static_cast<float>(call.x87_result());
   }
 
   static std::uint32_t color(x2::guest::GuestCall &call, Vectors &vectors,
                              bool selected, bool enabled) {
-    if ((RD32(x2::native::exe_linked(kStyleReady)) & kMenuStyleReady) == 0u) {
-      WR32(x2::native::exe_linked(kStyleReady),
-           RD32(x2::native::exe_linked(kStyleReady)) | kMenuStyleReady);
+    if ((RD32(x2::native::exe_linked(exe::g_MenuStyleFlags)) &
+         kMenuStyleReady) == 0u) {
+      WR32(x2::native::exe_linked(exe::g_MenuStyleFlags),
+           RD32(x2::native::exe_linked(exe::g_MenuStyleFlags)) |
+               kMenuStyleReady);
       const std::uint32_t name = vectors.put(1, 0.0F, 0.0F, 0.0F);
-      call.thiscall(x2::native::exe_linked(kNameHash), name,
-                    {x2::native::exe_linked(kStyleName)});
+      call.thiscall(x2::native::exe_linked(exe::Name_Hash), name,
+                    {x2::native::exe_linked(exe::s_StyleMenu)});
       const std::uint32_t manager =
-          call.cdecl_call(x2::native::exe_linked(kMenuManager));
-      WR32(x2::native::exe_linked(kMenuStyle),
+          call.cdecl_call(x2::native::exe_linked(exe::MenuMgr_Get));
+      WR32(x2::native::exe_linked(exe::g_MenuStyle),
            call.virtual_call(manager, kStyleLookup, {name}));
     }
-    return menu_scene::style_color(call, vectors,
-                                   RD32(x2::native::exe_linked(kMenuStyle)),
-                                   selected, enabled);
+    return menu_scene::style_color(
+        call, vectors, RD32(x2::native::exe_linked(exe::g_MenuStyle)), selected,
+        enabled);
   }
 
   static void text(x2::guest::GuestCall &call, Vectors &, std::uint32_t box,
                    ScenePoint at, float scale, std::uint32_t colour,
                    std::uint32_t string) {
     call.cdecl_call(
-        x2::native::exe_linked(kTextLine),
+        x2::native::exe_linked(exe::TextLines_Add),
         {box + popup::kBoxLines,
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.x)),
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.z)),
          RD32(box + popup::kBoxWidth), RD32(box + popup::kBoxStyle),
          x2::guest::float_bits(scale), 0u, colour,
-         x2::native::exe_linked(kLineFormat), string});
+         x2::native::exe_linked(exe::s_PercentS), string});
   }
 
   std::array<std::uint32_t, kCards + kButtons> bars_{};
@@ -522,7 +501,7 @@ extern "C" void x2_override_005ea9e0(CPU *cpu) {
     return;
   }
   g_popup_touch.restore_frame(*cpu, popup);
-  x86_guest_body(cpu, "XMen2.exe", kPopupDraw);
+  x86_guest_body(cpu, "XMen2.exe", exe::PopupDialog_Draw);
 }
 
 extern "C" void x2_override_005ea2c0(CPU *cpu) {
@@ -536,36 +515,43 @@ extern "C" void x2_override_005ea2c0(CPU *cpu) {
     cpu->reg[kX86pEsp] += 4u + 20u;
     return;
   }
-  x86_guest_body(cpu, "XMen2.exe", kPopupOnMouse);
+  x86_guest_body(cpu, "XMen2.exe", exe::PopupDialog_OnMouse);
 }
 
 extern "C" void x2_override_005e9070(CPU *cpu) {
   g_popup_touch.release(*cpu);
-  x86_guest_body(cpu, "XMen2.exe", kReleaseModels);
+  x86_guest_body(cpu, "XMen2.exe", exe::PopupDialog_ReleaseModels);
 }
 
 extern "C" void x2_override_005e91c0(CPU *cpu) {
-  scene_hook(cpu, kAttachMenu, Scene::menu, true);
+  scene_hook(cpu, exe::PopupDialog_AttachMenu, Scene::menu, true);
 }
 
 extern "C" void x2_override_005e90d0(CPU *cpu) {
-  scene_hook(cpu, kAttachWorld, Scene::world, true);
+  scene_hook(cpu, exe::PopupDialog_AttachWorld, Scene::world, true);
 }
 
 extern "C" void x2_override_005e93b0(CPU *cpu) {
-  scene_hook(cpu, kDetachMenu, Scene::menu, false);
+  scene_hook(cpu, exe::PopupDialog_DetachMenu, Scene::menu, false);
 }
 
 extern "C" void x2_override_005e92d0(CPU *cpu) {
-  scene_hook(cpu, kDetachWorld, Scene::world, false);
+  scene_hook(cpu, exe::PopupDialog_DetachWorld, Scene::world, false);
 }
 
 __attribute__((constructor)) static void x2_popup_touch_register(void) {
-  x86_register_override("XMen2.exe", kPopupDraw, x2_override_005ea9e0);
-  x86_register_override("XMen2.exe", kPopupOnMouse, x2_override_005ea2c0);
-  x86_register_override("XMen2.exe", kReleaseModels, x2_override_005e9070);
-  x86_register_override("XMen2.exe", kAttachMenu, x2_override_005e91c0);
-  x86_register_override("XMen2.exe", kAttachWorld, x2_override_005e90d0);
-  x86_register_override("XMen2.exe", kDetachMenu, x2_override_005e93b0);
-  x86_register_override("XMen2.exe", kDetachWorld, x2_override_005e92d0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_Draw,
+                        x2_override_005ea9e0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_OnMouse,
+                        x2_override_005ea2c0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_ReleaseModels,
+                        x2_override_005e9070);
+  x86_register_override("XMen2.exe", exe::PopupDialog_AttachMenu,
+                        x2_override_005e91c0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_AttachWorld,
+                        x2_override_005e90d0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_DetachMenu,
+                        x2_override_005e93b0);
+  x86_register_override("XMen2.exe", exe::PopupDialog_DetachWorld,
+                        x2_override_005e92d0);
 }

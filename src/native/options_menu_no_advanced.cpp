@@ -7,34 +7,31 @@
  * natively -- the early return while the menu waits, then the pressed mask --
  * and resumes the retail body at 0x005cbe73, past the Start branch that set
  * 0x008afde4 and ran "openmenu sebas". The init (0x005cb9c0, +0x44) runs as
- * retail and then clears the footer slot it filled. external/xmen2-decomp/docs/notes/menus.md.
+ * retail and then clears the footer slot it filled.
+ * external/xmen2-decomp/docs/notes/menus.md.
  */
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "guest_modules.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <cstdint>
 
 namespace x2::native {
 namespace {
 
-inline constexpr std::uint32_t kExePreferred = 0x00400000u;
-inline constexpr std::uint32_t kUpdate = 0x005cbdf0u;
-inline constexpr std::uint32_t kUpdateAfterStart = 0x005cbe73u;
-inline constexpr std::uint32_t kInit = 0x005cb9c0u;
+namespace exe = x2::symbols::xmen2;
+
 inline constexpr std::uint32_t kWaitFlags = 0x18e4u;
-inline constexpr std::uint32_t kGameState = 0x004b2880u;
 inline constexpr std::uint32_t kVtGameStateBusy = 0x18u;
-inline constexpr std::uint32_t kPrompt = 0x005eb300u;
 inline constexpr std::uint32_t kVtPromptUp = 0x78u;
-inline constexpr std::uint32_t kMenuManager = 0x005d8920u;
 inline constexpr std::uint32_t kVtManagerWait = 0x74u;
 inline constexpr std::uint32_t kVtManagerPressedMask = 0x140u;
-/* CMenu's footer texts (desctext) and their setter; slot 3 is the one the
+/* CMenu's footer texts (desctext); slot 3 is the one the
    init writes "$MENU_OK Advanced Options" to (0x005cbbc7). */
 inline constexpr std::uint32_t kFooters = 0x2f4u;
-inline constexpr std::uint32_t kSetFooter = 0x005bc6b0u;
 inline constexpr std::uint32_t kAdvancedFooter = 3u;
 
 class OptionsWithoutAdvanced {
@@ -57,42 +54,39 @@ public:
     push(C, C->reg[kX86pEsi]);
     C->reg[kX86pEdi] = menu;
     C->reg[kX86pEsi] = call_this(*C, manager(*C), kVtManagerPressedMask);
-    x86_guest_body_resume(C, "XMen2.exe", kUpdateAfterStart, frame_esp);
+    x86_guest_body_resume(C, "XMen2.exe", exe::MenuOptions_UpdateAfterStart,
+                          frame_esp);
   }
 
   void init(CPU *C) const {
     const std::uint32_t menu = C->reg[kX86pEcx];
-    x86_guest_body(C, "XMen2.exe", kInit);
+    x86_guest_body(C, "XMen2.exe", exe::MenuOptions_Init);
     CPU call = *C;
     push(&call, 0u);
     push(&call, kAdvancedFooter);
     call.reg[kX86pEcx] = menu + kFooters;
-    x86_guest_call_args(&call, linked(kSetFooter), 8u);
+    x86_guest_call_args(&call, exe_linked(exe::MenuFooters_Set), 8u);
   }
 
 private:
   /* 0x005cbdfc..0x005cbe1a: the game state or a prompt holds the menu. */
   [[nodiscard]] bool busy(const CPU &from) const {
     CPU probe = from;
-    const std::uint32_t state = call_free(&probe, kGameState);
+    const std::uint32_t state = call_free(&probe, exe::GameState_Get);
     if (call_this(probe, state, kVtGameStateBusy) != 0u) {
       return true;
     }
-    const std::uint32_t prompt = call_free(&probe, kPrompt);
+    const std::uint32_t prompt = call_free(&probe, exe::Prompt_Get);
     return (call_this(probe, prompt, kVtPromptUp) & 0xffu) != 0u;
   }
 
   [[nodiscard]] std::uint32_t manager(const CPU &from) const {
     CPU probe = from;
-    return call_free(&probe, kMenuManager);
-  }
-
-  [[nodiscard]] std::uint32_t linked(std::uint32_t preferred) const {
-    return x86_module_base("XMen2.exe") + (preferred - kExePreferred);
+    return call_free(&probe, exe::MenuMgr_Get);
   }
 
   [[nodiscard]] std::uint32_t call_free(CPU *C, std::uint32_t preferred) const {
-    x86_guest_call_args(C, linked(preferred), 0u);
+    x86_guest_call_args(C, exe_linked(preferred), 0u);
     return C->reg[kX86pEax];
   }
 
@@ -121,8 +115,8 @@ void options_update(CPU *C) { g_options_without_advanced.update(C); }
 void options_init(CPU *C) { g_options_without_advanced.init(C); }
 
 __attribute__((constructor)) void register_options_without_advanced() {
-  x86_register_override("XMen2.exe", kUpdate, options_update);
-  x86_register_override("XMen2.exe", kInit, options_init);
+  x86_register_override("XMen2.exe", exe::MenuOptions_Update, options_update);
+  x86_register_override("XMen2.exe", exe::MenuOptions_Init, options_init);
 }
 
 } // namespace

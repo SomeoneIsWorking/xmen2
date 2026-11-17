@@ -23,6 +23,7 @@
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <algorithm>
 #include <array>
@@ -35,6 +36,7 @@
 
 namespace {
 
+namespace exe = x2::symbols::xmen2;
 namespace cv = x2::native::conversation;
 namespace box = x2::native::popup;
 namespace menu_scene = x2::native::menu_scene;
@@ -43,32 +45,11 @@ using x2::input::SceneBox;
 using x2::native::menu_scene::Vectors;
 using x2::presentation::ScenePoint;
 
-/* The line record's draw (vtable 0x00685d74 slot 0), which composes the line
-   and, through FUN_0045b0a0, each response the player may pick (vtable
-   0x00685d6c slot 0, FUN_0045b7b0), into the two text boxes. */
-constexpr std::uint32_t kLineDraw = 0x0045beb0u;
-/* A record's text with its %TOKEN%s replaced (record, out, scratch), ret 8;
-   "%NAME%: " becomes the speaker's name and a line break. */
-constexpr std::uint32_t kCompose = 0x0045a340u;
-/* The conversation's onMouse(x, z, _, message, _), ret 0x14 (vtable slot
-   0x00685e68). */
-constexpr std::uint32_t kOnMouse = 0x00459e70u;
-/* Its shutdown (vtable +8), which releases its models, and its show/hide
-   (bool), which detaches them. */
-constexpr std::uint32_t kShutdown = 0x00455d90u;
-constexpr std::uint32_t kSetVisible = 0x004556b0u;
 /* Where FUN_00458410 places the panel, at scale 1. */
 constexpr ScenePoint kPanelAt{255.0F, 110.0F};
-/* The world scene and its attach and detach (entity, 0). */
-constexpr std::uint32_t kWorldScene = 0x0059ee20u;
+/* The HUD's world-scene attach and detach (entity, 0). */
 constexpr std::uint32_t kWorldAttach = 0x24u;
 constexpr std::uint32_t kWorldDetach = 0x28u;
-/* A text box's reset of its lines (FUN_005ef1a0, on the lines), its line
-   call (lines, x, z, width, style, scale, flags, colour, format, ...) and
-   "%s". */
-constexpr std::uint32_t kResetLines = 0x005ef1a0u;
-constexpr std::uint32_t kTextLine = 0x005ef270u;
-constexpr std::uint32_t kLineFormat = 0x00685ca4u;
 constexpr std::uint32_t kBoxRows = 0x400u;
 /* Retail's highlight on the response it would accept (FUN_0045b7b0). */
 constexpr std::string_view kHighlight = "~8";
@@ -410,7 +391,7 @@ private:
   static void clear_box(x2::guest::GuestCall &call, std::uint32_t text_box) {
     WR32(text_box + kBoxRows, 0u);
     WR32(text_box + box::kBoxPen, 0u);
-    call.thiscall(x2::native::exe_linked(kResetLines),
+    call.thiscall(x2::native::exe_linked(exe::TextLines_Reset),
                   text_box + box::kBoxLines);
   }
 
@@ -445,7 +426,7 @@ private:
 
   void world_call(x2::guest::GuestCall &call, std::uint32_t slot) {
     const std::uint32_t world =
-        call.cdecl_call(x2::native::exe_linked(kWorldScene));
+        call.cdecl_call(x2::native::exe_linked(exe::Hud_Get));
     for (const std::uint32_t bar : bars_) {
       if (bar != 0u) {
         call.virtual_call(world, slot, {bar, 0u});
@@ -457,13 +438,13 @@ private:
                    ScenePoint at, float scale, std::uint32_t colour,
                    std::uint32_t string) {
     call.cdecl_call(
-        x2::native::exe_linked(kTextLine),
+        x2::native::exe_linked(exe::TextLines_Add),
         {text_box + box::kBoxLines,
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.x)),
          static_cast<std::uint32_t>(static_cast<std::int32_t>(at.z)),
          RD32(text_box + box::kBoxWidth), RD32(text_box + box::kBoxStyle),
          x2::guest::float_bits(scale), 0u, colour,
-         x2::native::exe_linked(kLineFormat), string});
+         x2::native::exe_linked(exe::s_PercentS), string});
   }
 
   bool capturing_ = false;
@@ -497,7 +478,7 @@ const ConversationTouchDrawn &conversation_touch_drawn() {
 
 extern "C" void x2_override_0045beb0(CPU *cpu) {
   g_conversation_touch.begin(cpu->reg[kX86pEcx]);
-  x86_guest_body(cpu, "XMen2.exe", kLineDraw);
+  x86_guest_body(cpu, "XMen2.exe", exe::ConversationLine_Draw);
   g_conversation_touch.end();
   if (!on_touch() || !g_conversation_touch.draw(*cpu)) {
     g_conversation_touch.restore(*cpu);
@@ -507,7 +488,7 @@ extern "C" void x2_override_0045beb0(CPU *cpu) {
 extern "C" void x2_override_0045a340(CPU *cpu) {
   const std::uint32_t record = cpu->reg[kX86pEcx];
   const std::uint32_t out = RD32(cpu->reg[kX86pEsp] + 4u);
-  x86_guest_body(cpu, "XMen2.exe", kCompose);
+  x86_guest_body(cpu, "XMen2.exe", exe::Conversation_ComposeText);
   g_conversation_touch.composed(record, out);
 }
 
@@ -521,12 +502,12 @@ extern "C" void x2_override_00459e70(CPU *cpu) {
     cpu->reg[kX86pEsp] += 4u + 20u;
     return;
   }
-  x86_guest_body(cpu, "XMen2.exe", kOnMouse);
+  x86_guest_body(cpu, "XMen2.exe", exe::Conversation_OnMouse);
 }
 
 extern "C" void x2_override_004556b0(CPU *cpu) {
   const std::uint32_t self = cpu->reg[kX86pEcx];
-  x86_guest_body(cpu, "XMen2.exe", kSetVisible);
+  x86_guest_body(cpu, "XMen2.exe", exe::Conversation_SetVisible);
   if ((RD8(self + cv::kFlags) & cv::kVisible) == 0u) {
     g_conversation_touch.hidden(*cpu);
   }
@@ -534,13 +515,18 @@ extern "C" void x2_override_004556b0(CPU *cpu) {
 
 extern "C" void x2_override_00455d90(CPU *cpu) {
   g_conversation_touch.release(*cpu);
-  x86_guest_body(cpu, "XMen2.exe", kShutdown);
+  x86_guest_body(cpu, "XMen2.exe", exe::Conversation_Shutdown);
 }
 
 __attribute__((constructor)) static void x2_conversation_touch_register(void) {
-  x86_register_override("XMen2.exe", kLineDraw, x2_override_0045beb0);
-  x86_register_override("XMen2.exe", kCompose, x2_override_0045a340);
-  x86_register_override("XMen2.exe", kOnMouse, x2_override_00459e70);
-  x86_register_override("XMen2.exe", kSetVisible, x2_override_004556b0);
-  x86_register_override("XMen2.exe", kShutdown, x2_override_00455d90);
+  x86_register_override("XMen2.exe", exe::ConversationLine_Draw,
+                        x2_override_0045beb0);
+  x86_register_override("XMen2.exe", exe::Conversation_ComposeText,
+                        x2_override_0045a340);
+  x86_register_override("XMen2.exe", exe::Conversation_OnMouse,
+                        x2_override_00459e70);
+  x86_register_override("XMen2.exe", exe::Conversation_SetVisible,
+                        x2_override_004556b0);
+  x86_register_override("XMen2.exe", exe::Conversation_Shutdown,
+                        x2_override_00455d90);
 }

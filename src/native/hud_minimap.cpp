@@ -6,6 +6,7 @@
 #include "hud_draw_runtime.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <lucent/log_c.h>
 
@@ -14,13 +15,7 @@
 namespace x2::native {
 namespace {
 
-inline constexpr uint32_t kAutoMapUpdate = 0x005a09d0u; /* vtable +8 */
-inline constexpr uint32_t kMode = 0x008a61c4u;          /* 0 off, 1 round */
-inline constexpr uint32_t kScale = 0x008a61c8u;         /* HUD units/world */
-inline constexpr uint32_t kCells = 0x008a61ccu;         /* radius in cells */
-inline constexpr uint32_t kCentreX = 0x008a61dcu;
-inline constexpr uint32_t kCentreZ = 0x008a61e4u;
-inline constexpr uint32_t kMarkerWidth = 0x008a61f8u;
+namespace exe = x2::symbols::xmen2;
 inline constexpr float kCellWorldUnits = 240.0f; /* 0x0069ddf4 */
 
 struct Frame {
@@ -31,13 +26,15 @@ struct Frame {
 };
 
 Frame read_frame() {
-  return {(float)RDF32(kCentreX), (float)RDF32(kCentreZ), (float)RDF32(kScale)};
+  return {(float)RDF32(exe::g_AutoMapCentreX),
+          (float)RDF32(exe::g_AutoMapCentreZ),
+          (float)RDF32(exe::g_AutoMapScale)};
 }
 
 void write_frame(Frame frame) {
-  WRF32(kCentreX, frame.x);
-  WRF32(kCentreZ, frame.z);
-  WRF32(kScale, frame.scale);
+  WRF32(exe::g_AutoMapCentreX, frame.x);
+  WRF32(exe::g_AutoMapCentreZ, frame.z);
+  WRF32(exe::g_AutoMapScale, frame.scale);
 }
 
 /* Retail writes the centre and scale only when the mode is set (0x005a0150)
@@ -52,7 +49,8 @@ public:
       placed_ = false;
     }
     HudDisc disc{};
-    const bool mobile = RD32(kMode) == 1u && hud_minimap_target(&disc);
+    const bool mobile =
+        RD32(exe::g_AutoMapMode) == 1u && hud_minimap_target(&disc);
     if (mobile) {
       if (!placed_) {
         retail_ = now;
@@ -71,7 +69,7 @@ public:
       placed_ = false;
     }
     publish(mobile ? &disc.box : nullptr);
-    x86_guest_body(cpu, "XMen2.exe", kAutoMapUpdate);
+    x86_guest_body(cpu, "XMen2.exe", exe::AutoMap_Update);
   }
 
   bool placed(x2::presentation::Rect *out) {
@@ -86,8 +84,9 @@ private:
   /* The map's world radius scales to the disc less half a marker, so a
      marker clamped to the rim stays inside it. */
   static Frame moved(const HudDisc &disc) {
-    const float world = (float)((int)RD32(kCells) - 1) * kCellWorldUnits;
-    const float marker = (float)RDF32(kMarkerWidth) * 0.5f;
+    const float world =
+        (float)((int)RD32(exe::g_AutoMapCells) - 1) * kCellWorldUnits;
+    const float marker = (float)RDF32(exe::g_AutoMapMarkerWidth) * 0.5f;
     return {disc.x, disc.z, (disc.radius - marker) / world};
   }
 
@@ -120,6 +119,6 @@ bool hud_minimap_placed(x2::presentation::Rect *out) {
 } // namespace x2::native
 
 __attribute__((constructor)) static void register_hud_minimap(void) {
-  x86_register_override("XMen2.exe", x2::native::kAutoMapUpdate,
+  x86_register_override("XMen2.exe", x2::symbols::xmen2::AutoMap_Update,
                         x2::native::automap_update);
 }

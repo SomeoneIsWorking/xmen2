@@ -34,6 +34,7 @@
 #include "text_item_touch.hpp"
 #include "touch_menu_source.hpp"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <algorithm>
 #include <array>
@@ -54,15 +55,9 @@ namespace menu_text = x2::native::menu_text;
 using x2::input::SceneBox;
 using x2::input::TouchPress;
 using x2::native::exe_linked;
+namespace exe = x2::symbols::xmen2;
 using x2::native::MenuAction;
 
-/* CMenuTeam's update (vtable 0x006a2c94 +0x38) and onMouse (+0x80,
-   ret 0x14); the item with the menu's focus, and the gear refresh onMouse
-   gives it. */
-constexpr std::uint32_t kTeamUpdate = 0x005e66c0u;
-constexpr std::uint32_t kTeamOnMouse = 0x005e25c0u;
-constexpr std::uint32_t kFocusedItem = 0x005ab0c0u;
-constexpr std::uint32_t kGearRefresh = 0x005e0950u;
 /* A list box's onMouse slot, and the releases after which onMouse skips
    the refresh. */
 constexpr std::uint32_t kListOnMouse = 0x74u;
@@ -79,17 +74,12 @@ constexpr std::uint32_t kSkillsMode = 3u;
 constexpr std::uint32_t kGearMode = 4u;
 constexpr std::uint32_t kAiMode = 5u;
 constexpr std::uint32_t kSkillDetailsMode = 6u;
-/* The menu's player, and the mouse button table FUN_0061a600 reads per
-   player (0x28 bytes each, the left button first). */
-constexpr std::uint32_t kMenuPlayer = 0x006f3920u;
-constexpr std::uint32_t kMouseButtons = 0x00a68ca0u;
+/* g_MouseButtons per player, the left button first. */
 constexpr std::uint32_t kMouseButtonsStride = 0x28u;
 
-/* The item's hidden (vt+0x04) and text (vt+0x7c); a list box entry's
-   record text. */
+/* The item's hidden (vt+0x04) and text (vt+0x7c). */
 constexpr std::uint32_t kSlotHidden = 0x04u;
 constexpr std::uint32_t kSlotText = 0x7cu;
-constexpr std::uint32_t kEntryText = 0x005bfcd0u;
 
 /* Buttons sit this much behind the text. */
 constexpr float kButtonDepth = 5.0F;
@@ -331,10 +321,10 @@ public:
       details_open_ = false;
     }
     details_menu_ = menu;
-    const std::uint32_t player = RD32(exe_linked(kMenuPlayer));
-    const bool held =
-        RD8(menu + kOverDetails) != 0u &&
-        RD8(exe_linked(kMouseButtons) + player * kMouseButtonsStride) != 0u;
+    const std::uint32_t player = RD32(exe_linked(exe::g_MenuPlayer));
+    const bool held = RD8(menu + kOverDetails) != 0u &&
+                      RD8(exe_linked(exe::g_MouseButtons) +
+                          player * kMouseButtonsStride) != 0u;
     if (touch && details_held_ && !held) {
       details_open_ = !details_open_;
     }
@@ -578,7 +568,7 @@ private:
     std::string record;
     if (selected >= 0) {
       record = std::string(x2::guest::guest_string(
-          call.thiscall(exe_linked(kEntryText), list,
+          call.thiscall(exe_linked(exe::ListBox_EntryText), list,
                         {static_cast<std::uint32_t>(selected)}),
           list_box::kRecordTextBytes));
     }
@@ -832,7 +822,7 @@ extern "C" void x2_override_005e25c0(CPU *cpu) {
           ? x2::native::list_touch_owner(menu, point)
           : 0u;
   if (list == 0u) {
-    x86_guest_body(cpu, "XMen2.exe", kTeamOnMouse);
+    x86_guest_body(cpu, "XMen2.exe", exe::MenuTeam_OnMouse);
     return;
   }
   WR8(menu + kOverDetails, 0u);
@@ -844,8 +834,8 @@ extern "C" void x2_override_005e25c0(CPU *cpu) {
                          message, RD32(esp + 20u)}) &
       0xffu;
   if (taken != 0u && message != kButtonUp && message != kRightButtonUp) {
-    call.thiscall(exe_linked(kGearRefresh), menu,
-                  {call.thiscall(exe_linked(kFocusedItem), menu)});
+    call.thiscall(exe_linked(exe::MenuTeam_GearRefresh), menu,
+                  {call.thiscall(exe_linked(exe::Menu_FocusedItem), menu)});
   }
   cpu->reg[kX86pEax] = (cpu->reg[kX86pEax] & ~0xffu) | 1u;
   cpu->reg[kX86pEsp] += 4u + 20u;
@@ -854,10 +844,12 @@ extern "C" void x2_override_005e25c0(CPU *cpu) {
 extern "C" void x2_override_005e66c0(CPU *cpu) {
   g_team_touch.before_update(*cpu, cpu->reg[kX86pEcx],
                              x2::input::touch_runtime_active() != 0);
-  x86_guest_body(cpu, "XMen2.exe", kTeamUpdate);
+  x86_guest_body(cpu, "XMen2.exe", exe::MenuTeam_Update);
 }
 
 __attribute__((constructor)) static void x2_team_touch_register(void) {
-  x86_register_override("XMen2.exe", kTeamUpdate, x2_override_005e66c0);
-  x86_register_override("XMen2.exe", kTeamOnMouse, x2_override_005e25c0);
+  x86_register_override("XMen2.exe", exe::MenuTeam_Update,
+                        x2_override_005e66c0);
+  x86_register_override("XMen2.exe", exe::MenuTeam_OnMouse,
+                        x2_override_005e25c0);
 }

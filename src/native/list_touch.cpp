@@ -23,6 +23,7 @@
 #include "touch_menu_source.hpp"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "xmen2_symbols.hpp"
 
 #include <algorithm>
 #include <array>
@@ -43,19 +44,9 @@ namespace menu_scene = x2::native::menu_scene;
 namespace menu_text = x2::native::menu_text;
 using x2::input::SceneBox;
 using x2::native::exe_linked;
+namespace exe = x2::symbols::xmen2;
 using x2::presentation::ScenePoint;
 
-constexpr std::uint32_t kListDraw = 0x005c1200u;
-/* onMouse(x, z, _, message, _), ret 0x14, al: consumed. */
-constexpr std::uint32_t kListOnMouse = 0x005c0e10u;
-/* The base destructor every list box class runs. */
-constexpr std::uint32_t kListDestroy = 0x005c2800u;
-
-/* The scroll arrows (up, down). */
-constexpr std::uint32_t kSetArrows = 0x005bf690u;
-constexpr std::uint32_t kEntryCount = 0x005bf750u;
-/* An entry's record text, its columns tab-separated. */
-constexpr std::uint32_t kEntryText = 0x005bfcd0u;
 /* Item slots: fade, an entry's enabled, own colour (out, entry), icons A and
    B. */
 constexpr std::uint32_t kSlotFade = 0x0cu;
@@ -63,9 +54,7 @@ constexpr std::uint32_t kSlotEnabled = 0x88u;
 constexpr std::uint32_t kSlotColor = 0x94u;
 constexpr std::uint32_t kSlotIconA = 0xa0u;
 constexpr std::uint32_t kSlotIconB = 0xa8u;
-/* The icon batch's sprite (pos, rgba, size, tile, turn); icon B sits this
-   much deeper. */
-constexpr std::uint32_t kIcon = 0x005ed120u;
+/* Icon B sits this much deeper. */
 constexpr float kIconBDepth = 10.0F;
 
 constexpr std::uint32_t kButtonDown = 0x201u;
@@ -134,13 +123,13 @@ public:
     cards.shown = !hidden && RD32(self + item::kModel) != 0u;
     const std::optional<SceneBox> area = card_area(self);
     if (!cards.shown || !area) {
-      call.thiscall(exe_linked(kSetArrows), self, {0u, 0u});
+      call.thiscall(exe_linked(exe::ListBox_SetArrows), self, {0u, 0u});
       return true;
     }
     call.virtual_call(self, kSlotFade);
     const auto fade = static_cast<float>(call.x87_result());
-    const auto entries =
-        static_cast<int>(call.thiscall(exe_linked(kEntryCount), self));
+    const auto entries = static_cast<int>(
+        call.thiscall(exe_linked(exe::ListBox_EntryCount), self));
     const std::uint32_t box = RD32(self + item::kTextBox);
 
     x2::input::ListTouchInput input;
@@ -175,7 +164,7 @@ public:
     const std::uint32_t menu = RD32(self + item::kMenu);
     const bool focused = RD32(menu + x2::menu::kMenuFocus) == self;
     const bool arrows = focused && fade >= kFadeIn;
-    call.thiscall(exe_linked(kSetArrows), self,
+    call.thiscall(exe_linked(exe::ListBox_SetArrows), self,
                   {arrows && stack.more_above ? 1u : 0u,
                    arrows && stack.more_below ? 1u : 0u});
 
@@ -429,7 +418,7 @@ private:
     std::string key;
     for (int e = 0; e < entries; ++e) {
       key += x2::guest::guest_string(
-          call.thiscall(exe_linked(kEntryText), self,
+          call.thiscall(exe_linked(exe::ListBox_EntryText), self,
                         {static_cast<std::uint32_t>(e)}),
           list::kRecordTextBytes);
       key.push_back('\n');
@@ -475,7 +464,8 @@ private:
         }
         const std::uint32_t pos =
             vectors.put(0, x, depth + static_cast<float>(t) * kIconBDepth, mid);
-        call.thiscall(exe_linked(kIcon), self + list::kIconBatch,
+        call.thiscall(exe_linked(exe::IconBatch_Sprite),
+                      self + list::kIconBatch,
                       {pos, rgba, x2::guest::float_bits(layout.icon),
                        tiles[t] & 0xffu, 0u});
       }
@@ -512,11 +502,12 @@ private:
     const int count =
         std::clamp(static_cast<int>(RD8(self + list::kColumnCount)), 1,
                    static_cast<int>(list::kMaxColumns));
-    return split_columns(x2::guest::guest_string(
-                             call.thiscall(exe_linked(kEntryText), self,
-                                           {static_cast<std::uint32_t>(entry)}),
-                             list::kRecordTextBytes),
-                         count);
+    return split_columns(
+        x2::guest::guest_string(
+            call.thiscall(exe_linked(exe::ListBox_EntryText), self,
+                          {static_cast<std::uint32_t>(entry)}),
+            list::kRecordTextBytes),
+        count);
   }
 
   struct Span {
@@ -608,7 +599,7 @@ extern "C" void x2_override_005c1200(CPU *cpu) {
     return;
   }
   g_list_touch.restore(*cpu, self);
-  x86_guest_body(cpu, "XMen2.exe", kListDraw);
+  x86_guest_body(cpu, "XMen2.exe", exe::ListBox_Draw);
 }
 
 extern "C" void x2_override_005c0e10(CPU *cpu) {
@@ -624,16 +615,18 @@ extern "C" void x2_override_005c0e10(CPU *cpu) {
       return;
     }
   }
-  x86_guest_body(cpu, "XMen2.exe", kListOnMouse);
+  x86_guest_body(cpu, "XMen2.exe", exe::ListBox_OnMouse);
 }
 
 extern "C" void x2_override_005c2800(CPU *cpu) {
   g_list_touch.destroy(*cpu, cpu->reg[kX86pEcx]);
-  x86_guest_body(cpu, "XMen2.exe", kListDestroy);
+  x86_guest_body(cpu, "XMen2.exe", exe::ListBox_Destroy);
 }
 
 __attribute__((constructor)) static void x2_list_touch_register(void) {
-  x86_register_override("XMen2.exe", kListDraw, x2_override_005c1200);
-  x86_register_override("XMen2.exe", kListOnMouse, x2_override_005c0e10);
-  x86_register_override("XMen2.exe", kListDestroy, x2_override_005c2800);
+  x86_register_override("XMen2.exe", exe::ListBox_Draw, x2_override_005c1200);
+  x86_register_override("XMen2.exe", exe::ListBox_OnMouse,
+                        x2_override_005c0e10);
+  x86_register_override("XMen2.exe", exe::ListBox_Destroy,
+                        x2_override_005c2800);
 }
