@@ -262,7 +262,7 @@ def keyboard_into_the_pda(case: Case, timeout: float) -> dict:
 
 
 def conversation_held(case: Case) -> bool:
-    """The game's conversation is enabled or shown, as GET /party reads it;
+    """The game's conversation is shown, as GET /party reads it;
     while it is, the party takes no damage and level-ups wait."""
     code, body = case.http("/party")
     return code != 200 or json.loads(body).get("conversation") is not False

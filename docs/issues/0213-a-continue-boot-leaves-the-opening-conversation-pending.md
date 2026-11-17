@@ -1,7 +1,7 @@
 ---
 id: 213
 title: a Continue boot leaves the opening conversation pending
-status: open
+status: resolved
 symptom: "pickup-models fails 4/8: after a Continue boot GET /party keeps reporting conversation=true and Return never clears it"
 state_items:
 tags: boot,conversation,live-case
@@ -31,14 +31,17 @@ changes and the x86port pin bump.
 boot; its `loadmap` then shows that map's conversation (`0x17`, `0x1c`,
 `0x13`, `0x18`).
 
-## Expected
+## Cause
 
-`external/xmen2-decomp/docs/notes/cutscene_player.md` (jungle1 from the
-shipped autosave, 2026-10-07): `0x10` while the level's opening conversation
-is queued, `0x13` while it is shown, `0x18` while it ends.
+Nothing was pending. `src/native/conversation_panel.hpp:holds` counted flag
+0x10 without 0x8 as a queued conversation, but 0x10 only says the manager is
+loaded for the map: its load (vtable `+0x4`, `FUN_00455af0`) sets it as its
+last step and its unload (`+0x8`, `FUN_00455d90`) clears it, on every map. The
+save's map opens no conversation, so `GET /party` reported one for the whole
+run (`external/xmen2-decomp/docs/notes/cutscene_player.md`).
 
-## Next
+## Fix
 
-Find what moves a queued conversation to shown after a map load and why it
-does not run after the Continue boot's direct save-chain dispatch
-(`boot_mode_runtime`, `startup.cpp`).
+`holds` is the shown bit (0x2) alone, which `FUN_004556b0` sets and clears.
+`pickup-models` passes 8/8 (10 drops, all with models, drawn in
+`shots/drops.png`).

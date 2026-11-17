@@ -31,7 +31,7 @@
  *      +0x4bc        the current line's id
  *      +0x4c0[]      the offered responses' ids, 0xFFFFFFFF for an empty slot
  *      +0x4e0        how many slots are offered
- *      +0x21b24      flags: 0x1 speaking, 0x2 VISIBLE, 0x8 ending, 0x10 enabled
+ *      +0x21b24      flags: 0x1 speaking, 0x2 VISIBLE, 0x8 ending, 0x10 loaded
  *      +0x21b26/28   tag index / tag count
  *      +0x21b30/34   the two actors a launched script runs against
  *      +0x239a0      the response id chosen this frame, 0 for none
@@ -186,7 +186,7 @@ static void note_flags(uint8_t f) {
   c_flag_changes++;
   if (c_flag_changes <= FLAG_LINES_MAX)
     x2_log_error("conversation: flags 0x%02x -> 0x%02x  "
-                 "[speaking=%d visible=%d ending=%d enabled=%d]  "
+                 "[speaking=%d visible=%d ending=%d loaded=%d]  "
                  "(poll %lu)\n",
                  have_flags ? last_flags : 0u, f, !!(f & 0x1), !!(f & 0x2),
                  !!(f & 0x8), !!(f & 0x10), c_flag_polls);

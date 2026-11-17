@@ -11,18 +11,13 @@ namespace x2::native::conversation {
 
 inline constexpr std::uint32_t kSingleton = 0x00717aacu;
 
-/* Observed: 0x10 once one is pending, 0x13 while shown, 0x18 while it ends
-   with the party already free, 0x08 after. */
+/* 0x2 shown (FUN_004556b0). 0x10 only says the panel is loaded for the map
+   (FUN_00455af0 sets it, FUN_00455d90 clears it), conversation or not. */
 inline constexpr std::uint32_t kFlags = 0x21b24u;
 inline constexpr std::uint8_t kVisible = 0x02u;
-inline constexpr std::uint8_t kEnding = 0x08u;
-inline constexpr std::uint8_t kEnabled = 0x10u;
 
-/* Pending or shown: the party takes no damage and level-ups wait. */
-constexpr bool holds(std::uint8_t flags) {
-  const bool pending = (flags & kEnabled) != 0u && (flags & kEnding) == 0u;
-  return (flags & kVisible) != 0u || pending;
-}
+/* Shown: the party takes no damage and level-ups wait. */
+constexpr bool holds(std::uint8_t flags) { return (flags & kVisible) != 0u; }
 
 /* The current line's id, and the highlighted response of those drawn
    (shorts). */
