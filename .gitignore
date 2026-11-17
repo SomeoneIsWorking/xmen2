@@ -1,5 +1,7 @@
 .env
 scratch/
+# long-lived local inputs (live-case seed saves)
+env-assets/
 # default game install location (AGENTS.md: game assets are never committed)
 /game/
 *.zip

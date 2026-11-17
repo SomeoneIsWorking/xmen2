@@ -68,7 +68,7 @@ class Case:
             + "".join(line + "\n" for line in conf_lines))
 
     def seed_save(self, leaf: str) -> None:
-        src_dir = (ROOT / "scratch" / "saves" / "Activision"
+        src_dir = (ROOT / "env-assets" / "saves" / "Activision"
                    / "X-Men Legends 2" / "Save")
         src = src_dir / leaf
         if not src.is_file():
