@@ -15,22 +15,13 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "igvk_context.h"
+#include "libiggfx_symbols.hpp"
 #include "win32_sdl.h"
 
 #include <stdio.h>
 #include <string.h>
 
-/* Linked addresses of the engine bodies these slots replace. */
-#define DX_USER_INSTANTIATE 0x1002c210u         /* slot   7, ret 4  */
-#define DX_USER_RELEASE 0x1002c410u             /* slot   8, ret 0  */
-#define DX_SET_NATIVE_WINDOW_HANDLE 0x1002c970u /* slot  36, ret 4  */
-#define DX_SET_NATIVE_DEVICE_HANDLE 0x1002c9d0u /* slot  38, ret 4  */
-#define BASE_USER_INSTANTIATE 0x100247f0u       /* igVisualContext::  */
-
-/* igDxVisualContext::open's own helpers, in its order. See vk_open. */
-#define DX_OPEN_HELPER_A 0x1002fa60u
-#define DX_OPEN_HELPER_B 0x1002ca30u
-#define G_CURRENT_VISUAL_CONTEXT 0x101895a8u
+namespace gfx = x2::symbols::libiggfx;
 
 /*
  * What construction actually produced.
@@ -101,7 +92,7 @@ static void report_fields(uint32_t self) {
 static void vk_user_instantiate(CPU *C) {
   uint32_t self = IGVK_SELF(C);
   uint32_t arg = IGVK_ARG(C, 0);
-  uint32_t basefn = ark_lifted(IGVK_GFX, BASE_USER_INSTANTIATE);
+  uint32_t basefn = ark_lifted(IGVK_GFX, gfx::igVisualContext_userInstantiate);
   uint32_t r = 0;
 
   if (basefn)
@@ -185,20 +176,22 @@ static void vk_user_instantiate(CPU *C) {
       uint32_t va;
       const char *name;
     } init[] = {
-        {0x1002c3a0u, "initDefaultDxDeviceParameters"},
-        {0x1002a760u, "initRenderDestinations"},
-        {0x10041480u, "initTexture"},
-        {0x10044b30u, "initTextureStages"},
-        {0x1003cd60u, "initLighting"},
-        {0x1003dc40u, "initMaterial"},
-        {0x1003e700u, "initMatrices"},
-        {0x10094490u, "0x10094490 (unnamed, called twice)"},
-        {0x10094490u, "0x10094490 (unnamed, second call)"},
-        {0x1002dea0u, "initRenderLists"},
-        {0x10034590u, "initGeometry"},
-        {0x10049000u, "initVertexShader"},
-        {0x1003fc30u, "initPixelShader"},
-        {0x1002d230u, "0x1002d230 (unnamed, last)"},
+        {gfx::igDxVisualContext_initDefaultDxDeviceParameters,
+         "initDefaultDxDeviceParameters"},
+        {gfx::igDxVisualContext_initRenderDestinations,
+         "initRenderDestinations"},
+        {gfx::igDxVisualContext_initTexture, "initTexture"},
+        {gfx::igDxVisualContext_initTextureStages, "initTextureStages"},
+        {gfx::igDxVisualContext_initLighting, "initLighting"},
+        {gfx::igDxVisualContext_initMaterial, "initMaterial"},
+        {gfx::igDxVisualContext_initMatrices, "initMatrices"},
+        {gfx::sub_10094490, "sub_10094490 (first call)"},
+        {gfx::sub_10094490, "sub_10094490 (second call)"},
+        {gfx::igDxVisualContext_initRenderLists, "initRenderLists"},
+        {gfx::igDxVisualContext_initGeometry, "initGeometry"},
+        {gfx::igDxVisualContext_initVertexShader, "initVertexShader"},
+        {gfx::igDxVisualContext_initPixelShader, "initPixelShader"},
+        {gfx::igDxVisualContext_userInstantiateTail, "userInstantiateTail"},
     };
     size_t n;
     static int told;
@@ -240,7 +233,7 @@ static void vk_user_instantiate(CPU *C) {
 static void vk_user_release(CPU *C) {
   gpu_device_report();
   gpu_device_destroy();
-  ark_ret(C, igvk_super(C, DX_USER_RELEASE, 0), 0);
+  ark_ret(C, igvk_super(C, gfx::igDxVisualContext_userRelease, 0), 0);
 }
 
 /* ---- slot 34: getLastError -------------------------------------------- */
@@ -276,7 +269,7 @@ static void vk_get_last_error(CPU *C) {
  * the handle's ARRIVAL is the signal, not its value.
  */
 static void vk_set_native_window_handle(CPU *C) {
-  uint32_t r = igvk_super(C, DX_SET_NATIVE_WINDOW_HANDLE, 1);
+  uint32_t r = igvk_super(C, gfx::igDxVisualContext_setNativeWindowHandle, 1);
   static int told;
   if (!told++)
     x2_log_info("igVk: setNativeWindowHandle(0x%08x) -- the swapchain follows "
@@ -301,7 +294,7 @@ static void vk_set_native_window_handle(CPU *C) {
  * the whole of the correct behaviour.
  */
 static void vk_set_native_device_handle(CPU *C) {
-  ark_ret(C, igvk_super(C, DX_SET_NATIVE_DEVICE_HANDLE, 1), 1);
+  ark_ret(C, igvk_super(C, gfx::igDxVisualContext_setNativeDeviceHandle, 1), 1);
 }
 
 /* ---- slot 30: open ----------------------------------------------------- */
@@ -348,11 +341,11 @@ static void vk_open(CPU *C) {
   ark_call_this(RD32(vt + 29u * 4u), self, NULL, 0);
   {
     /*
-     * HELPER_A is initCg. It is called: it loads cg.dll, gets NULL, and
+     * initCg is called: it loads cg.dll, gets NULL, and
      * takes its own "no Cg" branch, which is the engine handling a case it
      * was written to handle.
      *
-     * HELPER_B is setupAll, and it is NOT called. The engine reaches it
+     * setupAll is NOT called. The engine reaches it
      * only after createDevice has SUCCEEDED, so it runs with a real
      * device; its job is to push every piece of cached render state into
      * that device, and its first stop is setupTextureStages, which
@@ -367,7 +360,7 @@ static void vk_open(CPU *C) {
      */
     uint32_t f;
     static int told;
-    if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_A)))
+    if ((f = ark_lifted(IGVK_GFX, gfx::igDxVisualContext_initCg)))
       ark_call_this(f, self, NULL, 0);
     if (!told++)
       x2_log_info("igVk: open() skips setupAll -- it pushes cached render "
@@ -376,7 +369,7 @@ static void vk_open(CPU *C) {
   }
   ark_call_this(RD32(vt + 217u * 4u), self, &minus1, 1);
   {
-    uint32_t g = ark_lifted(IGVK_GFX, G_CURRENT_VISUAL_CONTEXT);
+    uint32_t g = ark_lifted(IGVK_GFX, gfx::g_currentVisualContext);
     if (g)
       WR32(g, self);
   }

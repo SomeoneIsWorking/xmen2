@@ -11,12 +11,11 @@
  */
 #include "gpu_device.h"
 #include "igvk_context.h"
+#include "libiggfx_symbols.hpp"
 
 #include <stdio.h>
 
-#define DX_SET_VIEWPORT 0x1002ec70u /* slot 186, ret 0x18 -> 6 args */
-#define DX_RD_IS_USABLE                                                        \
-  0x1002b5b0u /* the pool-entry check setRenderDestination makes */
+namespace gfx = x2::symbols::libiggfx;
 
 /* The render-destination pool: this+0x178, entries of 0x38 bytes at
  * [pool+0x10]. */
@@ -117,13 +116,12 @@ static void vk_begin_draw(CPU *C) {
  * if the engine ever turns profiling on, it says so by name instead of the
  * frame timings quietly reading zero.
  */
-#define G_FRAME_COUNT_LO 0x101895b0u
 #define F_DEVICE_LOST 0x15cu
 #define F_PROFILING 0x3cu
 
 static void vk_end_draw(CPU *C) {
   uint32_t self = IGVK_SELF(C);
-  uint32_t lo_va = ark_lifted(IGVK_GFX, G_FRAME_COUNT_LO);
+  uint32_t lo_va = ark_lifted(IGVK_GFX, gfx::g_frameCount);
 
   if (RD8(self + F_DEVICE_LOST)) {
     ark_ret(C, 0, 0);
@@ -203,7 +201,7 @@ static void vk_clear_render_destination(CPU *C) {
  */
 static void vk_set_viewport(CPU *C) {
   uint32_t self = IGVK_SELF(C);
-  uint32_t r = igvk_super(C, DX_SET_VIEWPORT, 6);
+  uint32_t r = igvk_super(C, gfx::igDxVisualContext_setViewport, 6);
   apply_viewport_from_fields(self);
   ark_ret(C, r, 6);
 }
@@ -294,7 +292,8 @@ static void vk_set_render_destination(CPU *C) {
    * to be discovered.
    */
   {
-    uint32_t vp[6], fn = ark_lifted(IGVK_GFX, DX_SET_VIEWPORT);
+    uint32_t vp[6],
+        fn = ark_lifted(IGVK_GFX, gfx::igDxVisualContext_setViewport);
     vp[0] = RD32(self + F_VIEW_X);
     vp[1] = RD32(self + F_VIEW_Y);
     vp[2] = RD32(self + F_VIEW_W);
@@ -316,10 +315,10 @@ static void vk_set_render_destination(CPU *C) {
  * JZ`), so the engine's own body runs and does all the bookkeeping; the
  * viewport it recomputes reaches the GPU through slot 186.
  */
-#define DX_SET_RD_SIZE 0x1002ad40u
 
 static void vk_set_render_destination_size(CPU *C) {
-  ark_ret(C, igvk_super(C, DX_SET_RD_SIZE, 3), 3);
+  ark_ret(C, igvk_super(C, gfx::igDxVisualContext_setRenderDestinationSize, 3),
+          3);
 }
 
 /* ---- installation ------------------------------------------------------ */

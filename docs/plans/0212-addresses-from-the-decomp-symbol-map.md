@@ -15,8 +15,13 @@ the decomp first; the port bumps the submodule in the change that uses it.
   `conversation_touch.cpp`, `options_menu_no_advanced.cpp`, `team_touch.cpp`, `list_touch.cpp`,
   `hud_minimap.cpp`, `vec3_override.cpp`. Their map entries were renamed from port-file prefixes
   to guest concepts (`MenuMgr_Get`, `Hud_Get`, `PopupDialog_Draw`, `ListBox_EntryText`, ...).
-- About 90 map names still carry a port-file prefix (`StickAxisOverride_FN_PADS`), each used by
-  the remaining owners as a literal, `#define` or RVA; the DLL maps have no generated users yet.
+- The DLL owners read their image's map: `skin_override.cpp`, `ig_matrix_override.cpp`,
+  `ig_matrix_invert_override.cpp`, `box_cull_override.cpp`, `threads_engine_report.cpp` and
+  `igvk_context.cpp`, `igvk_slots_lifecycle.cpp`, `igvk_slots_frame.cpp`, with the DLL maps renamed
+  to guest concepts (`igMatrix44f_invert`, `FrustCull_TestBox`, `igDxVisualContext_setViewport`)
+  and igDxVisualContext's construction helpers named.
+- XMen2.exe map names that still carry a port-file prefix (`StickAxisOverride_FN_PADS`) are
+  used by the remaining exe owners as a literal, `#define` or RVA.
 - Structure sizes and field offsets are not in the map yet.
 
 ## Stages

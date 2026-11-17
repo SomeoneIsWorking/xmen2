@@ -29,6 +29,7 @@
 
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "libigmath_symbols.hpp"
 #include "override_leaf.h"
 #include "x2_log.h"
 #include "x86rt.h"
@@ -40,14 +41,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace igmath = x2::symbols::libigmath;
+
 #define LIBIGMATH "libIGMath.dll"
 #define LIBIGMATH_PREFERRED_BASE 0x10000000u
-#define INVERT_EP 0x1001b540u
 /* The adjoint's eight-deep evaluation is the body's deepest point. */
 #define INVERT_PUSHES 8u
 #define MATRIX_BYTES 64u
-#define SUCCESS_SLOT_LINKED 0x10029214u
-#define FAILURE_SLOT_LINKED 0x10029218u
 /* Where the adjoint's temporary sits, below the entry ESP. */
 #define TEMP_BELOW_ENTRY 0x40u
 
@@ -82,7 +82,7 @@ static void verify_or_abort(const CPU *C, const CPU *native,
   CPU guest = *C;
   const uint32_t self = C->reg[kX86pEcx];
   const uint32_t result = RD32(C->reg[kX86pEsp] + 4u);
-  x86_guest_body(&guest, LIBIGMATH, INVERT_EP);
+  x86_guest_body(&guest, LIBIGMATH, igmath::igMatrix44f_invert);
   float guest_out[16];
   guest_memory_read(self, guest_out, MATRIX_BYTES);
   const int same =
@@ -101,10 +101,11 @@ static void verify_or_abort(const CPU *C, const CPU *native,
         "body: eax %08x/%08x, ecx %08x/%08x, edx %08x/%08x, esp %08x/%08x, "
         "status %04x/%04x, result %08x/%08x, matrix %s. ig_matrix_invert.cpp "
         "is wrong; not continuing.\n",
-        LIBIGMATH, INVERT_EP, native->reg[kX86pEax], guest.reg[kX86pEax],
-        native->reg[kX86pEcx], guest.reg[kX86pEcx], native->reg[kX86pEdx],
-        guest.reg[kX86pEdx], native->reg[kX86pEsp], guest.reg[kX86pEsp],
-        native->x87.status, guest.x87.status, result_code, RD32(result),
+        LIBIGMATH, igmath::igMatrix44f_invert, native->reg[kX86pEax],
+        guest.reg[kX86pEax], native->reg[kX86pEcx], guest.reg[kX86pEcx],
+        native->reg[kX86pEdx], guest.reg[kX86pEdx], native->reg[kX86pEsp],
+        guest.reg[kX86pEsp], native->x87.status, guest.x87.status, result_code,
+        RD32(result),
         memcmp(guest_out, out, MATRIX_BYTES) ? "differs" : "same");
     abort();
   }
@@ -142,11 +143,12 @@ static int invert_native(CPU *C) {
       (uint16_t)((C->x87.status & ~x2::native::kIgInvertCompareMask) | codes);
   uint32_t code;
   if (verdict == x2::native::kIgInvertInverted) {
-    code = RD32(RD32(libigmath_mapped(SUCCESS_SLOT_LINKED)));
+    code = RD32(RD32(libigmath_mapped(igmath::imp_igResultSuccess)));
     native.reg[kX86pEcx] = code;
     native.reg[kX86pEdx] = esp - TEMP_BELOW_ENTRY - self;
   } else {
-    const uint32_t failure = RD32(libigmath_mapped(FAILURE_SLOT_LINKED));
+    const uint32_t failure =
+        RD32(libigmath_mapped(igmath::imp_igResultFailure));
     code = RD32(failure);
     native.reg[kX86pEcx] = failure;
     native.reg[kX86pEdx] = code;
@@ -169,7 +171,7 @@ static int invert_native(CPU *C) {
 
 void x2_override_1001b540(CPU *C) {
   if (!invert_native(C)) {
-    x86_guest_body(C, LIBIGMATH, INVERT_EP);
+    x86_guest_body(C, LIBIGMATH, igmath::igMatrix44f_invert);
   }
 }
 
@@ -179,6 +181,8 @@ static int invert_leaf(CPU *C) {
 }
 
 __attribute__((constructor)) static void ig_matrix_invert_register(void) {
-  x86_register_override(LIBIGMATH, INVERT_EP, x2_override_1001b540);
-  x86_register_override_leaf(LIBIGMATH, INVERT_EP, invert_leaf);
+  x86_register_override(LIBIGMATH, igmath::igMatrix44f_invert,
+                        x2_override_1001b540);
+  x86_register_override_leaf(LIBIGMATH, igmath::igMatrix44f_invert,
+                             invert_leaf);
 }

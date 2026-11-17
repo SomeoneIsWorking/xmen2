@@ -28,6 +28,7 @@
 
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "libigmath_symbols.hpp"
 #include "override_leaf.h"
 #include "x2_log.h"
 #include "x86rt.h"
@@ -39,8 +40,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace igmath = x2::symbols::libigmath;
+
 #define LIBIGMATH "libIGMath.dll"
-#define MULTIPLY_EP 0x10019520u
 #define MULTIPLY_PUSHES 2u
 #define MATRIX_BYTES 64u
 /* Where the non-aliased path leaves EDX: b's third row, the last column's
@@ -67,7 +69,7 @@ static int overlaps(uint32_t x, uint32_t y) {
 static void verify_or_abort(const CPU *C, const CPU *native,
                             const float out[16]) {
   CPU guest = *C;
-  x86_guest_body(&guest, LIBIGMATH, MULTIPLY_EP);
+  x86_guest_body(&guest, LIBIGMATH, igmath::igMatrix44f_multiply);
   const uint32_t self = C->reg[kX86pEcx];
   float guest_out[16];
   guest_memory_read(self, guest_out, MATRIX_BYTES);
@@ -82,15 +84,16 @@ static void verify_or_abort(const CPU *C, const CPU *native,
       guest.x87.status == native->x87.status &&
       memcmp(guest_out, out, MATRIX_BYTES) == 0;
   if (!same) {
-    x2_log_error(
-        "math.matrix_verify: the native %s!0x%08x disagrees with the "
-        "guest body: eax %08x/%08x, ecx %08x/%08x, edx %08x/%08x, "
-        "esp %08x/%08x, output %s. ig_matrix.cpp is wrong; not "
-        "continuing.\n",
-        LIBIGMATH, MULTIPLY_EP, native->reg[kX86pEax], guest.reg[kX86pEax],
-        native->reg[kX86pEcx], guest.reg[kX86pEcx], native->reg[kX86pEdx],
-        guest.reg[kX86pEdx], native->reg[kX86pEsp], guest.reg[kX86pEsp],
-        memcmp(guest_out, out, MATRIX_BYTES) ? "differs" : "same");
+    x2_log_error("math.matrix_verify: the native %s!0x%08x disagrees with the "
+                 "guest body: eax %08x/%08x, ecx %08x/%08x, edx %08x/%08x, "
+                 "esp %08x/%08x, output %s. ig_matrix.cpp is wrong; not "
+                 "continuing.\n",
+                 LIBIGMATH, igmath::igMatrix44f_multiply, native->reg[kX86pEax],
+                 guest.reg[kX86pEax], native->reg[kX86pEcx],
+                 guest.reg[kX86pEcx], native->reg[kX86pEdx],
+                 guest.reg[kX86pEdx], native->reg[kX86pEsp],
+                 guest.reg[kX86pEsp],
+                 memcmp(guest_out, out, MATRIX_BYTES) ? "differs" : "same");
     abort();
   }
   s_verified++;
@@ -145,7 +148,7 @@ static int multiply_native(CPU *C) {
 
 void x2_override_10019520(CPU *C) {
   if (!multiply_native(C)) {
-    x86_guest_body(C, LIBIGMATH, MULTIPLY_EP);
+    x86_guest_body(C, LIBIGMATH, igmath::igMatrix44f_multiply);
   }
 }
 
@@ -155,6 +158,8 @@ static int multiply_leaf(CPU *C) {
 }
 
 __attribute__((constructor)) static void ig_matrix_register_overrides(void) {
-  x86_register_override("libIGMath.dll", MULTIPLY_EP, x2_override_10019520);
-  x86_register_override_leaf("libIGMath.dll", MULTIPLY_EP, multiply_leaf);
+  x86_register_override("libIGMath.dll", igmath::igMatrix44f_multiply,
+                        x2_override_10019520);
+  x86_register_override_leaf("libIGMath.dll", igmath::igMatrix44f_multiply,
+                             multiply_leaf);
 }

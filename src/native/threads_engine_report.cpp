@@ -7,6 +7,7 @@
  * owns the rest of that file. It touches no threads.cpp static -- only mapped
  * guest memory and the kernel32 TLS hooks -- so it lives on its own.
  */
+#include "libigcore_symbols.hpp"
 #include "threads.h"
 #include "x2_log.h"
 #include "x86rt.h"
@@ -15,6 +16,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+namespace igcore = x2::symbols::libigcore;
 
 /* kernel32 owns the TLS arrays; these are the hooks this report reads. */
 uint32_t k32_tls_peek(int slot, uint32_t index);
@@ -37,7 +40,6 @@ int k32_tls_slot_count(void);
  * and each thread's stored id is thread+0x40 (getCallingThread at 0x10064700
  * compares exactly that against pthread_self).
  */
-#define IGCORE_THREADMGR_PTR 0x1015f438u
 
 /*
  * A guest pointer this may dereference, or 0.
@@ -80,7 +82,6 @@ static void tm_modules_dump(void) {
  * allocated yet says so rather than printing a column of zeroes that look like
  * an answer.
  */
-#define IGCORE_PTHREAD_TLS_KEY 0x1015f4d8u
 
 static int tm_readable(uint32_t a);
 
@@ -88,7 +89,7 @@ static void tm_tls_handles(X86Module *core) {
   uint32_t keyslot, keyobj, key;
   int slot, shown = 0;
 
-  keyslot = *core->base + (IGCORE_PTHREAD_TLS_KEY - core->preferred);
+  keyslot = *core->base + (igcore::g_pthreadSelfTlsKey - core->preferred);
   if (!tm_readable(keyslot) || !(keyobj = RD32(keyslot)) ||
       !tm_readable(keyobj)) {
     x2_log_info(
@@ -181,7 +182,7 @@ void guest_engine_thread_report(void) {
                   "read.\n");
       return;
     }
-    slot = imgbase + (IGCORE_THREADMGR_PTR - m->preferred);
+    slot = imgbase + (igcore::g_igThreadManager - m->preferred);
   }
   if (!tm_readable(slot)) {
     x2_log_info(

@@ -28,6 +28,7 @@
 
 #include "guest_body.h"
 #include "guest_memory.h"
+#include "libigmath_symbols.hpp"
 #include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -38,9 +39,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace igmath = x2::symbols::libigmath;
+
 #define LIBIGMATH "libIGMath.dll"
-#define BLEND_EP 0x10022df0u
-#define RIGID_EP 0x10022e80u
 /* Stack argument offsets from ESP at entry. */
 #define ARG_POSITIONS 4u
 #define ARG_COUNT 8u
@@ -185,8 +186,8 @@ static void verify_or_abort(const CPU *C, uint32_t ep, const SkinCall *call,
                  call->count);
     abort();
   }
-  const uint64_t total =
-      ++s_verified[ep == RIGID_EP] + s_verified[ep != RIGID_EP];
+  const uint64_t total = ++s_verified[ep == igmath::Skin_RigidPositions] +
+                         s_verified[ep != igmath::Skin_RigidPositions];
   if ((total & (total - 1u)) == 0u && (total & 0x5555555555555555ull)) {
     x2_log_info("math.skin_verify: %llu native answers match the guest body "
                 "(blend %llu, rigid %llu)\n",
@@ -214,22 +215,24 @@ static void finish(CPU *C, uint32_t ep, const SkinCall *call, SkinResult result,
 void x2_override_10022df0(CPU *C) {
   const SkinCall call = read_call(C->reg[kX86pEsp]);
   if (!native_runs(&call, 1)) {
-    x86_guest_body(C, LIBIGMATH, BLEND_EP);
+    x86_guest_body(C, LIBIGMATH, igmath::Skin_BlendPositions);
     return;
   }
-  finish(C, BLEND_EP, &call, run_blend(&call), 1);
+  finish(C, igmath::Skin_BlendPositions, &call, run_blend(&call), 1);
 }
 
 void x2_override_10022e80(CPU *C) {
   const SkinCall call = read_call(C->reg[kX86pEsp]);
   if (!native_runs(&call, 0)) {
-    x86_guest_body(C, LIBIGMATH, RIGID_EP);
+    x86_guest_body(C, LIBIGMATH, igmath::Skin_RigidPositions);
     return;
   }
-  finish(C, RIGID_EP, &call, run_rigid(&call), 0);
+  finish(C, igmath::Skin_RigidPositions, &call, run_rigid(&call), 0);
 }
 
 __attribute__((constructor)) static void skin_register_overrides(void) {
-  x86_register_override("libIGMath.dll", BLEND_EP, x2_override_10022df0);
-  x86_register_override("libIGMath.dll", RIGID_EP, x2_override_10022e80);
+  x86_register_override("libIGMath.dll", igmath::Skin_BlendPositions,
+                        x2_override_10022df0);
+  x86_register_override("libIGMath.dll", igmath::Skin_RigidPositions,
+                        x2_override_10022e80);
 }

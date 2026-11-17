@@ -34,6 +34,7 @@
 #include "x87_exact.h"
 
 #include "guest_body.h"
+#include "libigsg_symbols.hpp"
 #include "override_leaf.h"
 #include "x2_log.h"
 #include "x86rt.h"
@@ -45,20 +46,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+namespace igsg = x2::symbols::libigsg;
+
 #define LIBIGSG "libIGSg.dll"
 #define LIBIGSG_PREFERRED_BASE 0x10000000u
-#define DRIVER_EP 0x10047470u
-#define CORNERS_EP 0x10047570u
-#define CLASSIFY_EP 0x100478e0u
 /* The .rdata 0.0f corners multiplies the extents it leaves out by. */
-#define CORNERS_ZERO_LINKED 0x10077ba8u
 /* classify's guard-band scale (.data) and the .rdata 1.0f it is compared
    with. */
-#define GUARD_SCALE_LINKED 0x1014f4ecu
-#define GUARD_ONE_LINKED 0x1007bb0cu
 /* The import slots of the two attribute-stack indices the driver reads. */
-#define DRIVER_VIEW_INDEX_SLOT_LINKED 0x10070314u
-#define DRIVER_PROJECTION_INDEX_SLOT_LINKED 0x10070310u
 /* igFrustCullTraversal: its composite matrix, and the two matrices it was
    composed from. */
 #define TRAVERSAL_ATTRIBUTES 0x34u
@@ -125,12 +120,13 @@ static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
                             const float *native_out, unsigned out_floats) {
   CPU guest = *C;
   x86_guest_body(&guest, LIBIGSG, ep);
-  int same = guest.reg[kX86pEsp] == C->reg[kX86pEsp] + 4u &&
-             guest.x87.top == C->x87.top &&
-             memcmp(guest.x87.tag, C->x87.tag, sizeof guest.x87.tag) == 0 &&
-             guest.x87.control == C->x87.control &&
-             guest.x87.status == native_status &&
-             (ep == CORNERS_EP || guest.reg[kX86pEax] == native_eax);
+  int same =
+      guest.reg[kX86pEsp] == C->reg[kX86pEsp] + 4u &&
+      guest.x87.top == C->x87.top &&
+      memcmp(guest.x87.tag, C->x87.tag, sizeof guest.x87.tag) == 0 &&
+      guest.x87.control == C->x87.control &&
+      guest.x87.status == native_status &&
+      (ep == igsg::FrustCull_BoxCorners || guest.reg[kX86pEax] == native_eax);
   unsigned word = 0;
   for (; same && word < out_floats; word++) {
     uint32_t native_word;
@@ -148,7 +144,9 @@ static void verify_or_abort(const CPU *C, uint32_t ep, uint32_t native_eax,
                  word ? word - 1u : 0u, out_floats);
     abort();
   }
-  s_verified[ep == DRIVER_EP ? 2 : ep == CLASSIFY_EP]++;
+  s_verified[ep == igsg::FrustCull_TestBox
+                 ? 2
+                 : ep == igsg::FrustCull_ClassifyCorners]++;
   const uint64_t total = s_verified[0] + s_verified[1] + s_verified[2];
   if ((total & (total - 1u)) == 0u && (total & 0x5555555555555555ull)) {
     x2_log_info("sg.box_cull_verify: %llu native answers match the guest "
@@ -199,8 +197,8 @@ static x2::native::BoxCullVerdict classify_corners(const float *corners,
     return verdict;
   }
   const x2::native::BoxCullGuardBand guard = {
-      x86_loadf32(libigsg_mapped(GUARD_SCALE_LINKED)),
-      x86_loadf32(libigsg_mapped(GUARD_ONE_LINKED))};
+      x86_loadf32(libigsg_mapped(igsg::g_GuardBandScale)),
+      x86_loadf32(libigsg_mapped(igsg::c_FloatOne))};
   const x2::native::BoxCullVerdict banded =
       x2::native::box_cull_guard_band(corners, guard);
   if (banded != x2::native::kBoxCullUndecided) {
@@ -218,9 +216,9 @@ static int driver_native(CPU *C) {
   const uint32_t box = RD32(esp + 8u);
   const uint32_t attributes = RD32(traversal + TRAVERSAL_ATTRIBUTES);
   if (RD32(traversal + TRAVERSAL_COMPOSED_VIEW) !=
-          attribute_matrix(attributes, DRIVER_VIEW_INDEX_SLOT_LINKED) ||
+          attribute_matrix(attributes, igsg::imp_ViewMatrixAttrIndex) ||
       RD32(traversal + TRAVERSAL_COMPOSED_PROJECTION) !=
-          attribute_matrix(attributes, DRIVER_PROJECTION_INDEX_SLOT_LINKED)) {
+          attribute_matrix(attributes, igsg::imp_ProjectionMatrixAttrIndex)) {
     s_undecided += (uint64_t)s_verify;
     return 0;
   }
@@ -231,7 +229,7 @@ static int driver_native(CPU *C) {
   read_floats(box + BOX_BOUNDS, bounds, 6u);
   read_floats(traversal + TRAVERSAL_COMPOSITE, matrix, 16u);
   x2::native::box_cull_extent(extent, bounds);
-  const float zero = x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED));
+  const float zero = x86_loadf32(libigsg_mapped(igsg::c_FloatZero));
   /* The driver keeps its corners to itself, so only the verdict must be the
      guest's: the bounded one where it is certain, the exact one otherwise. A
      box the bound finds crossing still needs its exact corners for the
@@ -249,7 +247,8 @@ static int driver_native(CPU *C) {
     return 0;
   }
   if (s_verify) {
-    verify_or_abort(C, DRIVER_EP, (uint32_t)verdict, status, 0u, NULL, 0u);
+    verify_or_abort(C, igsg::FrustCull_TestBox, (uint32_t)verdict, status, 0u,
+                    NULL, 0u);
   }
   C->x87.status = status;
   C->reg[kX86pEax] = (uint32_t)verdict;
@@ -270,17 +269,17 @@ static int corners_native(CPU *C) {
   read_floats(RD32(esp + 8u), min, 3u);
   read_floats(RD32(esp + 12u), extent, 3u);
   read_floats(RD32(esp + 16u), matrix, 16u);
-  x2::native::box_cull_corners(
-      corners, min, extent, matrix,
-      x86_loadf32(libigsg_mapped(CORNERS_ZERO_LINKED)));
+  x2::native::box_cull_corners(corners, min, extent, matrix,
+                               x86_loadf32(libigsg_mapped(igsg::c_FloatZero)));
   for (unsigned i = 0; i < x2::native::BOX_CULL_CORNER_FLOATS; i++) {
     uint32_t word;
     memcpy(&word, &corners[i], sizeof word);
     WR32(out + i * 4u, word);
   }
   if (s_verify) {
-    verify_or_abort(C, CORNERS_EP, C->reg[kX86pEax], C->x87.status, out,
-                    corners, x2::native::BOX_CULL_CORNER_FLOATS);
+    verify_or_abort(C, igsg::FrustCull_BoxCorners, C->reg[kX86pEax],
+                    C->x87.status, out, corners,
+                    x2::native::BOX_CULL_CORNER_FLOATS);
   }
   C->reg[kX86pEsp] = esp + 4u;
   return 1;
@@ -300,7 +299,8 @@ static int classify_native(CPU *C) {
     return 0;
   }
   if (s_verify) {
-    verify_or_abort(C, CLASSIFY_EP, (uint32_t)verdict, status, 0u, NULL, 0u);
+    verify_or_abort(C, igsg::FrustCull_ClassifyCorners, (uint32_t)verdict,
+                    status, 0u, NULL, 0u);
   }
   C->x87.status = status;
   C->reg[kX86pEax] = (uint32_t)verdict;
@@ -314,27 +314,33 @@ static int classify_leaf(CPU *C) { return !verifying() && classify_native(C); }
 
 void x2_override_10047470(CPU *C) {
   if (!driver_native(C)) {
-    x86_guest_body(C, LIBIGSG, DRIVER_EP);
+    x86_guest_body(C, LIBIGSG, igsg::FrustCull_TestBox);
   }
 }
 
 void x2_override_10047570(CPU *C) {
   if (!corners_native(C)) {
-    x86_guest_body(C, LIBIGSG, CORNERS_EP);
+    x86_guest_body(C, LIBIGSG, igsg::FrustCull_BoxCorners);
   }
 }
 
 void x2_override_100478e0(CPU *C) {
   if (!classify_native(C)) {
-    x86_guest_body(C, LIBIGSG, CLASSIFY_EP);
+    x86_guest_body(C, LIBIGSG, igsg::FrustCull_ClassifyCorners);
   }
 }
 
 __attribute__((constructor)) static void box_cull_register_overrides(void) {
-  x86_register_override("libIGSg.dll", DRIVER_EP, x2_override_10047470);
-  x86_register_override("libIGSg.dll", CORNERS_EP, x2_override_10047570);
-  x86_register_override("libIGSg.dll", CLASSIFY_EP, x2_override_100478e0);
-  x86_register_override_leaf("libIGSg.dll", DRIVER_EP, driver_leaf);
-  x86_register_override_leaf("libIGSg.dll", CORNERS_EP, corners_leaf);
-  x86_register_override_leaf("libIGSg.dll", CLASSIFY_EP, classify_leaf);
+  x86_register_override("libIGSg.dll", igsg::FrustCull_TestBox,
+                        x2_override_10047470);
+  x86_register_override("libIGSg.dll", igsg::FrustCull_BoxCorners,
+                        x2_override_10047570);
+  x86_register_override("libIGSg.dll", igsg::FrustCull_ClassifyCorners,
+                        x2_override_100478e0);
+  x86_register_override_leaf("libIGSg.dll", igsg::FrustCull_TestBox,
+                             driver_leaf);
+  x86_register_override_leaf("libIGSg.dll", igsg::FrustCull_BoxCorners,
+                             corners_leaf);
+  x86_register_override_leaf("libIGSg.dll", igsg::FrustCull_ClassifyCorners,
+                             classify_leaf);
 }

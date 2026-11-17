@@ -13,19 +13,19 @@
 #include "igvk_context.h"
 #include "igvk_device_slots.h"
 
+#include "libiggfx_symbols.hpp"
 #include "x86rt_native.h"
 
 #include <stdio.h>
 #include <string.h>
+
+namespace gfx = x2::symbols::libiggfx;
 
 /* From tools/ark_classes.py over scratch/analysis/libIGGfx.json:
      igVisualContext   abstract, size 0x140, meta slot 0x10188ba0,
                        arkRegisterInternal 0x1000b440, getClassMeta 0x1004afc0
    The last two are exactly the pair igDxVisualContext passes as ITS parent
    hooks, which is the cross-check that they are igVisualContext's. */
-#define IGVISUALCONTEXT_META_SLOT 0x10188ba0u
-#define IGDXVISUALCONTEXT_META_SLOT 0x10189048u
-#define IGDX8VISUALCONTEXT_META_SLOT 0x10189450u
 
 /*
  * OUR parent is igDx8VisualContext, the concrete class we replace -- not the
@@ -48,8 +48,6 @@
  * igDx8VisualContext, which is an independent confirmation that it is the
  * right function.
  */
-#define IGDX8_REGINTERNAL 0x10014a60u
-#define IGDX8_GETCLASSMETA 0x10009870u
 
 /* igDxVisualContext and igDx8VisualContext are both 0x558, and the Dx8 leaf
    adds no fields (C113). Matching it means the engine gets an object the same
@@ -60,19 +58,14 @@
 /* igVisualContext's vtable is 334 slots (C114). */
 #define IGVK_SLOTS 334
 
-#define IGDX8VISUALCONTEXT_VTABLE 0x100dd0a0u
-#define IGGFX_PURECALL 0x100ce258u
-
-#define IGGFX_STATUS_OK_PP 0x100cf4d4u
-#define IGGFX_STATUS_FAIL_PP 0x100cf4d0u
-
-static ArkClass g_vk = {.name = "igVkVisualContext",
-                        .instance_size = IGVK_INSTANCE_SIZE,
-                        .is_abstract = 0,
-                        .base_module = IGVK_GFX,
-                        .base_register_internal_va = IGDX8_REGINTERNAL,
-                        .base_get_class_meta_va = IGDX8_GETCLASSMETA,
-                        .nslots = IGVK_SLOTS};
+static ArkClass g_vk = {
+    .name = "igVkVisualContext",
+    .instance_size = IGVK_INSTANCE_SIZE,
+    .is_abstract = 0,
+    .base_module = IGVK_GFX,
+    .base_register_internal_va = gfx::igDx8VisualContext_arkRegisterInternal,
+    .base_get_class_meta_va = gfx::igDx8VisualContext_getClassMeta,
+    .nslots = IGVK_SLOTS};
 
 /* ---- small services the slot modules use ------------------------------ */
 
@@ -100,8 +93,10 @@ static uint32_t status_value(uint32_t pp_linked) {
   return p ? RD32(p) : 0;
 }
 
-uint32_t igvk_status_ok(void) { return status_value(IGGFX_STATUS_OK_PP); }
-uint32_t igvk_status_fail(void) { return status_value(IGGFX_STATUS_FAIL_PP); }
+uint32_t igvk_status_ok(void) { return status_value(gfx::imp_igStatusSuccess); }
+uint32_t igvk_status_fail(void) {
+  return status_value(gfx::imp_igStatusFailure);
+}
 
 void igvk_ret_status(CPU *C, uint32_t out, uint32_t status, int nargs) {
   if (out)
@@ -157,8 +152,8 @@ static void install_slots(void) {
 }
 
 static int build_vtable(void) {
-  uint32_t src = ark_lifted(IGVK_GFX, IGDX8VISUALCONTEXT_VTABLE);
-  uint32_t pure = ark_lifted(IGVK_GFX, IGGFX_PURECALL);
+  uint32_t src = ark_lifted(IGVK_GFX, gfx::igDx8VisualContext_vtable);
+  uint32_t pure = ark_lifted(IGVK_GFX, gfx::purecall);
   int inherited = 0, still_pure = 0, k, n;
 
   if (!src || !pure) {
@@ -216,9 +211,9 @@ static int rebind_chain(void) {
     const char *name;
     uint32_t slot;
   } chain[] = {
-      {"igVisualContext", IGVISUALCONTEXT_META_SLOT},
-      {"igDxVisualContext", IGDXVISUALCONTEXT_META_SLOT},
-      {"igDx8VisualContext", IGDX8VISUALCONTEXT_META_SLOT},
+      {"igVisualContext", gfx::igVisualContext_meta},
+      {"igDxVisualContext", gfx::igDxVisualContext_meta},
+      {"igDx8VisualContext", gfx::igDx8VisualContext_meta},
   };
   size_t n;
   int bound = 0;
@@ -245,7 +240,7 @@ int igvk_context_install(void) {
   if (g_done)
     return 1;
 
-  meta_slot = ark_lifted(IGVK_GFX, IGVISUALCONTEXT_META_SLOT);
+  meta_slot = ark_lifted(IGVK_GFX, gfx::igVisualContext_meta);
   if (!meta_slot) {
     x2_log_error("igVk: %s is not loaded; nothing was substituted.\n",
                  IGVK_GFX);
@@ -262,7 +257,7 @@ int igvk_context_install(void) {
    * the whole chain exists by the time we rebind it.
    */
   {
-    uint32_t dx8 = ark_lifted(IGVK_GFX, IGDX8VISUALCONTEXT_META_SLOT);
+    uint32_t dx8 = ark_lifted(IGVK_GFX, gfx::igDx8VisualContext_meta);
     if (!dx8 || !RD32(dx8))
       return 0;
   }
