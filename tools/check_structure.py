@@ -35,7 +35,7 @@ LEGACY_LIMITS = {
     "src/native/threads.cpp": 669,              # was 673, 1070, 842, 717, 694; reports, quantum, stack/TIB -> threads_memory.cpp
     "src/gpu/gpu_device.cpp": 701,              # was 758; pass attachments -> gpu_pass_attachments.cpp, viewport -> gpu_viewport.cpp
     "src/d3d8/d3d8_resource.cpp": 1038,         # was 1050, 924
-    "src/native/dinput_pad.cpp": 378,           # sampler split into dinput_pad_sample.cpp
+    "src/native/dinput_pad.cpp": 342,           # was 378; sampler -> dinput_pad_sample.cpp, persistent ids -> dinput_pad_identity.cpp
     "src/native/win32_sdl.cpp": 1018,           # was 1025, 930
     "src/native/conversation.cpp": 959,         # was 968, 958
     "src/native/dsound.cpp": 736,               # was 745, 1097 before the mixer split

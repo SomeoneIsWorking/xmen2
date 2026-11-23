@@ -63,12 +63,17 @@ const char *dinput_pad_name(int pad);
 /* Host identity candidate for player assignment. DirectInput's instance GUID is
    deliberately only a live-run handle: two identical controllers have the
    same SDL device GUID, so that GUID cannot identify either physical unit.
-   This id prefers the controller serial, then its OS path. Devices exposing
-   neither receive a live-session id which must not be saved as a reservation.
+   This id prefers the controller serial, then its OS path, then (for real
+   hardware exposing neither, common on Android) its name and model numbered
+   among identical connected units. Only virtual pads receive a live-session
+   id, which must not be saved as a reservation.
  */
 const char *dinput_pad_persistent_id(int pad);
 int dinput_pad_persistent_id_is_stable(int pad);
 int dinput_pad_for_persistent_id(const char *id);
+/* The first connected pad that is real hardware (not an SDL virtual pad such
+   as the touch overlay) and not marked in `claimed`, or -1. */
+int dinput_pad_first_physical(const int claimed[DINPUT_PAD_MAX]);
 
 /* Which slot that instance GUID names, or -1. This is how a CreateDevice for
    a GUID an enumeration handed out finds its way back to a pad. */

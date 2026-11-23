@@ -111,7 +111,12 @@ bool make_dirs(const std::string &path) {
 
 bool write_file(const std::string &path,
                 const std::vector<std::uint8_t> &data) {
-  const std::string pending = path + ".new";
+  /* Not ".new": on Android the install folder's host_replace renames the
+     written file to "<name>.new" itself while it swaps (android-release.md),
+     so a source already named that is a rename onto itself and fails with
+     EIO -- Options then opened without the port's rows. settings.cpp uses
+     ".part" for the same reason. */
+  const std::string pending = path + ".part";
   FILE *file = host_fopen(pending.c_str(), "wb");
   if (file == nullptr) {
     return false;
