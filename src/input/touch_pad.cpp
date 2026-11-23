@@ -116,6 +116,14 @@ void claim_player_one() {
     x2::input::touch_census()->player_one_held_by_transient++;
     return;
   }
+  /* A plugged-in controller owns player one (player_input resolves it there
+     when nothing else does), so a stray touch must not take the player away.
+     Not marked attempted: unplugging the controller lets touch fill in. */
+  const int none_claimed[DINPUT_PAD_MAX] = {0};
+  if (dinput_pad_first_physical(none_claimed) >= 0) {
+    x2::input::touch_census()->player_one_held_by_setting++;
+    return;
+  }
   /*
    * A STORED reservation only holds player one while the controller it names
    * is actually here.

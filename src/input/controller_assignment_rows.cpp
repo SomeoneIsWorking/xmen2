@@ -107,7 +107,7 @@ bool assign_keyboard(x2::config::Settings &settings, unsigned profile,
 bool assign_controller(x2::config::Settings &settings,
                        const ControllerAssignmentRow &row, int owner,
                        std::string *why) {
-  if (row.transient_assignment || !row.stable_identity) {
+  if (!row.stable_identity) {
     if (owner < 0) {
       if (row.owner >= 0) {
         transient_controller_clear_player(static_cast<unsigned>(row.owner));
@@ -120,6 +120,12 @@ bool assign_controller(x2::config::Settings &settings,
       return false;
     }
     return true;
+  }
+  /* A stable pad the session gave a seat on arrival (player_input.cpp) is
+     saved once the player chooses for it, so that seat stops being a
+     session overlay. */
+  if (row.transient_assignment && row.owner >= 0) {
+    transient_controller_clear_player(static_cast<unsigned>(row.owner));
   }
   if (!settings_assign_controller(&settings, row.id.c_str(), owner)) {
     *why = "the assignment was refused";
