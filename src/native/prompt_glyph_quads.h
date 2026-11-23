@@ -20,6 +20,9 @@ struct PromptQuad {
   std::uint16_t codepoint;
   std::uint8_t sheet; /* X2_KEYCAP_SHEET_*, or kOutlineTextSheet */
   std::uint8_t face;
+  /* X2_PROMPT_STYLE_*: which family's atlas an atlas-sheet quad samples.
+     Every family shares the layout, so only pad art differs. */
+  std::uint8_t style;
 };
 
 /* Where the engine wrote the collapsed glyph a quad replaces: the text

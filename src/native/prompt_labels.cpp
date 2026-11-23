@@ -76,6 +76,12 @@ static int pad_glyph_byte(uint8_t value) {
   return value >= X2_PAD_GLYPH_FIRST && value <= X2_PAD_GLYPH_LAST;
 }
 
+static int style_marker_byte(uint8_t value) {
+  return value == X2_STYLE_MARKER_XBOX ||
+         value == X2_STYLE_MARKER_PLAYSTATION ||
+         value == X2_STYLE_MARKER_NINTENDO;
+}
+
 static int keycap_glyphs_available(void) {
   return prompt_glyph_available(X2_KEYCAP_GLYPH_LEFT) &&
          prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
@@ -97,6 +103,19 @@ PromptLabelStyle prompt_label_rewrite(const uint8_t *input, uint8_t *output,
       return PromptLabelStyle::Unchanged;
     output[0] = input[1];
     output[1] = 0;
+    return PromptLabelStyle::PadGlyph;
+  }
+  /* A pad name led by its family's style marker (pad_glyphs.cpp). */
+  const bool is_marked_pad_name = length == 4u && input[0] == '[' &&
+                                  style_marker_byte(input[1]) &&
+                                  pad_glyph_byte(input[2]) && input[3] == ']';
+  if (is_marked_pad_name) {
+    if (capacity < 3u || !prompt_glyph_available(input[1]) ||
+        !prompt_glyph_available(input[2]))
+      return PromptLabelStyle::Unchanged;
+    output[0] = input[1];
+    output[1] = input[2];
+    output[2] = 0;
     return PromptLabelStyle::PadGlyph;
   }
   if (length < 3u || input[0] != '[' || input[length - 1u] != ']')

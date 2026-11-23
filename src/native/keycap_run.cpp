@@ -35,7 +35,7 @@ unsigned keycap_run_length(const uint16_t *wide, unsigned length, unsigned at) {
 static struct x2::native::PromptQuad art_quad(const struct x2_keycap_art *art,
                                               float x0, float x1, float y0,
                                               float y1, uint32_t color) {
-  struct x2::native::PromptQuad q;
+  struct x2::native::PromptQuad q = {};
   q.x0 = x0;
   q.y0 = y0;
   q.x1 = x1;

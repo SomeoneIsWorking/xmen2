@@ -73,9 +73,15 @@ bool lowercase(std::uint16_t c) {
 
 /* Printable ASCII and the Latin-1 letters; the fonts keep icons in the other
    Latin-1 slots (0xa4..0xbe in the medium font). */
+/* 0xd7..0xdb are not letters in this game: the retail font draws them as the
+   skills tab's rank boxes (FUN_005f01e0: 0xdb filler, 0xd9 owned, 0xda added
+   this visit, 0xd8 open, 0xd7 above the hero's level; xmen2-decomp
+   docs/notes/menus.md). An outline face drew them as "x Ø Ù Ú Û". */
+bool is_rank_glyph(std::uint16_t c) { return c >= 0xd7u && c <= 0xdbu; }
+
 bool text_codepoint(std::uint16_t c) {
   return (c >= 0x21u && c <= 0x7eu) || c == 0xa1u || c == 0xbfu ||
-         (c >= 0xc0u && c <= 0xffu);
+         (c >= 0xc0u && c <= 0xffu && !is_rank_glyph(c));
 }
 
 bool face_for_name(const char *name, OutlineFace *face) {

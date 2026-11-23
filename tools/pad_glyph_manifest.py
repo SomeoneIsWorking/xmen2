@@ -102,12 +102,28 @@ def assign_codepoints(first: int, count: int, reserved: list[int]) -> list[int]:
     return codes
 
 
+def load_style_markers() -> list[str]:
+    """Invisible, zero-advance codepoints that pick the art family (Xbox,
+    PlayStation, Nintendo) of the pad glyph right after them, so two players'
+    prompts can show two controller families in the same frame. Their order is
+    the X2_PROMPT_STYLE_* order (src/native/prompt_glyph_style.h)."""
+    markers = json.loads(MANIFEST.read_text()).get("style_markers")
+    expected = ["xbox", "playstation", "nintendo"]
+    if markers != expected:
+        raise ValueError(f"style_markers must be {expected!r}, found {markers!r}; "
+                         "their order is X2_PROMPT_STYLE_*")
+    return markers
+
+
 (FIRST_CODEPOINT, SET_NAME, ICONS, KEYBOARD_SET, KEYBOARD_SOURCE,
  KEYCAP_PARTS, RETAIL_FONT_CODEPOINTS) = load()
-_CODEPOINTS = assign_codepoints(FIRST_CODEPOINT, len(ICONS) + len(KEYCAP_PARTS),
-                                RETAIL_FONT_CODEPOINTS)
+STYLE_MARKERS = load_style_markers()
+_CODEPOINTS = assign_codepoints(
+    FIRST_CODEPOINT, len(ICONS) + len(KEYCAP_PARTS) + len(STYLE_MARKERS),
+    RETAIL_FONT_CODEPOINTS)
 ICON_CODEPOINTS = _CODEPOINTS[:len(ICONS)]
-KEYCAP_CODEPOINTS = _CODEPOINTS[len(ICONS):]
+KEYCAP_CODEPOINTS = _CODEPOINTS[len(ICONS):len(ICONS) + len(KEYCAP_PARTS)]
+STYLE_MARKER_CODEPOINTS = _CODEPOINTS[len(ICONS) + len(KEYCAP_PARTS):]
 LAST_CODEPOINT = _CODEPOINTS[-1]
 if LAST_CODEPOINT >= PRIVATE_END:
     raise ValueError(f"glyph codepoints run to 0x{LAST_CODEPOINT:02x}, into the "
@@ -181,6 +197,10 @@ def emit_header(path: Path) -> None:
     lines.append("")
     for name, code in zip(KEYCAP_PARTS, KEYCAP_CODEPOINTS, strict=True):
         macro = "X2_KEYCAP_GLYPH_" + name.upper()
+        lines.append(f"#define {macro:<27} 0x{code:02X}u")
+    lines.append("")
+    for name, code in zip(STYLE_MARKERS, STYLE_MARKER_CODEPOINTS, strict=True):
+        macro = "X2_STYLE_MARKER_" + name.upper()
         lines.append(f"#define {macro:<27} 0x{code:02X}u")
     # The bounds of the published run, so a "is this byte one of ours" test
     # names the run rather than naming whichever glyph happens to sit at its

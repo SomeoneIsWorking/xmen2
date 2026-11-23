@@ -6,6 +6,7 @@
 #include "input_bindings.h"
 #include "player_participation.h"
 #include "player_participation_policy.h"
+#include "prompt_glyph_style.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "x86rt.h"
@@ -13,6 +14,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <string>
 
 namespace x2::input {
 
@@ -87,6 +89,49 @@ void resolve_pads(const x2::config::Settings *settings,
       claimed[pad] = 1;
     }
   }
+}
+
+/* Persistent ids of the real pads seen on the previous sync, by slot. */
+std::string g_seen_pads[DINPUT_PAD_MAX];
+
+/* No reservation of any kind: no session or stored controller (even an
+   absent one, which still waits for its own identity) and, for P2-P4, no
+   keyboard. */
+bool player_is_vacant(const x2::config::Settings *settings, unsigned player) {
+  return !x2::input::transient_controller_has_assignment(player) &&
+         settings_player_controller(settings, player) == nullptr &&
+         (player == 0u || settings_player_keyboard(settings, player) < 0);
+}
+
+/* A real pad that ARRIVES -- connected, or present at startup -- and that no
+   assignment names is given to the first vacant player as a session
+   assignment, so a phone's pad, or a second player's, works without opening
+   the assignment screen. Only on arrival: choosing None for it afterwards
+   sticks for the session. */
+void assign_arrived_pads(const x2::config::Settings *settings) {
+  int claimed[DINPUT_PAD_MAX] = {0};
+  std::string present[DINPUT_PAD_MAX];
+  int pad;
+  while ((pad = dinput_pad_first_physical(claimed)) >= 0) {
+    claimed[pad] = 1;
+    const char *id = dinput_pad_persistent_id(pad);
+    present[pad] = id ? id : "";
+    const bool has_arrived = present[pad] != g_seen_pads[pad];
+    const bool is_named =
+        x2::input::transient_controller_player_for_pad(pad) >= 0 ||
+        settings_controller_player(settings, id) !=
+            x2::config::kSettingsUnassigned;
+    if (!has_arrived || is_named)
+      continue;
+    for (unsigned player = 0; player < INPUT_PLAYERS; player++) {
+      if (player_is_vacant(settings, player)) {
+        x2::input::transient_controller_assign(pad, player);
+        break;
+      }
+    }
+  }
+  for (pad = 0; pad < DINPUT_PAD_MAX; pad++)
+    g_seen_pads[pad] = present[pad];
 }
 
 uint32_t default_gamepad_code(unsigned row) {
@@ -172,6 +217,33 @@ void publish_player(CPU *cpu, const x2::config::Settings *settings,
                                 pad_code ? pad_kind : 0u, pad_code);
   }
 }
+
+/* The Button Icons setting, or under Automatic each pad's own family (named
+   per prompt by pad_glyphs.cpp) with player one's as the default for prompts
+   that name no pad. */
+void publish_button_style(const x2::config::Settings *settings,
+                          int player_one_pad) {
+  int forced = -1;
+  switch (settings->button_style) {
+  case x2::config::kButtonStyleXbox:
+    forced = X2_PROMPT_STYLE_XBOX;
+    break;
+  case x2::config::kButtonStylePlayStation:
+    forced = X2_PROMPT_STYLE_PLAYSTATION;
+    break;
+  case x2::config::kButtonStyleNintendo:
+    forced = X2_PROMPT_STYLE_NINTENDO;
+    break;
+  default:
+    break;
+  }
+  int fallback = X2_PROMPT_STYLE_XBOX;
+  if (forced >= 0)
+    fallback = forced;
+  else if (player_one_pad >= 0)
+    fallback = dinput_pad_button_style(player_one_pad);
+  x2_prompt_set_style(fallback, forced);
+}
 } // namespace
 
 void player_input_sync(CPU *cpu) {
@@ -188,6 +260,7 @@ void player_input_sync(CPU *cpu) {
   if (!g_have_base && !capture_keyboard_base())
     return;
   settings = x2::config::settings_store();
+  assign_arrived_pads(settings);
   resolve_pads(settings, pad);
   for (player = 0; player < INPUT_PLAYERS; player++) {
     controller_slot[player] =
@@ -203,6 +276,7 @@ void player_input_sync(CPU *cpu) {
             memcmp(g_last_controller_slot, controller_slot,
                    sizeof controller_slot) != 0 ||
             memcmp(g_last_keyboard, keyboard, sizeof keyboard) != 0;
+  publish_button_style(settings, pad[0]);
   if (!changed) {
     sync_participation(cpu, settings, keyboard);
     return;

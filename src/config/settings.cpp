@@ -60,6 +60,19 @@ const char *touch_controls_label(unsigned mode) {
   }
 }
 
+const char *button_style_label(unsigned style) {
+  switch (style) {
+  case kButtonStyleXbox:
+    return "Xbox";
+  case kButtonStylePlayStation:
+    return "PlayStation";
+  case kButtonStyleNintendo:
+    return "Nintendo";
+  default:
+    return "Automatic";
+  }
+}
+
 const char *extraction_revive_name(ExtractionRevive mode) {
   switch (mode) {
   case ExtractionRevive::Free:
@@ -119,6 +132,7 @@ void settings_defaults(Settings *settings) {
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = BootMode::Normal;
   settings->touch_controls = kTouchControlsAuto;
+  settings->button_style = kButtonStyleAuto;
   settings->extraction_revive = ExtractionRevive::Free;
   x2_hud_settings_defaults(&settings->hud);
   for (i = 0; i < kSettingsKeyboardProfiles; i++)
@@ -280,6 +294,13 @@ int parse_line(ParseState *state, char *line) {
     settings->touch_controls = (uint8_t)mode;
     return 1;
   }
+  if (strcmp(key, "input.button_style") == 0) {
+    unsigned style;
+    if (!number(value, kButtonStyleAuto, kButtonStyleNintendo, &style))
+      return 0;
+    settings->button_style = (uint8_t)style;
+    return 1;
+  }
   if (strcmp(key, "input.assignment_version") == 0) {
     state->saw_grid = 1;
     return strcmp(value, "2") == 0;
@@ -336,6 +357,7 @@ int settings_valid(const Settings *settings) {
     return 0;
   if ((unsigned)settings->boot_mode > (unsigned)BootMode::Continue ||
       settings->touch_controls > kTouchControlsAlways ||
+      settings->button_style > kButtonStyleNintendo ||
       (unsigned)settings->extraction_revive > (unsigned)ExtractionRevive::Paid)
     return 0;
   if (settings->dynamic_shadows > 1 || (settings->shadow_resolution != 512 &&
@@ -515,6 +537,7 @@ int settings_save(const Settings *settings, const char *path, char *why,
   fprintf(file, "gameplay.extraction_revive=%s\n",
           extraction_revive_name(settings->extraction_revive));
   fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);
+  fprintf(file, "input.button_style=%u\n", settings->button_style);
   fprintf(file, "input.assignment_version=2\n");
   for (profile = 0; profile < kSettingsKeyboardProfiles; profile++) {
     int owner = settings->keyboard_player[profile];

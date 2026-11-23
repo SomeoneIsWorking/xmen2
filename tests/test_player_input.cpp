@@ -3,6 +3,7 @@
 #include "dinput_pad.h"
 #include "input_binding_sets.h"
 #include "input_bindings.h"
+#include "prompt_glyph_style.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "x86rt.h"
@@ -46,6 +47,26 @@ int dinput_pad_for_persistent_id(const char *id) {
       return i;
   return -1;
 }
+/* Every test pad is real hardware. */
+int dinput_pad_first_physical(const int claimed[DINPUT_PAD_MAX]) {
+  int i;
+  for (i = 0; i < DINPUT_PAD_MAX; i++)
+    if (pads[i] && !claimed[i])
+      return i;
+  return -1;
+}
+/* "ps-pad" is a PlayStation controller; every other test pad is Xbox. */
+int dinput_pad_button_style(int pad) {
+  return pads[pad] && strcmp(pads[pad], "ps-pad") == 0
+             ? X2_PROMPT_STYLE_PLAYSTATION
+             : X2_PROMPT_STYLE_XBOX;
+}
+static int published_default_style = -2;
+static int published_forced_style = -2;
+void x2_prompt_set_style(int default_style, int forced_style) {
+  published_default_style = default_style;
+  published_forced_style = forced_style;
+}
 namespace x2::native {
 int dinput8_controller_slot_for_host_pad(int pad) {
   return pad >= 0 && pad < DINPUT_PAD_MAX ? controller_slots[pad] : -1;
@@ -55,10 +76,22 @@ int x2::input::transient_controller_has_assignment(unsigned player) {
   return player < INPUT_PLAYERS && transient_pad[player] != -2;
 }
 int x2::input::transient_controller_resolve(unsigned player) {
-  return x2::input::transient_controller_has_assignment(player)
-             ? transient_pad[player]
-             : -1;
+  if (!x2::input::transient_controller_has_assignment(player))
+    return -1;
+  const int pad = transient_pad[player];
+  return pad >= 0 && pads[pad] ? pad : -1; /* bound to a pad that is here */
 }
+int x2::input::transient_controller_assign(int pad, unsigned player) {
+  transient_pad[player] = pad;
+  return 1;
+}
+int x2::input::transient_controller_player_for_pad(int pad) {
+  for (unsigned player = 0; player < INPUT_PLAYERS; player++)
+    if (transient_pad[player] == pad)
+      return (int)player;
+  return -1;
+}
+const char *dinput_pad_persistent_id(int pad) { return pads[pad]; }
 uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn) {
   (void)why;
   (void)whyn;
@@ -345,6 +378,46 @@ int main(void) {
   CHECK((participation_eligible & 0x04u) == 0u);
   CHECK((participation_active & 0x04u) == 0u);
   CHECK(participation_leave == 0u);
+
+  /* A pad that arrives with no assignment naming it becomes a session
+     assignment of the first player with no device at all (P3 here: P1 has
+     a session pad, P2 pad-b, P4 a keyboard). It makes that player eligible
+     but, like any P2-P4 device, does not join until Start. */
+  pads[2] = "fresh-pad";
+  controller_slots[2] = 2;
+  x2::input::player_input_sync(&cpu);
+  CHECK(x2::input::player_input_resolved_pad(2) == 2);
+  CHECK(x2::input::player_input_resolved_pad(3) == -1);
+  CHECK((participation_eligible & 0x04u) != 0u);
+  CHECK(participation_join == 0u);
+  /* Unplugged, the seat waits for that pad like any session assignment. */
+  pads[2] = NULL;
+  x2::input::player_input_sync(&cpu);
+  CHECK(x2::input::player_input_resolved_pad(2) == -1);
+  CHECK((participation_eligible & 0x04u) != 0u);
+  /* Only an arrival assigns: a pad already present when its player gave it
+     up (None) is not handed straight back. */
+  pads[2] = "fresh-pad";
+  x2::input::player_input_sync(&cpu);
+  CHECK(x2::input::player_input_resolved_pad(2) == 2);
+  transient_pad[2] = -2;
+  x2::input::player_input_sync(&cpu);
+  CHECK(x2::input::player_input_resolved_pad(2) == -1);
+  CHECK((participation_eligible & 0x04u) == 0u);
+  pads[2] = NULL;
+  x2::input::player_input_sync(&cpu);
+
+  /* Prompt art: Automatic follows player one's pad family; a named
+     setting is forced for every pad. */
+  CHECK(published_default_style == X2_PROMPT_STYLE_XBOX);
+  CHECK(published_forced_style == -1);
+  pads[0] = "ps-pad"; /* player one's session pad is now a PlayStation pad */
+  x2::input::player_input_sync(&cpu);
+  CHECK(published_default_style == X2_PROMPT_STYLE_PLAYSTATION);
+  settings.button_style = x2::config::kButtonStyleNintendo;
+  x2::input::player_input_sync(&cpu);
+  CHECK(published_default_style == X2_PROMPT_STYLE_NINTENDO);
+  CHECK(published_forced_style == X2_PROMPT_STYLE_NINTENDO);
 
   printf("test_player_input: %d checks passed\n", checks);
   return 0;

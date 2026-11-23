@@ -56,6 +56,7 @@ typedef struct {
   char persistent_id[64];
   int buttons;
   int xbox_glyphs;
+  int button_style; /* X2_PROMPT_STYLE_*: the art family this pad prints */
 } Pad;
 
 static Pad g_pad[DINPUT_PAD_MAX];
@@ -72,83 +73,22 @@ static int slot_of_id(SDL_JoystickID id) {
   return -1;
 }
 
-static uint64_t identity_hash(const char *tag, const char *value,
-                              const SDL_GUID *guid, unsigned ordinal) {
-  const unsigned char *s;
-  uint64_t h = UINT64_C(1469598103934665603);
-  size_t i;
-
-#define HASH_BYTES(ptr, count)                                                 \
-  do {                                                                         \
-    const unsigned char *hb_ = (const unsigned char *)(ptr);                   \
-    size_t hn_;                                                                \
-    for (hn_ = 0; hn_ < (count); hn_++) {                                      \
-      h ^= hb_[hn_];                                                           \
-      h *= UINT64_C(1099511628211);                                            \
-    }                                                                          \
-  } while (0)
-  for (s = (const unsigned char *)tag; *s; s++)
-    HASH_BYTES(s, 1);
-  if (value)
-    for (s = (const unsigned char *)value; *s; s++)
-      HASH_BYTES(s, 1);
-  HASH_BYTES(guid->data, sizeof guid->data);
-  for (i = 0; i < sizeof ordinal; i++)
-    HASH_BYTES((unsigned char *)&ordinal + i, 1);
-#undef HASH_BYTES
-  return h;
-}
-
-static void make_identities(Pad *p, SDL_Gamepad *gp, SDL_JoystickID id,
-                            const SDL_GUID *guid, unsigned ordinal) {
-  const char *serial = SDL_GetGamepadSerial(gp);
-  const char *path = SDL_GetGamepadPath(gp);
-  const char *tag;
-  const char *value;
-  uint64_t stable;
-  uint32_t live = (uint32_t)id;
+/* How many OTHER open pads are the same model, so two identical units get
+   different identities while one unit keeps the same one across runs. */
+static unsigned same_model_ordinal(const Pad *self, SDL_JoystickID id) {
+  const uint16_t vendor = SDL_GetGamepadVendorForID(id);
+  const uint16_t product = SDL_GetGamepadProductForID(id);
+  unsigned count = 0;
   int i;
-
-  /* The announced synthetic identity wins, so a run can drive the same
-     persisted-assignment resolution a stored controller0 id goes through. */
-  {
-    const char *override = dinput_pad_virtual_identity_override(id);
-    if (override) {
-      snprintf(p->persistent_id, sizeof p->persistent_id, "%s", override);
-      return;
-    }
+  for (i = 0; i < DINPUT_PAD_MAX; i++) {
+    const Pad *other = &g_pad[i];
+    const bool is_same_model = other != self && other->used &&
+                               SDL_GetGamepadVendorForID(other->id) == vendor &&
+                               SDL_GetGamepadProductForID(other->id) == product;
+    if (is_same_model)
+      count++;
   }
-  /* SDL's GUID is a PRODUCT identity, despite its name. Preserve its device
-     description but mix in SDL's unique live instance id. For equal GUIDs,
-     different joystick ids now produce different DirectInput instances. */
-  memcpy(p->inst, guid->data, sizeof p->inst);
-  for (i = 0; i < 4; i++) {
-    uint32_t word;
-    memcpy(&word, p->inst + i * 4, sizeof word);
-    word ^= live * (UINT32_C(0x9e3779b9) + (uint32_t)i * UINT32_C(0x85ebca6b));
-    memcpy(p->inst + i * 4, &word, sizeof word);
-  }
-
-  if (serial && serial[0]) {
-    tag = "serial";
-    value = serial;
-    ordinal = 0;
-  } else if (path && path[0]) {
-    tag = "path";
-    value = path;
-    ordinal = 0;
-  } else {
-    /* A session id distinguishes units but is not a physical identity. */
-    tag = "session";
-    value = p->name;
-    ordinal = (unsigned)id;
-  }
-  stable = identity_hash(tag, value, guid, ordinal);
-  snprintf(p->persistent_id, sizeof p->persistent_id,
-           strcmp(tag, "session") ? "sdl-%04x-%04x-%016llx"
-                                  : "sdl-session-%04x-%04x-%016llx",
-           SDL_GetGamepadVendorForID(id), SDL_GetGamepadProductForID(id),
-           (unsigned long long)stable);
+  return count;
 }
 
 static void pad_open(SDL_JoystickID id) {
@@ -186,11 +126,14 @@ static void pad_open(SDL_JoystickID id) {
       p->prod, SDL_GetGamepadVendorForID(id), SDL_GetGamepadProductForID(id));
   nm = SDL_GetGamepadNameForID(id);
   snprintf(p->name, sizeof p->name, "%s", nm ? nm : "Gamepad");
-  make_identities(p, gp, id, &gu, (unsigned)i);
+  x2::native::dinput_pad_make_identities(
+      gp, id, &gu, p->name, same_model_ordinal(p, id), p->inst,
+      p->persistent_id, sizeof p->persistent_id);
   /* The DirectInput button order is the fixed 360 mapping below. */
   p->buttons = 10;
   p->xbox_glyphs =
       dinput_pad_type_uses_xbox_glyphs((int)SDL_GetGamepadType(gp));
+  p->button_style = dinput_pad_type_button_style((int)SDL_GetGamepadType(gp));
   g_opens++;
   g_generation++;
   x2_log_error("DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
@@ -332,6 +275,21 @@ int dinput_pad_for_guid(const unsigned char guid[16]) {
   return -1;
 }
 
+int dinput_pad_first_physical(const int claimed[DINPUT_PAD_MAX]) {
+#ifdef X2_WITH_SDL
+  int i;
+  for (i = 0; i < DINPUT_PAD_MAX; i++) {
+    const bool is_free_hardware =
+        g_pad[i].used && !claimed[i] && !SDL_IsJoystickVirtual(g_pad[i].id);
+    if (is_free_hardware)
+      return i;
+  }
+#else
+  (void)claimed;
+#endif
+  return -1;
+}
+
 int dinput_pad_for_joystick_id(unsigned int joystick_id) {
 #ifdef X2_WITH_SDL
   return slot_of_id((SDL_JoystickID)joystick_id);
@@ -359,6 +317,11 @@ int dinput_pad_button_count(int pad) {
 int dinput_pad_uses_xbox_glyphs(int pad) {
   Pad *p = pad_at(pad);
   return p ? p->xbox_glyphs : 0;
+}
+
+int dinput_pad_button_style(int pad) {
+  Pad *p = pad_at(pad);
+  return p ? p->button_style : 0;
 }
 
 void dinput_pad_device_counts(unsigned long *opens, unsigned long *closes) {

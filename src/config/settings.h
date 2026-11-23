@@ -33,6 +33,18 @@ enum TouchControls : int {
 
 const char *touch_controls_label(unsigned mode);
 
+/* input.button_style: which controller family's button art the prompts use.
+   AUTO follows the connected controller (PlayStation and Nintendo pads get
+   their own art, everything else Xbox). Persisted numerically. */
+enum ButtonStyle : int {
+  kButtonStyleAuto = 0,
+  kButtonStyleXbox = 1,
+  kButtonStylePlayStation = 2,
+  kButtonStyleNintendo = 3
+};
+
+const char *button_style_label(unsigned style);
+
 /* What reaching an extraction point does for a fallen or hurt party. */
 enum class ExtractionRevive : int { Off = 0, Free, Paid };
 
@@ -70,6 +82,7 @@ struct Settings {
      path -- a layout nobody can look at without a phone gets shipped wrong.
      Persisted numerically, so an existing file's 0/1 keeps its meaning. */
   uint8_t touch_controls;
+  uint8_t button_style;
   /* gameplay.extraction_revive: off is the retail rule (a fallen hero stays
      down), free restores the party at the pad, paid offers the retail
      revive cost near it. */

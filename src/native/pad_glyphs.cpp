@@ -43,6 +43,7 @@
 #include "guest_modules.h"
 #include "pad_glyph_codes.h"
 #include "player_input.h"
+#include "prompt_glyph_style.h"
 #include "prompt_glyphs.h"
 #include "prompt_labels.h"
 #include "x86rt.h"
@@ -147,6 +148,21 @@ static uint32_t name_buffer(void) {
   return base ? base + NAME_BUFFER_RVA : 0;
 }
 
+/* The style marker naming this pad's art family: the forced Button Icons
+   setting, or the pad's own family under Automatic. */
+static uint8_t style_marker_for_pad(int host_pad) {
+  const int forced = x2_prompt_forced_style();
+  const int style = forced >= 0 ? forced : dinput_pad_button_style(host_pad);
+  switch (style) {
+  case X2_PROMPT_STYLE_PLAYSTATION:
+    return X2_STYLE_MARKER_PLAYSTATION;
+  case X2_PROMPT_STYLE_NINTENDO:
+    return X2_STYLE_MARKER_NINTENDO;
+  default:
+    return X2_STYLE_MARKER_XBOX;
+  }
+}
+
 static int host_pad_for_kind(uint32_t kind) {
   if (kind < 3u || kind > 0xcu)
     return -1;
@@ -173,10 +189,16 @@ void x2_override_006281f0(CPU *C) {
   /* The original returns one of its own static buffers. Reusing that guest
      buffer preserves the pointer lifetime and keeps the pointer 32-bit; a
      host string literal would truncate on this 64-bit process. */
-  if (probe_char())
-    glyph = (uint8_t)probe_char();
-  WR8(out, glyph);
-  WR8(out + 1u, 0);
+  if (probe_char()) {
+    WR8(out, (uint8_t)probe_char());
+    WR8(out + 1u, 0);
+  } else {
+    /* The family marker first, so this pad's prompt shows this pad's art
+       even beside another player's. Invisible and zero-advance. */
+    WR8(out, style_marker_for_pad(host_pad));
+    WR8(out + 1u, glyph);
+    WR8(out + 2u, 0);
+  }
   C->reg[kX86pEax] = out;
   C->reg[kX86pEsp] += 12u; /* RET 8: return address + the two stack arguments */
   g_mapped++;

@@ -29,6 +29,7 @@
 #include "prompt_glyph_atlas.h" /* GENERATED: the port's own cells */
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
+#include "prompt_glyph_style.h"
 #include "prompt_glyphs.h"
 #include "prompt_string_census.h"
 #include "x86rt.h"
@@ -237,9 +238,27 @@ static void intercept_outline(CPU *C) {
     collapse(C);
 }
 
+/* The family the next pad glyph is drawn in, set by a style marker just
+   before it (pad_glyphs.cpp names each player's pad that way); -1 means the
+   string named no pad and the frame's default family applies. */
+static int g_next_style = -1;
+
+static int style_marker(uint16_t c) {
+  switch (c) {
+  case X2_STYLE_MARKER_XBOX:
+    return X2_PROMPT_STYLE_XBOX;
+  case X2_STYLE_MARKER_PLAYSTATION:
+    return X2_PROMPT_STYLE_PLAYSTATION;
+  case X2_STYLE_MARKER_NINTENDO:
+    return X2_PROMPT_STYLE_NINTENDO;
+  default:
+    return -1;
+  }
+}
+
 static void intercept_glyph(CPU *C, uint16_t c) {
   const struct x2_prompt_cell *cell = x2::native::prompt_glyph_cell(c);
-  struct x2::native::PromptQuad q;
+  struct x2::native::PromptQuad q = {};
   float corners[4];
 
   if (!cell) {
@@ -248,6 +267,15 @@ static void intercept_glyph(CPU *C, uint16_t c) {
     return;
   }
   close_outline_run();
+  const int marked_style = style_marker(c);
+  if (marked_style >= 0) {
+    g_next_style = marked_style;
+    collapse(C);
+    return;
+  }
+  q.style =
+      (std::uint8_t)(g_next_style >= 0 ? g_next_style : x2_prompt_style());
+  g_next_style = -1;
   read_corners(C, corners);
   q.u0 = cell->u0;
   q.v0 = cell->v0;
@@ -472,6 +500,7 @@ void x2_override_005ee780(CPU *C) {
     g_cursor_string = s;
     g_cursor_index = 0;
     g_cursor_color = color;
+    g_next_style = -1;
     g_font = font;
     g_pen.begin(s);
     g_outline_strings += (unsigned long)(font != NULL);
