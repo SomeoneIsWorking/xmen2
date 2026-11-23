@@ -10,5 +10,6 @@
     "ls_up", "ls_down", "ls_left", "ls_right", "rs_up", "rs_down", "rs_left",
     "rs_right"
   ],
-  "keycap_parts": ["left", "right"]
+  "keycap_parts": ["left", "right"],
+  "style_markers": ["xbox", "playstation", "nintendo"]
 }

@@ -2,6 +2,7 @@
 #include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "pad_glyphs.h"
+#include "prompt_glyph_style.h"
 #include "prompt_glyphs.h"
 #include "prompt_labels.h"
 #include "runtime_cvars.h"
@@ -47,7 +48,12 @@ int dinput8_controller_host_pad_for_slot(int controller_slot) {
              : -1;
 }
 } // namespace x2::native
-int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
+/* Host pad 1 is an Xbox pad and host pad 2 a PlayStation pad, both with the
+   port's art; host pad 0 is a generic pad that keeps the retail name. */
+int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1 || pad == 2; }
+int dinput_pad_button_style(int pad) {
+  return pad == 2 ? X2_PROMPT_STYLE_PLAYSTATION : X2_PROMPT_STYLE_XBOX;
+}
 namespace x2::input {
 int player_input_pad_is_active_source(int pad) { return pad == active_pad; }
 } // namespace x2::input
@@ -157,8 +163,9 @@ static int reader_says(uint32_t row, uint32_t *kind, uint32_t *code,
   return 1;
 }
 
-static int check_call(uint32_t kind, uint32_t code, uint32_t want,
-                      int want_real) {
+/* A native name is the pad's family marker, then its glyph. */
+static int check_styled_call(uint32_t kind, uint32_t code, uint32_t want,
+                             uint32_t want_marker, int want_real) {
   CPU c = {0};
   uint32_t *stack = guest_memory_as<uint32_t>(mapped_base + 0x1000u);
   int before = real_calls;
@@ -173,7 +180,13 @@ static int check_call(uint32_t kind, uint32_t code, uint32_t want,
   if (want_real)
     return c.reg[kX86pEax] == 0x12345678u;
   return c.reg[kX86pEax] == mapped_base + BUFFER_RVA &&
-         RD8(c.reg[kX86pEax]) == want && RD8(c.reg[kX86pEax] + 1u) == 0;
+         RD8(c.reg[kX86pEax]) == want_marker &&
+         RD8(c.reg[kX86pEax] + 1u) == want && RD8(c.reg[kX86pEax] + 2u) == 0;
+}
+
+static int check_call(uint32_t kind, uint32_t code, uint32_t want,
+                      int want_real) {
+  return check_styled_call(kind, code, want, X2_STYLE_MARKER_XBOX, want_real);
 }
 
 int main(int argc, char **argv) {
@@ -223,6 +236,16 @@ int main(int argc, char **argv) {
        check_call(3, 0x1e, X2_PAD_GLYPH_RS, 0) &&
        check_call(4, 0x15, 0, 1) && /* generic host pad */
        check_call(5, 0x15, 0, 1);   /* unresolved guest slot */
+  /* Each pad's name carries its own family, so two players' prompts can
+     show two families; a forced Button Icons setting overrides every pad. */
+  host_pad_for_slot[3] = 2;
+  ok = ok && check_styled_call(6, 0x15, 0x80, X2_STYLE_MARKER_PLAYSTATION, 0) &&
+       check_call(3, 0x15, 0x80, 0);
+  x2_prompt_set_style(X2_PROMPT_STYLE_NINTENDO, X2_PROMPT_STYLE_NINTENDO);
+  ok = ok && check_styled_call(6, 0x15, 0x80, X2_STYLE_MARKER_NINTENDO, 0) &&
+       check_styled_call(3, 0x15, 0x80, X2_STYLE_MARKER_NINTENDO, 0);
+  x2_prompt_set_style(X2_PROMPT_STYLE_XBOX, -1);
+  host_pad_for_slot[3] = -1;
   if (!ok) {
     fprintf(stderr, "pad glyph shipping-wrapper checks FAILED\n");
     return 1;
@@ -339,6 +362,15 @@ int main(int argc, char **argv) {
               "brackets (%s)\n",
               label_after(glyph));
       return 1;
+    }
+    {
+      const char marked[3] = {(char)X2_STYLE_MARKER_PLAYSTATION,
+                              (char)X2_PAD_GLYPH_FACE_A, '\0'};
+      if (strcmp(label_after(marked), marked) != 0) {
+        fprintf(stderr, "pad glyph brackets: a family-marked glyph label "
+                        "kept its brackets\n");
+        return 1;
+      }
     }
     want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
     memcpy(want + at, "ENTER", 5);

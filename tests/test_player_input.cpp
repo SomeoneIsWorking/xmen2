@@ -3,6 +3,7 @@
 #include "dinput_pad.h"
 #include "input_binding_sets.h"
 #include "input_bindings.h"
+#include "prompt_glyph_style.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "x86rt.h"
@@ -53,6 +54,18 @@ int dinput_pad_first_physical(const int claimed[DINPUT_PAD_MAX]) {
     if (pads[i] && !claimed[i])
       return i;
   return -1;
+}
+/* "ps-pad" is a PlayStation controller; every other test pad is Xbox. */
+int dinput_pad_button_style(int pad) {
+  return pads[pad] && strcmp(pads[pad], "ps-pad") == 0
+             ? X2_PROMPT_STYLE_PLAYSTATION
+             : X2_PROMPT_STYLE_XBOX;
+}
+static int published_default_style = -2;
+static int published_forced_style = -2;
+void x2_prompt_set_style(int default_style, int forced_style) {
+  published_default_style = default_style;
+  published_forced_style = forced_style;
 }
 namespace x2::native {
 int dinput8_controller_slot_for_host_pad(int pad) {
@@ -393,6 +406,18 @@ int main(void) {
   CHECK((participation_eligible & 0x04u) == 0u);
   pads[2] = NULL;
   x2::input::player_input_sync(&cpu);
+
+  /* Prompt art: Automatic follows player one's pad family; a named
+     setting is forced for every pad. */
+  CHECK(published_default_style == X2_PROMPT_STYLE_XBOX);
+  CHECK(published_forced_style == -1);
+  pads[0] = "ps-pad"; /* player one's session pad is now a PlayStation pad */
+  x2::input::player_input_sync(&cpu);
+  CHECK(published_default_style == X2_PROMPT_STYLE_PLAYSTATION);
+  settings.button_style = x2::config::kButtonStyleNintendo;
+  x2::input::player_input_sync(&cpu);
+  CHECK(published_default_style == X2_PROMPT_STYLE_NINTENDO);
+  CHECK(published_forced_style == X2_PROMPT_STYLE_NINTENDO);
 
   printf("test_player_input: %d checks passed\n", checks);
   return 0;

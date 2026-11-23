@@ -124,6 +124,9 @@ float dinput_pad_trigger_pressure(int pad, int trigger);
    exposed so the negative class is testable without owning two controllers. */
 int dinput_pad_type_uses_xbox_glyphs(int sdl_gamepad_type);
 int dinput_pad_uses_xbox_glyphs(int pad);
+/* The prompt art family (X2_PROMPT_STYLE_*) a pad of this SDL type prints. */
+int dinput_pad_type_button_style(int sdl_gamepad_type);
+int dinput_pad_button_style(int pad);
 /* The d-pad as a DirectInput POV: hundredths of a degree clockwise from north,
    or 0xFFFFFFFF for centred, which is what DIJOYSTATE2's rgdwPOV holds. */
 uint32_t dinput_pad_pov(int pad);

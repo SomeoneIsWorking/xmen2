@@ -72,6 +72,7 @@ std::vector<PortOptionRow> make_rows() {
       {"hud_portraits", "Portrait Size", false, PortPage::Options},
       {"hud_inset", "Edge Spacing", false, PortPage::Options},
       {"touch_controls", "Touch Controls", false, PortPage::Options},
+      {"button_style", "Button Icons", false, PortPage::Options},
       {"extraction_revive", "Extraction Revive", false, PortPage::Options},
       {"boot", "Boot", false, PortPage::Options},
       {"controls", "Controls", false, PortPage::Options},
@@ -284,6 +285,10 @@ bool apply(const PortOptionRow &row, int direction, SDL_Window *window,
           s.touch_controls = static_cast<std::uint8_t>(
               cycle(s.touch_controls, x2::config::kTouchControlsAlways + 1u,
                     direction));
+        } else if (key == "button_style") {
+          s.button_style = static_cast<std::uint8_t>(
+              cycle(s.button_style, x2::config::kButtonStyleNintendo + 1u,
+                    direction));
         } else if (key == "extraction_revive") {
           s.extraction_revive = static_cast<x2::config::ExtractionRevive>(
               cycle(static_cast<unsigned>(s.extraction_revive), 3u, direction));
@@ -418,6 +423,9 @@ std::string port_option_value(const PortOptionRow &row) {
   }
   if (key == "touch_controls") {
     return x2::config::touch_controls_label(s.touch_controls);
+  }
+  if (key == "button_style") {
+    return x2::config::button_style_label(s.button_style);
   }
   if (key == "extraction_revive") {
     return x2::config::extraction_revive_label(s.extraction_revive);

@@ -56,6 +56,7 @@ typedef struct {
   char persistent_id[64];
   int buttons;
   int xbox_glyphs;
+  int button_style; /* X2_PROMPT_STYLE_*: the art family this pad prints */
 } Pad;
 
 static Pad g_pad[DINPUT_PAD_MAX];
@@ -132,6 +133,7 @@ static void pad_open(SDL_JoystickID id) {
   p->buttons = 10;
   p->xbox_glyphs =
       dinput_pad_type_uses_xbox_glyphs((int)SDL_GetGamepadType(gp));
+  p->button_style = dinput_pad_type_button_style((int)SDL_GetGamepadType(gp));
   g_opens++;
   g_generation++;
   x2_log_error("DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
@@ -315,6 +317,11 @@ int dinput_pad_button_count(int pad) {
 int dinput_pad_uses_xbox_glyphs(int pad) {
   Pad *p = pad_at(pad);
   return p ? p->xbox_glyphs : 0;
+}
+
+int dinput_pad_button_style(int pad) {
+  Pad *p = pad_at(pad);
+  return p ? p->button_style : 0;
 }
 
 void dinput_pad_device_counts(unsigned long *opens, unsigned long *closes) {

@@ -1,4 +1,5 @@
 #include "dinput_pad_identity.h"
+#include "prompt_glyph_style.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -10,11 +11,36 @@
 
 int dinput_pad_type_uses_xbox_glyphs(int type) {
 #ifdef X2_WITH_SDL
-  return type == SDL_GAMEPAD_TYPE_XBOX360 || type == SDL_GAMEPAD_TYPE_XBOXONE;
+  /* Every pad SDL maps as a gamepad gets the port's art: the atlas has an
+     Xbox, a PlayStation and a Nintendo style (prompt_glyph_style.h), and
+     STANDARD -- SDL's type for a mapped pad it does not know by model, which
+     covers most mobile controllers -- uses the Xbox face layout. */
+  return type != SDL_GAMEPAD_TYPE_UNKNOWN;
 #else
   (void)type;
   return 0;
 #endif
+}
+
+int dinput_pad_type_button_style(int type) {
+#ifdef X2_WITH_SDL
+  switch (type) {
+  case SDL_GAMEPAD_TYPE_PS3:
+  case SDL_GAMEPAD_TYPE_PS4:
+  case SDL_GAMEPAD_TYPE_PS5:
+    return X2_PROMPT_STYLE_PLAYSTATION;
+  case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+  case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+  case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+  case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+    return X2_PROMPT_STYLE_NINTENDO;
+  default:
+    break;
+  }
+#else
+  (void)type;
+#endif
+  return X2_PROMPT_STYLE_XBOX;
 }
 
 namespace x2::native {

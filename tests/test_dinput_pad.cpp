@@ -15,6 +15,7 @@
  */
 #include "dinput_pad.h"
 #include "dinput_pad_report.h"
+#include "prompt_glyph_style.h"
 
 #include <SDL3/SDL.h>
 #include <assert.h>
@@ -89,13 +90,24 @@ int main(void) {
   test_no_pad();
   generation = dinput_pad_generation();
 
-  /* Prompt selection follows SDL's physical-family classification, not the
-     Xbox-shaped DirectInput layout we intentionally present for every pad. */
+  /* Every mapped gamepad gets the port's prompt art; SDL's physical-family
+     classification picks which family's art, not the Xbox-shaped
+     DirectInput layout we intentionally present for every pad. */
   CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_XBOX360) == 1);
   CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_XBOXONE) == 1);
-  CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_PS5) == 0);
-  CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_STANDARD) == 0);
-  printf("prompt family: Xbox 360/One positive, PS5/standard negative: ok\n");
+  CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_PS5) == 1);
+  CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_STANDARD) == 1);
+  CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_UNKNOWN) == 0);
+  CHECK(dinput_pad_type_button_style(SDL_GAMEPAD_TYPE_XBOXONE) ==
+        X2_PROMPT_STYLE_XBOX);
+  CHECK(dinput_pad_type_button_style(SDL_GAMEPAD_TYPE_STANDARD) ==
+        X2_PROMPT_STYLE_XBOX);
+  CHECK(dinput_pad_type_button_style(SDL_GAMEPAD_TYPE_PS5) ==
+        X2_PROMPT_STYLE_PLAYSTATION);
+  CHECK(dinput_pad_type_button_style(SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO) ==
+        X2_PROMPT_STYLE_NINTENDO);
+  printf("prompt family: every mapped pad has art, PS/Nintendo get theirs: "
+         "ok\n");
 
   SDL_INIT_INTERFACE(&desc);
   desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
