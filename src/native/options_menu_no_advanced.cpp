@@ -39,10 +39,13 @@ public:
   void update(CPU *C) const {
     const std::uint32_t menu = C->reg[kX86pEcx];
     if ((RD8(menu + kWaitFlags) & 1u) != 0u && !busy(*C)) {
+      /* Before the pushes: a guest call from *C writes its return address
+         where the second argument goes. */
+      const std::uint32_t menu_manager = manager(*C);
       CPU call = *C;
       push(&call, 0u);
       push(&call, 0u);
-      call.reg[kX86pEcx] = manager(*C);
+      call.reg[kX86pEcx] = menu_manager;
       x86_guest_call_args(&call, method(call.reg[kX86pEcx], kVtManagerWait),
                           8u);
       C->reg[kX86pEax] = call.reg[kX86pEax];
