@@ -1468,6 +1468,14 @@ target_compile_definitions(test_options_menu PRIVATE X86_NATIVE)
 target_link_libraries(test_options_menu PRIVATE pthread)
 add_test(NAME options_menu COMMAND test_options_menu)
 
+add_executable(test_options_menu_no_advanced
+    tests/test_options_menu_no_advanced.cpp src/native/options_menu_no_advanced.cpp
+    src/native/guest_heap.cpp src/native/guest_memory.cpp src/native/guest_memory_arena.cpp)
+target_include_directories(test_options_menu_no_advanced PRIVATE src/runtime/x86_abi src/native)
+target_compile_definitions(test_options_menu_no_advanced PRIVATE X86_NATIVE)
+target_link_libraries(test_options_menu_no_advanced PRIVATE pthread x2_symbols)
+add_test(NAME options_menu_no_advanced COMMAND test_options_menu_no_advanced)
+
 add_executable(test_save_catalog
     tests/test_save_catalog.cpp src/save/save_catalog.cpp)
 target_include_directories(test_save_catalog PRIVATE src/save)
